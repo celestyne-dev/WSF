@@ -24,3 +24,4 @@ backend/.pytest_cache/
 .DS_Store
 .vscode/
 .idea/
+frontend/.scratch/
