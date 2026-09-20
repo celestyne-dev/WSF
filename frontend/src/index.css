@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-ivory text-charcoal font-sans antialiased;
+}
+
+::selection {
+  @apply bg-blush-200 text-charcoal;
+}
+
+*:focus-visible {
+  outline: 2px solid theme('colors.burgundy.500');
+  outline-offset: 2px;
+}
+
+.font-serif {
+  font-feature-settings: 'liga' 1, 'kern' 1;
+}
+
+@layer components {
+  .eyebrow {
+    @apply font-sans text-xs font-semibold uppercase tracking-widest2 text-burgundy-600;
+  }
+
+  .container-editorial {
+    @apply mx-auto w-full max-w-content px-4 sm:px-6 lg:px-8;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-plum-600 px-6 py-3 text-sm font-semibold text-ivory transition-colors duration-250 hover:bg-plum-700;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 border border-charcoal px-6 py-3 text-sm font-semibold text-charcoal transition-colors duration-250 hover:bg-charcoal hover:text-ivory;
+  }
+
+  .btn-outline-light {
+    @apply inline-flex items-center justify-center gap-2 border border-ivory/70 px-6 py-3 text-sm font-semibold text-ivory transition-colors duration-250 hover:bg-ivory hover:text-charcoal;
+  }
+
+  .link-underline {
+    @apply underline decoration-taupe-300 decoration-1 underline-offset-4 transition-colors hover:decoration-burgundy-500;
+  }
+
+  .prose-article {
+    @apply prose prose-lg max-w-none prose-headings:font-serif prose-headings:font-semibold prose-headings:text-charcoal prose-p:font-sans prose-p:text-charcoal-600 prose-p:leading-[1.85] prose-a:text-burgundy-600 prose-a:no-underline hover:prose-a:underline prose-blockquote:border-burgundy-500 prose-blockquote:font-serif prose-blockquote:not-italic prose-img:rounded-none;
+  }
+}
