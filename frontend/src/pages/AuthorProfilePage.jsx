@@ -5,7 +5,7 @@ import { getAuthorBySlug } from '../mock/authors'
 import { getArticlesByAuthor } from '../mock/articles'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
@@ -29,7 +29,7 @@ export default function AuthorProfilePage() {
         <div className="container-editorial">
           <Breadcrumb items={[{ label: 'Authors', to: '/authors' }, { label: author.name }]} />
           <div className="mt-6 flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-            <CloudinaryImage publicId={author.photo} alt={author.name} width={200} height={200} aspect={1} className="h-28 w-28 rounded-full object-cover" />
+            <MediaImage mediaPath={author.photo} alt={author.name} width={200} height={200} aspect={1} className="h-28 w-28 rounded-full object-cover" />
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{author.name}</h1>
               <p className="mt-1 text-base text-charcoal-600">{author.role}</p>

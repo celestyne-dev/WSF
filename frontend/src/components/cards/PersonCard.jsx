@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 
 export default function PersonCard({ person }) {
   if (!person) return null
   return (
     <Link to={`/people/${person.slug}`} className="group block">
-      <CloudinaryImage
-        publicId={person.photo}
+      <MediaImage
+        mediaPath={person.photo}
         alt={person.name}
         width={600}
         height={750}

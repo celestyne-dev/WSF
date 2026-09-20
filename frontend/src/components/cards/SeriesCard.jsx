@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 
 export default function SeriesCard({ item }) {
   if (!item) return null
   return (
     <Link to={`/series/${item.slug}`} className="group relative block overflow-hidden">
-      <CloudinaryImage
-        publicId={item.coverImage}
+      <MediaImage
+        mediaPath={item.coverImage}
         alt={item.name}
         width={900}
         height={1125}

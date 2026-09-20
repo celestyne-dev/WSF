@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Quote } from 'lucide-react'
 import { getPersonBySlug } from '../../mock/people'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 
 export default function FeaturedWomanModule({ module }) {
   const person = getPersonBySlug(module.personSlug)
@@ -10,8 +10,8 @@ export default function FeaturedWomanModule({ module }) {
   return (
     <section className="bg-plum-600 py-16 text-ivory sm:py-20">
       <div className="container-editorial grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
-        <CloudinaryImage
-          publicId={person.photo}
+        <MediaImage
+          mediaPath={person.photo}
           alt={person.name}
           width={900}
           height={1080}

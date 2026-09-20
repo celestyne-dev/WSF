@@ -13,7 +13,7 @@ import { formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
 import PersonCard from '../components/cards/PersonCard'
@@ -122,7 +122,7 @@ export default function ArticlePage() {
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-y border-taupe-200 py-4">
           <div className="flex items-center gap-3">
             {author && (
-              <CloudinaryImage publicId={author.photo} alt={author.name} width={96} height={96} aspect={1} className="h-11 w-11 rounded-full object-cover" />
+              <MediaImage mediaPath={author.photo} alt={author.name} width={96} height={96} aspect={1} className="h-11 w-11 rounded-full object-cover" />
             )}
             <div className="text-sm">
               <p className="font-semibold text-charcoal">
@@ -156,7 +156,7 @@ export default function ArticlePage() {
       </header>
 
       <div className="container-editorial mt-8 max-w-content">
-        <CloudinaryImage publicId={article.heroImage} alt={article.heroImageAlt} width={1600} height={1000} priority className="w-full object-cover" />
+        <MediaImage mediaPath={article.heroImage} alt={article.heroImageAlt} width={1600} height={1000} priority className="w-full object-cover" />
         {(article.heroImageCaption || article.heroImageCredit) && (
           <p className="mt-2 text-sm text-charcoal-600">
             {article.heroImageCaption} {article.heroImageCredit && <span className="text-charcoal-600/70">— {article.heroImageCredit}</span>}

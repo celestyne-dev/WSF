@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Lock } from 'lucide-react'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 import { formatCurrency } from '../../utils/format'
 
 export default function ResourceCard({ resource }) {
@@ -8,8 +8,8 @@ export default function ResourceCard({ resource }) {
   return (
     <Link to={`/resources/${resource.slug}`} className="group block">
       <div className="relative overflow-hidden">
-        <CloudinaryImage
-          publicId={resource.coverImage}
+        <MediaImage
+          mediaPath={resource.coverImage}
           alt={resource.name}
           width={800}
           height={560}

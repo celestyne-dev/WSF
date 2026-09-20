@@ -169,7 +169,7 @@ export default function AdminArticleEditor() {
 
           <div>
             <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-              Hero image (Cloudinary public ID) <span className="normal-case text-charcoal-600/60">— upload handled by Media Library</span>
+              Hero image (media path) <span className="normal-case text-charcoal-600/60">— upload handled by Media Library</span>
             </label>
             <input value={form.heroImage} onChange={(e) => updateField('heroImage', e.target.value)} placeholder="articles/my-hero-image" className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
           </div>

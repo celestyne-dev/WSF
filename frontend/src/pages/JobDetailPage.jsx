@@ -5,7 +5,7 @@ import { jobs } from '../mock/jobs'
 import { formatSalary, formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import JobCard from '../components/cards/JobCard'
 import NotFoundPage from './NotFoundPage'
 
@@ -28,7 +28,7 @@ export default function JobDetailPage() {
         <div className="container-editorial">
           <Breadcrumb items={[{ label: 'Jobs', to: '/jobs' }, { label: job.title }]} />
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
-            <CloudinaryImage publicId={job.logo} alt={`${job.company} logo`} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-cover" />
+            <MediaImage mediaPath={job.logo} alt={`${job.company} logo`} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-cover" />
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{job.title}</h1>
               <p className="mt-1 text-lg font-medium text-charcoal-600">{job.company}</p>

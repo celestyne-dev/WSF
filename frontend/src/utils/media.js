@@ -1,18 +1,54 @@
 // Image resolution layer.
 //
-// In production this module resolves a Cloudinary `publicId` into a responsive,
-// WebP-delivered URL (f_auto,q_auto, width-based transformations, focal-point
-// cropping via g_auto:<focus>). Every image-consuming component in this app
-// calls `resolveImage()` / uses `<CloudinaryImage>` rather than building URLs
-// itself, so pointing this at a real Cloudinary cloud name later is a one-file
-// change with no UI rewrite.
+// In production, media is uploaded through the CMS to the Flask backend,
+// which validates, processes (Pillow), and stores it on the Hostinger VPS
+// filesystem outside the frontend source tree (e.g.
+// /var/www/womenshapingfutures/media/articles/...). Flask persists the
+// resulting metadata (Media model: uuid, stored_filename, file_path,
+// public_url, width, height, alt_text, caption, credit, ...) and Nginx
+// serves the optimized WebP files directly under a clean public path such
+// as https://womenshapingfutures.org/media/articles/example-image.webp —
+// Flask itself is only in the upload/validate/process/authorize path, never
+// in the hot path of serving an image to a visitor.
 //
-// This offline prototype has no outbound access to a media CDN, so it renders
-// deterministic, on-brand abstract-editorial placeholders instead of photography.
-// The `publicId`/caption/credit/focal metadata is real and already modeled on
-// every content type — swapping in photography is just changing this function.
+// Every image-consuming component in this app calls `resolveImage()` /
+// `resolveSrcSet()` (via `<MediaImage>`) rather than building a URL itself,
+// and passes a stable `mediaPath` — the same reference the API will one day
+// return as `public_url` (minus variant/extension). That keeps this file as
+// the single place that knows how to turn a media reference into a URL, so
+// pointing the app at the real backend is a one-file change with no
+// component rewrites.
+//
+// Multiple responsive variants (thumbnail/card/medium/large/hero) are
+// generated server-side in production; `resolveImage` picks the closest
+// variant for the requested width so a small card never downloads a
+// full-resolution hero image.
+//
+// This offline prototype has no media backend to call, so it renders
+// deterministic, on-brand abstract-editorial placeholders instead of real
+// photography. The `mediaPath`/caption/credit metadata is real and already
+// modeled on every content type — swapping in real uploads later is just
+// changing the implementation of `resolveImage`/`resolveSrcSet` below.
 
-const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || null
+const MEDIA_BASE_URL = import.meta.env.VITE_MEDIA_BASE_URL || null
+
+// Mirrors the responsive variants the Flask media service generates on
+// upload (see backend/app/services/media.py). Width is each variant's
+// target max dimension; `resolveImage` snaps to the closest one at or
+// above the requested width so callers never pay for more pixels than a
+// slot needs.
+const MEDIA_VARIANTS = [
+  { name: 'thumbnail', width: 320 },
+  { name: 'card', width: 640 },
+  { name: 'medium', width: 960 },
+  { name: 'large', width: 1280 },
+  { name: 'hero', width: 1920 },
+]
+
+function pickVariant(targetWidth) {
+  const fit = MEDIA_VARIANTS.find((v) => v.width >= targetWidth)
+  return fit || MEDIA_VARIANTS[MEDIA_VARIANTS.length - 1]
+}
 
 const TONES = {
   blush: ['#F9E4DD', '#E3AFA0', '#93504A'],
@@ -59,21 +95,23 @@ function svgPlaceholder(seed, { width = 1200, height = 800, tone } = {}) {
 
 /**
  * Resolve a media reference to a displayable URL.
- * @param {string} publicId - stable identifier (Cloudinary public_id in production)
- * @param {object} opts - { width, height, tone, crop }
+ * @param {string} mediaPath - stable identifier, e.g. "articles/my-hero" —
+ *   mirrors the path a real upload would live at under MEDIA_URL/MEDIA_ROOT.
+ * @param {object} opts - { width, height, tone }
  */
-export function resolveImage(publicId, opts = {}) {
+export function resolveImage(mediaPath, opts = {}) {
   const { width = 1200, height = 800 } = opts
-  if (CLOUD_NAME) {
-    // Real Cloudinary delivery: automatic format (WebP where supported),
-    // automatic quality, width-capped, gravity-auto cropping.
-    return `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/f_auto,q_auto,c_fill,g_auto,w_${width},h_${height}/${publicId}`
+  if (MEDIA_BASE_URL) {
+    // Real deployment: Nginx serves the pre-generated WebP variant directly
+    // from the Hostinger VPS filesystem — Flask is not in this request path.
+    const variant = pickVariant(width)
+    return `${MEDIA_BASE_URL}/${mediaPath}-${variant.name}.webp`
   }
-  return svgPlaceholder(publicId, { width, height, tone: opts.tone })
+  return svgPlaceholder(mediaPath, { width, height, tone: opts.tone })
 }
 
-export function resolveSrcSet(publicId, { widths = [480, 768, 1024, 1600], aspect = 1.5, tone } = {}) {
+export function resolveSrcSet(mediaPath, { widths = [480, 768, 1024, 1600], aspect = 1.5, tone } = {}) {
   return widths
-    .map((w) => `${resolveImage(publicId, { width: w, height: Math.round(w / aspect), tone })} ${w}w`)
+    .map((w) => `${resolveImage(mediaPath, { width: w, height: Math.round(w / aspect), tone })} ${w}w`)
     .join(', ')
 }

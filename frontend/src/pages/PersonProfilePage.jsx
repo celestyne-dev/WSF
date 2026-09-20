@@ -6,7 +6,7 @@ import { getArticlesByPerson } from '../mock/articles'
 import { getSeriesBySlug } from '../mock/series'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
 import NotFoundPage from './NotFoundPage'
 
@@ -31,7 +31,7 @@ export default function PersonProfilePage() {
         <div className="container-editorial">
           <Breadcrumb items={[{ label: 'People', to: '/people' }, { label: person.name }]} />
           <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-[220px_1fr] sm:items-center">
-            <CloudinaryImage publicId={person.photo} alt={person.name} width={440} height={550} aspect={0.8} className="aspect-[4/5] w-full max-w-[220px] object-cover" />
+            <MediaImage mediaPath={person.photo} alt={person.name} width={440} height={550} aspect={0.8} className="aspect-[4/5] w-full max-w-[220px] object-cover" />
             <div>
               <h1 className="font-serif text-4xl font-semibold text-charcoal sm:text-5xl">{person.name}</h1>
               <p className="mt-2 text-lg text-charcoal-600">

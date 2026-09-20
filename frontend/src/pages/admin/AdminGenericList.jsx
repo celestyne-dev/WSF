@@ -10,7 +10,7 @@ import { formatDate, formatCurrency } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatCard from '../../components/cms/StatCard'
 import StatusBadge from '../../components/cms/StatusBadge'
-import CloudinaryImage from '../../components/ui/CloudinaryImage'
+import MediaImage from '../../components/ui/MediaImage'
 import { Users, Mail, MousePointerClick } from 'lucide-react'
 
 const CONFIGS = {
@@ -94,11 +94,11 @@ function MediaSection() {
   const items = articles.slice(0, 6).map((a) => ({ id: a.heroImage, alt: a.heroImageAlt, caption: a.heroImageCaption }))
   return (
     <div>
-      <AdminPageHeader title="Media Library" description="Cloudinary-backed assets with alt text, captions, and credits managed centrally." />
+      <AdminPageHeader title="Media Library" description="Uploads stored on the Hostinger VPS filesystem, with alt text, captions, and credits managed centrally." />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {items.map((item) => (
           <div key={item.id} className="border border-taupe-200 bg-white p-2">
-            <CloudinaryImage publicId={item.id} alt={item.alt} width={400} height={300} aspect={4 / 3} className="aspect-[4/3] w-full object-cover" />
+            <MediaImage mediaPath={item.id} alt={item.alt} width={400} height={300} aspect={4 / 3} className="aspect-[4/3] w-full object-cover" />
             <p className="mt-2 truncate text-xs text-charcoal-600">{item.id}</p>
             <p className="truncate text-xs text-charcoal-600/60">{item.alt}</p>
           </div>

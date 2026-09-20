@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { MapPin } from 'lucide-react'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 import { formatDate } from '../../utils/format'
 
 export default function EventCard({ event }) {
@@ -25,8 +25,8 @@ export default function EventCard({ event }) {
         </div>
       </div>
       {event.coverImage && (
-        <CloudinaryImage
-          publicId={event.coverImage}
+        <MediaImage
+          mediaPath={event.coverImage}
           alt={event.title}
           width={200}
           height={200}

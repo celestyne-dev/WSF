@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { MapPin, Clock } from 'lucide-react'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 import { formatSalary, formatDeadline } from '../../utils/format'
 
 export default function JobCard({ job }) {
@@ -10,8 +10,8 @@ export default function JobCard({ job }) {
       to={`/jobs/${job.slug}`}
       className="group flex items-start gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
-      <CloudinaryImage
-        publicId={job.logo}
+      <MediaImage
+        mediaPath={job.logo}
         alt={`${job.company} logo`}
         width={112}
         height={112}

@@ -23,7 +23,7 @@ women-shaping-futures/
 │   │   ├── assets/
 │   │   ├── components/
 │   │   │   ├── layout/         # Header, Footer, MobileNav, SearchOverlay, Logo
-│   │   │   ├── ui/              # CloudinaryImage, SectionHeading, Tag, Pagination…
+│   │   │   ├── ui/              # MediaImage, SectionHeading, Tag, Pagination…
 │   │   │   ├── cards/           # ArticleCard, PersonCard, JobCard, EventCard…
 │   │   │   ├── article/         # ArticleContent block renderer
 │   │   │   ├── home/            # One component per homepage CMS module type
@@ -43,7 +43,7 @@ women-shaping-futures/
 │   │   ├── auth/                 # JWT auth & RBAC (not yet implemented)
 │   │   ├── models/                # SQLAlchemy models (not yet implemented)
 │   │   ├── schemas/                # Marshmallow schemas
-│   │   ├── services/                # Slug/redirect/Cloudinary/payment logic
+│   │   ├── services/                # Slug/redirect/media (Pillow)/payment logic
 │   │   ├── utils/                     # RESERVED_SLUGS, helpers
 │   │   ├── extensions.py
 │   │   └── __init__.py                # Application factory
@@ -143,19 +143,37 @@ code change required to rearrange the page.
 secondary nav, and footer link groups. `Header.jsx` and `Footer.jsx` render
 whatever comes back — nothing is hard-coded in the layout components.
 
-**Images without a real Cloudinary account.** This sandbox has no outbound
-network access to an image CDN, so `src/utils/media.js` implements
-`resolveImage()`/`resolveSrcSet()` with two branches: if
-`VITE_CLOUDINARY_CLOUD_NAME` is set, it builds a real
-`f_auto,q_auto,c_fill,g_auto,w_{width}` Cloudinary delivery URL (WebP where
-supported, responsive, focal-point cropping); otherwise it renders a
-deterministic, on-brand abstract placeholder (an inline SVG gradient, seeded
-by the same `publicId` so a given person/article always gets the same
-placeholder). Every image-consuming component (`CloudinaryImage.jsx`) is
-already written against the *production* API — alt text, caption, credit,
-width/height (to prevent layout shift), and `loading="lazy"` are all wired
-up now. Pointing `VITE_CLOUDINARY_CLOUD_NAME` at a real Cloudinary account
-is the entire migration path; no component changes.
+**Media is self-hosted on the Hostinger VPS — no third-party media CDN.**
+Uploaded images are never sent to an external service. In production, the
+Flask backend receives an upload, validates its MIME type/extension/size,
+generates a collision-safe UUID-based filename, and uses Pillow to strip
+metadata, correct orientation, and generate responsive WebP variants
+(`thumbnail`/`card`/`medium`/`large`/`hero`) written to a persistent
+directory outside the app's source tree (e.g.
+`/var/www/womenshapingfutures/media/{articles,people,events,...}/`). A
+`Media` row (see `backend/app/models/__init__.py`) records the metadata —
+`uuid`, `stored_filename`, `file_path`, `public_url`, dimensions, file
+size, `alt_text`, `caption`, `credit`, `copyright_source`, `uploaded_by` —
+**not** the binary file. Nginx serves the resulting files directly from
+disk at a clean URL under the WSF domain
+(`https://womenshapingfutures.org/media/articles/example-image.webp`) with
+long-lived cache headers; Flask is only ever in the
+upload → validate → process → metadata → permissions path, never in the
+hot path of serving an image to a visitor.
+
+This sandbox has no media backend to call, so `src/utils/media.js`
+implements `resolveImage()`/`resolveSrcSet()` with two branches: if
+`VITE_MEDIA_BASE_URL` is set, it builds a real variant-aware URL
+(`{base}/{mediaPath}-{variant}.webp`, picking the smallest variant that
+covers the requested width — a card never downloads a hero-sized image);
+otherwise it renders a deterministic, on-brand abstract placeholder (an
+inline SVG gradient, seeded by the same `mediaPath` so a given
+person/article always gets the same placeholder). Every image-consuming
+component (`<MediaImage>`) is already written against the *production*
+shape — alt text, caption, credit, explicit width/height (to prevent
+layout shift), and `loading="lazy"` are all wired up now. Pointing
+`VITE_MEDIA_BASE_URL` at the deployed `/media/` root is the entire
+frontend migration path; no component changes.
 
 **SEO without react-helmet.** `hooks/useSeo.js` imperatively sets
 `document.title`, meta description/robots, canonical `<link>`, OpenGraph,
@@ -268,10 +286,12 @@ ever looks stale.
 
 ## 9. Known Prototype Limitations
 
-- **Placeholder imagery.** This sandbox can't reach an image CDN, so all
-  photography is a deterministic abstract SVG placeholder in the brand
-  palette (see `utils/media.js`). Wiring a real Cloudinary account is a
-  one-line env var change — no component changes needed.
+- **Placeholder imagery.** This sandbox has no media backend to upload to
+  or fetch from, so all photography is a deterministic abstract SVG
+  placeholder in the brand palette (see `utils/media.js`). Setting
+  `VITE_MEDIA_BASE_URL` once the Flask media service is deployed on the
+  Hostinger VPS is a one-line env var change — no component changes
+  needed.
 - **Social brand icons.** The installed `lucide-react` version dropped
   brand/logo glyphs; `components/ui/SocialIcon.jsx` provides minimal inline
   SVGs for Facebook/X/LinkedIn/Instagram/YouTube instead.

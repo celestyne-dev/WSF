@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 import { getAuthorBySlug } from '../../mock/authors'
 import { getTopicBySlug } from '../../mock/topics'
 import { formatShortDate } from '../../utils/format'
@@ -18,8 +18,8 @@ export default function ArticleCard({ article, variant = 'grid' }) {
     return (
       <article className="group relative">
         <Link to={href} className="block overflow-hidden">
-          <CloudinaryImage
-            publicId={article.heroImage}
+          <MediaImage
+            mediaPath={article.heroImage}
             alt={article.heroImageAlt}
             width={1400}
             height={933}
@@ -55,8 +55,8 @@ export default function ArticleCard({ article, variant = 'grid' }) {
     return (
       <article className="group flex gap-4 sm:gap-5">
         <Link to={href} className="block w-32 shrink-0 overflow-hidden sm:w-40">
-          <CloudinaryImage
-            publicId={article.heroImage}
+          <MediaImage
+            mediaPath={article.heroImage}
             alt={article.heroImageAlt}
             width={400}
             height={400}
@@ -96,8 +96,8 @@ export default function ArticleCard({ article, variant = 'grid' }) {
   return (
     <article className="group flex flex-col">
       <Link to={href} className="block overflow-hidden">
-        <CloudinaryImage
-          publicId={article.heroImage}
+        <MediaImage
+          mediaPath={article.heroImage}
           alt={article.heroImageAlt}
           width={800}
           height={533}

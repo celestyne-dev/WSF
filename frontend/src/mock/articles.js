@@ -66,7 +66,7 @@ export const articles = [
       },
       {
         type: 'image',
-        publicId: 'articles/redefining-leadership-inline-1',
+        mediaPath: 'articles/redefining-leadership-inline-1',
         alt: 'Two women reviewing documents at a desk in a modern office',
         caption: 'Wafula reviews quarterly figures with her CFO, Judith Kilonzo, ahead of a board meeting.',
         credit: 'Photograph for Women Shaping Futures',

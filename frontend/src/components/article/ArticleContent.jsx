@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 import NewsletterForm from '../ui/NewsletterForm'
 import { getArticleBySlug } from '../../mock/articles'
 import { Quote } from 'lucide-react'
@@ -16,7 +16,7 @@ function Paragraph({ block }) {
 function ImageBlock({ block }) {
   return (
     <figure className="my-10">
-      <CloudinaryImage publicId={block.publicId} alt={block.alt} width={1400} height={933} className="w-full object-cover" />
+      <MediaImage mediaPath={block.mediaPath} alt={block.alt} width={1400} height={933} className="w-full object-cover" />
       {(block.caption || block.credit) && (
         <figcaption className="mt-2 text-sm text-charcoal-600">
           {block.caption} {block.credit && <span className="text-charcoal-600/70">— {block.credit}</span>}

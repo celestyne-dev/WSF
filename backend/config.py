@@ -15,9 +15,19 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
-    CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME")
-    CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY")
-    CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
+    # Media is stored on the Hostinger VPS filesystem, outside the app's
+    # source tree, and served in production by Nginx directly from
+    # MEDIA_ROOT at the MEDIA_URL path — Flask only handles the
+    # upload/validate/process/authorize side (see app/services/media.py).
+    MEDIA_ROOT = os.environ.get(
+        "MEDIA_ROOT", os.path.join(basedir, "instance", "media")
+    )
+    MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
+    MAX_UPLOAD_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10MB
+    ALLOWED_IMAGE_EXTENSIONS = set(
+        os.environ.get("ALLOWED_IMAGE_EXTENSIONS", "jpg,jpeg,png,webp").split(",")
+    )
+    MAX_CONTENT_LENGTH = MAX_UPLOAD_SIZE
 
     MPESA_CONSUMER_KEY = os.environ.get("MPESA_CONSUMER_KEY")
     MPESA_CONSUMER_SECRET = os.environ.get("MPESA_CONSUMER_SECRET")

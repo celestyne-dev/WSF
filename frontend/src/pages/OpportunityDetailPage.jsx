@@ -4,7 +4,7 @@ import { getOpportunityBySlug, opportunities } from '../mock/opportunities'
 import { formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import Tag from '../components/ui/Tag'
 import OpportunityCard from '../components/cards/OpportunityCard'
 import NotFoundPage from './NotFoundPage'
@@ -29,7 +29,7 @@ export default function OpportunityDetailPage() {
           <Breadcrumb items={[{ label: 'Opportunities', to: '/opportunities' }, { label: opportunity.title }]} />
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
             {opportunity.logo && (
-              <CloudinaryImage publicId={opportunity.logo} alt={opportunity.organization} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-cover" />
+              <MediaImage mediaPath={opportunity.logo} alt={opportunity.organization} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-cover" />
             )}
             <div>
               <Tag tone="plum">{opportunity.type}</Tag>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import CloudinaryImage from '../ui/CloudinaryImage'
+import MediaImage from '../ui/MediaImage'
 
 export default function OrganizationCard({ organization }) {
   if (!organization) return null
@@ -8,8 +8,8 @@ export default function OrganizationCard({ organization }) {
       to={`/organizations/${organization.slug}`}
       className="group flex items-center gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
-      <CloudinaryImage
-        publicId={organization.logo}
+      <MediaImage
+        mediaPath={organization.logo}
         alt={`${organization.name} logo`}
         width={112}
         height={112}

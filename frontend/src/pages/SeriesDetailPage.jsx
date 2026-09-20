@@ -3,7 +3,7 @@ import { getSeriesBySlug } from '../mock/series'
 import { getArticlesBySeries } from '../mock/articles'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
@@ -24,8 +24,8 @@ export default function SeriesDetailPage() {
   return (
     <div>
       <div className="relative flex min-h-[320px] items-end bg-plum-700">
-        <CloudinaryImage
-          publicId={seriesItem.coverImage}
+        <MediaImage
+          mediaPath={seriesItem.coverImage}
           alt={seriesItem.name}
           width={1920}
           height={640}

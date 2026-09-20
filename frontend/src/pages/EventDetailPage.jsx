@@ -6,7 +6,7 @@ import { getOrganizationBySlug } from '../mock/organizations'
 import { formatDate, formatCurrency } from '../utils/format'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import PersonCard from '../components/cards/PersonCard'
 import NotFoundPage from './NotFoundPage'
 
@@ -27,7 +27,7 @@ export default function EventDetailPage() {
   return (
     <div>
       <div className="relative">
-        <CloudinaryImage publicId={event.coverImage} alt={event.title} width={1920} height={720} aspect={2.6} tone="burgundy" priority className="h-64 w-full object-cover sm:h-96" />
+        <MediaImage mediaPath={event.coverImage} alt={event.title} width={1920} height={720} aspect={2.6} tone="burgundy" priority className="h-64 w-full object-cover sm:h-96" />
         <div className="absolute inset-0 bg-gradient-to-t from-charcoal-800/80 to-transparent" />
         <div className="container-editorial absolute inset-x-0 bottom-0 pb-8 text-ivory">
           <Breadcrumb items={[{ label: 'Events', to: '/events' }, { label: event.title }]} />
@@ -96,7 +96,7 @@ export default function EventDetailPage() {
               <p className="eyebrow mb-3">Sponsored by</p>
               <div className="flex flex-wrap gap-4">
                 {sponsors.map((s) => (
-                  <CloudinaryImage key={s.slug} publicId={s.logo} alt={s.name} width={140} height={70} aspect={2} tone="taupe" className="h-9 w-auto" />
+                  <MediaImage key={s.slug} mediaPath={s.logo} alt={s.name} width={140} height={70} aspect={2} tone="taupe" className="h-9 w-auto" />
                 ))}
               </div>
             </div>

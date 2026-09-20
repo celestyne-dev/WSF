@@ -7,7 +7,7 @@ import { opportunities } from '../mock/opportunities'
 import { people } from '../mock/people'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
-import CloudinaryImage from '../components/ui/CloudinaryImage'
+import MediaImage from '../components/ui/MediaImage'
 import JobCard from '../components/cards/JobCard'
 import OpportunityCard from '../components/cards/OpportunityCard'
 import PersonCard from '../components/cards/PersonCard'
@@ -34,7 +34,7 @@ export default function OrganizationDetailPage() {
         <div className="container-editorial">
           <Breadcrumb items={[{ label: 'Organizations', to: '/organizations' }, { label: org.name }]} />
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
-            <CloudinaryImage publicId={org.logo} alt={`${org.name} logo`} width={200} height={200} aspect={1} className="h-24 w-24 border border-taupe-200 object-cover" />
+            <MediaImage mediaPath={org.logo} alt={`${org.name} logo`} width={200} height={200} aspect={1} className="h-24 w-24 border border-taupe-200 object-cover" />
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{org.name}</h1>
               <p className="mt-1 text-base text-charcoal-600">
