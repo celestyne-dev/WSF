@@ -32,6 +32,27 @@
 
 const MEDIA_BASE_URL = import.meta.env.VITE_MEDIA_BASE_URL || null
 
+// The backend's `media.public_url` is root-relative (e.g.
+// "/media/originals/{uuid}.webp" — see backend/app/services/media.py, built
+// from the MEDIA_URL config value, typically "/media/"), not a full URL.
+// That's correct when the frontend and API share an origin (Nginx serving
+// both in production), but in local dev the API runs on a different port
+// (VITE_API_URL=http://localhost:5000/api/v1) than the Vite dev server
+// (5173) — a root-relative path would otherwise resolve against the wrong
+// origin. Deriving the API's origin once here, from whichever form
+// VITE_API_URL takes, keeps every image request pointed at the server that
+// actually has the file.
+function resolveApiOrigin() {
+  const apiUrl = import.meta.env.VITE_API_URL || '/api/v1'
+  try {
+    return new URL(apiUrl, window.location.origin).origin
+  } catch {
+    return ''
+  }
+}
+
+const API_ORIGIN = resolveApiOrigin()
+
 // Mirrors the responsive variants the Flask media service generates on
 // upload (see backend/app/services/media.py). Width is each variant's
 // target max dimension; `resolveImage` snaps to the closest one at or
@@ -93,29 +114,35 @@ function svgPlaceholder(seed, { width = 1200, height = 800, tone } = {}) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
-// A real upload's `mediaPath` is the backend's already-absolute
-// `media.public_url` (e.g. https://womenshapingfutures.org/media/originals/
-// {uuid}.webp, or http://localhost:5000/media/... in dev) — not a bare path
-// to suffix a variant onto. Mock mode's `mediaPath` is a short synthetic key
-// like "articles/my-hero" with no real file behind it, which is what the
-// `-{variant}.webp` convention below and the SVG placeholder fallback exist
-// for. Recognizing the absolute-URL case keeps both call shapes correct
-// through one function without every caller needing to know which mode is
-// active.
-function isAbsoluteUrl(value) {
-  return typeof value === 'string' && /^https?:\/\//i.test(value)
+// A real upload's `mediaPath` is the backend's `media.public_url` — either
+// root-relative ("/media/originals/{uuid}.webp") or, if MEDIA_URL is
+// configured as a full origin, already absolute — never a bare path to
+// suffix a variant onto. Mock mode's `mediaPath` is a short synthetic key
+// like "articles/my-hero" with no real file behind it and no leading slash,
+// which is what the `-{variant}.webp` convention below and the SVG
+// placeholder fallback exist for. Recognizing a real backend path (either
+// form) keeps both call shapes correct through one function without every
+// caller needing to know which mode is active.
+function isBackendMediaPath(value) {
+  return typeof value === 'string' && (/^https?:\/\//i.test(value) || value.startsWith('/'))
+}
+
+function toAbsoluteUrl(value) {
+  if (/^https?:\/\//i.test(value)) return value
+  return `${API_ORIGIN}${value}`
 }
 
 /**
  * Resolve a media reference to a displayable URL.
- * @param {string} mediaPath - either a real upload's absolute public_url, or
- *   (mock mode only) a stable synthetic identifier like "articles/my-hero".
+ * @param {string} mediaPath - either a real upload's public_url (root-
+ *   relative or absolute), or (mock mode only) a stable synthetic
+ *   identifier like "articles/my-hero".
  * @param {object} opts - { width, height, tone }
  */
 export function resolveImage(mediaPath, opts = {}) {
   const { width = 1200, height = 800 } = opts
   if (!mediaPath) return svgPlaceholder('placeholder', { width, height, tone: opts.tone })
-  if (isAbsoluteUrl(mediaPath)) return mediaPath
+  if (isBackendMediaPath(mediaPath)) return toAbsoluteUrl(mediaPath)
   if (MEDIA_BASE_URL) {
     // Real deployment: Nginx serves the pre-generated WebP variant directly
     // from the Hostinger VPS filesystem — Flask is not in this request path.
@@ -129,7 +156,7 @@ export function resolveSrcSet(mediaPath, { widths = [480, 768, 1024, 1600], aspe
   // A real upload's public_url is one fixed file — there's no synthetic
   // variant set to build a srcSet from, so omit the attribute and let the
   // browser use `src` as-is (see MediaImage.jsx).
-  if (isAbsoluteUrl(mediaPath)) return undefined
+  if (isBackendMediaPath(mediaPath)) return undefined
   return widths
     .map((w) => `${resolveImage(mediaPath, { width: w, height: Math.round(w / aspect), tone })} ${w}w`)
     .join(', ')

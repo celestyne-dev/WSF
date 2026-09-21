@@ -62,6 +62,8 @@ function MediaPickerModal({ onClose, onSelect }) {
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [pendingFile, setPendingFile] = useState(null)
+  const [pendingMeta, setPendingMeta] = useState({ altText: '', caption: '', credit: '' })
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -91,24 +93,30 @@ function MediaPickerModal({ onClose, onSelect }) {
     }
   }, [onClose])
 
-  async function handleUpload(file) {
+  function stageFile(file) {
     if (!file) return
-    setUploading(true)
-    try {
-      const media = await uploadMedia(file, {})
-      toast.success('Image uploaded.')
-      onSelect(media)
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || 'Something went wrong uploading this file. Please try again.')
-    } finally {
-      setUploading(false)
-    }
+    setPendingFile(file)
+    setPendingMeta({ altText: '', caption: '', credit: '' })
   }
 
   function handleDrop(e) {
     e.preventDefault()
-    const file = e.dataTransfer.files?.[0]
-    if (file) handleUpload(file)
+    stageFile(e.dataTransfer.files?.[0])
+  }
+
+  async function confirmUpload() {
+    if (!pendingFile) return
+    setUploading(true)
+    try {
+      const media = await uploadMedia(pendingFile, pendingMeta)
+      toast.success('Image uploaded.')
+      onSelect(media)
+    } catch (err) {
+      toast.error(err.apiError?.message || 'Something went wrong uploading this file. Please try again.')
+    } finally {
+      setUploading(false)
+      setPendingFile(null)
+    }
   }
 
   return (
@@ -187,24 +195,67 @@ function MediaPickerModal({ onClose, onSelect }) {
 
         {tab === 'upload' && (
           <div className="flex-1 overflow-y-auto p-5">
-            <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed border-taupe-300 px-6 py-16 text-center hover:border-burgundy-400"
-            >
-              <Upload size={24} className="text-charcoal-600/60" />
-              <p className="text-sm font-medium text-charcoal">{uploading ? 'Uploading…' : 'Drag and drop an image, or click to browse'}</p>
-              <p className="text-xs text-charcoal-600/60">JPG, PNG, or WebP. Converted to responsive WebP variants automatically.</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                disabled={uploading}
-                onChange={(e) => handleUpload(e.target.files?.[0])}
-              />
-            </div>
+            {!pendingFile && (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed border-taupe-300 px-6 py-16 text-center hover:border-burgundy-400"
+              >
+                <Upload size={24} className="text-charcoal-600/60" />
+                <p className="text-sm font-medium text-charcoal">Drag and drop an image, or click to browse</p>
+                <p className="text-xs text-charcoal-600/60">JPG, PNG, or WebP. Converted to responsive WebP variants automatically.</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => stageFile(e.target.files?.[0])}
+                />
+              </div>
+            )}
+            {pendingFile && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-charcoal">{pendingFile.name}</p>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                    Alt text <span className="normal-case text-charcoal-600/60">— for accessibility and SEO</span>
+                  </label>
+                  <input
+                    autoFocus
+                    value={pendingMeta.altText}
+                    onChange={(e) => setPendingMeta((m) => ({ ...m, altText: e.target.value }))}
+                    className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Caption</label>
+                    <input
+                      value={pendingMeta.caption}
+                      onChange={(e) => setPendingMeta((m) => ({ ...m, caption: e.target.value }))}
+                      className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Credit</label>
+                    <input
+                      value={pendingMeta.credit}
+                      onChange={(e) => setPendingMeta((m) => ({ ...m, credit: e.target.value }))}
+                      className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button type="button" onClick={() => setPendingFile(null)} disabled={uploading} className="btn-secondary !px-4 !py-2 text-xs disabled:opacity-60">
+                    Choose a different file
+                  </button>
+                  <button type="button" onClick={confirmUpload} disabled={uploading} className="btn-primary !px-4 !py-2 text-xs disabled:opacity-60">
+                    {uploading ? 'Uploading…' : 'Upload'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

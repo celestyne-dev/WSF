@@ -6,9 +6,15 @@ import axios from 'axios'
 // flipped to false (or VITE_USE_MOCK=false is set), each resource module
 // swaps its mock branch for a call through this client with zero changes
 // to the components that consume it.
+// No hard-coded Content-Type default: axios's own request transform sets
+// application/json for a plain-object body automatically, and a hard-coded
+// default here would otherwise survive untouched through a FormData upload
+// (axios's FormData branch returns the body as-is without clearing an
+// already-set Content-Type), leaving the browser unable to add the
+// multipart boundary Flask needs to parse request.files. See the request
+// interceptor below for the explicit FormData guard.
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
-  headers: { 'Content-Type': 'application/json' },
 })
 
 function camelToSnake(str) {
@@ -26,6 +32,17 @@ apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('wsf_access_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // File uploads (media upload) pass a FormData body — it must never carry
+  // an explicit Content-Type, so the browser can generate the multipart
+  // boundary itself. Belt-and-suspenders alongside removing the instance
+  // default above, in case any caller or future default re-adds one.
+  if (config.data instanceof FormData) {
+    if (typeof config.headers?.delete === 'function') {
+      config.headers.delete('Content-Type')
+    } else if (config.headers) {
+      delete config.headers['Content-Type']
+    }
   }
   if (config.params && typeof config.params === 'object') {
     const translated = {}

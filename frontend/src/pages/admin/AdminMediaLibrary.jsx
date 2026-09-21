@@ -28,6 +28,7 @@ export default function AdminMediaLibrary() {
   const [pagination, setPagination] = useState(null)
   const [error, setError] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [pendingFile, setPendingFile] = useState(null)
   const [selected, setSelected] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const fileInputRef = useRef(null)
@@ -59,25 +60,26 @@ export default function AdminMediaLibrary() {
       .catch(() => setError('Something went wrong loading the media library. Please try again.'))
   }
 
-  async function handleUpload(file) {
+  async function handleUpload(file, metadata) {
     if (!file) return
     setUploading(true)
     try {
-      const media = await uploadMedia(file, {})
+      const media = await uploadMedia(file, metadata)
       toast.success('Image uploaded.')
       reload()
       setSelected(media)
     } catch (err) {
-      toast.error(err?.response?.data?.error?.message || 'Something went wrong uploading this file. Please try again.')
+      toast.error(err.apiError?.message || 'Something went wrong uploading this file. Please try again.')
     } finally {
       setUploading(false)
+      setPendingFile(null)
     }
   }
 
   function handleDrop(e) {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
-    if (file) handleUpload(file)
+    if (file) setPendingFile(file)
   }
 
   async function handleDelete(id) {
@@ -109,7 +111,7 @@ export default function AdminMediaLibrary() {
         accept="image/*"
         className="hidden"
         disabled={uploading}
-        onChange={(e) => handleUpload(e.target.files?.[0])}
+        onChange={(e) => setPendingFile(e.target.files?.[0] || null)}
       />
 
       <div
@@ -184,6 +186,57 @@ export default function AdminMediaLibrary() {
           onCancel={() => setConfirmDeleteId(null)}
         />
       )}
+
+      {pendingFile && (
+        <PendingUploadDialog
+          file={pendingFile}
+          uploading={uploading}
+          onUpload={(metadata) => handleUpload(pendingFile, metadata)}
+          onCancel={() => setPendingFile(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function PendingUploadDialog({ file, uploading, onUpload, onCancel }) {
+  const [meta, setMeta] = useState({ altText: '', caption: '', credit: '' })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/70 p-4" role="dialog" aria-modal="true" aria-label="Upload image">
+      <div className="w-full max-w-sm bg-ivory p-6 shadow-card">
+        <h3 className="font-serif text-lg font-semibold text-charcoal">Upload {file.name}</h3>
+        <p className="mt-1 text-xs text-charcoal-600">Add metadata now, or leave it and edit later from the library.</p>
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+              Alt text <span className="normal-case text-charcoal-600/60">— for accessibility and SEO</span>
+            </label>
+            <input
+              autoFocus
+              value={meta.altText}
+              onChange={(e) => setMeta((m) => ({ ...m, altText: e.target.value }))}
+              className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Caption</label>
+            <input value={meta.caption} onChange={(e) => setMeta((m) => ({ ...m, caption: e.target.value }))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Credit</label>
+            <input value={meta.credit} onChange={(e) => setMeta((m) => ({ ...m, credit: e.target.value }))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none" />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={uploading} className="btn-secondary !px-4 !py-2 text-xs disabled:opacity-60">
+            Cancel
+          </button>
+          <button type="button" onClick={() => onUpload(meta)} disabled={uploading} className="btn-primary !px-4 !py-2 text-xs disabled:opacity-60">
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -192,6 +245,14 @@ function MediaDetailPanel({ media, onClose, onSaved, onDelete }) {
   const [form, setForm] = useState({ altText: media.altText, caption: media.caption, credit: media.credit, copyrightSource: media.copyrightSource })
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   async function handleSave() {
     setSaving(true)
     try {
@@ -199,7 +260,7 @@ function MediaDetailPanel({ media, onClose, onSaved, onDelete }) {
       toast.success('Metadata saved.')
       onSaved(updated)
     } catch (err) {
-      toast.error(err?.response?.data?.error?.message || 'Something went wrong saving this metadata. Please try again.')
+      toast.error(err.apiError?.message || 'Something went wrong saving this metadata. Please try again.')
     } finally {
       setSaving(false)
     }
