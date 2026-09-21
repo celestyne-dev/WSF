@@ -26,7 +26,7 @@ function mapPerson(p) {
     awards: p.awards || [],
     website: p.website,
     social: p.social || {},
-    seriesSlugs: [],
+    seriesSlugs: (p.series || []).map((s) => s.slug),
     featured: p.featured,
   }
 }
@@ -63,11 +63,26 @@ export async function fetchPersonBySlug(slug) {
   return delay(findBySlug(slug) || null)
 }
 
-export function getPeopleFilterOptions() {
-  return {
+// Filter dropdown options are derived from whichever people actually
+// exist — in mock mode from the static array, in real mode from a large
+// unfiltered page of the real API — so a filter never offers a country or
+// industry with zero results. Async either way so callers don't need two
+// code paths.
+export async function fetchPeopleFilterOptions() {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/people', { params: { pageSize: 200 } })
+    const all = data.items.map(mapPerson)
+    return {
+      countries: countryFilterOptions(all.map((p) => p.countryCode)),
+      regions: regionFilterOptions(),
+      industries: [...new Set(all.map((p) => p.industry))].filter(Boolean).sort(),
+      expertise: [...new Set(all.flatMap((p) => p.expertise))].filter(Boolean).sort(),
+    }
+  }
+  return delay({
     countries: countryFilterOptions(people.map((p) => p.countryCode)),
     regions: regionFilterOptions(),
     industries: [...new Set(people.map((p) => p.industry))].sort(),
     expertise: [...new Set(people.flatMap((p) => p.expertise))].sort(),
-  }
+  })
 }

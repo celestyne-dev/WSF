@@ -77,8 +77,13 @@ function NewsletterCta({ block }) {
   )
 }
 
-function RelatedBlock({ block }) {
-  const related = block.articleSlugs.map((s) => getArticleBySlug(s)).filter(Boolean)
+function RelatedBlock({ block, articlesBySlug }) {
+  // articlesBySlug is pre-resolved by ArticlePage via fetchRelatedArticles
+  // (real mode); the mock lookup only covers mock mode, where no such map
+  // is passed down.
+  const related = articlesBySlug
+    ? block.articleSlugs.map((s) => articlesBySlug[s]).filter(Boolean)
+    : block.articleSlugs.map((s) => getArticleBySlug(s)).filter(Boolean)
   if (!related.length) return null
   return (
     <div className="my-10 border-y border-taupe-200 py-6">
@@ -182,13 +187,13 @@ const RENDERERS = {
   faq: FaqBlock,
 }
 
-export default function ArticleContent({ blocks = [] }) {
+export default function ArticleContent({ blocks = [], relatedArticlesBySlug }) {
   return (
     <div>
       {blocks.map((block, i) => {
         const Renderer = RENDERERS[block.type]
         if (!Renderer) return null
-        return <Renderer key={i} block={block} />
+        return <Renderer key={i} block={block} articlesBySlug={relatedArticlesBySlug} />
       })}
     </div>
   )

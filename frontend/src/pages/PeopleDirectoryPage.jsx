@@ -1,19 +1,32 @@
-import { useState, useMemo } from 'react'
-import { people } from '../mock/people'
-import { getPeopleFilterOptions } from '../api/people'
-import { matchesCountry, matchesRegion } from '../mock/geography'
+import { useState, useEffect } from 'react'
+import { fetchPeople, fetchPeopleFilterOptions } from '../api/people'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import PersonCard from '../components/cards/PersonCard'
 import EmptyState from '../components/ui/EmptyState'
+import PageLoader from '../components/ui/PageLoader'
+
+const EMPTY_OPTIONS = { countries: [], regions: [], industries: [], expertise: [] }
 
 export default function PeopleDirectoryPage() {
   const [country, setCountry] = useState('')
   const [region, setRegion] = useState('')
   const [industry, setIndustry] = useState('')
   const [expertise, setExpertise] = useState('')
-  const options = useMemo(() => getPeopleFilterOptions(), [])
+  const [people, setPeople] = useState(null)
+  const [error, setError] = useState(null)
+  const [options, setOptions] = useState(EMPTY_OPTIONS)
+
+  useEffect(() => {
+    let active = true
+    fetchPeopleFilterOptions().then((opts) => {
+      if (active) setOptions(opts)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useSeo({
     title: 'People Directory | Women Shaping Futures',
@@ -21,13 +34,23 @@ export default function PeopleDirectoryPage() {
     canonical: 'https://womenshapingfutures.org/people',
   })
 
-  const filtered = people.filter(
-    (p) =>
-      (!country || matchesCountry(p.countryCode, country)) &&
-      (!region || matchesRegion(p.countryCode, region)) &&
-      (!industry || p.industry === industry) &&
-      (!expertise || p.expertise.includes(expertise)),
-  )
+  useEffect(() => {
+    let active = true
+    setPeople(null)
+    setError(null)
+    fetchPeople({ country, region, industry, pageSize: 100 })
+      .then((res) => {
+        if (active) setPeople(res.items)
+      })
+      .catch(() => {
+        if (active) setError('Something went wrong loading the People Directory. Please try again.')
+      })
+    return () => {
+      active = false
+    }
+  }, [country, region, industry])
+
+  const filtered = (people || []).filter((p) => !expertise || p.expertise.includes(expertise))
 
   return (
     <div>
@@ -40,16 +63,26 @@ export default function PeopleDirectoryPage() {
           <FilterSelect label="Expertise" value={expertise} onChange={setExpertise} options={options.expertise} />
         </div>
 
-        {filtered.length ? (
-          <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
-            {filtered.map((person) => (
-              <PersonCard key={person.id} person={person} />
-            ))}
-          </div>
-        ) : (
+        {error && (
           <div className="mt-10">
-            <EmptyState title="No one matches those filters yet" description="Try broadening your search, or check back as we add new profiles every week." />
+            <EmptyState title="Couldn't load the directory" description={error} />
           </div>
+        )}
+
+        {!error && people === null && <PageLoader />}
+
+        {!error && people !== null && (
+          filtered.length ? (
+            <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
+              {filtered.map((person) => (
+                <PersonCard key={person.id} person={person} />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-10">
+              <EmptyState title="No one matches those filters yet" description="Try broadening your search, or check back as we add new profiles every week." />
+            </div>
+          )
         )}
       </div>
     </div>

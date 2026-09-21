@@ -66,6 +66,15 @@ export async function fetchNavigation() {
   return delay({ primary: primaryNavigation, secondary: secondaryNavigation, footer: footerNavigation, social: socialLinks })
 }
 
+// GET /api/v1/public/settings — a flexible key/value store (site name,
+// tagline, contact email, maintenance mode, ...). No mock equivalent
+// exists since nothing was previously CMS-editable here; mock mode
+// returns {} so consumers fall back to their current static copy.
+export async function fetchSiteSettings() {
+  if (!USE_MOCK) return (await apiClient.get('/public/settings')).data
+  return delay({})
+}
+
 export async function fetchHomepageModules() {
   if (!USE_MOCK) return (await apiClient.get('/public/homepage')).data.map(mapHomepageModule)
   return delay([...homepageModules].filter((m) => m.enabled).sort((a, b) => a.order - b.order))

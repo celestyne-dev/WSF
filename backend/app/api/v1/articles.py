@@ -159,6 +159,10 @@ class ArticleListResource(Resource):
             query = query.join(Author).filter(Author.slug == request.args["author"])
         if request.args.get("category"):
             query = query.join(Category).filter(Category.slug == request.args["category"])
+        if request.args.get("person"):
+            query = query.filter(Article.related_people.any(slug=request.args["person"]))
+        if request.args.get("organization"):
+            query = query.filter(Article.related_organizations.any(slug=request.args["organization"]))
         query = apply_search(query, Article, request.args, ["title", "excerpt"], param="query")
         query = query.order_by(Article.publish_date.desc())
 

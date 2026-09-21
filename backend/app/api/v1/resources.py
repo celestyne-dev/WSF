@@ -8,7 +8,7 @@ from app.models.resource import Resource as ResourceModel
 from app.models.taxonomy import Topic
 from app.schemas.resource import ResourceInputSchema, ResourceSchema
 from app.services.slugs import generate_unique_slug
-from app.utils.filtering import apply_equality_filters, apply_search
+from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
 
@@ -23,7 +23,13 @@ class ResourceListResource(Resource):
         query = ResourceModel.query.filter_by(status="published").order_by(ResourceModel.featured.desc())
         if request.args.get("topic"):
             query = query.join(Topic).filter(Topic.slug == request.args["topic"])
-        query = apply_equality_filters(query, ResourceModel, request.args, ["type", "is_premium"])
+        if request.args.get("type"):
+            query = query.filter(ResourceModel.type == request.args["type"])
+        premium = request.args.get("premium")
+        if premium == "free":
+            query = query.filter(ResourceModel.is_premium.is_(False))
+        elif premium == "premium":
+            query = query.filter(ResourceModel.is_premium.is_(True))
         query = apply_search(query, ResourceModel, request.args, ["name", "description"])
         result = paginate(query, resource_schema)
         return success_response(result["items"], meta=result["meta"])

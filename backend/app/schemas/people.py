@@ -5,6 +5,7 @@ from app.models.article import Article
 from app.models.people import Author, Organization, Person
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
+from app.schemas.taxonomy import SeriesSchema
 
 
 class OrganizationSchema(ma.SQLAlchemyAutoSchema):
@@ -20,6 +21,7 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
     photo = fields.Nested(MediaSchema, dump_only=True)
     country = fields.Nested(CountrySchema, dump_only=True)
     organization = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    series = fields.Nested(SeriesSchema, many=True, dump_only=True, exclude=("article_count",))
 
     class Meta:
         model = Person

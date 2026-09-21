@@ -1,13 +1,18 @@
+import { useSelector } from 'react-redux'
 import { COUNTRIES } from '../../mock/geography'
 
-const SORTED_COUNTRIES = [...COUNTRIES].sort((a, b) => a.name.localeCompare(b.name))
-
 /**
- * Standardized country picker backed by the shared ISO country list —
- * used anywhere a person submits their own country (forms), rather than
- * a free-text field a backend would need to normalize later.
+ * Standardized country picker backed by the shared Country reference table
+ * (GET /api/v1/public/countries, loaded once into Redux by PublicLayout) —
+ * used anywhere a person submits their own country (forms), rather than a
+ * free-text field a backend would need to normalize later. Falls back to
+ * the static list before the real countries have loaded, or in mock mode.
  */
 export default function CountrySelect({ value, onChange, required, id, placeholder = 'Select your country' }) {
+  const loaded = useSelector((s) => s.site.countries)
+  const countries = loaded.length ? loaded : COUNTRIES
+  const sorted = [...countries].sort((a, b) => a.name.localeCompare(b.name))
+
   return (
     <select
       id={id}
@@ -19,7 +24,7 @@ export default function CountrySelect({ value, onChange, required, id, placehold
       <option value="" disabled>
         {placeholder}
       </option>
-      {SORTED_COUNTRIES.map((c) => (
+      {sorted.map((c) => (
         <option key={c.code} value={c.code}>
           {c.name}
         </option>

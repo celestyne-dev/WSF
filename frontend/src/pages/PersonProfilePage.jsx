@@ -1,29 +1,67 @@
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Globe, Quote } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
-import { getPersonBySlug } from '../mock/people'
-import { getArticlesByPerson } from '../mock/articles'
-import { getSeriesBySlug } from '../mock/series'
+import { fetchPersonBySlug } from '../api/people'
+import { fetchArticles } from '../api/articles'
+import { fetchSeriesBySlug } from '../api/taxonomies'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
 export default function PersonProfilePage() {
   const { slug } = useParams()
-  const person = getPersonBySlug(slug)
-  if (!person) return <NotFoundPage />
+  const [person, setPerson] = useState(undefined)
+  const [relatedArticles, setRelatedArticles] = useState([])
+  const [seriesAppearances, setSeriesAppearances] = useState([])
+  const [error, setError] = useState(null)
 
-  const relatedArticles = getArticlesByPerson(slug)
-  const seriesAppearances = (person.seriesSlugs || []).map((s) => getSeriesBySlug(s)).filter(Boolean)
+  useEffect(() => {
+    let active = true
+    setPerson(undefined)
+    setError(null)
 
-  useSeo({
-    title: `${person.name} | Women Shaping Futures`,
-    description: person.shortBio,
-    canonical: `https://womenshapingfutures.org/people/${person.slug}`,
-    image: undefined,
-  })
+    fetchPersonBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setPerson(data)
+        if (!data) return
+
+        fetchArticles({ person: slug })
+          .then((res) => active && setRelatedArticles(res.items))
+          .catch(() => {})
+
+        Promise.all((data.seriesSlugs || []).map((s) => fetchSeriesBySlug(s)))
+          .then((results) => active && setSeriesAppearances(results.filter(Boolean)))
+          .catch(() => {})
+      })
+      .catch(() => {
+        if (active) setError('Something went wrong loading this profile. Please try again.')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    person
+      ? {
+          title: `${person.name} | Women Shaping Futures`,
+          description: person.shortBio,
+          canonical: `https://womenshapingfutures.org/people/${person.slug}`,
+          image: undefined,
+        }
+      : {},
+  )
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this profile" description={error} /></div>
+  if (person === undefined) return <PageLoader />
+  if (person === null) return <NotFoundPage />
 
   return (
     <div>

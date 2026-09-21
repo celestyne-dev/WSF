@@ -1,25 +1,55 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getTopicBySlug } from '../mock/topics'
-import { getArticlesByTopic } from '../mock/articles'
+import { fetchTopicBySlug } from '../api/taxonomies'
+import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import ArticleCard from '../components/cards/ArticleCard'
 import EmptyState from '../components/ui/EmptyState'
+import PageLoader from '../components/ui/PageLoader'
 import NotFoundPage from './NotFoundPage'
 
 export default function TopicDetailPage() {
   const { slug } = useParams()
-  const topic = getTopicBySlug(slug)
-  if (!topic) return <NotFoundPage />
+  const [topic, setTopic] = useState(undefined)
+  const [articles, setArticles] = useState([])
+  const [error, setError] = useState(null)
 
-  const articles = getArticlesByTopic(slug)
+  useEffect(() => {
+    let active = true
+    setTopic(undefined)
+    setError(null)
 
-  useSeo({
-    title: `${topic.name} | Women Shaping Futures`,
-    description: topic.description,
-    canonical: `https://womenshapingfutures.org/topics/${topic.slug}`,
-  })
+    fetchTopicBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setTopic(data)
+        if (!data) return
+        fetchArticles({ topic: slug })
+          .then((res) => active && setArticles(res.items))
+          .catch(() => {})
+      })
+      .catch(() => active && setError('Something went wrong loading this topic. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    topic
+      ? {
+          title: `${topic.name} | Women Shaping Futures`,
+          description: topic.description,
+          canonical: `https://womenshapingfutures.org/topics/${topic.slug}`,
+        }
+      : {},
+  )
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this topic" description={error} /></div>
+  if (topic === undefined) return <PageLoader />
+  if (topic === null) return <NotFoundPage />
 
   return (
     <div>

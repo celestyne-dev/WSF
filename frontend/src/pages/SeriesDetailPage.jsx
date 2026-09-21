@@ -1,25 +1,55 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getSeriesBySlug } from '../mock/series'
-import { getArticlesBySeries } from '../mock/articles'
+import { fetchSeriesBySlug } from '../api/taxonomies'
+import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
 import EmptyState from '../components/ui/EmptyState'
+import PageLoader from '../components/ui/PageLoader'
 import NotFoundPage from './NotFoundPage'
 
 export default function SeriesDetailPage() {
   const { slug } = useParams()
-  const seriesItem = getSeriesBySlug(slug)
-  if (!seriesItem) return <NotFoundPage />
+  const [seriesItem, setSeriesItem] = useState(undefined)
+  const [articles, setArticles] = useState([])
+  const [error, setError] = useState(null)
 
-  const articles = getArticlesBySeries(slug)
+  useEffect(() => {
+    let active = true
+    setSeriesItem(undefined)
+    setError(null)
 
-  useSeo({
-    title: `${seriesItem.name} | Women Shaping Futures`,
-    description: seriesItem.description,
-    canonical: `https://womenshapingfutures.org/series/${seriesItem.slug}`,
-  })
+    fetchSeriesBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setSeriesItem(data)
+        if (!data) return
+        fetchArticles({ series: slug })
+          .then((res) => active && setArticles(res.items))
+          .catch(() => {})
+      })
+      .catch(() => active && setError('Something went wrong loading this series. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    seriesItem
+      ? {
+          title: `${seriesItem.name} | Women Shaping Futures`,
+          description: seriesItem.description,
+          canonical: `https://womenshapingfutures.org/series/${seriesItem.slug}`,
+        }
+      : {},
+  )
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this series" description={error} /></div>
+  if (seriesItem === undefined) return <PageLoader />
+  if (seriesItem === null) return <NotFoundPage />
 
   return (
     <div>

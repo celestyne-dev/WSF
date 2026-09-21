@@ -10,8 +10,11 @@ import { formatShortDate } from '../../utils/format'
  */
 export default function ArticleCard({ article, variant = 'grid' }) {
   if (!article) return null
-  const author = getAuthorBySlug(article.authorSlug)
-  const topic = getTopicBySlug(article.topicSlugs?.[0])
+  // Real-mode articles already carry resolved author/topic objects (see
+  // mapArticle in api/articles.js); the mock lookup is only a fallback for
+  // raw mock articles, which only have flat slug strings.
+  const author = article.author || getAuthorBySlug(article.authorSlug)
+  const topic = article.topic || getTopicBySlug(article.topicSlugs?.[0])
   const href = `/${article.slug}`
 
   if (variant === 'lead') {

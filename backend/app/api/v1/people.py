@@ -7,7 +7,7 @@ from app.models.people import Person
 from app.models.taxonomy import Series
 from app.schemas.people import PersonInputSchema, PersonSchema
 from app.services.slugs import generate_unique_slug
-from app.utils.filtering import apply_country_or_region_filter, apply_search
+from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
 
@@ -21,7 +21,8 @@ class PersonListResource(Resource):
     def get(self):
         query = Person.query.order_by(Person.featured.desc(), Person.name)
         query = apply_country_or_region_filter(query, Person, request.args)
-        query = apply_search(query, Person, request.args, ["name", "title", "industry"])
+        query = apply_equality_filters(query, Person, request.args, ["industry"])
+        query = apply_search(query, Person, request.args, ["name", "title", "industry"], param="query")
         result = paginate(query, person_schema)
         return success_response(result["items"], meta=result["meta"])
 

@@ -135,6 +135,47 @@ def test_article_listing_filters_by_topic(client, editor_token, author_slug):
     assert listed.get_json()["data"][0]["slug"] != "" and empty.get_json()["data"] == []
 
 
+def test_article_listing_filters_by_person_and_organization(client, editor_token, author_slug):
+    person = client.post(
+        "/api/v1/people", json={"name": "Naliaka Wafula"}, headers=auth_headers(editor_token)
+    )
+    assert person.status_code == 201
+    person_slug = person.get_json()["data"]["slug"]
+
+    with client.application.app_context():
+        from app.extensions import db
+        from app.models.people import Organization
+
+        db.session.add(Organization(slug="kaziwave", name="Kaziwave"))
+        db.session.commit()
+
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "How Women Are Redefining Leadership",
+            "authorSlug": author_slug,
+            "relatedPersonSlugs": [person_slug],
+            "relatedOrganizationSlugs": ["kaziwave"],
+            "status": "published",
+            "content": [],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+
+    by_person = client.get(f"/api/v1/articles?person={person_slug}")
+    assert by_person.status_code == 200
+    assert len(by_person.get_json()["data"]) == 1
+
+    by_org = client.get("/api/v1/articles?organization=kaziwave")
+    assert by_org.status_code == 200
+    assert len(by_org.get_json()["data"]) == 1
+
+    no_match = client.get("/api/v1/articles?person=nobody")
+    assert no_match.status_code == 200
+    assert no_match.get_json()["data"] == []
+
+
 def test_article_requires_permission_to_create(client):
     client.post(
         "/api/v1/auth/register",

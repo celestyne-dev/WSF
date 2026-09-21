@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { X, ChevronDown } from 'lucide-react'
 import { toggleMobileNav } from '../../features/navigation/uiSlice'
-import { secondaryNavigation, socialLinks } from '../../mock/navigation'
 
 export default function MobileNav() {
   const open = useSelector((s) => s.ui.mobileNavOpen)
@@ -13,6 +12,8 @@ export default function MobileNav() {
 
   if (!open) return null
   const primary = navigation?.primary || []
+  const secondaryNavigation = navigation?.secondary || []
+  const socialLinks = navigation?.social || []
 
   function close() {
     dispatch(toggleMobileNav(false))

@@ -7,6 +7,7 @@ from app.models.opportunity import Opportunity
 from app.models.taxonomy import Topic
 from app.schemas.opportunity import OpportunityInputSchema, OpportunitySchema
 from app.services.slugs import generate_unique_slug
+from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
 
@@ -21,6 +22,9 @@ class OpportunityListResource(Resource):
         query = Opportunity.query.filter_by(status="published").order_by(
             Opportunity.featured.desc(), Opportunity.deadline
         )
+        opp_type = request.args.get("type")
+        if opp_type:
+            query = query.filter(Opportunity.type == opp_type)
         country = request.args.get("country")
         if country:
             query = query.filter(Opportunity.countries_eligible.any(code=country.upper()))
@@ -32,6 +36,7 @@ class OpportunityListResource(Resource):
         topic = request.args.get("topic")
         if topic:
             query = query.filter(Opportunity.topics.any(slug=topic))
+        query = apply_search(query, Opportunity, request.args, ["title", "organization_name"], param="query")
 
         result = paginate(query, opportunity_schema)
         return success_response(result["items"], meta=result["meta"])

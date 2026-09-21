@@ -1,7 +1,22 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { articles, getArticleBySlug as findBySlug } from '../mock/articles'
+import { getAuthorBySlug } from '../mock/authors'
+import { getTopicBySlug } from '../mock/topics'
 import { RESERVED_SLUGS } from '../mock'
+
+// Mock articles only carry flat slug strings; attach the same nested
+// author/topic shape the real API returns (see mapArticle) so shared
+// components never need to know which mode is active.
+function enrichMockArticle(a) {
+  if (!a) return null
+  return {
+    ...a,
+    author: getAuthorBySlug(a.authorSlug) || null,
+    coAuthors: (a.coAuthorSlugs || []).map((s) => getAuthorBySlug(s)).filter(Boolean),
+    topic: getTopicBySlug(a.topicSlugs?.[0]) || null,
+  }
+}
 
 // The backend nests full objects (author, topics, hero_media, ...) instead
 // of the mock's flat slug strings / bare path strings — this maps a
@@ -20,11 +35,17 @@ function mapArticle(a) {
     heroImageCaption: a.hero_image_caption,
     heroImageCredit: a.hero_image_credit,
     authorSlug: a.author?.slug,
+    // Nested, already-resolved objects — cards prefer these over looking an
+    // author/topic up by slug themselves (only the mock branch needs the
+    // slug-lookup fallback, since raw mock articles don't carry them).
+    author: a.author ? { slug: a.author.slug, name: a.author.name, photo: a.author.photo?.public_url || null } : null,
+    coAuthors: (a.co_authors || []).map((x) => ({ slug: x.slug, name: x.name, photo: x.photo?.public_url || null })),
     coAuthorSlugs: (a.co_authors || []).map((x) => x.slug),
     publishDate: a.publish_date,
     updatedDate: a.updated_at,
     readingTime: a.reading_time,
     categorySlug: a.category?.slug || null,
+    topic: a.topics?.[0] ? { slug: a.topics[0].slug, name: a.topics[0].name } : null,
     topicSlugs: (a.topics || []).map((t) => t.slug),
     tagSlugs: (a.tags || []).map((t) => t.slug),
     seriesSlug: a.series?.slug || null,
@@ -52,6 +73,8 @@ export async function fetchArticles(params = {}) {
   if (params.series) results = results.filter((a) => a.seriesSlug === params.series)
   if (params.author) results = results.filter((a) => a.authorSlug === params.author)
   if (params.category) results = results.filter((a) => a.categorySlug === params.category)
+  if (params.person) results = results.filter((a) => a.relatedPersonSlugs.includes(params.person))
+  if (params.organization) results = results.filter((a) => a.relatedOrganizationSlugs.includes(params.organization))
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter(
@@ -59,7 +82,8 @@ export async function fetchArticles(params = {}) {
     )
   }
   results = [...results].sort((a, b) => new Date(b.publishDate) - new Date(a.publishDate))
-  return delay(paginate(results, params))
+  const page = paginate(results, params)
+  return delay({ ...page, items: page.items.map(enrichMockArticle) })
 }
 
 // GET /api/v1/articles/{slug} — flat public URL is /{slug}; reserved-slug
@@ -75,7 +99,7 @@ export async function fetchArticleBySlug(slug) {
       throw err
     }
   }
-  return delay(findBySlug(slug) || null)
+  return delay(enrichMockArticle(findBySlug(slug)))
 }
 
 export async function fetchRelatedArticles(slugs = []) {
@@ -83,7 +107,7 @@ export async function fetchRelatedArticles(slugs = []) {
     const { data } = await apiClient.post('/articles/related', { slugs })
     return data.map(mapArticle)
   }
-  return delay(slugs.map((s) => findBySlug(s)).filter(Boolean))
+  return delay(slugs.map((s) => findBySlug(s)).filter(Boolean).map(enrichMockArticle))
 }
 
 export function isReservedSlug(slug) {

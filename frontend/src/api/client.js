@@ -11,10 +11,30 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+function camelToSnake(str) {
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+}
+
+// Query params are built with the mock layer's camelCase field names
+// (pageSize, workMode, careerLevel, employmentType, ...) since that's what
+// mockUtils.js:paginate and every api/*.js filter object already use. The
+// Flask backend's query-string filters are snake_case (per_page, work_mode,
+// ...), and `pageSize` specifically must become `per_page` for pagination
+// to work at all — translating it here, once, keeps every fetch* function
+// free of that detail.
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('wsf_access_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  if (config.params && typeof config.params === 'object') {
+    const translated = {}
+    for (const [key, value] of Object.entries(config.params)) {
+      if (value === undefined || value === null || value === '') continue
+      const backendKey = key === 'pageSize' ? 'per_page' : camelToSnake(key)
+      translated[backendKey] = value
+    }
+    config.params = translated
   }
   return config
 })

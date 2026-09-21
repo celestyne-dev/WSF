@@ -3,11 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import { Link as LinkIcon, Clock } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
 import { toast } from 'react-toastify'
-import { fetchArticleBySlug } from '../api/articles'
-import { getAuthorBySlug } from '../mock/authors'
-import { getTopicBySlug } from '../mock/topics'
-import { getPersonBySlug } from '../mock/people'
-import { articles as allArticles, getArticleBySlug } from '../mock/articles'
+import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles } from '../api/articles'
+import { fetchPersonBySlug } from '../api/people'
 import { resolveImage } from '../utils/media'
 import { formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
@@ -69,13 +66,58 @@ function ShareBar({ title, url, articleSlug }) {
 export default function ArticlePage() {
   const { slug } = useParams()
   const [article, setArticle] = useState(undefined)
+  const [relatedPerson, setRelatedPerson] = useState(null)
+  const [related, setRelated] = useState([])
+  const [relatedArticlesBySlug, setRelatedArticlesBySlug] = useState({})
+  const [nextArticle, setNextArticle] = useState(null)
+  const [popular, setPopular] = useState([])
 
   useEffect(() => {
     let active = true
     setArticle(undefined)
+    setRelatedPerson(null)
+    setRelated([])
+    setRelatedArticlesBySlug({})
+    setNextArticle(null)
+    setPopular([])
+
     fetchArticleBySlug(slug).then((data) => {
-      if (active) setArticle(data)
+      if (!active) return
+      setArticle(data)
+      if (!data) return
+
+      if (data.relatedPersonSlugs?.[0]) {
+        fetchPersonBySlug(data.relatedPersonSlugs[0])
+          .then((p) => active && setRelatedPerson(p))
+          .catch(() => {})
+      }
+
+      const contentBlockSlugs = (data.content || [])
+        .filter((b) => b.type === 'relatedBlock')
+        .flatMap((b) => b.articleSlugs || [])
+      const allSlugs = [...new Set([...(data.relatedArticleSlugs || []), ...contentBlockSlugs])]
+      if (allSlugs.length) {
+        fetchRelatedArticles(allSlugs)
+          .then((items) => {
+            if (!active) return
+            setRelated(items.filter((a) => data.relatedArticleSlugs?.includes(a.slug)))
+            setRelatedArticlesBySlug(Object.fromEntries(items.map((a) => [a.slug, a])))
+          })
+          .catch(() => {})
+      }
+
+      // No dedicated "next"/"popular" endpoint exists yet, so both are
+      // derived client-side from the already-supported recent-articles list.
+      fetchArticles({ pageSize: 8 })
+        .then((res) => {
+          if (!active) return
+          const others = res.items.filter((a) => a.slug !== data.slug)
+          if (others.length) setNextArticle(others[0])
+          setPopular(others.slice(0, 5))
+        })
+        .catch(() => {})
     })
+
     return () => {
       active = false
     }
@@ -102,14 +144,9 @@ export default function ArticlePage() {
   if (article === undefined) return <PageLoader />
   if (article === null) return <NotFoundPage />
 
-  const author = getAuthorBySlug(article.authorSlug)
-  const coAuthors = (article.coAuthorSlugs || []).map((s) => getAuthorBySlug(s)).filter(Boolean)
-  const topic = getTopicBySlug(article.topicSlugs?.[0])
-  const related = (article.relatedArticleSlugs || []).map((s) => getArticleBySlug(s)).filter(Boolean)
-  const relatedPerson = article.relatedPersonSlugs?.[0] ? getPersonBySlug(article.relatedPersonSlugs[0]) : null
-  const currentIndex = allArticles.findIndex((a) => a.slug === article.slug)
-  const nextArticle = allArticles[(currentIndex + 1) % allArticles.length]
-  const popular = allArticles.filter((a) => a.slug !== article.slug).slice(0, 5)
+  const author = article.author
+  const coAuthors = article.coAuthors || []
+  const topic = article.topic
 
   return (
     <article>
@@ -180,7 +217,7 @@ export default function ArticlePage() {
 
       <div className="container-editorial mt-10 grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="max-w-reading">
-          <ArticleContent blocks={article.content} />
+          <ArticleContent blocks={article.content} relatedArticlesBySlug={relatedArticlesBySlug} />
 
           {relatedPerson && (
             <div className="my-10 border border-taupe-200 p-5">
@@ -191,12 +228,14 @@ export default function ArticlePage() {
             </div>
           )}
 
-          <div className="mt-12 border-t border-taupe-200 pt-8">
-            <p className="eyebrow mb-2">Up next</p>
-            <Link to={`/${nextArticle.slug}`} className="font-serif text-2xl font-semibold text-charcoal transition-colors hover:text-burgundy-600">
-              {nextArticle.title} &rarr;
-            </Link>
-          </div>
+          {nextArticle && (
+            <div className="mt-12 border-t border-taupe-200 pt-8">
+              <p className="eyebrow mb-2">Up next</p>
+              <Link to={`/${nextArticle.slug}`} className="font-serif text-2xl font-semibold text-charcoal transition-colors hover:text-burgundy-600">
+                {nextArticle.title} &rarr;
+              </Link>
+            </div>
+          )}
         </div>
 
         <aside className="space-y-10">

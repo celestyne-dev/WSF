@@ -21,8 +21,10 @@ class JobListResource(Resource):
     def get(self):
         query = Job.query.filter_by(status="published").order_by(Job.featured.desc(), Job.published_date.desc())
         query = apply_country_or_region_filter(query, Job, request.args)
-        query = apply_equality_filters(query, Job, request.args, ["industry", "employment_type", "career_level"])
-        query = apply_search(query, Job, request.args, ["title", "company_name"])
+        query = apply_equality_filters(
+            query, Job, request.args, ["industry", "employment_type", "career_level", "work_mode"]
+        )
+        query = apply_search(query, Job, request.args, ["title", "company_name"], param="query")
         result = paginate(query, job_schema)
         return success_response(result["items"], meta=result["meta"])
 

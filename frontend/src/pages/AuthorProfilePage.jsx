@@ -1,27 +1,57 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Globe } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
-import { getAuthorBySlug } from '../mock/authors'
-import { getArticlesByAuthor } from '../mock/articles'
+import { fetchAuthorBySlug } from '../api/taxonomies'
+import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
 import EmptyState from '../components/ui/EmptyState'
+import PageLoader from '../components/ui/PageLoader'
 import NotFoundPage from './NotFoundPage'
 
 export default function AuthorProfilePage() {
   const { slug } = useParams()
-  const author = getAuthorBySlug(slug)
-  if (!author) return <NotFoundPage />
+  const [author, setAuthor] = useState(undefined)
+  const [articles, setArticles] = useState([])
+  const [error, setError] = useState(null)
 
-  const articles = getArticlesByAuthor(slug)
+  useEffect(() => {
+    let active = true
+    setAuthor(undefined)
+    setError(null)
 
-  useSeo({
-    title: `${author.name} | Women Shaping Futures`,
-    description: author.shortBio,
-    canonical: `https://womenshapingfutures.org/authors/${author.slug}`,
-  })
+    fetchAuthorBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setAuthor(data)
+        if (!data) return
+        fetchArticles({ author: slug })
+          .then((res) => active && setArticles(res.items))
+          .catch(() => {})
+      })
+      .catch(() => active && setError('Something went wrong loading this profile. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    author
+      ? {
+          title: `${author.name} | Women Shaping Futures`,
+          description: author.shortBio,
+          canonical: `https://womenshapingfutures.org/authors/${author.slug}`,
+        }
+      : {},
+  )
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this profile" description={error} /></div>
+  if (author === undefined) return <PageLoader />
+  if (author === null) return <NotFoundPage />
 
   return (
     <div>
