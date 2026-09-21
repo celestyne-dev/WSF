@@ -26,7 +26,7 @@ cp .env.example .env                   # then fill in DATABASE_URL, JWT_SECRET_K
 
 export FLASK_APP=run.py
 flask db upgrade                       # apply migrations
-flask seed-roles                       # roles + permissions (RBAC)
+flask seed-roles                       # roles + permissions (RBAC) — re-run after editing ROLE_PERMISSIONS
 flask seed-geography                   # Country reference table
 flask create-superadmin --email you@example.com --password "change-me-now"
 
@@ -40,6 +40,15 @@ flask db migrate -m "add whatever"     # after changing a model in app/models/
 flask db upgrade                       # apply pending migrations
 pytest                                 # runs against wsf_test, creates/drops tables per test
 ```
+
+> **Known Alembic quirk**: `media.uploaded_by_id` and `users.avatar_media_id`
+> form a circular FK, broken with `use_alter=True` on the `media` side
+> (see `app/models/media.py`). Alembic's autogenerate periodically
+> misdetects that constraint as newly added — a migration whose *only*
+> change is `create_foreign_key('fk_media_uploaded_by_id', ...)` (or the
+> matching `drop_constraint` with no create) is that phantom diff, not a
+> real change. Delete the migration rather than applying it; `flask db
+> upgrade` would otherwise fail with "constraint already exists".
 
 ## Layout
 
@@ -92,3 +101,25 @@ migrations/         Alembic migration history (flask db migrate/upgrade)
   `Media.delete()` can refuse to remove a file still referenced elsewhere.
 - **Audit log**: `app/services/audit.py` appends an `AuditLog` row for
   auth/admin actions — append-only, never edited via the API.
+- **Article slug changes**: `PUT /api/v1/articles/{slug}` with a new
+  `slug` calls `create_redirect_for_slug_change` (`app/services/slugs.py`),
+  which repoints any redirect chain to a single hop and writes a
+  `Redirect` row. `GET /api/v1/articles/{old-slug}` then returns a real
+  HTTP 301 with `Location: /api/v1/articles/{new-slug}` plus a
+  `{"redirect": "..."}` JSON body, since there's no server-rendered HTML
+  for a browser to follow — the SPA's `ArticlePage` (Phase 8) should check
+  for a 301 and `navigate(..., {replace: true})` to the flat URL. An
+  explicit `slug` in a create/update payload is validated strictly
+  (`validate_explicit_slug` — 409 if taken, 400 if reserved); a slug
+  derived automatically from the title instead auto-suffixes on collision
+  (`generate_unique_slug`).
+- **Revisions**: every article create/update/publish appends a full JSON
+  snapshot to `article_revisions` (`ArticleRevision`) — no separate diffing
+  engine, just "what did this look like at each save."
+- **Response casing**: dump schemas currently serialize in the model's
+  native snake_case (e.g. `publish_date`, `hero_media`); the input schemas
+  already accept the frontend's camelCase (`publishDate`, `heroMediaId`)
+  via Marshmallow `data_key`. Phase 8 (wiring the frontend to real
+  endpoints) should decide once whether to camelCase every dump schema or
+  translate in the frontend's `api/*.js` layer — don't do it ad hoc per
+  endpoint before then.

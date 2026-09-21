@@ -28,14 +28,26 @@ def create_app(config_name="development"):
     register_cli(app)
 
     from app.api.v1.admin import admin_bp
+    from app.api.v1.articles import articles_bp
+    from app.api.v1.authors import authors_bp
     from app.api.v1.auth import auth_bp
     from app.api.v1.media import media_bp
+    from app.api.v1.people import people_bp
     from app.api.v1.public import public_bp
+    from app.api.v1.redirects import redirects_bp
+    from app.api.v1.taxonomy import categories_bp, series_bp, topics_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(media_bp, url_prefix="/api/v1/media")
     app.register_blueprint(public_bp, url_prefix="/api/v1/public")
+    app.register_blueprint(articles_bp, url_prefix="/api/v1/articles")
+    app.register_blueprint(topics_bp, url_prefix="/api/v1/topics")
+    app.register_blueprint(categories_bp, url_prefix="/api/v1/categories")
+    app.register_blueprint(series_bp, url_prefix="/api/v1/series")
+    app.register_blueprint(authors_bp, url_prefix="/api/v1/authors")
+    app.register_blueprint(people_bp, url_prefix="/api/v1/people")
+    app.register_blueprint(redirects_bp, url_prefix="/api/v1/redirects")
 
     @app.get("/api/v1/health")
     def health():
