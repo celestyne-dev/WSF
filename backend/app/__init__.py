@@ -1,13 +1,12 @@
 from flask import Flask
 
 from config import config_by_name
-from app.extensions import db, migrate, jwt, cors, ma
+from app.extensions import cors, db, jwt, ma, migrate
 
 
 def create_app(config_name="development"):
-    """Application factory. Blueprints for each API resource
-    (articles, people, jobs, opportunities, events, resources, ...)
-    register here once implemented under app/api/.
+    """Application factory. Each versioned API namespace registers its own
+    Blueprint (app/api/v1/*.py) with its url_prefix here once implemented.
     """
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
@@ -18,14 +17,29 @@ def create_app(config_name="development"):
     cors.init_app(app, resources={r"/api/*": {"origins": app.config["FRONTEND_URL"]}})
     ma.init_app(app)
 
-    # from app.api.articles import articles_bp
-    # app.register_blueprint(articles_bp, url_prefix="/api/v1/articles")
-    # from app.api.media import media_bp
-    # app.register_blueprint(media_bp, url_prefix="/api/v1/media")
+    from app import models  # noqa: F401  registers all models before migrations/queries run
+
+    from app.auth.jwt_callbacks import register_jwt_callbacks
+    from app.cli import register_cli
+    from app.utils.responses import register_error_handlers, success_response
+
+    register_jwt_callbacks(app)
+    register_error_handlers(app)
+    register_cli(app)
+
+    from app.api.v1.admin import admin_bp
+    from app.api.v1.auth import auth_bp
+    from app.api.v1.media import media_bp
+    from app.api.v1.public import public_bp
+
+    app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
+    app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(media_bp, url_prefix="/api/v1/media")
+    app.register_blueprint(public_bp, url_prefix="/api/v1/public")
 
     @app.get("/api/v1/health")
     def health():
-        return {"status": "ok"}
+        return success_response({"status": "ok"})
 
     if app.debug:
         # Convenience only: in local development Flask can serve MEDIA_URL
