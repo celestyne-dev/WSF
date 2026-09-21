@@ -130,6 +130,15 @@ migrations/         Alembic migration history (flask db migrate/upgrade)
   a flexible key/value table instead — `PUT /api/v1/admin/settings` merges
   keys rather than replacing the table, since settings are looked up
   individually, not rendered as an ordered list.
+- **Jobs/Opportunities/Events/Resources**: all four reuse the Phase 1
+  geography filtering (`?country=`/`?region=`) and the Phase 2 slug
+  services. `Opportunity.countries_eligible` is a many-to-many onto
+  `Country` (not a JSON array of codes) so `?region=` can filter with a
+  real join rather than scanning application-side. Amounts are always
+  `{integer, ISO currency code}` pairs (`salary_min`/`salary_max`/
+  `currency` on Job, `ticket_price`/`currency` on Event, `price`/
+  `currency` on Resource) — never a bare number, and never defaulted to
+  any one currency.
 - **Response casing**: dump schemas currently serialize in the model's
   native snake_case (e.g. `publish_date`, `hero_media`); the input schemas
   already accept the frontend's camelCase (`publishDate`, `heroMediaId`)

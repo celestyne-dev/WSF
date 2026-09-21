@@ -31,10 +31,14 @@ def create_app(config_name="development"):
     from app.api.v1.articles import articles_bp
     from app.api.v1.authors import authors_bp
     from app.api.v1.auth import auth_bp
+    from app.api.v1.events import events_bp
+    from app.api.v1.jobs import jobs_bp
     from app.api.v1.media import media_bp
+    from app.api.v1.opportunities import opportunities_bp
     from app.api.v1.people import people_bp
     from app.api.v1.public import public_bp
     from app.api.v1.redirects import redirects_bp
+    from app.api.v1.resources import resources_bp
     from app.api.v1.taxonomy import categories_bp, series_bp, topics_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
@@ -48,6 +52,10 @@ def create_app(config_name="development"):
     app.register_blueprint(authors_bp, url_prefix="/api/v1/authors")
     app.register_blueprint(people_bp, url_prefix="/api/v1/people")
     app.register_blueprint(redirects_bp, url_prefix="/api/v1/redirects")
+    app.register_blueprint(jobs_bp, url_prefix="/api/v1/jobs")
+    app.register_blueprint(opportunities_bp, url_prefix="/api/v1/opportunities")
+    app.register_blueprint(events_bp, url_prefix="/api/v1/events")
+    app.register_blueprint(resources_bp, url_prefix="/api/v1/resources")
 
     @app.get("/api/v1/health")
     def health():
