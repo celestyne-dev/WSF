@@ -3,10 +3,43 @@ import { delay, paginate } from './mockUtils'
 import { jobs, getJobBySlug as findBySlug } from '../mock/jobs'
 import { countryFilterOptions, regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 
+function mapJob(j) {
+  if (!j) return null
+  return {
+    id: j.id,
+    slug: j.slug,
+    title: j.title,
+    company: j.company_name,
+    companySlug: j.organization?.slug || null,
+    logo: j.logo?.public_url || null,
+    location: j.location,
+    countryCode: j.country?.code || j.country_code || null,
+    workMode: j.work_mode,
+    employmentType: j.employment_type,
+    careerLevel: j.career_level,
+    industry: j.industry,
+    salaryMin: j.salary_min,
+    salaryMax: j.salary_max,
+    currency: j.currency,
+    salaryPeriod: j.salary_period,
+    description: j.description,
+    responsibilities: j.responsibilities || [],
+    requirements: j.requirements || [],
+    benefits: j.benefits || [],
+    applicationUrl: j.application_url,
+    applicationInstructions: j.application_instructions,
+    deadline: j.deadline,
+    featured: j.featured,
+    sponsored: j.sponsored,
+    publishedDate: j.published_date,
+    expiryDate: j.expiry_date,
+  }
+}
+
 export async function fetchJobs(params = {}) {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/jobs', { params })
-    return data
+    return { ...data, items: data.items.map(mapJob) }
   }
   let results = [...jobs]
   if (params.country) results = results.filter((j) => matchesCountry(j.countryCode, params.country))
@@ -25,8 +58,13 @@ export async function fetchJobs(params = {}) {
 
 export async function fetchJobBySlug(slug) {
   if (!USE_MOCK) {
-    const { data } = await apiClient.get(`/jobs/${slug}`)
-    return data
+    try {
+      const { data } = await apiClient.get(`/jobs/${slug}`)
+      return mapJob(data)
+    } catch (err) {
+      if (err.response?.status === 404) return null
+      throw err
+    }
   }
   return delay(findBySlug(slug) || null)
 }

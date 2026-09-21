@@ -39,6 +39,7 @@ def create_app(config_name="development"):
     from app.api.v1.nominations import nominations_bp
     from app.api.v1.opportunities import opportunities_bp
     from app.api.v1.orders import orders_bp
+    from app.api.v1.organizations import organizations_bp
     from app.api.v1.partnerships import partnerships_bp
     from app.api.v1.people import people_bp
     from app.api.v1.products import products_bp
@@ -68,6 +69,7 @@ def create_app(config_name="development"):
     app.register_blueprint(submissions_bp, url_prefix="/api/v1/submissions")
     app.register_blueprint(nominations_bp, url_prefix="/api/v1/nominations")
     app.register_blueprint(partnerships_bp, url_prefix="/api/v1/partnerships")
+    app.register_blueprint(organizations_bp, url_prefix="/api/v1/organizations")
     app.register_blueprint(products_bp, url_prefix="/api/v1/products")
     app.register_blueprint(orders_bp, url_prefix="/api/v1/orders")
     app.register_blueprint(search_bp, url_prefix="/api/v1/search")

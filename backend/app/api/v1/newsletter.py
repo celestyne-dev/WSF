@@ -101,7 +101,23 @@ class NewsletterSubscriberListResource(Resource):
         return success_response(result["items"], meta=result["meta"])
 
 
+class NewsletterStatsResource(Resource):
+    """A live subscriber count plus whatever open-rate/cadence figures an
+    admin has entered (SiteSetting key 'newsletter_stats' — same
+    CMS-editable-number pattern as the Partnerships audience stats).
+    """
+
+    def get(self):
+        from app.models.cms import SiteSetting
+
+        subscriber_count = NewsletterSubscriber.query.filter_by(status="active").count()
+        setting = db.session.get(SiteSetting, "newsletter_stats")
+        extra = setting.value if setting else {}
+        return success_response({"subscriberCount": subscriber_count, **extra})
+
+
 api.add_resource(SubscribeResource, "/subscribe")
 api.add_resource(UnsubscribeResource, "/unsubscribe")
 api.add_resource(NewsletterIssueListResource, "/issues")
 api.add_resource(NewsletterSubscriberListResource, "/subscribers")
+api.add_resource(NewsletterStatsResource, "/stats")

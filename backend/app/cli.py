@@ -2,6 +2,7 @@ import click
 
 from app.extensions import db
 from app.models.user import Role, User
+from app.services.demo_seed import seed_demo_content
 from app.services.geography import seed_countries
 from app.services.rbac import seed_roles_and_permissions
 
@@ -18,6 +19,16 @@ def register_cli(app):
         """Load/refresh the Country reference table."""
         seed_countries()
         click.echo("Countries seeded.")
+
+    @app.cli.command("seed-demo")
+    def seed_demo_command():
+        """Load a representative slice of demo content (articles, jobs,
+        opportunities, events, resources, navigation, homepage) for local
+        verification against the real API. Run seed-roles/seed-geography
+        first.
+        """
+        seed_demo_content()
+        click.echo("Demo content seeded.")
 
     @app.cli.command("create-superadmin")
     @click.option("--email", required=True)

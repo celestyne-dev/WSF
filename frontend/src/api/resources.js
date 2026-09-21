@@ -2,10 +2,30 @@ import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { resources, getResourceBySlug as findBySlug } from '../mock/resources'
 
+function mapResource(r) {
+  if (!r) return null
+  return {
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    description: r.description,
+    coverImage: r.cover_media?.public_url || null,
+    type: r.type,
+    topicSlug: r.topic?.slug || null,
+    authorSlug: r.author?.slug || null,
+    price: r.price,
+    currency: r.currency,
+    isPremium: r.is_premium,
+    isDownloadable: r.is_downloadable,
+    isExternal: r.is_external,
+    featured: r.featured,
+  }
+}
+
 export async function fetchResources(params = {}) {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/resources', { params })
-    return data
+    return { ...data, items: data.items.map(mapResource) }
   }
   let results = [...resources]
   if (params.topic) results = results.filter((r) => r.topicSlug === params.topic)
@@ -17,8 +37,13 @@ export async function fetchResources(params = {}) {
 
 export async function fetchResourceBySlug(slug) {
   if (!USE_MOCK) {
-    const { data } = await apiClient.get(`/resources/${slug}`)
-    return data
+    try {
+      const { data } = await apiClient.get(`/resources/${slug}`)
+      return mapResource(data)
+    } catch (err) {
+      if (err.response?.status === 404) return null
+      throw err
+    }
   }
   return delay(findBySlug(slug) || null)
 }

@@ -274,7 +274,27 @@ class ArticleRevisionsResource(Resource):
         return success_response(revisions)
 
 
+class ArticleRelatedResource(Resource):
+    """POST body {"slugs": [...]} -> the matching published articles, in
+    the same summary shape as the list endpoint. Matches
+    frontend/src/api/articles.js:fetchRelatedArticles exactly.
+    """
+
+    def post(self):
+        slugs = (request.get_json(silent=True) or {}).get("slugs", [])
+        if not slugs:
+            return success_response([])
+
+        found = {
+            a.slug: a
+            for a in Article.query.filter(Article.slug.in_(slugs), Article.status == "published").all()
+        }
+        ordered = [found[slug] for slug in slugs if slug in found]
+        return success_response(article_summary_schema(many=True).dump(ordered))
+
+
 api.add_resource(ArticleListResource, "")
+api.add_resource(ArticleRelatedResource, "/related")
 api.add_resource(ArticleDetailResource, "/<string:slug>")
 api.add_resource(ArticlePublishResource, "/<string:slug>/publish")
 api.add_resource(ArticleRevisionsResource, "/<string:slug>/revisions")

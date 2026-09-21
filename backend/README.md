@@ -66,6 +66,47 @@ tests/              pytest suite (Flask test client, real Postgres via wsf_test)
 migrations/         Alembic migration history (flask db migrate/upgrade)
 ```
 
+## Phase 8 status: API layer wired, page components not yet
+
+The backend now has a real endpoint for everything the frontend needs.
+`frontend/src/api/*.js` has been updated to match: `client.js` gained a
+response interceptor that unwraps the backend's `{success, data, meta}`
+envelope into the exact shapes each module's pre-written `!USE_MOCK`
+branch already expected (`{items, pagination}` for paginated lists, a
+bare object/array otherwise), and every module now maps the backend's
+nested/snake_case objects (`author: {slug, name, ...}`, `hero_media:
+{public_url, ...}`) into the flat camelCase shape components already
+consume (`authorSlug`, `heroImage`, ...). Two backend endpoints were
+added to close gaps the frontend already expected
+(`GET/POST /api/v1/organizations`, `POST /api/v1/articles/related`,
+`GET /api/v1/newsletter/stats`). `flask seed-demo` loads a representative
+slice of content for exactly this kind of verification.
+
+**What this does not yet do**: most *page* components — the ones the
+router renders, like `PeopleDirectoryPage.jsx`, `JobsListingPage.jsx`,
+`OpportunitiesListingPage.jsx`, `EventsListingPage.jsx`,
+`TopicsIndexPage.jsx`, `AuthorsIndexPage.jsx`, and `ArticlePage.jsx`'s
+"Up next"/"Popular on WSF" sections — import a mock array directly
+(`import { people } from '../mock/people'`) and filter it synchronously
+with `useMemo`, rather than calling `fetchPeople()` (etc.) from the api/
+layer in a `useEffect`. `VITE_USE_MOCK=false` has no effect on these
+pages today, because they never check `USE_MOCK` at all — they don't go
+through `api/*.js` for their primary data. Verified live: with
+`VITE_USE_MOCK=false` pointed at a seeded backend, the homepage hero and
+spotlight modules, `ArticlePage`'s primary content, and every endpoint
+tested directly (organizations, articles, topics, navigation, homepage,
+newsletter stats) returned correct real data with zero console errors —
+but the listing pages above still showed mock content because they never
+asked the API for it.
+
+Finishing Phase 8 means rewriting each of those page components' data
+loading (mock import + `useMemo` → `useState`/`useEffect` +
+`fetch*`/loading state), one page at a time, each verified live — the
+same discipline used for Phases 1–7. That's real, identified, scoped
+work, not a hidden gap: this section exists so the next session (or the
+next `/loop` iteration) can pick it up precisely instead of rediscovering
+it.
+
 ## Conventions carried through every phase
 
 - **Response envelope** (`app/utils/responses.py`): every endpoint returns
