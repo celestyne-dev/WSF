@@ -5,12 +5,11 @@ premium digital magazine (stories, people, series) fused with a jobs/
 opportunities marketplace, events, resources, mentorship, and a CMS that
 drives nearly everything on the public site.
 
-This repository currently contains the **Phase 1 frontend prototype**: a
-fully working React + Vite application with realistic editorial content,
-built against a mock data/API layer that is structured to be swapped for the
-real Flask REST API with no UI rewrite. A backend skeleton (Flask app
-factory, config, folder structure) is scaffolded under `backend/` ready for
-implementation.
+This repository contains both halves of the product: a React + Vite
+frontend and a Flask + PostgreSQL backend. The frontend can run two ways —
+against `src/mock/*.js` (no backend needed, the default) or against the
+real backend (`VITE_USE_MOCK=false`, see §2) — through the exact same
+`src/api/*.js` functions and with no UI rewrite between the two.
 
 ## 1. Project Structure
 
@@ -18,7 +17,7 @@ implementation.
 women-shaping-futures/
 ├── frontend/                 # React + Vite + Tailwind SPA (this phase's focus)
 │   ├── src/
-│   │   ├── api/               # Resource clients (axios-ready, mock-backed today)
+│   │   ├── api/               # Resource clients — real Flask API when VITE_USE_MOCK=false, mock/ otherwise
 │   │   ├── app/                # (reserved for app-level providers)
 │   │   ├── assets/
 │   │   ├── components/
@@ -37,18 +36,18 @@ women-shaping-futures/
 │   │   ├── store/                    # Redux Toolkit store
 │   │   └── utils/                     # media.js, format.js, analytics.js (LinkedIn/UTM tracking)
 │   └── ...
-├── backend/                   # Flask app skeleton (Phase 1 build target next)
+├── backend/                   # Flask + SQLAlchemy + PostgreSQL API — fully implemented
 │   ├── app/
-│   │   ├── api/                 # Blueprints per resource (not yet implemented)
-│   │   ├── auth/                 # JWT auth & RBAC (not yet implemented)
-│   │   ├── models/                # SQLAlchemy models (not yet implemented)
-│   │   ├── schemas/                # Marshmallow schemas
-│   │   ├── services/                # Slug/redirect/media (Pillow)/payment logic
-│   │   ├── utils/                     # RESERVED_SLUGS, helpers
+│   │   ├── api/v1/               # Blueprints per resource (articles, people, jobs, admin, analytics, …)
+│   │   ├── auth/                  # JWT auth & RBAC decorators
+│   │   ├── models/                 # SQLAlchemy models
+│   │   ├── schemas/                 # Marshmallow schemas (camelCase data_keys in, snake_case out)
+│   │   ├── services/                 # Slug/redirect/media (Pillow)/CMS/RBAC/demo-seed logic
+│   │   ├── utils/                     # RESERVED_SLUGS, filtering, pagination, response envelopes
 │   │   ├── extensions.py
 │   │   └── __init__.py                # Application factory
 │   ├── migrations/
-│   ├── tests/
+│   ├── tests/                          # pytest — run with `venv/bin/pytest`
 │   ├── config.py
 │   ├── requirements.txt
 │   └── run.py
@@ -58,6 +57,8 @@ women-shaping-futures/
 ```
 
 ## 2. Installation & Running Locally
+
+### Mock mode (default — no backend required)
 
 ```bash
 cd frontend
@@ -73,16 +74,41 @@ npm run build
 npm run preview
 ```
 
-The backend skeleton isn't runnable yet (no models/routes implemented), but
-its scaffold is in place:
+### Real API mode (frontend + Flask/PostgreSQL backend)
+
+The backend is fully implemented — Flask + SQLAlchemy + PostgreSQL, with
+JWT auth/RBAC, the full content API, CMS/admin endpoints, and search. To
+run the whole site against it instead of the mock layer:
 
 ```bash
+# 1. Backend
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-# flask db upgrade / flask run — once models & migrations are added
+cp .env.example .env               # set DATABASE_URL, JWT_SECRET_KEY, etc.
+flask db upgrade                   # run migrations
+flask seed-roles                   # seed RBAC roles/permissions (once)
+flask seed-geography               # seed the Country reference table (once)
+flask seed-demo                    # optional: seed demo content for local testing
+flask create-superadmin --email you@example.com --password changeme
+flask run                          # http://localhost:5000
+
+# 2. Frontend — point it at the real API instead of the mock layer
+cd frontend
+cat > .env.local <<'EOF'
+VITE_API_URL=http://localhost:5000/api/v1
+VITE_USE_MOCK=false
+EOF
+npm run dev                       # restart if it was already running —
+                                   # Vite only reads env files at startup
 ```
+
+`.env.local` is gitignored (`*.local`), so these aren't committed and don't
+need to be secrets — they're just local endpoint/mode configuration. With
+`VITE_USE_MOCK=false`, every `src/api/*.js` function calls the real Flask
+API instead of reading `src/mock/*.js` (see §4) — the whole public site,
+search, and the CMS/admin screens run on live data. Log in at `/login` with
+the `flask create-superadmin` credentials above to reach `/admin`.
 
 ## 3. Dependencies (frontend)
 
@@ -323,12 +349,33 @@ Ipsum — modeling every field called for in the spec (articles have
 authors/co-authors, topics, series, sponsor disclosure, SEO fields, and
 status; people have career timelines, achievements, awards; jobs carry
 salary bands and deadlines; etc.). `src/mock/index.js` re-exports
-everything plus the shared `RESERVED_SLUGS` list. `src/api/*.js` is the only
-layer allowed to import from `mock/` for reads — components call the API
-functions, not the mock files, directly (a few listing pages call a mock
-getter directly for synchronous filtering; the point of the boundary is
-that the *shape* returned matches what the real API will return, and
-swapping the implementation is confined to `api/`).
+everything plus the shared `RESERVED_SLUGS` list. `src/api/*.js` is the
+layer that owns reading from `mock/` — every page and component fetches
+content through an `api/*.js` function (`fetchArticles()`,
+`fetchPersonBySlug()`, …), never by importing a mock array directly, so
+`VITE_USE_MOCK=false` genuinely switches the entire site (public pages,
+homepage modules, admin/CMS) onto the real Flask API with no leftover mock
+wiring. The remaining direct `mock/` imports outside `api/*.js` are narrow,
+intentional exceptions:
+
+- `RESERVED_SLUGS` (`mock/index.js`) — a static route-name constant, not
+  content; imported directly by `ArticlePage`, `AdminArticleEditor`, and
+  `api/articles.js` alike.
+- `getCountryName()`/`getCountryNames()` (`mock/geography.js`) — a pure
+  ISO-code-to-display-name lookup over a fixed reference list, not a CMS
+  record; used by `PersonCard`, `OrganizationCard`, and a couple of detail
+  pages purely for display text.
+- `CountrySelect` falls back to the static `COUNTRIES` list only before
+  the real list has loaded from Redux (or in mock mode) — never overrides
+  live data.
+- `ArticleCard` and `ArticleContent`'s related-reading block keep a mock
+  slug-lookup fallback that only fires when the caller hasn't already
+  supplied a resolved object — this covers mock mode and any legacy raw
+  mock-array callers, and is inert once every caller passes real data.
+
+Nothing else — no page, listing screen, homepage module, or admin screen —
+reads `mock/` directly; swapping `VITE_USE_MOCK` is the entire migration
+path (see §2).
 
 All dates in the mock data are anchored relative to "today" so deadlines,
 "upcoming" events, and "recent" newsletter issues actually read as
@@ -367,11 +414,17 @@ Oceania, rather than defaulting to any one region. See `mock/people.js`,
 - **Social brand icons.** The installed `lucide-react` version dropped
   brand/logo glyphs; `components/ui/SocialIcon.jsx` provides minimal inline
   SVGs for Facebook/X/LinkedIn/Instagram/YouTube instead.
-- **Admin CRUD is prototype-depth.** Saving in `AdminArticleEditor` or
-  `AdminHomepageBuilder` validates and shows a success toast but doesn't
-  persist (there's no backend yet). The validation logic (slug
-  uniqueness/reserved-slug checks) is real and will carry over unchanged.
-- **Backend is a skeleton**, not an implementation — see `backend/README`-equivalent notes in this file's §1 and the module docstrings under `backend/app/`.
+- **Admin CRUD persists for real in real API mode.** With `VITE_USE_MOCK=false`
+  and the Flask backend running, saving in `AdminArticleEditor` or
+  `AdminHomepageBuilder` writes through to PostgreSQL via the real
+  `POST`/`PUT` endpoints — slug uniqueness and reserved-slug checks are
+  enforced server-side too. In mock mode (`VITE_USE_MOCK=true`, the
+  default), the same screens validate and show a success toast without a
+  backend to persist to.
+- **Ad campaign tracking has no backend yet.** Nothing in the backend phases
+  built ad serving/impression tracking, so `Admin → Advertising` shows real
+  data in mock mode only; real mode shows an honest "not yet available"
+  empty state rather than fabricated numbers.
 
 ## 10. Screens to Review First
 
