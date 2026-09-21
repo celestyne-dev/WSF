@@ -1,12 +1,11 @@
-import { useState, useMemo } from 'react'
-import { jobs } from '../mock/jobs'
-import { getJobsFilterOptions } from '../api/jobs'
-import { matchesCountry, matchesRegion } from '../mock/geography'
+import { useEffect, useState } from 'react'
+import { fetchJobs, fetchJobsFilterOptions } from '../api/jobs'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import JobCard from '../components/cards/JobCard'
 import EmptyState from '../components/ui/EmptyState'
+import PageLoader from '../components/ui/PageLoader'
 
 export default function JobsListingPage() {
   const [country, setCountry] = useState('')
@@ -14,7 +13,9 @@ export default function JobsListingPage() {
   const [industry, setIndustry] = useState('')
   const [workMode, setWorkMode] = useState('')
   const [careerLevel, setCareerLevel] = useState('')
-  const options = useMemo(() => getJobsFilterOptions(), [])
+  const [jobs, setJobs] = useState(null)
+  const [options, setOptions] = useState({ countries: [], regions: [], industries: [], workModes: [], careerLevels: [] })
+  const [error, setError] = useState(null)
 
   useSeo({
     title: 'Jobs for Women | Women Shaping Futures',
@@ -22,14 +23,26 @@ export default function JobsListingPage() {
     canonical: 'https://womenshapingfutures.org/jobs',
   })
 
-  const filtered = jobs.filter(
-    (j) =>
-      (!country || matchesCountry(j.countryCode, country)) &&
-      (!region || matchesRegion(j.countryCode, region)) &&
-      (!industry || j.industry === industry) &&
-      (!workMode || j.workMode === workMode) &&
-      (!careerLevel || j.careerLevel === careerLevel),
-  )
+  useEffect(() => {
+    let active = true
+    fetchJobsFilterOptions()
+      .then((data) => active && setOptions(data))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    setError(null)
+    fetchJobs({ country, region, industry, workMode, careerLevel, pageSize: 100 })
+      .then((res) => active && setJobs(res.items))
+      .catch(() => active && setError('Something went wrong loading jobs. Please try again.'))
+    return () => {
+      active = false
+    }
+  }, [country, region, industry, workMode, careerLevel])
 
   return (
     <div>
@@ -43,16 +56,24 @@ export default function JobsListingPage() {
           <FilterSelect label="Career Level" value={careerLevel} onChange={setCareerLevel} options={options.careerLevels} />
         </div>
 
-        {filtered.length ? (
-          <div className="mt-8 grid grid-cols-1 gap-4">
-            {filtered.map((job) => (
-              <JobCard key={job.id} job={job} />
-            ))}
-          </div>
-        ) : (
+        {error && (
           <div className="mt-8">
-            <EmptyState title="No jobs match those filters" description="Try clearing a filter, or check back soon — we add new roles every week." />
+            <EmptyState title="Couldn't load jobs" description={error} />
           </div>
+        )}
+        {!error && jobs === null && <PageLoader />}
+        {!error && jobs !== null && (
+          jobs.length ? (
+            <div className="mt-8 grid grid-cols-1 gap-4">
+              {jobs.map((job) => (
+                <JobCard key={job.id} job={job} />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-8">
+              <EmptyState title="No jobs match those filters" description="Try clearing a filter, or check back soon — we add new roles every week." />
+            </div>
+          )
         )}
       </div>
     </div>

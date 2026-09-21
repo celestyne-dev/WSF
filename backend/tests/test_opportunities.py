@@ -147,6 +147,56 @@ def test_resource_create_and_topic_filter(client, admin_token):
     assert len(filtered.get_json()["data"]) == 1
 
 
+def test_jobs_opportunities_people_filter_by_organization(client, admin_token):
+    org = client.post(
+        "/api/v1/organizations",
+        json={"name": "Foster Capital", "countryCode": "US"},
+        headers=auth_headers(admin_token),
+    )
+    assert org.status_code == 201
+    org_id = org.get_json()["data"]["id"]
+    org_slug = org.get_json()["data"]["slug"]
+
+    other_org = client.post(
+        "/api/v1/organizations",
+        json={"name": "Kaziwave", "countryCode": "KE"},
+        headers=auth_headers(admin_token),
+    )
+    other_org_id = other_org.get_json()["data"]["id"]
+
+    client.post(
+        "/api/v1/jobs",
+        json={"title": "Program Lead", "companyName": "Foster Capital", "organizationId": org_id, "countryCode": "US"},
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        "/api/v1/jobs",
+        json={"title": "Marketing Manager", "companyName": "Kaziwave", "organizationId": other_org_id, "countryCode": "KE"},
+        headers=auth_headers(admin_token),
+    )
+    jobs = client.get(f"/api/v1/jobs?organization={org_slug}")
+    assert jobs.status_code == 200
+    assert [j["title"] for j in jobs.get_json()["data"]] == ["Program Lead"]
+
+    client.post(
+        "/api/v1/opportunities",
+        json={"title": "Rising Leaders Fellowship", "organizationId": org_id, "type": "Fellowship"},
+        headers=auth_headers(admin_token),
+    )
+    opportunities = client.get(f"/api/v1/opportunities?organization={org_slug}")
+    assert opportunities.status_code == 200
+    assert [o["title"] for o in opportunities.get_json()["data"]] == ["Rising Leaders Fellowship"]
+
+    client.post(
+        "/api/v1/people",
+        json={"name": "Amina Yusuf", "countryCode": "US", "organizationId": org_id},
+        headers=auth_headers(admin_token),
+    )
+    people = client.get(f"/api/v1/people?organization={org_slug}")
+    assert people.status_code == 200
+    assert [p["name"] for p in people.get_json()["data"]] == ["Amina Yusuf"]
+
+
 def test_opportunity_and_event_creation_requires_permission(client):
     client.post(
         "/api/v1/auth/register",

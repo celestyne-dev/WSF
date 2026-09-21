@@ -48,6 +48,7 @@ export async function fetchJobs(params = {}) {
   if (params.workMode) results = results.filter((j) => j.workMode === params.workMode)
   if (params.careerLevel) results = results.filter((j) => j.careerLevel === params.careerLevel)
   if (params.employmentType) results = results.filter((j) => j.employmentType === params.employmentType)
+  if (params.organization) results = results.filter((j) => j.companySlug === params.organization)
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter((j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q))
@@ -69,13 +70,25 @@ export async function fetchJobBySlug(slug) {
   return delay(findBySlug(slug) || null)
 }
 
-export function getJobsFilterOptions() {
-  return {
+export async function fetchJobsFilterOptions() {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/jobs', { params: { pageSize: 100 } })
+    const all = data.items.map(mapJob)
+    return {
+      countries: countryFilterOptions(all.map((j) => j.countryCode)),
+      regions: regionFilterOptions(),
+      industries: [...new Set(all.map((j) => j.industry))].filter(Boolean).sort(),
+      workModes: [...new Set(all.map((j) => j.workMode))].filter(Boolean).sort(),
+      careerLevels: [...new Set(all.map((j) => j.careerLevel))].filter(Boolean),
+      employmentTypes: [...new Set(all.map((j) => j.employmentType))].filter(Boolean),
+    }
+  }
+  return delay({
     countries: countryFilterOptions(jobs.map((j) => j.countryCode)),
     regions: regionFilterOptions(),
     industries: [...new Set(jobs.map((j) => j.industry))].sort(),
     workModes: [...new Set(jobs.map((j) => j.workMode))].sort(),
     careerLevels: [...new Set(jobs.map((j) => j.careerLevel))],
     employmentTypes: [...new Set(jobs.map((j) => j.employmentType))],
-  }
+  })
 }

@@ -1,18 +1,19 @@
-import { useState, useMemo } from 'react'
-import { events } from '../mock/events'
-import { getEventsFilterOptions } from '../api/events'
-import { matchesCountry, matchesRegion } from '../mock/geography'
+import { useEffect, useState } from 'react'
+import { fetchEvents, fetchEventsFilterOptions } from '../api/events'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import EventCard from '../components/cards/EventCard'
 import EmptyState from '../components/ui/EmptyState'
+import PageLoader from '../components/ui/PageLoader'
 
 export default function EventsListingPage() {
   const [format, setFormat] = useState('')
   const [region, setRegion] = useState('')
   const [country, setCountry] = useState('')
-  const options = useMemo(() => getEventsFilterOptions(), [])
+  const [events, setEvents] = useState(null)
+  const [options, setOptions] = useState({ formats: [], countries: [], regions: [] })
+  const [error, setError] = useState(null)
 
   useSeo({
     title: 'Events | Women Shaping Futures',
@@ -20,12 +21,26 @@ export default function EventsListingPage() {
     canonical: 'https://womenshapingfutures.org/events',
   })
 
-  const filtered = events.filter(
-    (e) =>
-      (!format || e.format === format) &&
-      (!country || matchesCountry(e.countryCode, country)) &&
-      (!region || matchesRegion(e.countryCode, region)),
-  )
+  useEffect(() => {
+    let active = true
+    fetchEventsFilterOptions()
+      .then((data) => active && setOptions(data))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    setError(null)
+    fetchEvents({ format, country, region, pageSize: 100 })
+      .then((res) => active && setEvents(res.items))
+      .catch(() => active && setError('Something went wrong loading events. Please try again.'))
+    return () => {
+      active = false
+    }
+  }, [format, country, region])
 
   return (
     <div>
@@ -37,16 +52,24 @@ export default function EventsListingPage() {
           <FilterSelect label="Country" value={country} onChange={setCountry} options={options.countries} />
         </div>
 
-        {filtered.length ? (
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {filtered.map((e) => (
-              <EventCard key={e.id} event={e} />
-            ))}
-          </div>
-        ) : (
+        {error && (
           <div className="mt-8">
-            <EmptyState title="No events match those filters" />
+            <EmptyState title="Couldn't load events" description={error} />
           </div>
+        )}
+        {!error && events === null && <PageLoader />}
+        {!error && events !== null && (
+          events.length ? (
+            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {events.map((e) => (
+                <EventCard key={e.id} event={e} />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-8">
+              <EmptyState title="No events match those filters" />
+            </div>
+          )
         )}
       </div>
     </div>

@@ -47,3 +47,12 @@ export async function fetchResourceBySlug(slug) {
   }
   return delay(findBySlug(slug) || null)
 }
+
+export async function fetchResourcesFilterOptions() {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/resources', { params: { pageSize: 100 } })
+    const all = data.items.map(mapResource)
+    return { types: [...new Set(all.map((r) => r.type))].filter(Boolean) }
+  }
+  return delay({ types: [...new Set(resources.map((r) => r.type))] })
+}

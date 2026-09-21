@@ -60,11 +60,21 @@ export async function fetchEventBySlug(slug) {
   return delay(findBySlug(slug) || null)
 }
 
-export function getEventsFilterOptions() {
-  return {
+export async function fetchEventsFilterOptions() {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/events', { params: { pageSize: 100 } })
+    const all = data.items.map(mapEvent)
+    return {
+      types: [...new Set(all.map((e) => e.type))].filter(Boolean),
+      formats: [...new Set(all.map((e) => e.format))].filter(Boolean),
+      countries: countryFilterOptions(all.map((e) => e.countryCode)),
+      regions: regionFilterOptions(),
+    }
+  }
+  return delay({
     types: [...new Set(events.map((e) => e.type))],
     formats: [...new Set(events.map((e) => e.format))],
     countries: countryFilterOptions(events.map((e) => e.countryCode)),
     regions: regionFilterOptions(),
-  }
+  })
 }

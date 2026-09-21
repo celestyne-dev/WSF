@@ -36,6 +36,7 @@ export async function fetchOpportunities(params = {}) {
   if (params.country) results = results.filter((o) => matchesCountry(o.countriesEligible, params.country))
   if (params.region) results = results.filter((o) => matchesRegion(o.countriesEligible, params.region))
   if (params.topic) results = results.filter((o) => o.topicSlugs.includes(params.topic))
+  if (params.organization) results = results.filter((o) => o.organizationSlug === params.organization)
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter((o) => o.title.toLowerCase().includes(q) || o.organization.toLowerCase().includes(q))
@@ -57,10 +58,19 @@ export async function fetchOpportunityBySlug(slug) {
   return delay(findBySlug(slug) || null)
 }
 
-export function getOpportunityFilterOptions() {
-  return {
+export async function fetchOpportunityFilterOptions() {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/opportunities', { params: { pageSize: 100 } })
+    const all = data.items.map(mapOpportunity)
+    return {
+      types: [...new Set(all.map((o) => o.type))].filter(Boolean),
+      countries: countryFilterOptions(all.flatMap((o) => o.countriesEligible)),
+      regions: regionFilterOptions(),
+    }
+  }
+  return delay({
     types: [...new Set(opportunities.map((o) => o.type))],
     countries: countryFilterOptions(opportunities.flatMap((o) => o.countriesEligible)),
     regions: regionFilterOptions(),
-  }
+  })
 }

@@ -1,34 +1,76 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Download, Lock } from 'lucide-react'
-import { getResourceBySlug, resources } from '../mock/resources'
-import { getAuthorBySlug } from '../mock/authors'
+import { fetchResourceBySlug, fetchResources } from '../api/resources'
+import { fetchAuthorBySlug } from '../api/taxonomies'
 import { formatCurrency } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ResourceCard from '../components/cards/ResourceCard'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
 export default function ResourceDetailPage() {
   const { slug } = useParams()
-  const resource = getResourceBySlug(slug)
-  if (!resource) return <NotFoundPage />
+  const [resource, setResource] = useState(undefined)
+  const [author, setAuthor] = useState(null)
+  const [more, setMore] = useState([])
+  const [error, setError] = useState(null)
 
-  const author = getAuthorBySlug(resource.authorSlug)
-  const more = resources.filter((r) => r.slug !== slug && r.topicSlug === resource.topicSlug).slice(0, 3)
+  useEffect(() => {
+    let active = true
+    setResource(undefined)
+    setAuthor(null)
+    setMore([])
+    setError(null)
 
-  useSeo({
-    title: `${resource.name} | Women Shaping Futures Resources`,
-    description: resource.description,
-    canonical: `https://womenshapingfutures.org/resources/${resource.slug}`,
-  })
+    fetchResourceBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setResource(data)
+        if (!data) return
+
+        if (data.authorSlug) {
+          fetchAuthorBySlug(data.authorSlug)
+            .then((a) => active && setAuthor(a))
+            .catch(() => {})
+        }
+
+        if (data.topicSlug) {
+          fetchResources({ topic: data.topicSlug, pageSize: 4 })
+            .then((res) => active && setMore(res.items.filter((r) => r.slug !== slug).slice(0, 3)))
+            .catch(() => {})
+        }
+      })
+      .catch(() => active && setError('Something went wrong loading this resource. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    resource
+      ? {
+          title: `${resource.name} | Women Shaping Futures Resources`,
+          description: resource.description,
+          canonical: `https://womenshapingfutures.org/resources/${resource.slug}`,
+        }
+      : {},
+  )
 
   function handleDownloadClick() {
     trackEvent('resource_download_click', { resourceSlug: resource.slug, isPremium: resource.isPremium })
     toast.success(resource.isPremium ? 'Redirecting to checkout…' : 'Your download will begin shortly.')
   }
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this resource" description={error} /></div>
+  if (resource === undefined) return <PageLoader />
+  if (resource === null) return <NotFoundPage />
 
   return (
     <div>

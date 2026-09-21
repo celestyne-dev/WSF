@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Calendar, Globe2, Award } from 'lucide-react'
-import { getOpportunityBySlug, opportunities } from '../mock/opportunities'
+import { fetchOpportunityBySlug, fetchOpportunities } from '../api/opportunities'
 import { getCountryNames } from '../mock/geography'
 import { formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
@@ -9,20 +10,51 @@ import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import Tag from '../components/ui/Tag'
 import OpportunityCard from '../components/cards/OpportunityCard'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
 export default function OpportunityDetailPage() {
   const { slug } = useParams()
-  const opportunity = getOpportunityBySlug(slug)
-  if (!opportunity) return <NotFoundPage />
+  const [opportunity, setOpportunity] = useState(undefined)
+  const [more, setMore] = useState([])
+  const [error, setError] = useState(null)
 
-  const more = opportunities.filter((o) => o.slug !== slug && o.type === opportunity.type).slice(0, 3)
+  useEffect(() => {
+    let active = true
+    setOpportunity(undefined)
+    setMore([])
+    setError(null)
 
-  useSeo({
-    title: `${opportunity.title} | Women Shaping Futures Opportunities`,
-    description: opportunity.description,
-    canonical: `https://womenshapingfutures.org/opportunities/${opportunity.slug}`,
-  })
+    fetchOpportunityBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setOpportunity(data)
+        if (!data) return
+        fetchOpportunities({ type: data.type, pageSize: 4 })
+          .then((res) => active && setMore(res.items.filter((o) => o.slug !== slug).slice(0, 3)))
+          .catch(() => {})
+      })
+      .catch(() => active && setError('Something went wrong loading this opportunity. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    opportunity
+      ? {
+          title: `${opportunity.title} | Women Shaping Futures Opportunities`,
+          description: opportunity.description,
+          canonical: `https://womenshapingfutures.org/opportunities/${opportunity.slug}`,
+        }
+      : {},
+  )
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this opportunity" description={error} /></div>
+  if (opportunity === undefined) return <PageLoader />
+  if (opportunity === null) return <NotFoundPage />
 
   return (
     <div>

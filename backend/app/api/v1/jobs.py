@@ -25,6 +25,8 @@ class JobListResource(Resource):
             query, Job, request.args, ["industry", "employment_type", "career_level", "work_mode"]
         )
         query = apply_search(query, Job, request.args, ["title", "company_name"], param="query")
+        if request.args.get("organization"):
+            query = query.filter(Job.organization.has(slug=request.args["organization"]))
         result = paginate(query, job_schema)
         return success_response(result["items"], meta=result["meta"])
 

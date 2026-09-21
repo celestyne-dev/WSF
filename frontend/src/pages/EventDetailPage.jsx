@@ -1,29 +1,67 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Calendar, MapPin, Clock, Ticket } from 'lucide-react'
-import { getEventBySlug } from '../mock/events'
-import { getPersonBySlug } from '../mock/people'
-import { getOrganizationBySlug } from '../mock/organizations'
+import { fetchEventBySlug } from '../api/events'
+import { fetchPersonBySlug } from '../api/people'
+import { fetchOrganizationBySlug } from '../api/taxonomies'
 import { formatDate, formatCurrency } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import PersonCard from '../components/cards/PersonCard'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
 export default function EventDetailPage() {
   const { slug } = useParams()
-  const event = getEventBySlug(slug)
-  if (!event) return <NotFoundPage />
+  const [event, setEvent] = useState(undefined)
+  const [speakers, setSpeakers] = useState([])
+  const [sponsors, setSponsors] = useState([])
+  const [error, setError] = useState(null)
 
-  const speakers = (event.speakers || []).map((s) => getPersonBySlug(s)).filter(Boolean)
-  const sponsors = (event.sponsors || []).map((s) => getOrganizationBySlug(s)).filter(Boolean)
+  useEffect(() => {
+    let active = true
+    setEvent(undefined)
+    setSpeakers([])
+    setSponsors([])
+    setError(null)
 
-  useSeo({
-    title: `${event.title} | Women Shaping Futures Events`,
-    description: event.description,
-    canonical: `https://womenshapingfutures.org/events/${event.slug}`,
-  })
+    fetchEventBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setEvent(data)
+        if (!data) return
+
+        Promise.all((data.speakers || []).map((s) => fetchPersonBySlug(s).catch(() => null)))
+          .then((people) => active && setSpeakers(people.filter(Boolean)))
+          .catch(() => {})
+
+        Promise.all((data.sponsors || []).map((s) => fetchOrganizationBySlug(s).catch(() => null)))
+          .then((orgs) => active && setSponsors(orgs.filter(Boolean)))
+          .catch(() => {})
+      })
+      .catch(() => active && setError('Something went wrong loading this event. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    event
+      ? {
+          title: `${event.title} | Women Shaping Futures Events`,
+          description: event.description,
+          canonical: `https://womenshapingfutures.org/events/${event.slug}`,
+        }
+      : {},
+  )
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this event" description={error} /></div>
+  if (event === undefined) return <PageLoader />
+  if (event === null) return <NotFoundPage />
 
   return (
     <div>
@@ -80,7 +118,7 @@ export default function EventDetailPage() {
               </li>
               <li className="flex items-start gap-2">
                 <Clock size={16} className="mt-0.5 shrink-0" />
-                {event.timezone.replace('_', ' ')}
+                {event.timezone ? event.timezone.replace('_', ' ') : 'Timezone not specified'}
               </li>
               <li className="flex items-start gap-2">
                 <Ticket size={16} className="mt-0.5 shrink-0" />

@@ -23,6 +23,8 @@ class PersonListResource(Resource):
         query = apply_country_or_region_filter(query, Person, request.args)
         query = apply_equality_filters(query, Person, request.args, ["industry"])
         query = apply_search(query, Person, request.args, ["name", "title", "industry"], param="query")
+        if request.args.get("organization"):
+            query = query.filter(Person.organization.has(slug=request.args["organization"]))
         result = paginate(query, person_schema)
         return success_response(result["items"], meta=result["meta"])
 

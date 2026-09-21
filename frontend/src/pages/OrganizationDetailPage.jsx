@@ -1,33 +1,74 @@
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Globe } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
-import { getOrganizationBySlug } from '../mock/organizations'
+import { fetchOrganizationBySlug } from '../api/taxonomies'
+import { fetchJobs } from '../api/jobs'
+import { fetchOpportunities } from '../api/opportunities'
+import { fetchPeople } from '../api/people'
 import { getCountryName } from '../mock/geography'
-import { jobs } from '../mock/jobs'
-import { opportunities } from '../mock/opportunities'
-import { people } from '../mock/people'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import JobCard from '../components/cards/JobCard'
 import OpportunityCard from '../components/cards/OpportunityCard'
 import PersonCard from '../components/cards/PersonCard'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
 export default function OrganizationDetailPage() {
   const { slug } = useParams()
-  const org = getOrganizationBySlug(slug)
-  if (!org) return <NotFoundPage />
+  const [org, setOrg] = useState(undefined)
+  const [orgJobs, setOrgJobs] = useState([])
+  const [orgOpportunities, setOrgOpportunities] = useState([])
+  const [orgPeople, setOrgPeople] = useState([])
+  const [error, setError] = useState(null)
 
-  const orgJobs = jobs.filter((j) => j.companySlug === slug)
-  const orgOpportunities = opportunities.filter((o) => o.organizationSlug === slug)
-  const orgPeople = people.filter((p) => p.organizationSlug === slug)
+  useEffect(() => {
+    let active = true
+    setOrg(undefined)
+    setOrgJobs([])
+    setOrgOpportunities([])
+    setOrgPeople([])
+    setError(null)
 
-  useSeo({
-    title: `${org.name} | Women Shaping Futures`,
-    description: org.description,
-    canonical: `https://womenshapingfutures.org/organizations/${org.slug}`,
-  })
+    fetchOrganizationBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setOrg(data)
+        if (!data) return
+
+        fetchJobs({ organization: slug, pageSize: 20 })
+          .then((res) => active && setOrgJobs(res.items))
+          .catch(() => {})
+        fetchOpportunities({ organization: slug, pageSize: 20 })
+          .then((res) => active && setOrgOpportunities(res.items))
+          .catch(() => {})
+        fetchPeople({ organization: slug, pageSize: 20 })
+          .then((res) => active && setOrgPeople(res.items))
+          .catch(() => {})
+      })
+      .catch(() => active && setError('Something went wrong loading this organization. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    org
+      ? {
+          title: `${org.name} | Women Shaping Futures`,
+          description: org.description,
+          canonical: `https://womenshapingfutures.org/organizations/${org.slug}`,
+        }
+      : {},
+  )
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this organization" description={error} /></div>
+  if (org === undefined) return <PageLoader />
+  if (org === null) return <NotFoundPage />
 
   return (
     <div>

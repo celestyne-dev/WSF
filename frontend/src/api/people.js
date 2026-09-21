@@ -42,6 +42,7 @@ export async function fetchPeople(params = {}) {
   if (params.industry) results = results.filter((p) => p.industry === params.industry)
   if (params.expertise) results = results.filter((p) => p.expertise.includes(params.expertise))
   if (params.series) results = results.filter((p) => p.seriesSlugs.includes(params.series))
+  if (params.organization) results = results.filter((p) => p.organizationSlug === params.organization)
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter((p) => p.name.toLowerCase().includes(q) || p.organization?.toLowerCase().includes(q))

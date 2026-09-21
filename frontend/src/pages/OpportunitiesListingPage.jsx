@@ -1,18 +1,19 @@
-import { useState, useMemo } from 'react'
-import { opportunities } from '../mock/opportunities'
-import { getOpportunityFilterOptions } from '../api/opportunities'
-import { matchesCountry, matchesRegion } from '../mock/geography'
+import { useEffect, useState } from 'react'
+import { fetchOpportunities, fetchOpportunityFilterOptions } from '../api/opportunities'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import OpportunityCard from '../components/cards/OpportunityCard'
 import EmptyState from '../components/ui/EmptyState'
+import PageLoader from '../components/ui/PageLoader'
 
 export default function OpportunitiesListingPage() {
   const [type, setType] = useState('')
   const [country, setCountry] = useState('')
   const [region, setRegion] = useState('')
-  const options = useMemo(() => getOpportunityFilterOptions(), [])
+  const [opportunities, setOpportunities] = useState(null)
+  const [options, setOptions] = useState({ types: [], countries: [], regions: [] })
+  const [error, setError] = useState(null)
 
   useSeo({
     title: 'Opportunities | Women Shaping Futures',
@@ -20,12 +21,26 @@ export default function OpportunitiesListingPage() {
     canonical: 'https://womenshapingfutures.org/opportunities',
   })
 
-  const filtered = opportunities.filter(
-    (o) =>
-      (!type || o.type === type) &&
-      (!country || matchesCountry(o.countriesEligible, country)) &&
-      (!region || matchesRegion(o.countriesEligible, region)),
-  )
+  useEffect(() => {
+    let active = true
+    fetchOpportunityFilterOptions()
+      .then((data) => active && setOptions(data))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    setError(null)
+    fetchOpportunities({ type, country, region, pageSize: 100 })
+      .then((res) => active && setOpportunities(res.items))
+      .catch(() => active && setError('Something went wrong loading opportunities. Please try again.'))
+    return () => {
+      active = false
+    }
+  }, [type, country, region])
 
   return (
     <div>
@@ -37,16 +52,24 @@ export default function OpportunitiesListingPage() {
           <FilterSelect label="Eligible Country" value={country} onChange={setCountry} options={options.countries} />
         </div>
 
-        {filtered.length ? (
-          <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((o) => (
-              <OpportunityCard key={o.id} opportunity={o} />
-            ))}
-          </div>
-        ) : (
+        {error && (
           <div className="mt-8">
-            <EmptyState title="No opportunities match those filters" />
+            <EmptyState title="Couldn't load opportunities" description={error} />
           </div>
+        )}
+        {!error && opportunities === null && <PageLoader />}
+        {!error && opportunities !== null && (
+          opportunities.length ? (
+            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {opportunities.map((o) => (
+                <OpportunityCard key={o.id} opportunity={o} />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-8">
+              <EmptyState title="No opportunities match those filters" />
+            </div>
+          )
         )}
       </div>
     </div>

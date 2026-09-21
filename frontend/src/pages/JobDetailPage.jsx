@@ -1,31 +1,62 @@
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { MapPin, Briefcase, Clock, DollarSign } from 'lucide-react'
-import { getJobBySlug } from '../mock/jobs'
-import { jobs } from '../mock/jobs'
+import { fetchJobBySlug, fetchJobs } from '../api/jobs'
 import { formatSalary, formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import JobCard from '../components/cards/JobCard'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
 export default function JobDetailPage() {
   const { slug } = useParams()
-  const job = getJobBySlug(slug)
-  if (!job) return <NotFoundPage />
+  const [job, setJob] = useState(undefined)
+  const [moreJobs, setMoreJobs] = useState([])
+  const [error, setError] = useState(null)
 
-  const moreJobs = jobs.filter((j) => j.slug !== slug && j.industry === job.industry).slice(0, 3)
+  useEffect(() => {
+    let active = true
+    setJob(undefined)
+    setMoreJobs([])
+    setError(null)
 
-  useSeo({
-    title: `${job.title} at ${job.company} | Women Shaping Futures Jobs`,
-    description: job.description,
-    canonical: `https://womenshapingfutures.org/jobs/${job.slug}`,
-  })
+    fetchJobBySlug(slug)
+      .then((data) => {
+        if (!active) return
+        setJob(data)
+        if (!data) return
+        fetchJobs({ industry: data.industry, pageSize: 4 })
+          .then((res) => active && setMoreJobs(res.items.filter((j) => j.slug !== slug).slice(0, 3)))
+          .catch(() => {})
+      })
+      .catch(() => active && setError('Something went wrong loading this job. Please try again.'))
+
+    return () => {
+      active = false
+    }
+  }, [slug])
+
+  useSeo(
+    job
+      ? {
+          title: `${job.title} at ${job.company} | Women Shaping Futures Jobs`,
+          description: job.description,
+          canonical: `https://womenshapingfutures.org/jobs/${job.slug}`,
+        }
+      : {},
+  )
 
   function handleApplyClick() {
     trackEvent('job_apply_click', { jobSlug: job.slug, company: job.company })
   }
+
+  if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this job" description={error} /></div>
+  if (job === undefined) return <PageLoader />
+  if (job === null) return <NotFoundPage />
 
   return (
     <div>
