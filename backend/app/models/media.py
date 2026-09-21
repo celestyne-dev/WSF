@@ -44,14 +44,24 @@ class Media(db.Model):
 
     def is_referenced(self):
         """Checked before allowing a delete. Each phase that adds a new
-        content type carrying a Media FK (Article hero images, Person
-        photos, Event covers, ...) must add its own existence check here.
+        content type carrying a Media FK (Event covers, Resource covers,
+        Job/Opportunity logos, Product images, ...) must add its own
+        existence check here.
         """
+        from app.models.article import Article
+        from app.models.people import Author, Organization, Person
+        from app.models.taxonomy import Series
         from app.models.user import User
 
-        if User.query.filter_by(avatar_media_id=self.id).first() is not None:
-            return True
-        return False
+        checks = (
+            (User, "avatar_media_id"),
+            (Article, "hero_media_id"),
+            (Person, "photo_media_id"),
+            (Author, "photo_media_id"),
+            (Organization, "logo_media_id"),
+            (Series, "cover_media_id"),
+        )
+        return any(model.query.filter_by(**{field: self.id}).first() is not None for model, field in checks)
 
     def variant_url(self, name):
         for variant in self.variants:

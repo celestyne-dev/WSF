@@ -116,6 +116,20 @@ migrations/         Alembic migration history (flask db migrate/upgrade)
 - **Revisions**: every article create/update/publish appends a full JSON
   snapshot to `article_revisions` (`ArticleRevision`) — no separate diffing
   engine, just "what did this look like at each save."
+- **Media reference guard**: `Media.is_referenced()` (`app/models/media.py`)
+  checks every FK that currently points at `media.id` before a delete is
+  allowed. Any new content type that adds a Media FK (Event cover, Job
+  logo, Product image, ...) must add its own check there — the checklist
+  is in that method's docstring, not enforced by the type system.
+- **CMS builder endpoints save the whole arrangement, not diffs**:
+  `PUT /api/v1/admin/homepage` and `PUT /api/v1/admin/navigation` each
+  replace their entire table(s) from the payload
+  (`app/services/cms.py`) rather than tracking per-item add/remove/reorder
+  — simpler and matches how a drag-and-drop builder naturally works
+  (edit the whole list client-side, save it all at once). `SiteSetting` is
+  a flexible key/value table instead — `PUT /api/v1/admin/settings` merges
+  keys rather than replacing the table, since settings are looked up
+  individually, not rendered as an ordered list.
 - **Response casing**: dump schemas currently serialize in the model's
   native snake_case (e.g. `publish_date`, `hero_media`); the input schemas
   already accept the frontend's camelCase (`publishDate`, `heroMediaId`)
