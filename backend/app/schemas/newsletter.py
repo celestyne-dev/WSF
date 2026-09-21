@@ -1,4 +1,4 @@
-from marshmallow import fields, validate
+from marshmallow import EXCLUDE, fields, validate
 
 from app.extensions import ma
 from app.models.newsletter import NewsletterIssue, NewsletterSubscriber
@@ -20,6 +20,13 @@ class NewsletterIssueSchema(ma.SQLAlchemyAutoSchema):
 
 
 class SubscribeInputSchema(ma.Schema):
+    # NewsletterForm.jsx also sends a consentTimestamp field (client-side
+    # consent record, not persisted server-side) — EXCLUDE lets the frontend
+    # attach that kind of provenance metadata without a 422 for fields this
+    # schema doesn't declare.
+    class Meta:
+        unknown = EXCLUDE
+
     email = fields.Email(required=True)
     first_name = fields.String(required=False, allow_none=True, data_key="firstName")
     country_code = fields.String(required=False, allow_none=True, data_key="countryCode")

@@ -57,6 +57,23 @@ def test_newsletter_subscribe_unsubscribe_and_resubscribe(client):
     assert resub.get_json()["data"]["status"] == "active"
 
 
+def test_newsletter_subscribe_ignores_unknown_frontend_fields(client):
+    # Reproduces the exact payload NewsletterForm.jsx sends (email, placement,
+    # consentTimestamp, acquisition) — consentTimestamp isn't a declared
+    # field on SubscribeInputSchema and previously caused a 422.
+    subscribe = client.post(
+        "/api/v1/newsletter/subscribe",
+        json={
+            "email": "consent@example.com",
+            "placement": "footer",
+            "consentTimestamp": "2026-09-21T00:00:00.000Z",
+            "acquisition": {"source": "direct"},
+        },
+    )
+    assert subscribe.status_code == 201
+    assert subscribe.get_json()["data"]["status"] == "active"
+
+
 def test_newsletter_subscribers_list_requires_permission(client, admin_token):
     client.post("/api/v1/newsletter/subscribe", json={"email": "a@example.com"})
 
