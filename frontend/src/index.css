@@ -53,4 +53,17 @@ body {
   .prose-article {
     @apply prose prose-lg max-w-none prose-headings:font-serif prose-headings:font-semibold prose-headings:text-charcoal prose-p:font-sans prose-p:text-charcoal-600 prose-p:leading-[1.85] prose-a:text-burgundy-600 prose-a:no-underline hover:prose-a:underline prose-blockquote:border-burgundy-500 prose-blockquote:font-serif prose-blockquote:not-italic prose-img:rounded-none;
   }
+
+  /* CMS block editor's contentEditable fields (bold/italic/link toolbar) —
+     see components/cms/ArticleBlockEditor.jsx. */
+  .rich-text-input {
+    @apply min-h-[2.5rem] w-full border border-taupe-300 px-3 py-2.5 text-sm text-charcoal focus:border-burgundy-500 focus:outline-none;
+  }
+  .rich-text-input:empty:before {
+    content: attr(data-placeholder);
+    @apply text-charcoal-600/50;
+  }
+  .rich-text-input a {
+    @apply text-burgundy-600 underline;
+  }
 }

@@ -81,7 +81,7 @@ def test_search_finds_articles_and_people_by_type(client, admin_token):
             "excerpt": "A look at the shift.",
             "authorSlug": author_slug,
             "status": "published",
-            "content": [],
+            "content": [{"type": "paragraph", "text": "Body text."}],
         },
         headers=auth_headers(admin_token),
     )

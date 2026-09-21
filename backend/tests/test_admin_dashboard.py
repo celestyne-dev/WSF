@@ -43,7 +43,12 @@ def test_admin_dashboard_reflects_real_counts(client, admin_token):
     )
     published = client.post(
         "/api/v1/articles",
-        json={"title": "A Published Article", "authorSlug": author_slug, "status": "published"},
+        json={
+            "title": "A Published Article",
+            "authorSlug": author_slug,
+            "status": "published",
+            "content": [{"type": "paragraph", "text": "Body text."}],
+        },
         headers=auth_headers(admin_token),
     )
     assert published.status_code == 201

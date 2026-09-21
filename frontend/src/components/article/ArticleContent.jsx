@@ -3,19 +3,41 @@ import MediaImage from '../ui/MediaImage'
 import NewsletterForm from '../ui/NewsletterForm'
 import { Quote } from 'lucide-react'
 
+// Block text (paragraph/list-item/quote/callout) may contain a small
+// allow-listed set of inline tags (b/strong/i/em/u/a/br) — sanitized
+// server-side before storage (backend/app/services/content_blocks.py), so
+// rendering it as HTML here is safe. Mock-mode demo content has no tags in
+// it at all, so this renders identically to plain text either way.
+function InlineHtml({ as: Tag = 'span', html, className }) {
+  if (!html) return null
+  return <Tag className={className} dangerouslySetInnerHTML={{ __html: html }} />
+}
+
 function Heading({ block }) {
-  const Tag = block.level === 3 ? 'h3' : 'h2'
-  return <Tag className="mt-10 font-serif text-2xl font-semibold text-charcoal sm:text-3xl">{block.text}</Tag>
+  const Tag = block.level === 4 ? 'h4' : block.level === 3 ? 'h3' : 'h2'
+  const sizes = { 2: 'text-2xl sm:text-3xl', 3: 'text-xl sm:text-2xl', 4: 'text-lg sm:text-xl' }
+  return <Tag className={`mt-10 font-serif font-semibold text-charcoal ${sizes[block.level] || sizes[2]}`}>{block.text}</Tag>
 }
 
 function Paragraph({ block }) {
-  return <p className="mt-5 font-sans text-lg leading-[1.85] text-charcoal-600">{block.text}</p>
+  return <InlineHtml as="p" html={block.text} className="mt-5 font-sans text-lg leading-[1.85] text-charcoal-600" />
 }
 
 function ImageBlock({ block }) {
+  // `media` is the normalized reference the block editor saves (with real
+  // generated WebP variants); `mediaPath` is the legacy/mock-mode fallback.
   return (
     <figure className="my-10">
-      <MediaImage mediaPath={block.mediaPath} alt={block.alt} width={1400} height={933} className="w-full object-cover" />
+      <MediaImage
+        media={block.media}
+        variant="large"
+        mediaPath={block.mediaPath}
+        alt={block.alt}
+        width={1400}
+        height={933}
+        aspect={3 / 2}
+        className="aspect-[3/2] w-full object-cover"
+      />
       {(block.caption || block.credit) && (
         <figcaption className="mt-2 text-sm text-charcoal-600">
           {block.caption} {block.credit && <span className="text-charcoal-600/70">— {block.credit}</span>}
@@ -29,7 +51,7 @@ function PullQuote({ block }) {
   return (
     <blockquote className="relative my-10 border-y border-taupe-200 py-8 text-center">
       <Quote className="mx-auto mb-3 text-burgundy-500/50" size={28} />
-      <p className="font-serif text-2xl font-medium italic leading-snug text-charcoal sm:text-3xl">{block.text}</p>
+      <InlineHtml as="p" html={block.text} className="font-serif text-2xl font-medium italic leading-snug text-charcoal sm:text-3xl" />
       {block.attribution && <cite className="mt-4 block font-sans text-sm not-italic text-charcoal-600">{block.attribution}</cite>}
     </blockquote>
   )
@@ -38,7 +60,7 @@ function PullQuote({ block }) {
 function BlockQuote({ block }) {
   return (
     <blockquote className="my-8 border-l-2 border-burgundy-500 pl-6">
-      <p className="font-serif text-xl italic leading-snug text-charcoal">{block.text}</p>
+      <InlineHtml as="p" html={block.text} className="font-serif text-xl italic leading-snug text-charcoal" />
       {block.attribution && <cite className="mt-2 block font-sans text-sm not-italic text-charcoal-600">{block.attribution}</cite>}
     </blockquote>
   )
@@ -49,7 +71,7 @@ function ListBlock({ block }) {
   return (
     <Tag className={`mt-5 space-y-2 pl-5 font-sans text-lg leading-relaxed text-charcoal-600 ${block.style === 'number' ? 'list-decimal' : 'list-disc'}`}>
       {block.items.map((item, i) => (
-        <li key={i}>{item}</li>
+        <InlineHtml key={i} as="li" html={item} />
       ))}
     </Tag>
   )
@@ -59,7 +81,7 @@ function Highlight({ block }) {
   return (
     <div className="my-8 border border-taupe-200 bg-cream p-6">
       {block.title && <p className="eyebrow mb-2">{block.title}</p>}
-      <p className="font-serif text-lg leading-relaxed text-charcoal">{block.text}</p>
+      <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal" />
     </div>
   )
 }
@@ -169,6 +191,10 @@ function FaqBlock({ block }) {
   )
 }
 
+function Divider() {
+  return <hr className="my-10 border-t border-taupe-300" />
+}
+
 const RENDERERS = {
   heading: Heading,
   paragraph: Paragraph,
@@ -177,6 +203,7 @@ const RENDERERS = {
   blockquote: BlockQuote,
   list: ListBlock,
   highlight: Highlight,
+  divider: Divider,
   newsletterCta: NewsletterCta,
   relatedBlock: RelatedBlock,
   sponsorBlock: SponsorBlock,

@@ -8,8 +8,9 @@ from app.extensions import db
 from app.models.article import Article, ArticleRevision, Redirect
 from app.models.people import Author, Organization, Person
 from app.models.taxonomy import Category, Series, Tag, Topic
-from app.schemas.article import ArticleInputSchema, ArticleSchema, article_summary_schema
+from app.schemas.article import ArticleInputSchema, ArticleSchema, article_summary_schema, public_article_schema
 from app.services.audit import log_action
+from app.services.content_blocks import sanitize_content_blocks
 from app.services.slugs import create_redirect_for_slug_change, generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
@@ -20,6 +21,7 @@ articles_bp = Blueprint("articles", __name__)
 api = Api(articles_bp)
 
 article_schema = ArticleSchema()
+public_article_schema_instance = public_article_schema()
 
 
 def _require_active_user():
@@ -133,7 +135,31 @@ def _apply_fields(article, data, relations):
     article.sponsor = data.get("sponsor")
     article.status = data.get("status", "draft")
     article.seo = data.get("seo")
-    article.content = data.get("content", [])
+    article.content = sanitize_content_blocks(data.get("content", []))
+    article.ai_involvement = data.get("ai_involvement", "none")
+    article.human_reviewed = data.get("human_reviewed", False)
+    article.ai_disclosure_required = data.get("ai_disclosure_required", False)
+    article.ai_disclosure_text = data.get("ai_disclosure_text")
+    article.ai_editorial_notes = data.get("ai_editorial_notes")
+
+
+def _validate_for_publish(article):
+    """Enforced whenever an article's effective status is (becoming)
+    "published" — a draft may stay incomplete indefinitely, but publishing
+    requires a real body and, if AI was involved, a confirmed human review.
+    Title/slug/author are already guaranteed non-empty by ArticleInputSchema
+    and _resolve_relations before this runs.
+    """
+    errors = []
+    if not article.content:
+        errors.append("Article body is required before publishing.")
+    if article.ai_involvement != "none" and not article.human_reviewed:
+        errors.append(
+            "This article is marked as AI-assisted or AI-generated and must be confirmed as human-reviewed "
+            "before it can be published."
+        )
+    if errors:
+        raise ApiError(errors[0], 422, code="publish_validation_failed", errors=errors)
 
 
 def _snapshot(article, user, note=None):
@@ -182,6 +208,8 @@ class ArticleListResource(Resource):
             article.slug = generate_unique_slug(Article, data["title"])
 
         _apply_fields(article, data, relations)
+        if article.status == "published":
+            _validate_for_publish(article)
         db.session.add(article)
         db.session.flush()
         _snapshot(article, user, note="Created")
@@ -195,16 +223,25 @@ class ArticleDetailResource(Resource):
     def get(self, slug):
         article = Article.query.filter_by(slug=slug).first()
         if article is not None:
-            if article.status != "published":
-                # Only someone who can edit it may preview an unpublished
-                # article — an anonymous request or a bad/missing token
-                # should 404 exactly like a nonexistent slug, not leak that
-                # a draft exists via a 401/403.
-                try:
-                    _can_edit(article)
-                except Exception:
-                    raise ApiError("Article not found.", 404, code="not_found")
-            return success_response(article_schema.dump(article))
+            # An editor with permission to edit THIS article sees the full
+            # schema (including ai_editorial_notes, needed to pre-fill the
+            # CMS form when reopening a draft) — this is the same endpoint
+            # the admin editor uses to load an article, real or unpublished.
+            # Anyone else gets the public schema, and an unpublished article
+            # 404s exactly like a nonexistent slug rather than leaking via a
+            # 401/403 that it exists.
+            can_edit = False
+            try:
+                _can_edit(article)
+                can_edit = True
+            except Exception:
+                can_edit = False
+
+            if article.status != "published" and not can_edit:
+                raise ApiError("Article not found.", 404, code="not_found")
+
+            schema = article_schema if can_edit else public_article_schema_instance
+            return success_response(schema.dump(article))
 
         redirect = Redirect.query.filter_by(from_slug=slug).first()
         if redirect:
@@ -227,6 +264,8 @@ class ArticleDetailResource(Resource):
             article.slug = validate_explicit_slug(Article, data["slug"], current_id=article.id)
 
         _apply_fields(article, data, relations)
+        if article.status == "published":
+            _validate_for_publish(article)
         db.session.flush()
         _snapshot(article, user, note="Updated")
 
@@ -249,6 +288,7 @@ class ArticlePublishResource(Resource):
             return error_response("You do not have permission to publish articles.", 403, code="forbidden")
 
         article.status = "published"
+        _validate_for_publish(article)
         if article.publish_date is None:
             article.publish_date = datetime.now(timezone.utc)
         db.session.flush()

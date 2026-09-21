@@ -1,7 +1,7 @@
 from marshmallow import fields, validate
 
 from app.extensions import ma
-from app.models.article import ARTICLE_STATUSES, Article
+from app.models.article import AI_INVOLVEMENT_VALUES, ARTICLE_STATUSES, Article
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema, PersonSchema
 from app.schemas.taxonomy import CategorySchema, SeriesSchema, TagSchema, TopicSchema
@@ -38,13 +38,33 @@ class ArticleSchema(ma.SQLAlchemyAutoSchema):
         load_instance = False
 
 
+# ai_editorial_notes is an internal CMS-only field (an editor's private notes
+# on how AI was used) — it must never reach an anonymous/public reader. The
+# other AI fields (ai_involvement, human_reviewed, ai_disclosure_required,
+# ai_disclosure_text) are fine either way: ai_disclosure_text is the field
+# meant to be shown publicly when ai_disclosure_required is true (see
+# ArticlePage's disclosure notice), and the rest are exposed as transparent
+# provenance metadata, not a secret. Views pick this schema whenever the
+# requester is not an editor with permission to edit the article — see
+# ArticleDetailResource.get() in api/v1/articles.py.
+def public_article_schema(many=False):
+    return ArticleSchema(many=many, exclude=("ai_editorial_notes",))
+
+
 def article_summary_schema(many=False):
     """A lighter shape for list endpoints — no content blocks, no full
     nested relations, just enough for an ArticleCard.
     """
     return ArticleSchema(
         many=many,
-        exclude=("content", "related_people", "related_organizations", "related_articles", "co_authors"),
+        exclude=(
+            "content",
+            "related_people",
+            "related_organizations",
+            "related_articles",
+            "co_authors",
+            "ai_editorial_notes",
+        ),
     )
 
 
@@ -93,3 +113,13 @@ class ArticleInputSchema(ma.Schema):
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(ARTICLE_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)
     content = fields.List(fields.Dict(), required=False, load_default=list)
+
+    # Generative-AI editorial transparency (see Article.AI_INVOLVEMENT_VALUES).
+    # ai_editorial_notes is internal-only; never rendered on the public site.
+    ai_involvement = fields.String(
+        required=False, load_default="none", data_key="aiInvolvement", validate=validate.OneOf(AI_INVOLVEMENT_VALUES)
+    )
+    human_reviewed = fields.Boolean(required=False, load_default=False, data_key="humanReviewed")
+    ai_disclosure_required = fields.Boolean(required=False, load_default=False, data_key="aiDisclosureRequired")
+    ai_disclosure_text = fields.String(required=False, allow_none=True, data_key="aiDisclosureText")
+    ai_editorial_notes = fields.String(required=False, allow_none=True, data_key="aiEditorialNotes")

@@ -85,6 +85,17 @@ function mapArticle(a) {
     status: a.status,
     seo: a.seo,
     content: a.content,
+    // Generative-AI editorial transparency (see backend Article model's
+    // AI_INVOLVEMENT_VALUES). aiEditorialNotes is internal-only — the
+    // backend already omits it from the public schema for anyone who isn't
+    // an editor with permission to edit this article, so it's simply
+    // undefined here on a public read; the CMS editor (which loads through
+    // the same authenticated GET) receives it normally.
+    aiInvolvement: a.ai_involvement || 'none',
+    humanReviewed: !!a.human_reviewed,
+    aiDisclosureRequired: !!a.ai_disclosure_required,
+    aiDisclosureText: a.ai_disclosure_text || '',
+    aiEditorialNotes: a.ai_editorial_notes || '',
   }
 }
 

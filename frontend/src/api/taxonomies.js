@@ -32,6 +32,11 @@ function mapTopic(t) {
   return { id: t.id, slug: t.slug, name: t.name, description: t.description, articleCount: t.article_count }
 }
 
+function mapCategory(c) {
+  if (!c) return null
+  return { id: c.id, slug: c.slug, name: c.name, description: c.description }
+}
+
 function mapSeries(s) {
   if (!s) return null
   return {
@@ -91,6 +96,16 @@ function mapOrganization(o) {
     social: o.social || {},
     featured: o.featured,
   }
+}
+
+// No mock category dataset exists — Categories were never modeled in
+// mock/*.js (only Topics were). Real mode is fully functional; mock mode
+// returns an empty list rather than fabricating data, same as
+// AdminGenericList's "advertising" section handles a real feature with no
+// mock equivalent.
+export async function fetchCategories() {
+  if (!USE_MOCK) return (await apiClient.get('/categories')).data.map(mapCategory)
+  return delay([])
 }
 
 export async function fetchTopics() {

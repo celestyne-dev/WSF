@@ -14,6 +14,14 @@ ARTICLE_STATUSES = (
 )
 _STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{status}'" for status in ARTICLE_STATUSES) + ")"
 
+# Editorial transparency/governance for generative-AI use, not an AI writing
+# feature — see AdminArticleEditor's "AI / Editorial Transparency" section.
+# "none": no AI involvement. "ai_assisted": AI helped (research, editing,
+# suggestions) but a human wrote/owns the piece. "ai_generated_reviewed": an
+# AI-generated draft substantially rewritten/reviewed by a human editor.
+AI_INVOLVEMENT_VALUES = ("none", "ai_assisted", "ai_generated_reviewed")
+_AI_INVOLVEMENT_CHECK_SQL = "ai_involvement IN (" + ", ".join(f"'{v}'" for v in AI_INVOLVEMENT_VALUES) + ")"
+
 article_topics = db.Table(
     "article_topics",
     db.Column("article_id", db.Integer, db.ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True),
@@ -56,7 +64,10 @@ article_related_articles = db.Table(
 
 class Article(db.Model):
     __tablename__ = "articles"
-    __table_args__ = (db.CheckConstraint(_STATUS_CHECK_SQL, name="ck_articles_status"),)
+    __table_args__ = (
+        db.CheckConstraint(_STATUS_CHECK_SQL, name="ck_articles_status"),
+        db.CheckConstraint(_AI_INVOLVEMENT_CHECK_SQL, name="ck_articles_ai_involvement"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     uuid = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid_lib.uuid4()))
@@ -84,6 +95,16 @@ class Article(db.Model):
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     content = db.Column(db.JSON, nullable=False, default=list)  # ordered block list
+
+    # Generative-AI editorial transparency/governance (see AI_INVOLVEMENT_VALUES
+    # above). ai_editorial_notes is internal-only — excluded from the public
+    # article schema (see schemas/article.py) and never dumped to anyone but
+    # an editor with permission to edit this article.
+    ai_involvement = db.Column(db.String(30), nullable=False, default="none")
+    human_reviewed = db.Column(db.Boolean, nullable=False, default=False)
+    ai_disclosure_required = db.Column(db.Boolean, nullable=False, default=False)
+    ai_disclosure_text = db.Column(db.Text)
+    ai_editorial_notes = db.Column(db.Text)
 
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)

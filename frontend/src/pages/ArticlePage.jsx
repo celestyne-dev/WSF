@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Link as LinkIcon, Clock } from 'lucide-react'
+import { Link as LinkIcon, Clock, Sparkles } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
 import { toast } from 'react-toastify'
 import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles } from '../api/articles'
@@ -59,6 +59,23 @@ function ShareBar({ title, url, articleSlug }) {
       >
         <LinkIcon size={16} />
       </button>
+    </div>
+  )
+}
+
+// Subtle, non-alarming editorial transparency notice — shown only when an
+// editor has explicitly enabled it (article.aiDisclosureRequired) and
+// written the disclosure copy themselves. Never generated automatically;
+// see AdminArticleEditor's "AI / editorial transparency" section.
+function AiDisclosureNotice({ text }) {
+  if (!text) return null
+  return (
+    <div className="mt-4 flex items-start gap-2 border border-taupe-200 bg-taupe-100/50 px-4 py-2.5 text-xs text-charcoal-600">
+      <Sparkles size={14} className="mt-0.5 shrink-0 text-charcoal-600/60" />
+      <p>
+        <span className="font-semibold text-charcoal-600/90">Generative AI disclosure. </span>
+        {text}
+      </p>
     </div>
   )
 }
@@ -204,10 +221,30 @@ export default function ArticlePage() {
           </div>
           <ShareBar title={article.title} url={canonicalUrl} articleSlug={article.slug} />
         </div>
+
+        {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}
       </header>
 
-      <div className="container-editorial mt-8 max-w-content">
-        <MediaImage media={article.heroMedia} variant="hero" mediaPath={article.heroImage} alt={article.heroImageAlt} width={1600} height={1000} priority className="w-full object-cover" />
+      <div className="container-editorial mt-8">
+        {/* Fixed 16:9 editorial aspect ratio + a max-height clamp per
+            breakpoint — object-cover crops whatever aspect ratio the
+            source upload actually is, so the hero can never balloon to an
+            arbitrary height (previously derived purely from the source
+            image's own dimensions, which could occupy ~90% of a laptop
+            viewport's height). Still the container-editorial width
+            (1280px cap) — a deliberately wider "bleed" than the 720px
+            reading column, not full viewport width. */}
+        <MediaImage
+          media={article.heroMedia}
+          variant="hero"
+          mediaPath={article.heroImage}
+          alt={article.heroImageAlt}
+          width={1600}
+          height={900}
+          aspect={16 / 9}
+          priority
+          className="aspect-[16/9] max-h-[280px] w-full object-cover sm:max-h-[400px] lg:max-h-[540px]"
+        />
         {(article.heroImageCaption || article.heroImageCredit) && (
           <p className="mt-2 text-sm text-charcoal-600">
             {article.heroImageCaption} {article.heroImageCredit && <span className="text-charcoal-600/70">— {article.heroImageCredit}</span>}
