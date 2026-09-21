@@ -39,6 +39,8 @@ class OpportunityListResource(Resource):
         query = apply_search(query, Opportunity, request.args, ["title", "organization_name"], param="query")
         if request.args.get("organization"):
             query = query.filter(Opportunity.organization.has(slug=request.args["organization"]))
+        if request.args.get("featured") == "true":
+            query = query.filter(Opportunity.featured.is_(True))
 
         result = paginate(query, opportunity_schema)
         return success_response(result["items"], meta=result["meta"])

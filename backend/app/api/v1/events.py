@@ -34,6 +34,8 @@ class EventListResource(Resource):
         event_format = request.args.get("format")
         if event_format:
             query = query.filter(Event.format == event_format)
+        if request.args.get("featured") == "true":
+            query = query.filter(Event.featured.is_(True))
         result = paginate(query, event_schema)
         return success_response(result["items"], meta=result["meta"])
 

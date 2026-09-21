@@ -1,8 +1,20 @@
-import { getOrganizationBySlug } from '../../mock/organizations'
+import { useEffect, useState } from 'react'
+import { fetchOrganizationBySlug } from '../../api/taxonomies'
 import MediaImage from '../ui/MediaImage'
 
 export default function PartnersModule({ module }) {
-  const partners = (module.partnerSlugs || []).map((s) => getOrganizationBySlug(s)).filter(Boolean)
+  const [partners, setPartners] = useState([])
+
+  useEffect(() => {
+    let active = true
+    Promise.all((module.partnerSlugs || []).map((s) => fetchOrganizationBySlug(s).catch(() => null)))
+      .then((orgs) => active && setPartners(orgs.filter(Boolean)))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [module.partnerSlugs])
+
   if (!partners.length) return null
 
   return (

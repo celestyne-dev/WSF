@@ -37,6 +37,7 @@ export async function fetchOpportunities(params = {}) {
   if (params.region) results = results.filter((o) => matchesRegion(o.countriesEligible, params.region))
   if (params.topic) results = results.filter((o) => o.topicSlugs.includes(params.topic))
   if (params.organization) results = results.filter((o) => o.organizationSlug === params.organization)
+  if (params.featured) results = results.filter((o) => o.featured)
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter((o) => o.title.toLowerCase().includes(q) || o.organization.toLowerCase().includes(q))

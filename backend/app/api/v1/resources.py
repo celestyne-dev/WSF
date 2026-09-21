@@ -30,6 +30,8 @@ class ResourceListResource(Resource):
             query = query.filter(ResourceModel.is_premium.is_(False))
         elif premium == "premium":
             query = query.filter(ResourceModel.is_premium.is_(True))
+        if request.args.get("featured") == "true":
+            query = query.filter(ResourceModel.featured.is_(True))
         query = apply_search(query, ResourceModel, request.args, ["name", "description"])
         result = paginate(query, resource_schema)
         return success_response(result["items"], meta=result["meta"])

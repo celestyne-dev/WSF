@@ -1,9 +1,21 @@
-import { opportunities } from '../../mock/opportunities'
+import { useEffect, useState } from 'react'
+import { fetchOpportunities } from '../../api/opportunities'
 import OpportunityCard from '../cards/OpportunityCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function OpportunitiesModule({ module }) {
-  const items = [...opportunities].filter((o) => o.featured).slice(0, module.itemCount || 3)
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchOpportunities({ featured: true, pageSize: module.itemCount || 3 })
+      .then((res) => active && setItems(res.items))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [module.itemCount])
+
   return (
     <section className="py-14 sm:py-16">
       <div className="container-editorial">

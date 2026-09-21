@@ -1,11 +1,30 @@
-import { getArticlesByTopic } from '../../mock/articles'
-import { getTopicBySlug } from '../../mock/topics'
+import { useEffect, useState } from 'react'
+import { fetchTopicBySlug } from '../../api/taxonomies'
+import { fetchArticles } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function TopicCollectionModule({ module }) {
-  const topic = getTopicBySlug(module.topicSlug)
-  const items = getArticlesByTopic(module.topicSlug).slice(0, module.itemCount || 3)
+  const [topic, setTopic] = useState(undefined)
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchTopicBySlug(module.topicSlug)
+      .then((data) => {
+        if (!active) return
+        setTopic(data)
+        if (!data) return
+        fetchArticles({ topic: module.topicSlug, pageSize: module.itemCount || 3 })
+          .then((res) => active && setItems(res.items))
+          .catch(() => {})
+      })
+      .catch(() => active && setTopic(null))
+    return () => {
+      active = false
+    }
+  }, [module.topicSlug, module.itemCount])
+
   if (!topic || !items.length) return null
 
   return (

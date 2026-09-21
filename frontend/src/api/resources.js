@@ -32,6 +32,7 @@ export async function fetchResources(params = {}) {
   if (params.type) results = results.filter((r) => r.type === params.type)
   if (params.premium === 'free') results = results.filter((r) => !r.isPremium)
   if (params.premium === 'premium') results = results.filter((r) => r.isPremium)
+  if (params.featured) results = results.filter((r) => r.featured)
   return delay(paginate(results, params))
 }
 

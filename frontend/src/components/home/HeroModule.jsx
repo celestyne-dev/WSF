@@ -1,9 +1,26 @@
-import { getArticleBySlug } from '../../mock/articles'
+import { useEffect, useState } from 'react'
+import { fetchArticleBySlug, fetchRelatedArticles } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 
 export default function HeroModule({ module }) {
-  const lead = getArticleBySlug(module.leadArticleSlug)
-  const secondary = (module.secondaryArticleSlugs || []).map((s) => getArticleBySlug(s)).filter(Boolean)
+  const [lead, setLead] = useState(undefined)
+  const [secondary, setSecondary] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchArticleBySlug(module.leadArticleSlug)
+      .then((data) => active && setLead(data))
+      .catch(() => active && setLead(null))
+    if (module.secondaryArticleSlugs?.length) {
+      fetchRelatedArticles(module.secondaryArticleSlugs)
+        .then((items) => active && setSecondary(items))
+        .catch(() => {})
+    }
+    return () => {
+      active = false
+    }
+  }, [module.leadArticleSlug, module.secondaryArticleSlugs])
+
   if (!lead) return null
 
   return (

@@ -197,6 +197,64 @@ def test_jobs_opportunities_people_filter_by_organization(client, admin_token):
     assert [p["name"] for p in people.get_json()["data"]] == ["Amina Yusuf"]
 
 
+def test_featured_filter_on_jobs_opportunities_events_resources(client, admin_token):
+    client.post(
+        "/api/v1/jobs",
+        json={"title": "Featured Role", "companyName": "Acme", "countryCode": "US", "featured": True},
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        "/api/v1/jobs",
+        json={"title": "Regular Role", "companyName": "Acme", "countryCode": "US", "featured": False},
+        headers=auth_headers(admin_token),
+    )
+    jobs = client.get("/api/v1/jobs?featured=true")
+    assert jobs.status_code == 200
+    assert [j["title"] for j in jobs.get_json()["data"]] == ["Featured Role"]
+
+    client.post(
+        "/api/v1/opportunities",
+        json={"title": "Featured Fellowship", "type": "Fellowship", "featured": True},
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        "/api/v1/opportunities",
+        json={"title": "Regular Grant", "type": "Grant", "featured": False},
+        headers=auth_headers(admin_token),
+    )
+    opportunities = client.get("/api/v1/opportunities?featured=true")
+    assert opportunities.status_code == 200
+    assert [o["title"] for o in opportunities.get_json()["data"]] == ["Featured Fellowship"]
+
+    client.post(
+        "/api/v1/events",
+        json={"title": "Featured Summit", "date": "2026-11-01", "countryCode": "US", "featured": True},
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        "/api/v1/events",
+        json={"title": "Regular Meetup", "date": "2026-11-02", "countryCode": "US", "featured": False},
+        headers=auth_headers(admin_token),
+    )
+    events = client.get("/api/v1/events?featured=true")
+    assert events.status_code == 200
+    assert [e["title"] for e in events.get_json()["data"]] == ["Featured Summit"]
+
+    client.post(
+        "/api/v1/resources",
+        json={"name": "Featured Guide", "type": "Guide", "price": 0, "currency": "USD", "featured": True},
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        "/api/v1/resources",
+        json={"name": "Regular Guide", "type": "Guide", "price": 0, "currency": "USD", "featured": False},
+        headers=auth_headers(admin_token),
+    )
+    resources = client.get("/api/v1/resources?featured=true")
+    assert resources.status_code == 200
+    assert [r["name"] for r in resources.get_json()["data"]] == ["Featured Guide"]
+
+
 def test_opportunity_and_event_creation_requires_permission(client):
     client.post(
         "/api/v1/auth/register",

@@ -1,9 +1,21 @@
-import { jobs } from '../../mock/jobs'
+import { useEffect, useState } from 'react'
+import { fetchJobs } from '../../api/jobs'
 import JobCard from '../cards/JobCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function JobsModule({ module }) {
-  const items = [...jobs].filter((j) => j.featured).slice(0, module.itemCount || 4)
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchJobs({ featured: true, pageSize: module.itemCount || 4 })
+      .then((res) => active && setItems(res.items))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [module.itemCount])
+
   return (
     <section className="border-t border-taupe-200 bg-cream py-14 sm:py-16">
       <div className="container-editorial">

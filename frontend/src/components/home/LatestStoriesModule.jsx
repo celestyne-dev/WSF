@@ -1,9 +1,21 @@
-import { getLatestArticles } from '../../mock/articles'
+import { useEffect, useState } from 'react'
+import { fetchArticles } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function LatestStoriesModule({ module }) {
-  const items = getLatestArticles(module.itemCount || 8)
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchArticles({ pageSize: module.itemCount || 8 })
+      .then((res) => active && setItems(res.items))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [module.itemCount])
+
   return (
     <section className="py-14 sm:py-16">
       <div className="container-editorial">

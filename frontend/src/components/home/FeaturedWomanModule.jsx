@@ -1,10 +1,22 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Quote } from 'lucide-react'
-import { getPersonBySlug } from '../../mock/people'
+import { fetchPersonBySlug } from '../../api/people'
 import MediaImage from '../ui/MediaImage'
 
 export default function FeaturedWomanModule({ module }) {
-  const person = getPersonBySlug(module.personSlug)
+  const [person, setPerson] = useState(undefined)
+
+  useEffect(() => {
+    let active = true
+    fetchPersonBySlug(module.personSlug)
+      .then((data) => active && setPerson(data))
+      .catch(() => active && setPerson(null))
+    return () => {
+      active = false
+    }
+  }, [module.personSlug])
+
   if (!person) return null
 
   return (

@@ -1,9 +1,21 @@
-import { events } from '../../mock/events'
+import { useEffect, useState } from 'react'
+import { fetchEvents } from '../../api/events'
 import EventCard from '../cards/EventCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function EventsModule({ module }) {
-  const items = [...events].slice(0, module.itemCount || 3)
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchEvents({ pageSize: module.itemCount || 3 })
+      .then((res) => active && setItems(res.items))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [module.itemCount])
+
   return (
     <section className="py-14 sm:py-16">
       <div className="container-editorial">

@@ -1,9 +1,21 @@
-import { resources } from '../../mock/resources'
+import { useEffect, useState } from 'react'
+import { fetchResources } from '../../api/resources'
 import ResourceCard from '../cards/ResourceCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function ResourcesModule({ module }) {
-  const items = [...resources].filter((r) => r.featured).slice(0, module.itemCount || 3)
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchResources({ featured: true, pageSize: module.itemCount || 3 })
+      .then((res) => active && setItems(res.items))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [module.itemCount])
+
   return (
     <section className="border-t border-taupe-200 bg-cream py-14 sm:py-16">
       <div className="container-editorial">

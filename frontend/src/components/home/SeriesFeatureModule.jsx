@@ -1,12 +1,31 @@
-import { getSeriesBySlug } from '../../mock/series'
-import { getArticlesBySeries } from '../../mock/articles'
+import { useEffect, useState } from 'react'
+import { fetchSeriesBySlug } from '../../api/taxonomies'
+import { fetchArticles } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function SeriesFeatureModule({ module }) {
-  const seriesItem = getSeriesBySlug(module.seriesSlug)
+  const [seriesItem, setSeriesItem] = useState(undefined)
+  const [items, setItems] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetchSeriesBySlug(module.seriesSlug)
+      .then((data) => {
+        if (!active) return
+        setSeriesItem(data)
+        if (!data) return
+        fetchArticles({ series: module.seriesSlug, pageSize: module.itemCount || 3 })
+          .then((res) => active && setItems(res.items))
+          .catch(() => {})
+      })
+      .catch(() => active && setSeriesItem(null))
+    return () => {
+      active = false
+    }
+  }, [module.seriesSlug, module.itemCount])
+
   if (!seriesItem) return null
-  const items = getArticlesBySeries(module.seriesSlug).slice(0, module.itemCount || 3)
 
   return (
     <section className="border-t border-taupe-200 bg-cream py-14 sm:py-16">

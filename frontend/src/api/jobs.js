@@ -49,6 +49,7 @@ export async function fetchJobs(params = {}) {
   if (params.careerLevel) results = results.filter((j) => j.careerLevel === params.careerLevel)
   if (params.employmentType) results = results.filter((j) => j.employmentType === params.employmentType)
   if (params.organization) results = results.filter((j) => j.companySlug === params.organization)
+  if (params.featured) results = results.filter((j) => j.featured)
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter((j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q))
