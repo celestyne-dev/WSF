@@ -139,6 +139,18 @@ migrations/         Alembic migration history (flask db migrate/upgrade)
   `currency` on Job, `ticket_price`/`currency` on Event, `price`/
   `currency` on Resource) — never a bare number, and never defaulted to
   any one currency.
+- **Audience/media-kit stats live in `SiteSetting`, not a bespoke model**:
+  `GET /api/v1/partnerships/audience` just reads the `audience_stats` key
+  from the same key/value table Phase 4 built for site settings, and
+  admins update it through the existing `PUT /api/v1/admin/settings` —
+  no separate endpoint, no hard-coded numbers in a React component.
+- **First-touch acquisition on every public form**: newsletter
+  subscribers, story submissions, nominations, and partnership inquiries
+  all accept an `acquisition` JSON blob shaped like
+  `frontend/src/utils/analytics.js`'s `withAcquisitionMetadata` output
+  (UTM params + LinkedIn-referral detection) — the same attribution data
+  captured client-side on article views carries through to every
+  conversion the site cares about, not just page views.
 - **Response casing**: dump schemas currently serialize in the model's
   native snake_case (e.g. `publish_date`, `hero_media`); the input schemas
   already accept the frontend's camelCase (`publishDate`, `heroMediaId`)

@@ -1,11 +1,8 @@
 # SQLAlchemy models live here, one module per domain area. Every module is
 # imported below so Flask-Migrate's autogenerate sees the full metadata.
-# Planned modules beyond Phase 5 (added progressively, phase by phase):
+# Planned modules beyond Phase 6 (added progressively, phase by phase):
 #
-#   community.py     MentorshipApplication, StorySubmission, Nomination
-#   newsletter.py    NewsletterSubscriber, NewsletterIssue
-#   commerce.py      Partner, PartnershipInquiry, Sponsor, Product, Order,
-#                    OrderItem, Transaction
+#   commerce.py additions: Product, Order, OrderItem, Transaction (Phase 7)
 #   advertising.py   Advertisement, AdCampaign, AdPlacement
 #   analytics.py     AnalyticsEvent
 #
@@ -22,6 +19,9 @@ from app.models.article import Article, ArticleRevision, Redirect  # noqa: F401
 from app.models.cms import HomepageModule, Menu, MenuItem, SiteSetting, SocialLink  # noqa: F401
 from app.models.opportunity import Event, Job, Opportunity  # noqa: F401
 from app.models.resource import Resource  # noqa: F401
+from app.models.newsletter import NewsletterIssue, NewsletterSubscriber  # noqa: F401
+from app.models.community import Nomination, StorySubmission  # noqa: F401
+from app.models.commerce import PartnershipInquiry, Sponsor  # noqa: F401
 
 __all__ = [
     "Country",
@@ -51,4 +51,10 @@ __all__ = [
     "Opportunity",
     "Event",
     "Resource",
+    "NewsletterIssue",
+    "NewsletterSubscriber",
+    "Nomination",
+    "StorySubmission",
+    "PartnershipInquiry",
+    "Sponsor",
 ]
