@@ -45,6 +45,7 @@ const AdminArticles = lazy(() => import('../pages/admin/AdminArticles'))
 const AdminArticleEditor = lazy(() => import('../pages/admin/AdminArticleEditor'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
+const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
 const AdminUsers = lazy(() => import('../pages/admin/AdminUsers'))
 const AdminSettings = lazy(() => import('../pages/admin/AdminSettings'))
 const AdminAnalytics = lazy(() => import('../pages/admin/AdminAnalytics'))
@@ -132,7 +133,7 @@ export default function AppRoutes() {
           <Route path="nominations" element={<AdminGenericList section="nominations" />} />
           <Route path="partnerships" element={<AdminGenericList section="partnerships" />} />
           <Route path="advertising" element={<AdminGenericList section="advertising" />} />
-          <Route path="media" element={<AdminGenericList section="media" />} />
+          <Route path="media" element={<AdminMediaLibrary />} />
           <Route path="seo" element={<AdminGenericList section="seo" />} />
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="users" element={<AdminUsers />} />

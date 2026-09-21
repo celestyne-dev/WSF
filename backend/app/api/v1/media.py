@@ -7,7 +7,7 @@ from app.extensions import db
 from app.models.media import Media
 from app.schemas.media import MediaSchema, MediaUpdateSchema
 from app.services.media import MediaService
-from app.utils.filtering import apply_equality_filters
+from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
 
@@ -40,6 +40,7 @@ class MediaListResource(Resource):
     def get(self):
         query = Media.query.order_by(Media.created_at.desc())
         query = apply_equality_filters(query, Media, request.args, ["mime_type", "uploaded_by_id"])
+        query = apply_search(query, Media, request.args, ["original_filename", "alt_text", "caption", "credit"])
         result = paginate(query, media_schema)
         return success_response(result["items"], meta=result["meta"])
 

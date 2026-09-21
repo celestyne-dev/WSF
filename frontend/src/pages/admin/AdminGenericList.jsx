@@ -10,7 +10,6 @@ import {
   fetchNominations,
   fetchPartnershipInquiries,
   fetchAdCampaigns,
-  fetchMediaLibrary,
   fetchRedirects,
 } from '../../api/admin'
 import { fetchArticles } from '../../api/articles'
@@ -18,7 +17,6 @@ import { formatDate, formatCurrency } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatCard from '../../components/cms/StatCard'
 import StatusBadge from '../../components/cms/StatusBadge'
-import MediaImage from '../../components/ui/MediaImage'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { Users, Mail, MousePointerClick } from 'lucide-react'
@@ -144,43 +142,6 @@ function NewsletterSection() {
   )
 }
 
-function MediaSection() {
-  const [items, setItems] = useState(undefined)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let active = true
-    fetchMediaLibrary()
-      .then((data) => active && setItems(data))
-      .catch(() => active && setError('Something went wrong loading the media library. Please try again.'))
-    return () => {
-      active = false
-    }
-  }, [])
-
-  if (error) return <EmptyState title="Couldn't load the media library" description={error} />
-  if (items === undefined) return <PageLoader />
-
-  return (
-    <div>
-      <AdminPageHeader title="Media Library" description="Uploads stored on the Hostinger VPS filesystem, with alt text, captions, and credits managed centrally." />
-      {items.length ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((item) => (
-            <div key={item.id} className="border border-taupe-200 bg-white p-2">
-              <MediaImage mediaPath={item.mediaPath} alt={item.alt} width={400} height={300} aspect={4 / 3} className="aspect-[4/3] w-full object-cover" />
-              <p className="mt-2 truncate text-xs text-charcoal-600">{item.id}</p>
-              <p className="truncate text-xs text-charcoal-600/60">{item.alt}</p>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyState title="No media uploaded yet" />
-      )}
-    </div>
-  )
-}
-
 function SeoSection() {
   const [articles, setArticles] = useState(undefined)
   const [redirects, setRedirects] = useState([])
@@ -275,7 +236,6 @@ function ConfiguredSection({ config }) {
 
 export default function AdminGenericList({ section }) {
   if (section === 'newsletter') return <NewsletterSection />
-  if (section === 'media') return <MediaSection />
   if (section === 'seo') return <SeoSection />
 
   const config = CONFIGS[section]

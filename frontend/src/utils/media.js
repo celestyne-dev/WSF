@@ -93,14 +93,29 @@ function svgPlaceholder(seed, { width = 1200, height = 800, tone } = {}) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
+// A real upload's `mediaPath` is the backend's already-absolute
+// `media.public_url` (e.g. https://womenshapingfutures.org/media/originals/
+// {uuid}.webp, or http://localhost:5000/media/... in dev) — not a bare path
+// to suffix a variant onto. Mock mode's `mediaPath` is a short synthetic key
+// like "articles/my-hero" with no real file behind it, which is what the
+// `-{variant}.webp` convention below and the SVG placeholder fallback exist
+// for. Recognizing the absolute-URL case keeps both call shapes correct
+// through one function without every caller needing to know which mode is
+// active.
+function isAbsoluteUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value)
+}
+
 /**
  * Resolve a media reference to a displayable URL.
- * @param {string} mediaPath - stable identifier, e.g. "articles/my-hero" —
- *   mirrors the path a real upload would live at under MEDIA_URL/MEDIA_ROOT.
+ * @param {string} mediaPath - either a real upload's absolute public_url, or
+ *   (mock mode only) a stable synthetic identifier like "articles/my-hero".
  * @param {object} opts - { width, height, tone }
  */
 export function resolveImage(mediaPath, opts = {}) {
   const { width = 1200, height = 800 } = opts
+  if (!mediaPath) return svgPlaceholder('placeholder', { width, height, tone: opts.tone })
+  if (isAbsoluteUrl(mediaPath)) return mediaPath
   if (MEDIA_BASE_URL) {
     // Real deployment: Nginx serves the pre-generated WebP variant directly
     // from the Hostinger VPS filesystem — Flask is not in this request path.
@@ -111,6 +126,10 @@ export function resolveImage(mediaPath, opts = {}) {
 }
 
 export function resolveSrcSet(mediaPath, { widths = [480, 768, 1024, 1600], aspect = 1.5, tone } = {}) {
+  // A real upload's public_url is one fixed file — there's no synthetic
+  // variant set to build a srcSet from, so omit the attribute and let the
+  // browser use `src` as-is (see MediaImage.jsx).
+  if (isAbsoluteUrl(mediaPath)) return undefined
   return widths
     .map((w) => `${resolveImage(mediaPath, { width: w, height: Math.round(w / aspect), tone })} ${w}w`)
     .join(', ')

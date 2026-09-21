@@ -215,17 +215,6 @@ export async function fetchAdCampaigns() {
   return delay(adCampaigns)
 }
 
-export async function fetchMediaLibrary() {
-  if (!USE_MOCK) {
-    const { data } = await apiClient.get('/media', { params: { pageSize: 24 } })
-    return data.items.map((m) => ({ id: m.id, mediaPath: m.public_url, alt: m.alt_text, caption: m.caption }))
-  }
-  const { articles } = await import('../mock/articles')
-  return delay(
-    articles.slice(0, 6).map((a) => ({ id: a.heroImage, mediaPath: a.heroImage, alt: a.heroImageAlt, caption: a.heroImageCaption })),
-  )
-}
-
 export async function fetchRedirects() {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/redirects', { params: { pageSize: 50 } })

@@ -76,6 +76,33 @@ def test_media_upload_list_patch_and_delete_reference_guard(client, admin_token)
     assert blocked.status_code == 409
 
 
+def test_media_list_search(client, admin_token):
+    client.post(
+        "/api/v1/media/upload",
+        data={"file": (io.BytesIO(_tiny_png()), "team-offsite.png"), "alt_text": "Team at the offsite"},
+        content_type="multipart/form-data",
+        headers=auth_headers(admin_token),
+    )
+    client.post(
+        "/api/v1/media/upload",
+        data={"file": (io.BytesIO(_tiny_png()), "hero-banner.png"), "caption": "Homepage hero"},
+        content_type="multipart/form-data",
+        headers=auth_headers(admin_token),
+    )
+
+    by_filename = client.get("/api/v1/media?q=offsite", headers=auth_headers(admin_token))
+    assert by_filename.status_code == 200
+    assert by_filename.get_json()["meta"]["total"] == 1
+    assert by_filename.get_json()["data"][0]["original_filename"] == "team-offsite.png"
+
+    by_caption = client.get("/api/v1/media?q=hero", headers=auth_headers(admin_token))
+    assert by_caption.get_json()["meta"]["total"] == 1
+    assert by_caption.get_json()["data"][0]["caption"] == "Homepage hero"
+
+    no_match = client.get("/api/v1/media?q=nonexistent", headers=auth_headers(admin_token))
+    assert no_match.get_json()["meta"]["total"] == 0
+
+
 def test_homepage_builder_round_trip(client, admin_token):
     payload = {
         "modules": [

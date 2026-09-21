@@ -7,6 +7,7 @@ import { fetchAuthors, fetchTopics } from '../../api/taxonomies'
 import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
+import MediaPicker from '../../components/cms/MediaPicker'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -27,7 +28,7 @@ function blankForm(defaultAuthorSlug) {
     slug: '',
     subtitle: '',
     excerpt: '',
-    heroImage: '',
+    heroMedia: null,
     authorSlug: defaultAuthorSlug || '',
     topicSlugs: [],
     status: 'draft',
@@ -43,7 +44,9 @@ function toForm(article) {
     slug: article.slug || '',
     subtitle: article.subtitle || '',
     excerpt: article.excerpt || '',
-    heroImage: article.heroImage || '',
+    heroMedia: article.heroMediaId
+      ? { id: article.heroMediaId, mediaPath: article.heroImage, altText: article.heroImageAlt, caption: article.heroImageCaption, credit: article.heroImageCredit }
+      : null,
     authorSlug: article.authorSlug || article.author?.slug || '',
     topicSlugs: article.topicSlugs || [],
     status: article.status || 'draft',
@@ -127,6 +130,9 @@ export default function AdminArticleEditor() {
       slug: form.slug,
       subtitle: form.subtitle || null,
       excerpt: form.excerpt || null,
+      heroMediaId: form.heroMedia?.id || null,
+      heroImageCaption: form.heroMedia?.caption || null,
+      heroImageCredit: form.heroMedia?.credit || null,
       authorSlug: form.authorSlug,
       topicSlugs: form.topicSlugs,
       status: nextStatus,
@@ -201,10 +207,23 @@ export default function AdminArticleEditor() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-              Hero image (media path) <span className="normal-case text-charcoal-600/60">— upload handled by Media Library</span>
-            </label>
-            <input value={form.heroImage} onChange={(e) => updateField('heroImage', e.target.value)} placeholder="articles/my-hero-image" className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+            <MediaPicker label="Hero image" aspect={16 / 9} value={form.heroMedia} onChange={(media) => updateField('heroMedia', media)} />
+            {form.heroMedia && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  placeholder="Caption"
+                  value={form.heroMedia.caption || ''}
+                  onChange={(e) => updateField('heroMedia', { ...form.heroMedia, caption: e.target.value })}
+                  className="border border-taupe-300 px-3 py-2 text-xs focus:border-burgundy-500 focus:outline-none"
+                />
+                <input
+                  placeholder="Credit"
+                  value={form.heroMedia.credit || ''}
+                  onChange={(e) => updateField('heroMedia', { ...form.heroMedia, credit: e.target.value })}
+                  className="border border-taupe-300 px-3 py-2 text-xs focus:border-burgundy-500 focus:outline-none"
+                />
+              </div>
+            )}
           </div>
 
           <div className="border-t border-taupe-200 pt-4">

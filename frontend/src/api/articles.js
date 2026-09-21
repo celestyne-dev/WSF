@@ -52,6 +52,7 @@ function mapArticle(a) {
     subtitle: a.subtitle,
     excerpt: a.excerpt,
     heroImage: a.hero_media?.public_url || null,
+    heroMediaId: a.hero_media?.id || null,
     heroImageAlt: a.hero_media?.alt_text || '',
     heroImageCaption: a.hero_image_caption,
     heroImageCredit: a.hero_image_credit,
