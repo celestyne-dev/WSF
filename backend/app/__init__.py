@@ -28,6 +28,7 @@ def create_app(config_name="development"):
     register_cli(app)
 
     from app.api.v1.admin import admin_bp
+    from app.api.v1.analytics import analytics_bp
     from app.api.v1.articles import articles_bp
     from app.api.v1.authors import authors_bp
     from app.api.v1.auth import auth_bp
@@ -37,11 +38,14 @@ def create_app(config_name="development"):
     from app.api.v1.newsletter import newsletter_bp
     from app.api.v1.nominations import nominations_bp
     from app.api.v1.opportunities import opportunities_bp
+    from app.api.v1.orders import orders_bp
     from app.api.v1.partnerships import partnerships_bp
     from app.api.v1.people import people_bp
+    from app.api.v1.products import products_bp
     from app.api.v1.public import public_bp
     from app.api.v1.redirects import redirects_bp
     from app.api.v1.resources import resources_bp
+    from app.api.v1.search import search_bp
     from app.api.v1.submissions import submissions_bp
     from app.api.v1.taxonomy import categories_bp, series_bp, topics_bp
 
@@ -64,6 +68,10 @@ def create_app(config_name="development"):
     app.register_blueprint(submissions_bp, url_prefix="/api/v1/submissions")
     app.register_blueprint(nominations_bp, url_prefix="/api/v1/nominations")
     app.register_blueprint(partnerships_bp, url_prefix="/api/v1/partnerships")
+    app.register_blueprint(products_bp, url_prefix="/api/v1/products")
+    app.register_blueprint(orders_bp, url_prefix="/api/v1/orders")
+    app.register_blueprint(search_bp, url_prefix="/api/v1/search")
+    app.register_blueprint(analytics_bp, url_prefix="/api/v1/analytics")
 
     @app.get("/api/v1/health")
     def health():

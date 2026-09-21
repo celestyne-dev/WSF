@@ -24,6 +24,7 @@ ROLE_PERMISSIONS = {
         "nominations.manage",
         "newsletter.manage",
         "analytics.view",
+        "orders.manage",
     ],
     "editor": ["articles.manage", "articles.publish", "taxonomy.manage", "people.manage", "media.manage"],
     "author": ["articles.create", "articles.edit_own", "media.upload"],

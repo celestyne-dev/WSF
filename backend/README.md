@@ -151,6 +151,31 @@ migrations/         Alembic migration history (flask db migrate/upgrade)
   (UTM params + LinkedIn-referral detection) — the same attribution data
   captured client-side on article views carries through to every
   conversion the site cares about, not just page views.
+- **`current_user` is a `LocalProxy` — never write `current_user is None`**:
+  it always evaluates `is None`/`is not None` as if it were a real object,
+  even when the wrapped value is `None` (no token, or optional-JWT with no
+  token present). Check truthiness instead (`if not current_user`), which
+  the proxy correctly delegates to the wrapped object. Found this the hard
+  way in `app/auth/decorators.py`, `app/api/v1/articles.py`, and
+  `app/api/v1/orders.py` — all three now use truthiness.
+- **Search** (`GET /api/v1/search?q=&type=`) mirrors
+  `frontend/src/api/search.js`'s `globalSearch` result shape exactly
+  (`resultType`/`title`/`excerpt`/`url`/`image`) so Phase 8 can swap the
+  mock implementation for a real request with no shape changes downstream.
+- **Analytics ingestion is intentionally public**: `POST
+  /api/v1/analytics/events` accepts anonymous requests (most
+  `trackEvent()` calls fire before/without login) and only attaches a
+  `user_id` when a valid token happens to be present
+  (`verify_jwt_in_request(optional=True)`). Reading events back
+  (`GET /events`, `GET /summary`) requires `analytics.view`.
+- **Guest checkout**: `Order.user_id` is nullable — `POST /api/v1/orders`
+  needs only an email. A guest order's UUID *is* its access control (same
+  as any order-confirmation link); a logged-in order is visible only to
+  its owner or `orders.manage` staff. Payment gateway integration
+  (M-Pesa Daraja/STK Push, per `MPESA_*` in `config.py`) isn't wired up —
+  orders are created `pending_payment` and moved to `paid` through
+  `PATCH /api/v1/orders/{uuid}/status`, which a real payment webhook would
+  call once that service exists.
 - **Response casing**: dump schemas currently serialize in the model's
   native snake_case (e.g. `publish_date`, `hero_media`); the input schemas
   already accept the frontend's camelCase (`publishDate`, `heroMediaId`)

@@ -49,6 +49,7 @@ class Media(db.Model):
         existence check here.
         """
         from app.models.article import Article
+        from app.models.commerce import Product
         from app.models.opportunity import Event, Job, Opportunity
         from app.models.people import Author, Organization, Person
         from app.models.resource import Resource
@@ -66,6 +67,7 @@ class Media(db.Model):
             (Opportunity, "logo_media_id"),
             (Event, "cover_media_id"),
             (Resource, "cover_media_id"),
+            (Product, "cover_media_id"),
         )
         return any(model.query.filter_by(**{field: self.id}).first() is not None for model, field in checks)
 

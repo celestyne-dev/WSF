@@ -7,7 +7,11 @@ from app.utils.responses import error_response
 
 def _require_active_user():
     verify_jwt_in_request()
-    if current_user is None or not current_user.is_active:
+    # current_user is a LocalProxy — `is None` is always False even when it
+    # wraps None (e.g. the JWT's user was deleted after the token was
+    # issued), so check truthiness instead, which the proxy correctly
+    # delegates to the wrapped object.
+    if not current_user or not current_user.is_active:
         return error_response("Account is inactive or no longer exists.", 403, code="forbidden")
     return None
 

@@ -24,7 +24,10 @@ article_schema = ArticleSchema()
 
 def _require_active_user():
     verify_jwt_in_request()
-    if current_user is None or not current_user.is_active:
+    # current_user is a LocalProxy — `is None` is always False even when it
+    # wraps None, so check truthiness instead (correctly delegated to the
+    # wrapped object by the proxy).
+    if not current_user or not current_user.is_active:
         raise ApiError("Account is inactive or no longer exists.", 403, code="forbidden")
     return current_user
 
