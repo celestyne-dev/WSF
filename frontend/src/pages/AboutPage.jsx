@@ -1,4 +1,5 @@
 import { authors } from '../mock/authors'
+import { audienceStats } from '../mock/admin'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import MediaImage from '../components/ui/MediaImage'
@@ -15,7 +16,7 @@ export default function AboutPage() {
       <PageHeader
         eyebrow="About Us"
         title="A platform built to move women forward"
-        description="Women Shaping Futures started in 2019 as a small Instagram page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching more than 130,000 people."
+        description={`Women Shaping Futures started in 2019 as a small LinkedIn page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching more than ${new Intl.NumberFormat('en-US').format(audienceStats.linkedinFollowers)} people across ${audienceStats.countriesReached} countries, with particularly strong readership in the United States.`}
       />
 
       <div className="container-editorial max-w-reading py-14">

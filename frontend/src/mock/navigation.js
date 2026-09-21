@@ -23,11 +23,12 @@ export const primaryNavigation = [
     visible: true,
     children: [
       { id: 'n3a', label: 'Leadership', url: '/topics/leadership' },
-      { id: 'n3b', label: 'Careers', url: '/topics/careers' },
-      { id: 'n3c', label: 'Entrepreneurship', url: '/topics/entrepreneurship' },
-      { id: 'n3d', label: 'Money', url: '/topics/money' },
-      { id: 'n3e', label: 'Women in STEM', url: '/topics/women-in-stem' },
-      { id: 'n3f', label: 'All Topics', url: '/topics' },
+      { id: 'n3b', label: 'Career', url: '/topics/careers' },
+      { id: 'n3c', label: 'Business', url: '/topics/business' },
+      { id: 'n3d', label: 'Entrepreneurship', url: '/topics/entrepreneurship' },
+      { id: 'n3e', label: 'Workplace', url: '/topics/workplace' },
+      { id: 'n3f', label: 'Personal Growth', url: '/topics/personal-growth' },
+      { id: 'n3g', label: 'All Topics', url: '/topics' },
     ],
   },
   {

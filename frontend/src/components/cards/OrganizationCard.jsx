@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
+import { getCountryName } from '../../mock/geography'
 
 export default function OrganizationCard({ organization }) {
   if (!organization) return null
@@ -21,7 +22,7 @@ export default function OrganizationCard({ organization }) {
           {organization.name}
         </h3>
         <p className="text-sm text-charcoal-600">
-          {organization.industry} &middot; {organization.country}
+          {organization.industry} &middot; {getCountryName(organization.countryCode)}
         </p>
         <p className="mt-1 line-clamp-1 text-sm text-charcoal-600">{organization.description}</p>
       </div>

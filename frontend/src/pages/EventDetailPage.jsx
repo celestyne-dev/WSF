@@ -4,6 +4,7 @@ import { getEventBySlug } from '../mock/events'
 import { getPersonBySlug } from '../mock/people'
 import { getOrganizationBySlug } from '../mock/organizations'
 import { formatDate, formatCurrency } from '../utils/format'
+import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -86,7 +87,11 @@ export default function EventDetailPage() {
                 {formatCurrency(event.ticketPrice, event.currency)}
               </li>
             </ul>
-            <a href={event.registrationUrl} className="btn-primary mt-5 flex w-full">
+            <a
+              href={event.registrationUrl}
+              onClick={() => trackEvent('event_registration_click', { eventSlug: event.slug })}
+              className="btn-primary mt-5 flex w-full"
+            >
               {event.ticketPrice ? 'Get tickets' : 'Register free'}
             </a>
           </div>

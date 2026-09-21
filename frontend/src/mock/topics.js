@@ -1,32 +1,87 @@
+// Editorial topic taxonomy. Women Shaping Futures covers leadership,
+// career, business, and personal-growth content — areas where we can offer
+// strong editorial, educational, and inspirational value without acting as
+// a specialist professional service. We deliberately do not run verticals
+// that would require clinical, legal, tax, or regulated financial
+// credentials (medical/health advice, legal advice, tax advice, or
+// individualized investment recommendations).
+//
+// The CMS can add, rename, or retire topics without any frontend code
+// change — this list stands in for a `Topic` database table.
+
 export const topics = [
   {
     id: 't1',
     slug: 'leadership',
     name: 'Leadership',
     description:
-      'How women are leading teams, companies, movements, and countries — and rewriting the rules as they go.',
+      'Leadership journeys, communication, managing teams, and the lessons of women leading organizations around the world.',
     articleCount: 42,
   },
   {
     id: 't2',
     slug: 'careers',
-    name: 'Careers',
-    description: 'Career moves, negotiation, promotions, career pivots, and the everyday work of building a working life.',
+    name: 'Career',
+    description:
+      'Career development, job search, interviews, personal branding, promotions, career transitions, and returning to work.',
     articleCount: 63,
+  },
+  {
+    id: 't9',
+    slug: 'business',
+    name: 'Business',
+    description: 'Running and growing a business — marketing, customer growth, pricing, and the everyday lessons of building something.',
+    articleCount: 31,
   },
   {
     id: 't3',
     slug: 'entrepreneurship',
     name: 'Entrepreneurship',
-    description: 'Founders, funding, first hires, and the realities of building a business from nothing.',
+    description: 'Founders, funding, first hires, and the realities of building a company from nothing.',
     articleCount: 51,
+  },
+  {
+    id: 't7',
+    slug: 'workplace',
+    name: 'Workplace',
+    description: 'Workplace culture, communication, professional relationships, and navigating the environments women work in.',
+    articleCount: 37,
+  },
+  {
+    id: 't11',
+    slug: 'personal-growth',
+    name: 'Personal Growth',
+    description: 'Confidence, resilience, purpose, habits, and the transitions — planned or not — that reshape a career or a life.',
+    articleCount: 28,
   },
   {
     id: 't4',
     slug: 'money',
     name: 'Money',
-    description: 'Investing, negotiating pay, building wealth, and closing the financial confidence gap.',
+    description:
+      'General career-economics education — salary negotiation, understanding compensation, asking for a raise, and business pricing. Not individualized investment, tax, or regulated financial advice.',
     articleCount: 29,
+  },
+  {
+    id: 't12',
+    slug: 'opportunities',
+    name: 'Opportunities',
+    description: 'Editorial coverage of the jobs, scholarships, fellowships, grants, and programmes worth knowing about.',
+    articleCount: 18,
+  },
+  {
+    id: 't6',
+    slug: 'women-impact',
+    name: 'Women & Impact',
+    description: 'Women Doing Incredible Things, Women Leading Organizations, Founder Stories, Community Impact, and voices from around the world.',
+    articleCount: 33,
+  },
+  {
+    id: 't8',
+    slug: 'women-founders',
+    name: 'Women Founders',
+    description: 'Founder journeys — the pitch that worked, the year that almost broke the company, and what came after.',
+    articleCount: 19,
   },
   {
     id: 't5',
@@ -34,34 +89,6 @@ export const topics = [
     name: 'Women in STEM',
     description: 'Scientists, engineers, and technologists changing what a career in STEM can look like.',
     articleCount: 24,
-  },
-  {
-    id: 't6',
-    slug: 'wellness',
-    name: 'Wellness',
-    description: 'Sustainable ambition — rest, boundaries, and the health habits that make a demanding life possible.',
-    articleCount: 33,
-  },
-  {
-    id: 't7',
-    slug: 'workplace',
-    name: 'Workplace',
-    description: 'Culture, management, difficult conversations, and what actually makes a workplace work for women.',
-    articleCount: 37,
-  },
-  {
-    id: 't8',
-    slug: 'social-impact',
-    name: 'Social Impact',
-    description: 'Women building organizations, policy, and movements to change their communities and countries.',
-    articleCount: 21,
-  },
-  {
-    id: 't9',
-    slug: 'women-founders',
-    name: 'Women Founders',
-    description: 'Founder journeys — the pitch that worked, the year that almost broke the company, and what came after.',
-    articleCount: 19,
   },
   {
     id: 't10',

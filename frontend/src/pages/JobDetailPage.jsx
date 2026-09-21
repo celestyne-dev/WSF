@@ -3,6 +3,7 @@ import { MapPin, Briefcase, Clock, DollarSign } from 'lucide-react'
 import { getJobBySlug } from '../mock/jobs'
 import { jobs } from '../mock/jobs'
 import { formatSalary, formatDate } from '../utils/format'
+import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -21,6 +22,10 @@ export default function JobDetailPage() {
     description: job.description,
     canonical: `https://womenshapingfutures.org/jobs/${job.slug}`,
   })
+
+  function handleApplyClick() {
+    trackEvent('job_apply_click', { jobSlug: job.slug, company: job.company })
+  }
 
   return (
     <div>
@@ -48,7 +53,7 @@ export default function JobDetailPage() {
               <Clock size={15} /> Apply by {formatDate(job.deadline)}
             </span>
           </div>
-          <a href={job.applicationUrl} target="_blank" rel="noreferrer" className="btn-primary mt-6 inline-flex">
+          <a href={job.applicationUrl} target="_blank" rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-6 inline-flex">
             Apply for this role
           </a>
         </div>
@@ -82,7 +87,7 @@ export default function JobDetailPage() {
           <div className="mt-8 border border-taupe-200 bg-cream p-5">
             <p className="text-sm font-semibold text-charcoal">How to apply</p>
             <p className="mt-1 text-sm text-charcoal-600">{job.applicationInstructions}</p>
-            <a href={job.applicationUrl} target="_blank" rel="noreferrer" className="btn-primary mt-4 inline-flex">
+            <a href={job.applicationUrl} target="_blank" rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-4 inline-flex">
               Apply now
             </a>
           </div>

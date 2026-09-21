@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { jobs } from '../mock/jobs'
 import { getJobsFilterOptions } from '../api/jobs'
+import { matchesCountry, matchesRegion } from '../mock/geography'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
@@ -9,6 +10,7 @@ import EmptyState from '../components/ui/EmptyState'
 
 export default function JobsListingPage() {
   const [country, setCountry] = useState('')
+  const [region, setRegion] = useState('')
   const [industry, setIndustry] = useState('')
   const [workMode, setWorkMode] = useState('')
   const [careerLevel, setCareerLevel] = useState('')
@@ -16,13 +18,14 @@ export default function JobsListingPage() {
 
   useSeo({
     title: 'Jobs for Women | Women Shaping Futures',
-    description: 'Curated job openings from employers committed to hiring and advancing women across Africa.',
+    description: 'Curated job openings from employers committed to hiring and advancing women, worldwide and remote.',
     canonical: 'https://womenshapingfutures.org/jobs',
   })
 
   const filtered = jobs.filter(
     (j) =>
-      (!country || j.country === country) &&
+      (!country || matchesCountry(j.countryCode, country)) &&
+      (!region || matchesRegion(j.countryCode, region)) &&
       (!industry || j.industry === industry) &&
       (!workMode || j.workMode === workMode) &&
       (!careerLevel || j.careerLevel === careerLevel),
@@ -30,9 +33,10 @@ export default function JobsListingPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Opportunity" title="Jobs" description="Roles from employers we've vetted for pay transparency and growth potential. New listings added weekly." />
+      <PageHeader eyebrow="Opportunity" title="Jobs" description="Roles from employers we've vetted for pay transparency and growth potential — worldwide, remote, and hybrid. New listings added weekly." />
       <div className="container-editorial py-10">
         <div className="flex flex-wrap items-end gap-4 border-b border-taupe-200 pb-8">
+          <FilterSelect label="Region" value={region} onChange={setRegion} options={options.regions} />
           <FilterSelect label="Country" value={country} onChange={setCountry} options={options.countries} />
           <FilterSelect label="Industry" value={industry} onChange={setIndustry} options={options.industries} />
           <FilterSelect label="Work Mode" value={workMode} onChange={setWorkMode} options={options.workModes} />

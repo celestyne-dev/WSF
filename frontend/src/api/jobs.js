@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { jobs, getJobBySlug as findBySlug } from '../mock/jobs'
+import { countryFilterOptions, regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 
 export async function fetchJobs(params = {}) {
   if (!USE_MOCK) {
@@ -8,7 +9,8 @@ export async function fetchJobs(params = {}) {
     return data
   }
   let results = [...jobs]
-  if (params.country) results = results.filter((j) => j.country === params.country)
+  if (params.country) results = results.filter((j) => matchesCountry(j.countryCode, params.country))
+  if (params.region) results = results.filter((j) => matchesRegion(j.countryCode, params.region))
   if (params.industry) results = results.filter((j) => j.industry === params.industry)
   if (params.workMode) results = results.filter((j) => j.workMode === params.workMode)
   if (params.careerLevel) results = results.filter((j) => j.careerLevel === params.careerLevel)
@@ -31,7 +33,8 @@ export async function fetchJobBySlug(slug) {
 
 export function getJobsFilterOptions() {
   return {
-    countries: [...new Set(jobs.map((j) => j.country))].sort(),
+    countries: countryFilterOptions(jobs.map((j) => j.countryCode)),
+    regions: regionFilterOptions(),
     industries: [...new Set(jobs.map((j) => j.industry))].sort(),
     workModes: [...new Set(jobs.map((j) => j.workMode))].sort(),
     careerLevels: [...new Set(jobs.map((j) => j.careerLevel))],

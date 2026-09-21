@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { people } from '../mock/people'
 import { getPeopleFilterOptions } from '../api/people'
+import { matchesCountry, matchesRegion } from '../mock/geography'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
@@ -9,28 +10,31 @@ import EmptyState from '../components/ui/EmptyState'
 
 export default function PeopleDirectoryPage() {
   const [country, setCountry] = useState('')
+  const [region, setRegion] = useState('')
   const [industry, setIndustry] = useState('')
   const [expertise, setExpertise] = useState('')
   const options = useMemo(() => getPeopleFilterOptions(), [])
 
   useSeo({
     title: 'People Directory | Women Shaping Futures',
-    description: 'Discover the women leading business, science, government, and culture across Africa and the diaspora.',
+    description: 'Discover the women leading business, science, government, and culture around the world.',
     canonical: 'https://womenshapingfutures.org/people',
   })
 
   const filtered = people.filter(
     (p) =>
-      (!country || p.country === country) &&
+      (!country || matchesCountry(p.countryCode, country)) &&
+      (!region || matchesRegion(p.countryCode, region)) &&
       (!industry || p.industry === industry) &&
       (!expertise || p.expertise.includes(expertise)),
   )
 
   return (
     <div>
-      <PageHeader eyebrow="People" title="The People Directory" description="Founders, executives, scientists, and public servants — the women building the future, profiled by WSF." />
+      <PageHeader eyebrow="People" title="The People Directory" description="Founders, executives, scientists, and public servants — the women building the future, profiled by WSF, from every region." />
       <div className="container-editorial py-10">
         <div className="flex flex-wrap items-end gap-4 border-b border-taupe-200 pb-8">
+          <FilterSelect label="Region" value={region} onChange={setRegion} options={options.regions} />
           <FilterSelect label="Country" value={country} onChange={setCountry} options={options.countries} />
           <FilterSelect label="Industry" value={industry} onChange={setIndustry} options={options.industries} />
           <FilterSelect label="Expertise" value={expertise} onChange={setExpertise} options={options.expertise} />

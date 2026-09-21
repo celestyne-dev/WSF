@@ -1,6 +1,7 @@
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import NewsletterForm from '../components/ui/NewsletterForm'
+import { audienceStats } from '../mock/admin'
 
 const FEATURES = [
   'Member profiles and a searchable member directory',
@@ -19,7 +20,11 @@ export default function CommunityPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Community" title="The WSF Community" description="More than 130,000 women follow Women Shaping Futures across social media. We're building a home for that community on our own platform." />
+      <PageHeader
+        eyebrow="Community"
+        title="The WSF Community"
+        description={`More than ${new Intl.NumberFormat('en-US').format(audienceStats.linkedinFollowers)} women follow Women Shaping Futures on LinkedIn and beyond. We're building a home for that community on our own platform.`}
+      />
       <div className="container-editorial grid grid-cols-1 gap-10 py-14 lg:grid-cols-2">
         <div>
           <h2 className="font-serif text-2xl font-semibold text-charcoal">What's coming</h2>

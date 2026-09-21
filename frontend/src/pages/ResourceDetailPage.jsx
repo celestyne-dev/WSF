@@ -1,8 +1,10 @@
 import { useParams } from 'react-router-dom'
+import { toast } from 'react-toastify'
 import { Download, Lock } from 'lucide-react'
 import { getResourceBySlug, resources } from '../mock/resources'
 import { getAuthorBySlug } from '../mock/authors'
 import { formatCurrency } from '../utils/format'
+import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -23,6 +25,11 @@ export default function ResourceDetailPage() {
     canonical: `https://womenshapingfutures.org/resources/${resource.slug}`,
   })
 
+  function handleDownloadClick() {
+    trackEvent('resource_download_click', { resourceSlug: resource.slug, isPremium: resource.isPremium })
+    toast.success(resource.isPremium ? 'Redirecting to checkout…' : 'Your download will begin shortly.')
+  }
+
   return (
     <div>
       <div className="container-editorial pt-6">
@@ -38,7 +45,7 @@ export default function ResourceDetailPage() {
           <p className="mt-4 font-serif text-2xl font-semibold text-charcoal">
             {resource.isPremium ? formatCurrency(resource.price, resource.currency) : 'Free'}
           </p>
-          <button type="button" className="btn-primary mt-5 inline-flex">
+          <button type="button" onClick={handleDownloadClick} className="btn-primary mt-5 inline-flex">
             {resource.isPremium ? <Lock size={16} /> : <Download size={16} />}
             {resource.isPremium ? 'Unlock resource' : 'Download now'}
           </button>

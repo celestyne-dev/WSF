@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { ArrowRight } from 'lucide-react'
 import { subscribe, resetNewsletterStatus } from '../../features/newsletter/newsletterSlice'
+import { withAcquisitionMetadata } from '../../utils/analytics'
 
 export default function NewsletterForm({ variant = 'light', source = 'inline' }) {
   const [email, setEmail] = useState('')
@@ -17,7 +18,9 @@ export default function NewsletterForm({ variant = 'light', source = 'inline' })
       toast.error('Please enter a valid email address.')
       return
     }
-    const result = await dispatch(subscribe({ email, source, consentTimestamp: new Date().toISOString() }))
+    const result = await dispatch(
+      subscribe(withAcquisitionMetadata({ email, placement: source, consentTimestamp: new Date().toISOString() })),
+    )
     if (result.meta.requestStatus === 'fulfilled') {
       toast.success(result.payload.message)
       setEmail('')

@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { people, getPersonBySlug as findBySlug } from '../mock/people'
+import { countryFilterOptions, regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 
 export async function fetchPeople(params = {}) {
   if (!USE_MOCK) {
@@ -8,7 +9,8 @@ export async function fetchPeople(params = {}) {
     return data
   }
   let results = [...people]
-  if (params.country) results = results.filter((p) => p.country === params.country)
+  if (params.country) results = results.filter((p) => matchesCountry(p.countryCode, params.country))
+  if (params.region) results = results.filter((p) => matchesRegion(p.countryCode, params.region))
   if (params.industry) results = results.filter((p) => p.industry === params.industry)
   if (params.expertise) results = results.filter((p) => p.expertise.includes(params.expertise))
   if (params.series) results = results.filter((p) => p.seriesSlugs.includes(params.series))
@@ -30,7 +32,8 @@ export async function fetchPersonBySlug(slug) {
 
 export function getPeopleFilterOptions() {
   return {
-    countries: [...new Set(people.map((p) => p.country))].sort(),
+    countries: countryFilterOptions(people.map((p) => p.countryCode)),
+    regions: regionFilterOptions(),
     industries: [...new Set(people.map((p) => p.industry))].sort(),
     expertise: [...new Set(people.flatMap((p) => p.expertise))].sort(),
   }

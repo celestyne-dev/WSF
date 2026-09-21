@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { toast } from 'react-toastify'
 import { submitStory } from '../api/site'
+import { withAcquisitionMetadata, trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
+import CountrySelect from '../components/ui/CountrySelect'
 
-const initialForm = { name: '', email: '', title: '', body: '', links: '', consent: false, terms: false }
+const initialForm = { name: '', email: '', countryCode: '', title: '', body: '', links: '', consent: false, terms: false }
 
 export default function SubmitStoryPage() {
   const [form, setForm] = useState(initialForm)
@@ -24,9 +26,10 @@ export default function SubmitStoryPage() {
       return
     }
     setSubmitting(true)
-    const result = await submitStory(form)
+    const result = await submitStory(withAcquisitionMetadata(form))
     setSubmitting(false)
     if (result.success) {
+      trackEvent('story_submitted')
       setSubmitted(true)
       toast.success(result.message)
     }
@@ -50,6 +53,7 @@ export default function SubmitStoryPage() {
           <input required placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
           <input required type="email" placeholder="Your email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
         </div>
+        <CountrySelect required value={form.countryCode} onChange={(countryCode) => setForm({ ...form, countryCode })} placeholder="Your country" />
         <input required placeholder="Story title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
         <textarea required placeholder="Tell your story (500-1500 words)" rows={10} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
         <input placeholder="Relevant links (LinkedIn, website, press)" value={form.links} onChange={(e) => setForm({ ...form, links: e.target.value })} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />

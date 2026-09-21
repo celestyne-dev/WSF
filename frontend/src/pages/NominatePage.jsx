@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { toast } from 'react-toastify'
 import { submitNomination } from '../api/site'
+import { withAcquisitionMetadata, trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
+import CountrySelect from '../components/ui/CountrySelect'
 
 const CATEGORIES = ['Women to Watch', 'Women Doing Incredible Things', 'Founder Stories', 'Leadership Features', 'WSF Awards']
 
 const initialForm = {
   nomineeName: '',
-  country: '',
+  countryCode: '',
   profession: '',
   organization: '',
   achievements: '',
@@ -38,9 +40,10 @@ export default function NominatePage() {
       return
     }
     setSubmitting(true)
-    const result = await submitNomination(form)
+    const result = await submitNomination(withAcquisitionMetadata(form))
     setSubmitting(false)
     if (result.success) {
+      trackEvent('nomination_submitted', { category: form.category })
       setSubmitted(true)
       toast.success(result.message)
     }
@@ -68,7 +71,7 @@ export default function NominatePage() {
         <h2 className="pt-2 font-serif text-lg font-semibold text-charcoal">About the nominee</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <input required placeholder="Nominee name" value={form.nomineeName} onChange={(e) => setForm({ ...form, nomineeName: e.target.value })} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-          <input required placeholder="Country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+          <CountrySelect required value={form.countryCode} onChange={(countryCode) => setForm({ ...form, countryCode })} placeholder="Nominee's country" />
           <input placeholder="Profession" value={form.profession} onChange={(e) => setForm({ ...form, profession: e.target.value })} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
           <input placeholder="Organization" value={form.organization} onChange={(e) => setForm({ ...form, organization: e.target.value })} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
         </div>

@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom'
 import { Globe } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
 import { getOrganizationBySlug } from '../mock/organizations'
+import { getCountryName } from '../mock/geography'
 import { jobs } from '../mock/jobs'
 import { opportunities } from '../mock/opportunities'
 import { people } from '../mock/people'
@@ -38,7 +39,7 @@ export default function OrganizationDetailPage() {
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{org.name}</h1>
               <p className="mt-1 text-base text-charcoal-600">
-                {org.industry} &middot; {org.country} &middot; {org.type}
+                {org.industry} &middot; {getCountryName(org.countryCode)} &middot; {org.type}
               </p>
               <div className="mt-3 flex gap-4">
                 {org.website && (

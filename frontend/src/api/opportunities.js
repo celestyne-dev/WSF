@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { opportunities, getOpportunityBySlug as findBySlug } from '../mock/opportunities'
+import { countryFilterOptions, regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 
 export async function fetchOpportunities(params = {}) {
   if (!USE_MOCK) {
@@ -9,7 +10,8 @@ export async function fetchOpportunities(params = {}) {
   }
   let results = [...opportunities]
   if (params.type) results = results.filter((o) => o.type === params.type)
-  if (params.country) results = results.filter((o) => o.countriesEligible.includes(params.country))
+  if (params.country) results = results.filter((o) => matchesCountry(o.countriesEligible, params.country))
+  if (params.region) results = results.filter((o) => matchesRegion(o.countriesEligible, params.region))
   if (params.topic) results = results.filter((o) => o.topicSlugs.includes(params.topic))
   if (params.query) {
     const q = params.query.toLowerCase()
@@ -30,6 +32,7 @@ export async function fetchOpportunityBySlug(slug) {
 export function getOpportunityFilterOptions() {
   return {
     types: [...new Set(opportunities.map((o) => o.type))],
-    countries: [...new Set(opportunities.flatMap((o) => o.countriesEligible))].sort(),
+    countries: countryFilterOptions(opportunities.flatMap((o) => o.countriesEligible)),
+    regions: regionFilterOptions(),
   }
 }

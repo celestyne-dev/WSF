@@ -6,6 +6,7 @@ import { resources } from '../../mock/resources'
 import { newsletterIssues, newsletterStats } from '../../mock/newsletter'
 import { storySubmissions, nominations, partnershipInquiries, adCampaigns } from '../../mock/admin'
 import { articles } from '../../mock/articles'
+import { getCountryName } from '../../mock/geography'
 import { formatDate, formatCurrency } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatCard from '../../components/cms/StatCard'
@@ -18,7 +19,7 @@ const CONFIGS = {
     title: 'People',
     description: 'Profiles shown in the People Directory.',
     columns: ['Name', 'Title', 'Organization', 'Country', 'Featured'],
-    rows: people.map((p) => [p.name, p.title, p.organization, p.country, p.featured ? 'Yes' : '—']),
+    rows: people.map((p) => [p.name, p.title, p.organization, getCountryName(p.countryCode), p.featured ? 'Yes' : '—']),
   },
   jobs: {
     title: 'Jobs',
@@ -47,14 +48,14 @@ const CONFIGS = {
   submissions: {
     title: 'Story Submissions',
     description: 'Reader-submitted stories awaiting editorial review.',
-    columns: ['Name', 'Title', 'Submitted', 'Status'],
-    rows: storySubmissions.map((s) => [s.name, s.title, formatDate(s.submittedAt), <StatusBadge key={s.id} status={s.status} />]),
+    columns: ['Name', 'Country', 'Title', 'Submitted', 'Status'],
+    rows: storySubmissions.map((s) => [s.name, getCountryName(s.countryCode), s.title, formatDate(s.submittedAt), <StatusBadge key={s.id} status={s.status} />]),
   },
   nominations: {
     title: 'Nominations',
     description: 'Reader nominations for Women to Watch and other features.',
-    columns: ['Nominee', 'Category', 'Submitted', 'Status'],
-    rows: nominations.map((n) => [n.nomineeName, n.category, formatDate(n.submittedAt), <StatusBadge key={n.id} status={n.status} />]),
+    columns: ['Nominee', 'Country', 'Category', 'Submitted', 'Status'],
+    rows: nominations.map((n) => [n.nomineeName, getCountryName(n.countryCode), n.category, formatDate(n.submittedAt), <StatusBadge key={n.id} status={n.status} />]),
   },
   partnerships: {
     title: 'Partnership Inquiries',

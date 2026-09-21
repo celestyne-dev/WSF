@@ -2,21 +2,18 @@ import { useState } from 'react'
 import { toast } from 'react-toastify'
 import { Download } from 'lucide-react'
 import { submitPartnershipInquiry } from '../api/site'
+import { audienceStats } from '../mock/admin'
+import { withAcquisitionMetadata, trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 
-const AUDIENCE_STATS = [
-  { label: 'Social followers', value: '130,000+' },
-  { label: 'Newsletter subscribers', value: '34,000+' },
-  { label: 'Monthly page views', value: '810,000+' },
-  { label: 'Countries reached', value: '42' },
-]
+const fmt = (n) => new Intl.NumberFormat('en-US').format(n)
 
 const FORMATS = [
   { title: 'Sponsored Editorial', description: 'A commissioned story or profile, clearly labeled, written in our editorial voice.' },
   { title: 'Sponsored Series', description: 'Co-brand an ongoing series like Founder Stories with your organization.' },
-  { title: 'Newsletter Sponsorship', description: 'A dedicated placement in WSF Weekly, reaching 34,000+ engaged subscribers.' },
-  { title: 'Social Media Campaigns', description: 'Custom content across our 130,000+ follower social audience.' },
+  { title: 'Newsletter Sponsorship', description: `A dedicated placement in WSF Weekly, reaching ${fmt(audienceStats.newsletterSubscribers)}+ engaged subscribers.` },
+  { title: 'Social Media Campaigns', description: `Custom content across our ${fmt(audienceStats.linkedinFollowers)}+ follower LinkedIn audience.` },
   { title: 'Employer Branding', description: 'Featured job placements and employer profile pages for talent attraction.' },
   { title: 'Event Sponsorship', description: 'Brand presence at the Women in Leadership Summit and WSF webinars.' },
   { title: 'Sponsored Resources', description: 'Co-branded guides, templates, and worksheets in our resource library.' },
@@ -36,30 +33,74 @@ export default function PartnershipsPage() {
   async function handleSubmit(e) {
     e.preventDefault()
     setSubmitting(true)
-    const result = await submitPartnershipInquiry(form)
+    const result = await submitPartnershipInquiry(withAcquisitionMetadata(form))
     setSubmitting(false)
     if (result.success) {
+      trackEvent('partnership_inquiry_submitted', { interest: form.interest })
       toast.success(result.message)
       setForm({ company: '', contactName: '', email: '', interest: 'Sponsored editorial content', message: '' })
     }
   }
 
+  const stats = [
+    { label: 'LinkedIn followers', value: `${fmt(audienceStats.linkedinFollowers)}+` },
+    { label: 'Newsletter subscribers', value: `${fmt(audienceStats.newsletterSubscribers)}+` },
+    { label: 'Monthly page views', value: `${fmt(audienceStats.monthlyPageViews)}+` },
+    { label: 'Countries reached', value: `${audienceStats.countriesReached}` },
+  ]
+
   return (
     <div>
-      <PageHeader eyebrow="Partnerships" title="Reach Women Shaping the Future" description="Partner with a trusted editorial platform read by ambitious, career-driven women across Africa and the diaspora.">
-        <a href="#media-kit" className="btn-primary mt-6 inline-flex">
+      <PageHeader eyebrow="Partnerships" title="Reach Women Shaping the Future" description="Partner with a trusted editorial platform read by ambitious, career-driven women around the world, with particularly strong readership in the United States.">
+        <a href="#media-kit" className="btn-primary mt-6 inline-flex" onClick={() => trackEvent('media_kit_request_click')}>
           <Download size={16} /> Request our media kit
         </a>
       </PageHeader>
 
       <div className="container-editorial py-14">
         <div className="grid grid-cols-2 gap-6 border-b border-taupe-200 pb-14 sm:grid-cols-4">
-          {AUDIENCE_STATS.map((s) => (
+          {stats.map((s) => (
             <div key={s.label} className="text-center">
               <p className="font-serif text-3xl font-semibold text-burgundy-600 sm:text-4xl">{s.value}</p>
               <p className="mt-1 text-xs uppercase tracking-wide text-charcoal-600">{s.label}</p>
             </div>
           ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-10 border-b border-taupe-200 py-14 sm:grid-cols-3">
+          <div>
+            <h3 className="font-serif text-lg font-semibold text-charcoal">Audience Geography</h3>
+            <ul className="mt-4 space-y-2">
+              {audienceStats.audienceGeography.map((g) => (
+                <li key={g.region} className="flex items-center justify-between text-sm text-charcoal-600">
+                  <span>{g.region}</span>
+                  <span className="font-semibold text-charcoal">{g.percent}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="font-serif text-lg font-semibold text-charcoal">Audience Industries</h3>
+            <ul className="mt-4 space-y-2">
+              {audienceStats.audienceIndustries.map((g) => (
+                <li key={g.name} className="flex items-center justify-between text-sm text-charcoal-600">
+                  <span>{g.name}</span>
+                  <span className="font-semibold text-charcoal">{g.percent}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="font-serif text-lg font-semibold text-charcoal">Audience Seniority</h3>
+            <ul className="mt-4 space-y-2">
+              {audienceStats.audienceSeniority.map((g) => (
+                <li key={g.level} className="flex items-center justify-between text-sm text-charcoal-600">
+                  <span>{g.level}</span>
+                  <span className="font-semibold text-charcoal">{g.percent}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         <div className="py-14">

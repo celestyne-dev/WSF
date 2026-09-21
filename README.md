@@ -31,11 +31,11 @@ women-shaping-futures/
 │   │   ├── features/            # Redux slices, grouped by domain
 │   │   ├── hooks/                # useSeo, etc.
 │   │   ├── layouts/              # PublicLayout, AdminLayout
-│   │   ├── mock/                  # Realistic seed content (see §8)
+│   │   ├── mock/                  # Realistic seed content (see §8), incl. geography.js
 │   │   ├── pages/                  # Route-level components (+ pages/admin/*)
 │   │   ├── routes/                  # AppRoutes.jsx — the full route table
 │   │   ├── store/                    # Redux Toolkit store
-│   │   └── utils/                     # media.js (image resolution), format.js
+│   │   └── utils/                     # media.js, format.js, analytics.js (LinkedIn/UTM tracking)
 │   └── ...
 ├── backend/                   # Flask app skeleton (Phase 1 build target next)
 │   ├── app/
@@ -198,6 +198,57 @@ implements a JWT-shaped login flow (`api/auth.js` mimics
 as `wanjiru@womenshapingfutures.org` with any 4+ character password to
 reach the CMS (see `LoginPage.jsx` for the full demo-credential note).
 
+**Global geography, not a hard-coded country list.** `mock/geography.js` is
+the single source of truth for countries and regions — a representative
+ISO 3166-1 alpha-2 set spanning North America, Latin America & Caribbean,
+Europe, Africa, Asia, the Middle East, and Oceania, plus `GLOBAL`/`REMOTE`
+pseudo-locations for content that isn't tied to one country (a fully
+remote job, a worldwide grant). Every content type that carries a location
+— people, authors, organizations, jobs, events, story submissions,
+nominations — stores a `countryCode` (opportunities store an array,
+`countriesEligible`, for multi-country eligibility) rather than a free-text
+country name, and resolves it to a display name via `getCountryName()`
+only at render time. Filters (`countryFilterOptions()`,
+`regionFilterOptions()`, `matchesCountry()`, `matchesRegion()`, all in
+`geography.js`) build their option lists from whatever codes actually
+appear in the dataset, so adding a new country anywhere in the app is a
+one-line addition to `COUNTRIES` — no page or filter needs to change.
+Money follows the same non-hard-coded principle: every priced entity
+stores `{ amount, currency }` (`USD`, `KES`, `GBP`, `CAD`, `ZAR`, `NGN` all
+appear in the mock data) and `utils/format.js`'s `formatSalary`/
+`formatCurrency` render whatever currency the record carries — nothing
+defaults to a single currency.
+
+**LinkedIn-first acquisition, tracked without an API dependency.**
+Women Shaping Futures' established audience lives on LinkedIn, so the
+funnel the site is built around is LinkedIn → article → more content →
+newsletter → resource/event/product/community. `utils/analytics.js`
+captures UTM parameters and `document.referrer` once per session
+(`captureAcquisitionContext()`, wired into `PublicLayout` on every route
+change) and classifies the visit's source (`linkedin`, another referrer
+domain, or `direct`) without ever touching LinkedIn's API — the site's own
+funnel works whether or not that integration exists. UTM params are read
+from the query string only; they're never written into
+`<link rel="canonical">`, so a `?utm_source=linkedin` link and its bare
+equivalent always canonicalize to the same URL (`useSeo.js` sets canonical
+from the article's own `seo.canonical` field, not `window.location`).
+Every conversion point — `NewsletterForm`, `SubmitStoryPage`,
+`NominatePage`, `PartnershipsPage`'s inquiry form, and the download/
+registration/apply clicks on `ResourceDetailPage`/`EventDetailPage`/
+`JobDetailPage`/`OpportunityDetailPage` — calls `trackEvent()` or attaches
+`withAcquisitionMetadata()` to its payload, so a real analytics backend can
+report "newsletter signups from LinkedIn" or "job applies from LinkedIn"
+without any frontend changes. `ArticlePage`'s share bar leads with
+LinkedIn (visually emphasized, first in the row) rather than treating all
+networks equally. Audience numbers used on the Partnerships/media-kit page
+(`mock/admin.js`'s `audienceStats`: LinkedIn followers, average reach,
+engagement rate, audience geography/industries/seniority, newsletter
+subscribers, website audience) are never hard-coded into a component —
+`PartnershipsPage`, `AboutPage`, and `CommunityPage` all read from
+`audienceStats`, and `AdminSettings`'s **Media Kit** tab edits the same
+object, demonstrating the CMS control the real backend will expose at
+`GET/PUT /api/v1/partnerships/audience`.
+
 ## 5. Routes
 
 Public (all under `PublicLayout` — header, footer, mobile nav, search overlay):
@@ -284,6 +335,27 @@ All dates in the mock data are anchored relative to "today" so deadlines,
 current — check `frontend/.env` isn't overriding `VITE_USE_MOCK` if content
 ever looks stale.
 
+**Editorial scope.** `mock/topics.js` defines the taxonomy the site
+covers: Leadership, Career, Business, Entrepreneurship, Workplace,
+Personal Growth, Money (general career economics only — salary
+negotiation, understanding compensation, pricing — never individualized
+investment, tax, or regulated financial advice), Opportunities, Women &
+Impact, Women Founders, Women in STEM, and Technology. There is
+deliberately no Health/Wellness/medical topic and no legal-advice or
+specialist-financial-advice vertical — Women Shaping Futures covers areas
+where it can offer strong editorial and educational value without acting
+as a licensed professional service. The CMS can add, rename, or retire
+topics without a frontend change (`getTopicBySlug()` is the only lookup
+components use).
+
+**Geographic balance.** The mock content deliberately spans North America
+(with particularly strong US representation — several flagship articles,
+jobs, and events are US-based, reflecting the platform's actual audience
+concentration), Africa, Europe, Asia, Latin America, the Middle East, and
+Oceania, rather than defaulting to any one region. See `mock/people.js`,
+`mock/organizations.js`, `mock/jobs.js`, `mock/opportunities.js`, and
+`mock/events.js` for the full spread.
+
 ## 9. Known Prototype Limitations
 
 - **Placeholder imagery.** This sandbox has no media backend to upload to
@@ -303,13 +375,15 @@ ever looks stale.
 
 ## 10. Screens to Review First
 
-1. **Homepage** (`/`) — the CMS-modular layout end to end
-2. **Article** (`/how-women-are-redefining-leadership`) — full editorial treatment
-3. **People directory + profile** (`/people`, `/people/naliaka-wafula`)
-4. **Jobs** (`/jobs`, `/jobs/senior-marketing-manager-kaziwave`)
-5. **Opportunities** (`/opportunities`)
-6. **Search** (`/search?q=leadership`)
-7. **Login** (`/login`) → **Admin Dashboard** (`/admin`)
-8. **Admin Article Editor** (`/admin/articles/new`) — reserved-slug validation
-9. **Admin Homepage Builder** (`/admin/homepage`) — reorder/enable modules
-10. Resize any page to ~390px to check the mobile experience (hamburger nav, filters, forms)
+1. **Homepage** (`/`) — the CMS-modular layout end to end, now visibly global (US, UK, Kenya, Brazil, South Africa in the hero/spotlight/series alone)
+2. **Article** (`/building-a-saas-company-from-austin-not-silicon-valley`) — a US-anchored story with the LinkedIn-first share bar
+3. **People directory + profile** (`/people` with the Region filter, `/people/danielle-reyes`)
+4. **Jobs** (`/jobs` with Region + Country filters, `/jobs/senior-product-manager-lumen-analytics` — a USD-denominated US role)
+5. **Opportunities** (`/opportunities/global-founders-grant` — a `GLOBAL`-eligibility opportunity)
+6. **Topics** (`/topics`) — the revised taxonomy (no Health/Wellness; Money scoped to career economics)
+7. **Partnerships** (`/partnerships`) — CMS-driven audience stats (LinkedIn followers, geography/industry/seniority breakdowns)
+8. **Search** (`/search?q=leadership`)
+9. **Login** (`/login`) → **Admin Dashboard** (`/admin`) → **Settings → Media Kit** tab (editable audience stats)
+10. **Admin Article Editor** (`/admin/articles/new`) — reserved-slug validation
+11. **Admin Homepage Builder** (`/admin/homepage`) — reorder/enable modules
+12. Resize any page to ~390px to check the mobile experience (hamburger nav, filters, forms)

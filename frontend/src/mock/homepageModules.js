@@ -14,9 +14,9 @@ export const homepageModules = [
     selectionMode: 'manual',
     leadArticleSlug: 'how-women-are-redefining-leadership',
     secondaryArticleSlugs: [
-      'the-real-cost-of-bootstrapping-a-business-in-2026',
-      'the-negotiation-conversation-nobody-prepares-you-for',
-      'the-woman-rebuilding-machakos-health-system',
+      'building-a-saas-company-from-austin-not-silicon-valley',
+      'the-investor-betting-on-precision-over-confidence',
+      'the-fintech-founder-earning-trust-one-shop-owner-at-a-time',
     ],
   },
   {
@@ -38,7 +38,7 @@ export const homepageModules = [
     heading: 'Women Shaping Futures Spotlight',
     subheading: 'A woman worth knowing, featured every month.',
     selectionMode: 'manual',
-    personSlug: 'naliaka-wafula',
+    personSlug: 'danielle-reyes',
   },
   {
     id: 'hm4',

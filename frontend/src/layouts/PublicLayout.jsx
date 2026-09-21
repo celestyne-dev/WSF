@@ -7,6 +7,7 @@ import MobileNav from '../components/layout/MobileNav'
 import SearchOverlay from '../components/layout/SearchOverlay'
 import { loadNavigation } from '../features/site/siteSlice'
 import { closeOverlays } from '../features/navigation/uiSlice'
+import { captureAcquisitionContext } from '../utils/analytics'
 
 export default function PublicLayout() {
   const dispatch = useDispatch()
@@ -20,7 +21,8 @@ export default function PublicLayout() {
   useEffect(() => {
     dispatch(closeOverlays())
     window.scrollTo(0, 0)
-  }, [location.pathname, dispatch])
+    captureAcquisitionContext()
+  }, [location.pathname, location.search, dispatch])
 
   return (
     <div className="flex min-h-screen flex-col">

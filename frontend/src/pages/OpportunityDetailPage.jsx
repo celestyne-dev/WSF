@@ -1,7 +1,9 @@
 import { useParams } from 'react-router-dom'
 import { Calendar, Globe2, Award } from 'lucide-react'
 import { getOpportunityBySlug, opportunities } from '../mock/opportunities'
+import { getCountryNames } from '../mock/geography'
 import { formatDate } from '../utils/format'
+import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -42,13 +44,17 @@ export default function OpportunityDetailPage() {
               <Calendar size={15} /> Deadline: {formatDate(opportunity.deadline)}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Globe2 size={15} /> {opportunity.countriesEligible.join(', ')}
+              <Globe2 size={15} /> {getCountryNames(opportunity.countriesEligible).join(', ')}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Award size={15} /> {opportunity.fundingValue}
             </span>
           </div>
-          <a href={opportunity.applicationUrl} className="btn-primary mt-6 inline-flex">
+          <a
+            href={opportunity.applicationUrl}
+            onClick={() => trackEvent('opportunity_apply_click', { opportunitySlug: opportunity.slug })}
+            className="btn-primary mt-6 inline-flex"
+          >
             Apply now
           </a>
         </div>

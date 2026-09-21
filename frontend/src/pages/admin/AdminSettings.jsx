@@ -1,14 +1,20 @@
 import { useState } from 'react'
 import { toast } from 'react-toastify'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
+import { audienceStats } from '../../mock/admin'
 
-const TABS = ['Site Identity', 'Navigation', 'Footer', 'Newsletter', 'Integrations']
+const TABS = ['Site Identity', 'Navigation', 'Footer', 'Newsletter', 'Media Kit', 'Integrations']
 
 export default function AdminSettings() {
   const [tab, setTab] = useState(TABS[0])
   const [siteName, setSiteName] = useState('Women Shaping Futures')
   const [tagline, setTagline] = useState('Stories, Opportunity & Growth for Women Worldwide')
   const [contactEmail, setContactEmail] = useState('hello@womenshapingfutures.org')
+  const [audience, setAudience] = useState(audienceStats)
+
+  function updateAudience(field, value) {
+    setAudience((prev) => ({ ...prev, [field]: value }))
+  }
 
   return (
     <div>
@@ -59,6 +65,66 @@ export default function AdminSettings() {
         {tab === 'Footer' && <p className="text-sm text-charcoal-600">Footer link groups, social links, and the newsletter CTA copy are configured here.</p>}
 
         {tab === 'Newsletter' && <p className="text-sm text-charcoal-600">Default sender name, reply-to address, and double opt-in settings for WSF Weekly.</p>}
+
+        {tab === 'Media Kit' && (
+          <div className="space-y-4">
+            <p className="text-sm text-charcoal-600">
+              These numbers power the Partnerships page and media kit — updating them here is the only place they need to change; nothing is hard-coded in the site.
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">LinkedIn followers</label>
+                <input type="number" value={audience.linkedinFollowers} onChange={(e) => updateAudience('linkedinFollowers', Number(e.target.value))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">LinkedIn average reach / post</label>
+                <input type="number" value={audience.linkedinAvgReach} onChange={(e) => updateAudience('linkedinAvgReach', Number(e.target.value))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">LinkedIn engagement rate</label>
+                <input type="number" step="0.001" value={audience.linkedinEngagementRate} onChange={(e) => updateAudience('linkedinEngagementRate', Number(e.target.value))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Newsletter subscribers</label>
+                <input type="number" value={audience.newsletterSubscribers} onChange={(e) => updateAudience('newsletterSubscribers', Number(e.target.value))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Monthly website visitors</label>
+                <input type="number" value={audience.monthlyWebsiteVisitors} onChange={(e) => updateAudience('monthlyWebsiteVisitors', Number(e.target.value))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Monthly page views</label>
+                <input type="number" value={audience.monthlyPageViews} onChange={(e) => updateAudience('monthlyPageViews', Number(e.target.value))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Countries reached</label>
+                <input type="number" value={audience.countriesReached} onChange={(e) => updateAudience('countriesReached', Number(e.target.value))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Audience geography (region / %)</p>
+              <div className="mt-2 space-y-2">
+                {audience.audienceGeography.map((g, i) => (
+                  <div key={g.region} className="flex items-center gap-3">
+                    <span className="w-48 text-sm text-charcoal-600">{g.region}</span>
+                    <input
+                      type="number"
+                      value={g.percent}
+                      onChange={(e) => {
+                        const next = [...audience.audienceGeography]
+                        next[i] = { ...g, percent: Number(e.target.value) }
+                        updateAudience('audienceGeography', next)
+                      }}
+                      className="w-24 border border-taupe-300 px-3 py-1.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                    />
+                    <span className="text-sm text-charcoal-600">%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {tab === 'Integrations' && (
           <div className="space-y-4">
