@@ -23,7 +23,7 @@ export async function login({ email, password }) {
   if (!USE_MOCK) {
     try {
       const { data } = await apiClient.post('/auth/login', { email, password })
-      return { success: true, accessToken: data.access_token, user: mapUser(data.user) }
+      return { success: true, accessToken: data.access_token, refreshToken: data.refresh_token, user: mapUser(data.user) }
     } catch (err) {
       return { success: false, message: err.apiError?.message || 'Invalid email or password.' }
     }
@@ -37,6 +37,7 @@ export async function login({ email, password }) {
     {
       success: true,
       accessToken: `mock-jwt-${user.id}`,
+      refreshToken: null,
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
     },
     400,

@@ -78,7 +78,7 @@ export default function ResourceDetailPage() {
         <Breadcrumb items={[{ label: 'Resources', to: '/resources' }, { label: resource.name }]} />
       </div>
       <div className="container-editorial grid grid-cols-1 gap-10 py-10 sm:grid-cols-[320px_1fr]">
-        <MediaImage mediaPath={resource.coverImage} alt={resource.name} width={800} height={560} aspect={10 / 7} className="w-full object-cover" />
+        <MediaImage media={resource.coverMedia} variant="medium" mediaPath={resource.coverImage} alt={resource.name} width={800} height={560} aspect={10 / 7} className="w-full object-cover" />
         <div>
           <span className="eyebrow">{resource.type}</span>
           <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{resource.name}</h1>

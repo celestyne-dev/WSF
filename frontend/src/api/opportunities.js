@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { regionFilterOptions, matchesRegion, matchesCountry, getCountry } from '../mock/geography'
+import { mapMediaRef } from '../utils/media'
 
 // The mock opportunities dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -37,6 +38,7 @@ function mapOpportunity(o) {
     organization: o.organization?.name || o.organization_name || null,
     organizationSlug: o.organization?.slug || null,
     logo: o.logo?.public_url || null,
+    logoMedia: mapMediaRef(o.logo),
     type: o.type,
     description: o.description,
     eligibility: o.eligibility,

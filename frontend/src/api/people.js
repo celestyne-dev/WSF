@@ -2,6 +2,7 @@ import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 import { attachMockCountry, countryOptionsFromItems } from './geography'
+import { mapMediaRef } from '../utils/media'
 
 // The mock people dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -18,6 +19,7 @@ function mapPerson(p) {
     slug: p.slug,
     name: p.name,
     photo: p.photo?.public_url || null,
+    photoMedia: mapMediaRef(p.photo),
     title: p.title,
     organizationSlug: p.organization?.slug || null,
     organization: p.organization?.name || null,

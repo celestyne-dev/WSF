@@ -149,7 +149,7 @@ export default function AdminMediaLibrary() {
                 onClick={() => setSelected(item)}
                 className="group overflow-hidden border border-taupe-200 bg-white text-left focus:outline-none focus:ring-2 focus:ring-burgundy-500"
               >
-                <MediaImage mediaPath={item.mediaPath} alt={item.altText} width={400} height={300} aspect={4 / 3} className="aspect-[4/3] w-full object-cover" />
+                <MediaImage media={item} variant="thumbnail" width={400} height={300} aspect={4 / 3} className="aspect-[4/3] w-full object-cover" />
                 <div className="p-2">
                   <p className="truncate text-xs font-medium text-charcoal">{item.originalFilename || `Media #${item.id}`}</p>
                   <p className="truncate text-xs text-charcoal-600/60">{item.altText || 'No alt text'}</p>
@@ -276,13 +276,14 @@ function MediaDetailPanel({ media, onClose, onSaved, onDelete }) {
           </button>
         </div>
 
-        <MediaImage mediaPath={media.mediaPath} alt={media.altText} width={640} height={480} aspect={4 / 3} className="mb-4 w-full border border-taupe-200 object-cover" />
+        <MediaImage media={media} variant="medium" width={640} height={480} aspect={4 / 3} className="mb-4 w-full border border-taupe-200 object-cover" />
 
-        <dl className="mb-5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-charcoal-600">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">Original upload — preserved for archival and reprocessing</p>
+        <dl className="mb-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-charcoal-600">
           <dt className="font-semibold">Filename</dt>
           <dd className="truncate">{media.originalFilename || '—'}</dd>
-          <dt className="font-semibold">Type</dt>
-          <dd>{media.mimeType || '—'}</dd>
+          <dt className="font-semibold">Format</dt>
+          <dd>{media.originalFormat?.toUpperCase() || media.mimeType || '—'}</dd>
           <dt className="font-semibold">Dimensions</dt>
           <dd>{media.width && media.height ? `${media.width} × ${media.height}` : '—'}</dd>
           <dt className="font-semibold">Size</dt>
@@ -291,6 +292,19 @@ function MediaDetailPanel({ media, onClose, onSaved, onDelete }) {
           <dd>{media.uploadedBy || '—'}</dd>
           <dt className="font-semibold">Uploaded</dt>
           <dd>{media.createdAt ? formatDate(media.createdAt) : '—'}</dd>
+        </dl>
+
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">Optimized delivery — what the public site actually loads</p>
+        <dl className="mb-5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-charcoal-600">
+          <dt className="font-semibold">Format</dt>
+          <dd>WebP</dd>
+          <dt className="font-semibold">Available variants</dt>
+          <dd>
+            {Object.entries(media.variants || {})
+              .filter(([, v]) => v?.url)
+              .map(([name, v]) => `${name} (${v.width}×${v.height})`)
+              .join(', ') || 'None generated'}
+          </dd>
         </dl>
 
         <div className="space-y-3">

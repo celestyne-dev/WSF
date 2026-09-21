@@ -26,6 +26,8 @@ export default function EventCard({ event }) {
       </div>
       {event.coverImage && (
         <MediaImage
+          media={event.coverMedia}
+          variant="thumbnail"
           mediaPath={event.coverImage}
           alt={event.title}
           width={200}

@@ -170,36 +170,59 @@ secondary nav, and footer link groups. `Header.jsx` and `Footer.jsx` render
 whatever comes back — nothing is hard-coded in the layout components.
 
 **Media is self-hosted on the Hostinger VPS — no third-party media CDN.**
-Uploaded images are never sent to an external service. In production, the
-Flask backend receives an upload, validates its MIME type/extension/size,
-generates a collision-safe UUID-based filename, and uses Pillow to strip
-metadata, correct orientation, and generate responsive WebP variants
-(`thumbnail`/`card`/`medium`/`large`/`hero`) written to a persistent
-directory outside the app's source tree (e.g.
-`/var/www/womenshapingfutures/media/{articles,people,events,...}/`). A
-`Media` row (see `backend/app/models/__init__.py`) records the metadata —
+Uploaded images are never sent to an external service. The Flask backend
+receives an upload (`POST /api/v1/media/upload`, multipart), validates its
+MIME type/extension/size (`backend/app/services/media.py`), generates a
+collision-safe UUID-based filename, and uses Pillow to strip metadata,
+correct orientation, and generate responsive WebP variants
+(`thumbnail`/`card`/`medium`/`large`/`hero`) alongside the preserved
+original — written under `MEDIA_ROOT` (`originals/`, `thumbnail/`, `card/`,
+`medium/`, `large/`, `hero/` subdirectories), outside the app's source tree
+(production: `/var/www/womenshapingfutures/media/`; local dev:
+`backend/instance/media/`). A `Media` row plus one `MediaVariant` row per
+generated size (`backend/app/models/media.py`) records the metadata —
 `uuid`, `stored_filename`, `file_path`, `public_url`, dimensions, file
 size, `alt_text`, `caption`, `credit`, `copyright_source`, `uploaded_by` —
-**not** the binary file. Nginx serves the resulting files directly from
-disk at a clean URL under the WSF domain
-(`https://womenshapingfutures.org/media/articles/example-image.webp`) with
-long-lived cache headers; Flask is only ever in the
-upload → validate → process → metadata → permissions path, never in the
-hot path of serving an image to a visitor.
+**not** the binary file; `MediaSchema` serializes `variants` as
+`{thumbnail: {url, width, height}, card: {...}, ...}`. The **original is
+preserved as-uploaded** (never converted) for archival/reprocessing — the
+public site loads the WebP variants, never `/media/originals/*`, wherever
+a variant exists (see `frontend/src/components/ui/MediaImage.jsx` and
+`frontend/src/utils/media.js:resolveMediaImage`).
 
-This sandbox has no media backend to call, so `src/utils/media.js`
-implements `resolveImage()`/`resolveSrcSet()` with two branches: if
-`VITE_MEDIA_BASE_URL` is set, it builds a real variant-aware URL
-(`{base}/{mediaPath}-{variant}.webp`, picking the smallest variant that
-covers the requested width — a card never downloads a hero-sized image);
-otherwise it renders a deterministic, on-brand abstract placeholder (an
-inline SVG gradient, seeded by the same `mediaPath` so a given
-person/article always gets the same placeholder). Every image-consuming
-component (`<MediaImage>`) is already written against the *production*
-shape — alt text, caption, credit, explicit width/height (to prevent
-layout shift), and `loading="lazy"` are all wired up now. Pointing
-`VITE_MEDIA_BASE_URL` at the deployed `/media/` root is the entire
-frontend migration path; no component changes.
+In production, Nginx serves every one of these directories directly from
+disk at a clean URL under the WSF domain — Flask is only ever in the
+upload → validate → process → metadata → permissions path, never in the
+hot path of serving an image to a visitor:
+
+```nginx
+location /media/ {
+    alias /var/www/womenshapingfutures/media/;
+    # Covers /media/originals/, /media/thumbnail/, /media/card/,
+    # /media/medium/, /media/large/, /media/hero/ — MediaService writes
+    # each generated file under this same root, so no per-variant
+    # location block is needed.
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    access_log off;
+}
+```
+
+Local development has no Nginx in front of Flask, so
+`backend/app/__init__.py` registers an equivalent `GET /media/<path:filename>`
+route (guarded by `app.debug`, so it's a no-op in production) that serves
+straight from `MEDIA_ROOT` — the same URL shape either way, so
+`frontend/src/utils/media.js` never needs to know which one is running.
+
+`src/utils/media.js`'s `resolveImage()`/`resolveSrcSet()` (mock-mode
+placeholder path) and `resolveMediaImage()` (real-media path, used by
+`<MediaImage media={...} variant="card">`) both resolve a backend
+`public_url` — root-relative in dev (different origin than the Vite dev
+server) or already-absolute in production — against the API's own origin,
+so images load correctly in both setups without an environment-specific
+component change. `VITE_MEDIA_BASE_URL` remains available as a mock-mode
+override for previewing what a real `{base}/{mediaPath}-{variant}.webp`
+CDN-style URL scheme would look like; it's not used once real media data
+(with real `variants`) is present.
 
 **SEO without react-helmet.** `hooks/useSeo.js` imperatively sets
 `document.title`, meta description/robots, canonical `<link>`, OpenGraph,

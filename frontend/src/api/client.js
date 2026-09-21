@@ -17,6 +17,14 @@ export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
 })
 
+export const ACCESS_TOKEN_KEY = 'wsf_access_token'
+export const REFRESH_TOKEN_KEY = 'wsf_refresh_token'
+
+export function clearStoredAuth() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
+}
+
 function camelToSnake(str) {
   return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
 }
@@ -29,7 +37,7 @@ function camelToSnake(str) {
 // to work at all — translating it here, once, keeps every fetch* function
 // free of that detail.
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('wsf_access_token')
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -102,8 +110,83 @@ apiClient.interceptors.response.use(
       error.message = body.error.message || error.message
       error.apiError = body.error
     }
+    if (error.response?.status === 401) {
+      return handleUnauthorized(error)
+    }
     return Promise.reject(error)
   },
 )
+
+// A 401 means the access token is missing, expired, or otherwise invalid
+// (JWT_ACCESS_TOKEN_EXPIRES is 30 minutes — see backend/config.py — so this
+// is routine during a normal admin session, not just at startup). Flask
+// issues a matching refresh token at login (30-day expiry); this recovers
+// silently with it exactly once before giving up, rather than leaving the
+// CMS stuck re-firing the same failed request or refreshing forever:
+//   - a request that already carries a fresh access token but still 401s
+//     (revoked/deactivated user, clock skew) is retried once via refresh;
+//   - if the refresh call itself 401s, or a retried request 401s again,
+//     the session is unrecoverable — auth state is cleared and the user is
+//     sent to /login rather than shown a screen that silently keeps failing.
+// Login failures are explicitly excluded: a wrong password is normal user
+// error, not a broken session, and api/auth.js already turns that into
+// `{success: false, message}` for the login form — this must never touch
+// stored tokens or redirect out from under someone re-typing a password.
+let refreshPromise = null
+
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+  if (!refreshToken) throw new Error('No refresh token available.')
+  const response = await axios.post(
+    `${apiClient.defaults.baseURL}/auth/refresh`,
+    null,
+    { headers: { Authorization: `Bearer ${refreshToken}` } },
+  )
+  const accessToken = response.data?.data?.access_token
+  if (!accessToken) throw new Error('Refresh response carried no access token.')
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
+  return accessToken
+}
+
+function redirectToLogin() {
+  clearStoredAuth()
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.assign('/login')
+  }
+}
+
+async function handleUnauthorized(error) {
+  const originalRequest = error.config || {}
+  const url = originalRequest.url || ''
+  const isLoginAttempt = url.includes('/auth/login')
+  const isRefreshAttempt = url.includes('/auth/refresh')
+
+  if (isLoginAttempt) {
+    return Promise.reject(error)
+  }
+  if (isRefreshAttempt || originalRequest._retriedAfterRefresh) {
+    // The refresh token itself is invalid/expired, or a request we already
+    // retried once with a fresh access token still failed — no further
+    // recovery is possible.
+    redirectToLogin()
+    return Promise.reject(error)
+  }
+
+  originalRequest._retriedAfterRefresh = true
+  try {
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => {
+        refreshPromise = null
+      })
+    }
+    const accessToken = await refreshPromise
+    originalRequest.headers = originalRequest.headers || {}
+    originalRequest.headers.Authorization = `Bearer ${accessToken}`
+    return apiClient(originalRequest)
+  } catch {
+    redirectToLogin()
+    return Promise.reject(error)
+  }
+}
 
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'

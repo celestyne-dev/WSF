@@ -6,6 +6,8 @@ export default function SeriesCard({ item }) {
   return (
     <Link to={`/series/${item.slug}`} className="group relative block overflow-hidden">
       <MediaImage
+        media={item.coverMedia}
+        variant="card"
         mediaPath={item.coverImage}
         alt={item.name}
         width={900}

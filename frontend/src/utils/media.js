@@ -161,3 +161,55 @@ export function resolveSrcSet(mediaPath, { widths = [480, 768, 1024, 1600], aspe
     .map((w) => `${resolveImage(mediaPath, { width: w, height: Math.round(w / aspect), tone })} ${w}w`)
     .join(', ')
 }
+
+// Shape every content-type api/*.js mapper normalizes a nested media
+// reference into (Article.hero_media, Person/Author.photo,
+// Organization/Job/Opportunity.logo, Event/Resource/Product/Series.
+// cover_media — every one of these is nested as a full MediaSchema on the
+// backend, variants included). Presentation components read this instead
+// of a bare public_url string so MediaImage can pick an optimized variant
+// instead of always loading the original.
+export function mapMediaRef(raw) {
+  if (!raw) return null
+  const variants = raw.variants && typeof raw.variants === 'object' && !Array.isArray(raw.variants) ? raw.variants : null
+  return {
+    mediaPath: raw.public_url,
+    altText: raw.alt_text || '',
+    caption: raw.caption || '',
+    credit: raw.credit || '',
+    variants,
+  }
+}
+
+// Picks the best URL for a given role (thumbnail/card/medium/large/hero),
+// preferring a real generated variant and falling back to the full
+// original only when that variant isn't available (a mock-mode media
+// object, or a variant that failed to generate). Accepts both this file's
+// own `mapMediaRef()` shape and api/media.js's fuller `mapMedia()` shape.
+function pickVariantPath(media, variant) {
+  return media?.variants?.[variant]?.url || media?.mediaPath || media?.url || media?.publicUrl || media?.public_url || null
+}
+
+/**
+ * Resolve a { media, variant } pair to a displayable {src, srcSet}.
+ * When the media object carries real backend variants (each with a known
+ * width), builds a genuine responsive srcSet from every generated size
+ * instead of the synthetic width-suffix guess resolveSrcSet() uses for
+ * mock mode's placeholder art.
+ */
+export function resolveMediaImage(media, { variant = 'card', width = 1200, height = 800, aspect, tone } = {}) {
+  if (!media) return { src: resolveImage(null, { width, height, tone }), srcSet: undefined }
+
+  const realEntries = Object.entries(media.variants || {}).filter(
+    ([, v]) => v?.url && v?.width && isBackendMediaPath(v.url),
+  )
+  if (realEntries.length) {
+    const preferred = media.variants?.[variant]
+    const src = toAbsoluteUrl((preferred?.url && isBackendMediaPath(preferred.url) ? preferred.url : realEntries[0][1].url))
+    const srcSet = realEntries.map(([, v]) => `${toAbsoluteUrl(v.url)} ${v.width}w`).join(', ')
+    return { src, srcSet }
+  }
+
+  const path = pickVariantPath(media, variant)
+  return { src: resolveImage(path, { width, height, tone }), srcSet: resolveSrcSet(path, { aspect, tone }) }
+}

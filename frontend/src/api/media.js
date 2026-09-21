@@ -30,6 +30,21 @@ async function loadMockMedia() {
   return _mockMedia
 }
 
+// Every image-consuming component should reach for one of these before
+// falling back to the full original — see components/ui/MediaImage.jsx.
+const VARIANT_NAMES = ['thumbnail', 'card', 'medium', 'large', 'hero']
+
+// Real uploads come back from MediaSchema as an already-normalized
+// {thumbnail: {url, width, height}, card: {...}, ...} object (see
+// backend/app/schemas/media.py). Mock mode has no real generated files, so
+// this synthesizes the same shape pointing at the mock item's own
+// synthetic mediaPath — every consumer can read media.variants.card.url in
+// both modes without its own mock-mode branch.
+function normalizeVariants(variants, fallbackMediaPath) {
+  if (variants && typeof variants === 'object' && !Array.isArray(variants)) return variants
+  return Object.fromEntries(VARIANT_NAMES.map((name) => [name, { url: fallbackMediaPath, width: null, height: null }]))
+}
+
 function mapMedia(m) {
   if (!m) return null
   return {
@@ -41,12 +56,14 @@ function mapMedia(m) {
     credit: m.credit || '',
     copyrightSource: m.copyright_source || '',
     originalFilename: m.original_filename,
+    originalFormat: m.original_format || null,
     mimeType: m.mime_type,
     width: m.width,
     height: m.height,
     fileSize: m.file_size,
     uploadedBy: m.uploaded_by?.full_name || m.uploaded_by?.first_name || null,
     createdAt: m.created_at,
+    variants: normalizeVariants(m.variants, m.public_url),
   }
 }
 

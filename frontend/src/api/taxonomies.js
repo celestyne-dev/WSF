@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
 import { attachMockCountry } from './geography'
+import { mapMediaRef } from '../utils/media'
 
 // Each mock dataset here is only needed when VITE_USE_MOCK=true —
 // dynamic-imported per module so a real-mode production build never
@@ -39,8 +40,13 @@ function mapSeries(s) {
     name: s.name,
     description: s.description,
     coverImage: s.cover_media?.public_url || null,
+    coverMedia: mapMediaRef(s.cover_media),
     sponsor: s.sponsor_organization
-      ? { name: s.sponsor_organization.name, logo: s.sponsor_organization.logo?.public_url || null }
+      ? {
+          name: s.sponsor_organization.name,
+          logo: s.sponsor_organization.logo?.public_url || null,
+          logoMedia: mapMediaRef(s.sponsor_organization.logo),
+        }
       : null,
     featured: s.featured,
     articleCount: s.article_count,
@@ -55,6 +61,7 @@ function mapAuthor(a) {
     name: a.name,
     role: a.role,
     photo: a.photo?.public_url || null,
+    photoMedia: mapMediaRef(a.photo),
     bio: a.bio,
     shortBio: a.short_bio,
     expertise: a.expertise || [],
@@ -74,6 +81,7 @@ function mapOrganization(o) {
     slug: o.slug,
     name: o.name,
     logo: o.logo?.public_url || null,
+    logoMedia: mapMediaRef(o.logo),
     industry: o.industry,
     countryCode: o.country?.code || o.country_code || null,
     country: o.country ? { code: o.country.code, name: o.country.name, region: o.country.region } : null,

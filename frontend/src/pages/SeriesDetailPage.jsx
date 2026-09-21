@@ -55,6 +55,8 @@ export default function SeriesDetailPage() {
     <div>
       <div className="relative flex min-h-[320px] items-end bg-plum-700">
         <MediaImage
+          media={seriesItem.coverMedia}
+          variant="hero"
           mediaPath={seriesItem.coverImage}
           alt={seriesItem.name}
           width={1920}

@@ -21,6 +21,8 @@ export default function ArticleCard({ article, variant = 'grid' }) {
       <article className="group relative">
         <Link to={href} className="block overflow-hidden">
           <MediaImage
+            media={article.heroMedia}
+            variant="large"
             mediaPath={article.heroImage}
             alt={article.heroImageAlt}
             width={1400}
@@ -58,6 +60,8 @@ export default function ArticleCard({ article, variant = 'grid' }) {
       <article className="group flex gap-4 sm:gap-5">
         <Link to={href} className="block w-32 shrink-0 overflow-hidden sm:w-40">
           <MediaImage
+            media={article.heroMedia}
+            variant="thumbnail"
             mediaPath={article.heroImage}
             alt={article.heroImageAlt}
             width={400}
@@ -99,6 +103,8 @@ export default function ArticleCard({ article, variant = 'grid' }) {
     <article className="group flex flex-col">
       <Link to={href} className="block overflow-hidden">
         <MediaImage
+          media={article.heroMedia}
+          variant="card"
           mediaPath={article.heroImage}
           alt={article.heroImageAlt}
           width={800}

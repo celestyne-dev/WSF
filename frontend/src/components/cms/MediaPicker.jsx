@@ -25,7 +25,7 @@ export default function MediaPicker({ value, onChange, label = 'Image', aspect =
       <div className="mt-1.5 flex items-center gap-3">
         <div className="flex h-20 w-28 shrink-0 items-center justify-center overflow-hidden border border-taupe-300 bg-taupe-100">
           {value?.mediaPath ? (
-            <MediaImage mediaPath={value.mediaPath} alt={value.altText} width={280} height={200} aspect={aspect} className="h-full w-full object-cover" />
+            <MediaImage media={value} variant="thumbnail" width={280} height={200} aspect={aspect} className="h-full w-full object-cover" />
           ) : (
             <ImageOff size={20} className="text-charcoal-600/40" />
           )}
@@ -174,7 +174,7 @@ function MediaPickerModal({ onClose, onSelect }) {
                         onClick={() => onSelect(item)}
                         className="group relative overflow-hidden border border-taupe-200 bg-white text-left focus:outline-none focus:ring-2 focus:ring-burgundy-500"
                       >
-                        <MediaImage mediaPath={item.mediaPath} alt={item.altText} width={280} height={210} aspect={4 / 3} className="aspect-[4/3] w-full object-cover" />
+                        <MediaImage media={item} variant="thumbnail" width={280} height={210} aspect={4 / 3} className="aspect-[4/3] w-full object-cover" />
                         <div className="absolute inset-0 hidden items-center justify-center bg-charcoal/50 group-hover:flex">
                           <Check size={20} className="text-ivory" />
                         </div>

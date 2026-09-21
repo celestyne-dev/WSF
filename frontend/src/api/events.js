@@ -2,6 +2,7 @@ import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 import { attachMockCountry, countryOptionsFromItems } from './geography'
+import { mapMediaRef } from '../utils/media'
 
 // The mock events dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -38,6 +39,7 @@ function mapEvent(e) {
     agenda: e.agenda || [],
     status: e.status,
     coverImage: e.cover_media?.public_url || null,
+    coverMedia: mapMediaRef(e.cover_media),
     featured: e.featured,
   }
 }

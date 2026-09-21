@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { RESERVED_SLUGS } from '../constants/routes'
+import { mapMediaRef } from '../utils/media'
 
 // Mock article/author/topic datasets are only ever needed when
 // VITE_USE_MOCK=true — dynamic-importing them here (instead of a static
@@ -52,6 +53,7 @@ function mapArticle(a) {
     subtitle: a.subtitle,
     excerpt: a.excerpt,
     heroImage: a.hero_media?.public_url || null,
+    heroMedia: mapMediaRef(a.hero_media),
     heroMediaId: a.hero_media?.id || null,
     heroImageAlt: a.hero_media?.alt_text || '',
     heroImageCaption: a.hero_image_caption,
@@ -60,8 +62,10 @@ function mapArticle(a) {
     // Nested, already-resolved objects — cards prefer these over looking an
     // author/topic up by slug themselves (only the mock branch needs the
     // slug-lookup fallback, since raw mock articles don't carry them).
-    author: a.author ? { slug: a.author.slug, name: a.author.name, photo: a.author.photo?.public_url || null } : null,
-    coAuthors: (a.co_authors || []).map((x) => ({ slug: x.slug, name: x.name, photo: x.photo?.public_url || null })),
+    author: a.author
+      ? { slug: a.author.slug, name: a.author.name, photo: a.author.photo?.public_url || null, photoMedia: mapMediaRef(a.author.photo) }
+      : null,
+    coAuthors: (a.co_authors || []).map((x) => ({ slug: x.slug, name: x.name, photo: x.photo?.public_url || null, photoMedia: mapMediaRef(x.photo) })),
     coAuthorSlugs: (a.co_authors || []).map((x) => x.slug),
     publishDate: a.publish_date,
     updatedDate: a.updated_at,

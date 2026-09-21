@@ -23,6 +23,8 @@ export default function FeaturedWomanModule({ module }) {
     <section className="bg-plum-600 py-16 text-ivory sm:py-20">
       <div className="container-editorial grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
         <MediaImage
+          media={person.photoMedia}
+          variant="large"
           mediaPath={person.photo}
           alt={person.name}
           width={900}

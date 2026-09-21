@@ -9,6 +9,8 @@ export default function PersonCard({ person }) {
   return (
     <Link to={`/people/${person.slug}`} className="group block">
       <MediaImage
+        media={person.photoMedia}
+        variant="card"
         mediaPath={person.photo}
         alt={person.name}
         width={600}

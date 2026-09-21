@@ -25,6 +25,8 @@ export default function PartnersModule({ module }) {
           {partners.map((p) => (
             <MediaImage
               key={p.id}
+              media={p.logoMedia}
+              variant="thumbnail"
               mediaPath={p.logo}
               alt={p.name}
               width={200}

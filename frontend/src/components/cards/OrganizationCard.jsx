@@ -11,6 +11,8 @@ export default function OrganizationCard({ organization }) {
       className="group flex items-center gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
       <MediaImage
+        media={organization.logoMedia}
+        variant="thumbnail"
         mediaPath={organization.logo}
         alt={`${organization.name} logo`}
         width={112}

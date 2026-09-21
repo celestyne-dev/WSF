@@ -49,7 +49,10 @@ def test_media_upload_list_patch_and_delete_reference_guard(client, admin_token)
     )
     assert upload.status_code == 201
     media = upload.get_json()["data"]
-    assert media["variants"]
+    assert set(media["variants"].keys()) == {"thumbnail", "card", "medium", "large", "hero"}
+    for variant in media["variants"].values():
+        assert variant["url"].endswith(".webp")
+        assert variant["width"] and variant["height"]
 
     listed = client.get("/api/v1/media", headers=auth_headers(admin_token))
     assert listed.status_code == 200
@@ -74,6 +77,68 @@ def test_media_upload_list_patch_and_delete_reference_guard(client, admin_token)
 
     blocked = client.delete(f"/api/v1/media/{media['id']}", headers=auth_headers(admin_token))
     assert blocked.status_code == 409
+
+
+def _sized_image(fmt, size=(3000, 2000)):
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", size, color=(180, 60, 40)).save(buffer, format=fmt)
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize(
+    "filename,fmt",
+    [("large.jpg", "JPEG"), ("large.png", "PNG"), ("large.webp", "WEBP")],
+)
+def test_upload_generates_correctly_sized_webp_variants(client, app, admin_token, filename, fmt):
+    import os
+
+    from PIL import Image
+
+    expected_max = {
+        "thumbnail": (200, 200),
+        "card": (600, 400),
+        "medium": (1000, 667),
+        "large": (1600, 1067),
+        "hero": (2400, 1350),
+    }
+
+    upload = client.post(
+        "/api/v1/media/upload",
+        data={"file": (io.BytesIO(_sized_image(fmt)), filename)},
+        content_type="multipart/form-data",
+        headers=auth_headers(admin_token),
+    )
+    assert upload.status_code == 201
+    media = upload.get_json()["data"]
+
+    media_url_prefix = app.config["MEDIA_URL"]
+    media_root = app.config["MEDIA_ROOT"]
+
+    def on_disk(public_url):
+        assert public_url.startswith(media_url_prefix)
+        return os.path.join(media_root, public_url[len(media_url_prefix):])
+
+    # The original is preserved as-uploaded, not converted to WebP.
+    original_path = on_disk(media["public_url"])
+    assert os.path.exists(original_path)
+    original_img = Image.open(original_path)
+    assert original_img.format == fmt
+    assert original_img.size == (3000, 2000)
+
+    for name, (max_w, max_h) in expected_max.items():
+        variant = media["variants"][name]
+        variant_path = on_disk(variant["url"])
+        assert os.path.exists(variant_path)
+        img = Image.open(variant_path)
+        assert img.format == "WEBP"
+        assert img.size == (variant["width"], variant["height"])
+        assert img.width <= max_w and img.height <= max_h
+        # Aspect ratio (3:2 source) is preserved by Pillow's thumbnail().
+        assert abs((img.width / img.height) - (3000 / 2000)) < 0.01
 
 
 def test_media_list_search(client, admin_token):
@@ -178,3 +243,10 @@ def test_media_endpoints_require_permission(client):
 
     resp = client.get("/api/v1/media", headers=auth_headers(token))
     assert resp.status_code == 403
+
+
+def test_media_endpoints_reject_unauthenticated_requests(client):
+    assert client.get("/api/v1/media").status_code == 401
+    assert client.post("/api/v1/media/upload").status_code == 401
+    assert client.patch("/api/v1/media/1", json={}).status_code == 401
+    assert client.delete("/api/v1/media/1").status_code == 401

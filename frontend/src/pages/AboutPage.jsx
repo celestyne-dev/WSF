@@ -70,7 +70,7 @@ export default function AboutPage() {
           <div className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-5">
             {authors.map((a) => (
               <div key={a.id} className="text-center">
-                <MediaImage mediaPath={a.photo} alt={a.name} width={200} height={200} aspect={1} className="mx-auto h-20 w-20 rounded-full object-cover" />
+                <MediaImage media={a.photoMedia} variant="thumbnail" mediaPath={a.photo} alt={a.name} width={200} height={200} aspect={1} className="mx-auto h-20 w-20 rounded-full object-cover" />
                 <p className="mt-2 font-serif text-sm font-semibold text-charcoal">{a.name}</p>
                 <p className="text-xs text-charcoal-600">{a.role}</p>
               </div>

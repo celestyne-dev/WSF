@@ -11,6 +11,8 @@ export default function JobCard({ job }) {
       className="group flex items-start gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
       <MediaImage
+        media={job.logoMedia}
+        variant="thumbnail"
         mediaPath={job.logo}
         alt={`${job.company} logo`}
         width={112}

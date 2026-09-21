@@ -2,6 +2,7 @@ import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 import { attachMockCountry, countryOptionsFromItems } from './geography'
+import { mapMediaRef } from '../utils/media'
 
 // The mock jobs dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -20,6 +21,7 @@ function mapJob(j) {
     company: j.company_name,
     companySlug: j.organization?.slug || null,
     logo: j.logo?.public_url || null,
+    logoMedia: mapMediaRef(j.logo),
     location: j.location,
     countryCode: j.country?.code || j.country_code || null,
     country: j.country ? { code: j.country.code, name: j.country.name, region: j.country.region } : null,

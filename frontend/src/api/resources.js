@@ -1,5 +1,6 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
+import { mapMediaRef } from '../utils/media'
 
 // The mock resources dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -17,6 +18,7 @@ function mapResource(r) {
     name: r.name,
     description: r.description,
     coverImage: r.cover_media?.public_url || null,
+    coverMedia: mapMediaRef(r.cover_media),
     type: r.type,
     topicSlug: r.topic?.slug || null,
     authorSlug: r.author?.slug || null,

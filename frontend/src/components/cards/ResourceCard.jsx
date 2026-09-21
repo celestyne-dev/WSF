@@ -9,6 +9,8 @@ export default function ResourceCard({ resource }) {
     <Link to={`/resources/${resource.slug}`} className="group block">
       <div className="relative overflow-hidden">
         <MediaImage
+          media={resource.coverMedia}
+          variant="card"
           mediaPath={resource.coverImage}
           alt={resource.name}
           width={800}

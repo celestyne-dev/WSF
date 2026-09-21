@@ -59,7 +59,7 @@ export default function AuthorProfilePage() {
         <div className="container-editorial">
           <Breadcrumb items={[{ label: 'Authors', to: '/authors' }, { label: author.name }]} />
           <div className="mt-6 flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-            <MediaImage mediaPath={author.photo} alt={author.name} width={200} height={200} aspect={1} className="h-28 w-28 rounded-full object-cover" />
+            <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={author.name} width={200} height={200} aspect={1} className="h-28 w-28 rounded-full object-cover" />
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{author.name}</h1>
               <p className="mt-1 text-base text-charcoal-600">{author.role}</p>
