@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
-import { getCountryName } from '../../mock/geography'
 
+// `person` must be a normalized object from api/people.js — its `country`
+// field is already resolved there (nested by the backend in real mode,
+// attached via attachMockCountry in mock mode). No lookup here.
 export default function PersonCard({ person }) {
   if (!person) return null
   return (
@@ -20,7 +22,7 @@ export default function PersonCard({ person }) {
         </h3>
         <p className="mt-0.5 text-sm text-charcoal-600">{person.title}</p>
         <p className="text-sm text-charcoal-600">
-          {person.organization} &middot; {getCountryName(person.countryCode)}
+          {person.organization} &middot; {person.country?.name || person.countryCode}
         </p>
       </div>
     </Link>

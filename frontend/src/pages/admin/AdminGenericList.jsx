@@ -14,7 +14,6 @@ import {
   fetchRedirects,
 } from '../../api/admin'
 import { fetchArticles } from '../../api/articles'
-import { getCountryName } from '../../mock/geography'
 import { formatDate, formatCurrency } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatCard from '../../components/cms/StatCard'
@@ -31,7 +30,7 @@ const CONFIGS = {
     columns: ['Name', 'Title', 'Organization', 'Country', 'Featured'],
     load: async () => {
       const res = await fetchPeople({ pageSize: 100 })
-      return res.items.map((p) => [p.name, p.title, p.organization, getCountryName(p.countryCode), p.featured ? 'Yes' : '—'])
+      return res.items.map((p) => [p.name, p.title, p.organization, p.country?.name || p.countryCode, p.featured ? 'Yes' : '—'])
     },
   },
   jobs: {
@@ -76,7 +75,7 @@ const CONFIGS = {
     columns: ['Name', 'Country', 'Title', 'Submitted', 'Status'],
     load: async () => {
       const rows = await fetchStorySubmissions()
-      return rows.map((s) => [s.name, getCountryName(s.countryCode), s.title, formatDate(s.submittedAt), <StatusBadge key={s.id} status={s.status} />])
+      return rows.map((s) => [s.name, s.country?.name || s.countryCode, s.title, formatDate(s.submittedAt), <StatusBadge key={s.id} status={s.status} />])
     },
   },
   nominations: {
@@ -85,7 +84,7 @@ const CONFIGS = {
     columns: ['Nominee', 'Country', 'Category', 'Submitted', 'Status'],
     load: async () => {
       const rows = await fetchNominations()
-      return rows.map((n) => [n.nomineeName, getCountryName(n.countryCode), n.category, formatDate(n.submittedAt), <StatusBadge key={n.id} status={n.status} />])
+      return rows.map((n) => [n.nomineeName, n.country?.name || n.countryCode, n.category, formatDate(n.submittedAt), <StatusBadge key={n.id} status={n.status} />])
     },
   },
   partnerships: {

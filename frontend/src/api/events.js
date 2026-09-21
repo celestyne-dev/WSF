@@ -1,7 +1,15 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
-import { events, getEventBySlug as findBySlug } from '../mock/events'
-import { countryFilterOptions, regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
+import { regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
+import { attachMockCountry, countryOptionsFromItems } from './geography'
+
+// The mock events dataset is only needed when VITE_USE_MOCK=true —
+// dynamic-imported so a real-mode production build never fetches it.
+let _mockEvents
+async function loadMockEvents() {
+  if (!_mockEvents) _mockEvents = await import('../mock/events')
+  return _mockEvents
+}
 
 function mapEvent(e) {
   if (!e) return null
@@ -18,6 +26,7 @@ function mapEvent(e) {
     timezone: e.timezone,
     location: e.location,
     countryCode: e.country?.code || e.country_code || null,
+    country: e.country ? { code: e.country.code, name: e.country.name, region: e.country.region } : null,
     venue: e.venue,
     virtualLink: e.virtual_link,
     registrationUrl: e.registration_url,
@@ -38,13 +47,15 @@ export async function fetchEvents(params = {}) {
     const { data } = await apiClient.get('/events', { params })
     return { ...data, items: data.items.map(mapEvent) }
   }
+  const { events } = await loadMockEvents()
   let results = [...events]
   if (params.format) results = results.filter((e) => e.format === params.format)
   if (params.type) results = results.filter((e) => e.type === params.type)
   if (params.country) results = results.filter((e) => matchesCountry(e.countryCode, params.country))
   if (params.region) results = results.filter((e) => matchesRegion(e.countryCode, params.region))
   results.sort((a, b) => new Date(a.date) - new Date(b.date))
-  return delay(paginate(results, params))
+  const page = paginate(results, params)
+  return delay({ ...page, items: page.items.map(attachMockCountry) })
 }
 
 export async function fetchEventBySlug(slug) {
@@ -57,7 +68,8 @@ export async function fetchEventBySlug(slug) {
       throw err
     }
   }
-  return delay(findBySlug(slug) || null)
+  const { getEventBySlug } = await loadMockEvents()
+  return delay(attachMockCountry(getEventBySlug(slug)))
 }
 
 export async function fetchEventsFilterOptions() {
@@ -67,14 +79,16 @@ export async function fetchEventsFilterOptions() {
     return {
       types: [...new Set(all.map((e) => e.type))].filter(Boolean),
       formats: [...new Set(all.map((e) => e.format))].filter(Boolean),
-      countries: countryFilterOptions(all.map((e) => e.countryCode)),
+      countries: countryOptionsFromItems(all),
       regions: regionFilterOptions(),
     }
   }
+  const { events } = await loadMockEvents()
+  const enriched = events.map(attachMockCountry)
   return delay({
     types: [...new Set(events.map((e) => e.type))],
     formats: [...new Set(events.map((e) => e.format))],
-    countries: countryFilterOptions(events.map((e) => e.countryCode)),
+    countries: countryOptionsFromItems(enriched),
     regions: regionFilterOptions(),
   })
 }

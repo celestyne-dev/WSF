@@ -6,7 +6,6 @@ import { fetchOrganizationBySlug } from '../api/taxonomies'
 import { fetchJobs } from '../api/jobs'
 import { fetchOpportunities } from '../api/opportunities'
 import { fetchPeople } from '../api/people'
-import { getCountryName } from '../mock/geography'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -80,7 +79,7 @@ export default function OrganizationDetailPage() {
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{org.name}</h1>
               <p className="mt-1 text-base text-charcoal-600">
-                {org.industry} &middot; {getCountryName(org.countryCode)} &middot; {org.type}
+                {org.industry} &middot; {org.country?.name || org.countryCode} &middot; {org.type}
               </p>
               <div className="mt-3 flex gap-4">
                 {org.website && (

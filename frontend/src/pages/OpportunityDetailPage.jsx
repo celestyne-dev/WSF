@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Calendar, Globe2, Award } from 'lucide-react'
 import { fetchOpportunityBySlug, fetchOpportunities } from '../api/opportunities'
-import { getCountryNames } from '../mock/geography'
 import { formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -76,7 +75,7 @@ export default function OpportunityDetailPage() {
               <Calendar size={15} /> Deadline: {formatDate(opportunity.deadline)}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Globe2 size={15} /> {getCountryNames(opportunity.countriesEligible).join(', ')}
+              <Globe2 size={15} /> {opportunity.countriesEligibleNames.join(', ')}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Award size={15} /> {opportunity.fundingValue}

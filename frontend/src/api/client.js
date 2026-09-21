@@ -54,7 +54,16 @@ apiClient.interceptors.response.use(
   (response) => {
     const body = response.data
     if (body && typeof body === 'object' && 'success' in body) {
-      if (body.meta) {
+      // A `meta` block alone doesn't mean "this is a paginated list" — a
+      // detail endpoint (e.g. GET /topics/{slug}) can return a single
+      // object that embeds its own paginated sub-collection (the topic's
+      // articles) and still carry `meta` for THAT sub-list. Only unwrap
+      // into {items, pagination} when `data` itself is actually an array;
+      // otherwise a detail response's `.data` would get replaced with
+      // {items: <the object>, pagination}, silently losing every field a
+      // caller like mapTopic()/mapAuthor()/mapSeries() expects to read
+      // directly (author.topic, .data.author, etc. all read as undefined).
+      if (body.meta && Array.isArray(body.data)) {
         response.data = {
           items: body.data,
           pagination: {

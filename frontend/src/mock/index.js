@@ -13,10 +13,6 @@ export * from './homepageModules'
 export * from './newsletter'
 export * from './admin'
 
-export const RESERVED_SLUGS = [
-  'admin', 'api', 'login', 'logout', 'register', 'search', 'people', 'authors',
-  'topics', 'categories', 'series', 'resources', 'events', 'opportunities',
-  'jobs', 'organizations', 'newsletter', 'mentorship', 'community', 'learning',
-  'shop', 'partnerships', 'advertise', 'about', 'contact', 'privacy', 'terms',
-  'cookies', 'submit', 'nominate', 'account', 'dashboard', 'articles', 'editorial-policy',
-]
+// RESERVED_SLUGS lives in ../constants/routes.js — it's a static route
+// constant, not mock content, and importing it from here would pull the
+// entire mock dataset into any bundle that only needed the slug list.

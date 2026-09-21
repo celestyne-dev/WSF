@@ -1,7 +1,15 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
-import { people, getPersonBySlug as findBySlug } from '../mock/people'
-import { countryFilterOptions, regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
+import { regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
+import { attachMockCountry, countryOptionsFromItems } from './geography'
+
+// The mock people dataset is only needed when VITE_USE_MOCK=true —
+// dynamic-imported so a real-mode production build never fetches it.
+let _mockPeople
+async function loadMockPeople() {
+  if (!_mockPeople) _mockPeople = await import('../mock/people')
+  return _mockPeople
+}
 
 function mapPerson(p) {
   if (!p) return null
@@ -15,6 +23,7 @@ function mapPerson(p) {
     organization: p.organization?.name || null,
     location: p.location,
     countryCode: p.country?.code || p.country_code || null,
+    country: p.country ? { code: p.country.code, name: p.country.name, region: p.country.region } : null,
     industry: p.industry,
     profession: p.profession,
     expertise: p.expertise || [],
@@ -36,6 +45,7 @@ export async function fetchPeople(params = {}) {
     const { data } = await apiClient.get('/people', { params })
     return { ...data, items: data.items.map(mapPerson) }
   }
+  const { people } = await loadMockPeople()
   let results = [...people]
   if (params.country) results = results.filter((p) => matchesCountry(p.countryCode, params.country))
   if (params.region) results = results.filter((p) => matchesRegion(p.countryCode, params.region))
@@ -48,7 +58,8 @@ export async function fetchPeople(params = {}) {
     results = results.filter((p) => p.name.toLowerCase().includes(q) || p.organization?.toLowerCase().includes(q))
   }
   results.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0))
-  return delay(paginate(results, params))
+  const page = paginate(results, params)
+  return delay({ ...page, items: page.items.map(attachMockCountry) })
 }
 
 export async function fetchPersonBySlug(slug) {
@@ -61,7 +72,8 @@ export async function fetchPersonBySlug(slug) {
       throw err
     }
   }
-  return delay(findBySlug(slug) || null)
+  const { getPersonBySlug } = await loadMockPeople()
+  return delay(attachMockCountry(getPersonBySlug(slug)))
 }
 
 // Filter dropdown options are derived from whichever people actually
@@ -74,14 +86,16 @@ export async function fetchPeopleFilterOptions() {
     const { data } = await apiClient.get('/people', { params: { pageSize: 200 } })
     const all = data.items.map(mapPerson)
     return {
-      countries: countryFilterOptions(all.map((p) => p.countryCode)),
+      countries: countryOptionsFromItems(all),
       regions: regionFilterOptions(),
       industries: [...new Set(all.map((p) => p.industry))].filter(Boolean).sort(),
       expertise: [...new Set(all.flatMap((p) => p.expertise))].filter(Boolean).sort(),
     }
   }
+  const { people } = await loadMockPeople()
+  const enriched = people.map(attachMockCountry)
   return delay({
-    countries: countryFilterOptions(people.map((p) => p.countryCode)),
+    countries: countryOptionsFromItems(enriched),
     regions: regionFilterOptions(),
     industries: [...new Set(people.map((p) => p.industry))].sort(),
     expertise: [...new Set(people.flatMap((p) => p.expertise))].sort(),

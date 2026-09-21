@@ -1,15 +1,36 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
-import { articles, getArticleBySlug as findBySlug } from '../mock/articles'
-import { getAuthorBySlug } from '../mock/authors'
-import { getTopicBySlug } from '../mock/topics'
-import { RESERVED_SLUGS } from '../mock'
+import { RESERVED_SLUGS } from '../constants/routes'
+
+// Mock article/author/topic datasets are only ever needed when
+// VITE_USE_MOCK=true — dynamic-importing them here (instead of a static
+// top-of-file import) keeps them out of the real-mode production bundle
+// entirely; a real-mode build never executes this function, so the
+// mock/* chunks it would pull in are never requested by the browser.
+let _mockDeps
+async function loadMockDeps() {
+  if (!_mockDeps) {
+    const [articlesMod, authorsMod, topicsMod] = await Promise.all([
+      import('../mock/articles'),
+      import('../mock/authors'),
+      import('../mock/topics'),
+    ])
+    _mockDeps = {
+      articles: articlesMod.articles,
+      findBySlug: articlesMod.getArticleBySlug,
+      getAuthorBySlug: authorsMod.getAuthorBySlug,
+      getTopicBySlug: topicsMod.getTopicBySlug,
+    }
+  }
+  return _mockDeps
+}
 
 // Mock articles only carry flat slug strings; attach the same nested
 // author/topic shape the real API returns (see mapArticle) so shared
 // components never need to know which mode is active.
-function enrichMockArticle(a) {
+async function enrichMockArticle(a) {
   if (!a) return null
+  const { getAuthorBySlug, getTopicBySlug } = await loadMockDeps()
   return {
     ...a,
     author: getAuthorBySlug(a.authorSlug) || null,
@@ -68,6 +89,7 @@ export async function fetchArticles(params = {}) {
     const { data } = await apiClient.get('/articles', { params })
     return { ...data, items: data.items.map(mapArticle) }
   }
+  const { articles } = await loadMockDeps()
   let results = articles.filter((a) => a.status === 'published')
   if (params.topic) results = results.filter((a) => a.topicSlugs.includes(params.topic))
   if (params.series) results = results.filter((a) => a.seriesSlug === params.series)
@@ -83,7 +105,8 @@ export async function fetchArticles(params = {}) {
   }
   results = [...results].sort((a, b) => new Date(b.publishDate) - new Date(a.publishDate))
   const page = paginate(results, params)
-  return delay({ ...page, items: page.items.map(enrichMockArticle) })
+  const items = await Promise.all(page.items.map(enrichMockArticle))
+  return delay({ ...page, items })
 }
 
 // GET /api/v1/articles/{slug} — flat public URL is /{slug}; reserved-slug
@@ -99,7 +122,8 @@ export async function fetchArticleBySlug(slug) {
       throw err
     }
   }
-  return delay(enrichMockArticle(findBySlug(slug)))
+  const { findBySlug } = await loadMockDeps()
+  return delay(await enrichMockArticle(findBySlug(slug)))
 }
 
 export async function fetchRelatedArticles(slugs = []) {
@@ -107,7 +131,9 @@ export async function fetchRelatedArticles(slugs = []) {
     const { data } = await apiClient.post('/articles/related', { slugs })
     return data.map(mapArticle)
   }
-  return delay(slugs.map((s) => findBySlug(s)).filter(Boolean).map(enrichMockArticle))
+  const { findBySlug } = await loadMockDeps()
+  const found = slugs.map((s) => findBySlug(s)).filter(Boolean)
+  return delay(await Promise.all(found.map(enrichMockArticle)))
 }
 
 export function isReservedSlug(slug) {

@@ -40,19 +40,8 @@ export const adminUsers = [
   { id: 'u8', name: 'Sarah Wekesa', email: 'sarah@womenshapingfutures.org', role: 'opportunities_manager', status: 'invited', lastLogin: null },
 ]
 
-export const roleDefinitions = [
-  { key: 'super_admin', label: 'Super Admin', description: 'Full access to every CMS area, including user management and site settings.' },
-  { key: 'admin', label: 'Admin', description: 'Full content and commerce access, excluding user role management.' },
-  { key: 'editor', label: 'Editor', description: 'Can create, edit, approve, and publish all editorial content.' },
-  { key: 'author', label: 'Author', description: 'Can create and edit own articles; requires editor approval to publish.' },
-  { key: 'moderator', label: 'Moderator', description: 'Reviews story submissions and nominations.' },
-  { key: 'partnerships_manager', label: 'Partnerships Manager', description: 'Manages sponsors, partners, and partnership enquiries.' },
-  { key: 'opportunities_manager', label: 'Opportunities Manager', description: 'Manages job, opportunity, and event listings.' },
-  { key: 'events_manager', label: 'Events Manager', description: 'Manages event listings, agendas, and registrations.' },
-  { key: 'analyst', label: 'Analyst', description: 'Read-only access to analytics dashboards.' },
-  { key: 'member', label: 'Member', description: 'Registered reader with a public-facing account.' },
-  { key: 'employer', label: 'Employer', description: 'Can submit and manage job and opportunity listings.' },
-]
+// Role display labels/descriptions live in ../constants/roles.js — they're
+// static UI metadata, not mock database records.
 
 export const storySubmissions = [
   {

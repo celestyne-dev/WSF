@@ -1,16 +1,15 @@
 import { useSelector } from 'react-redux'
-import { COUNTRIES } from '../../mock/geography'
 
 /**
  * Standardized country picker backed by the shared Country reference table
- * (GET /api/v1/public/countries, loaded once into Redux by PublicLayout) —
- * used anywhere a person submits their own country (forms), rather than a
- * free-text field a backend would need to normalize later. Falls back to
- * the static list before the real countries have loaded, or in mock mode.
+ * (GET /api/v1/public/countries in real mode, the static list in mock
+ * mode) — loaded once into Redux by PublicLayout via api/geography.js's
+ * fetchCountries(). This component only ever reads Redux state; it has no
+ * import of its own into the mock data directory, so real mode is never
+ * one render away from showing dev-only fixture countries.
  */
 export default function CountrySelect({ value, onChange, required, id, placeholder = 'Select your country' }) {
-  const loaded = useSelector((s) => s.site.countries)
-  const countries = loaded.length ? loaded : COUNTRIES
+  const countries = useSelector((s) => s.site.countries)
   const sorted = [...countries].sort((a, b) => a.name.localeCompare(b.name))
 
   return (
@@ -19,10 +18,11 @@ export default function CountrySelect({ value, onChange, required, id, placehold
       required={required}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full border border-taupe-300 bg-white px-4 py-3 text-sm text-charcoal focus:border-burgundy-500 focus:outline-none"
+      disabled={!countries.length}
+      className="w-full border border-taupe-300 bg-white px-4 py-3 text-sm text-charcoal focus:border-burgundy-500 focus:outline-none disabled:opacity-60"
     >
       <option value="" disabled>
-        {placeholder}
+        {countries.length ? placeholder : 'Loading countries…'}
       </option>
       {sorted.map((c) => (
         <option key={c.code} value={c.code}>

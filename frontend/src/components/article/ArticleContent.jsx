@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
 import NewsletterForm from '../ui/NewsletterForm'
-import { getArticleBySlug } from '../../mock/articles'
 import { Quote } from 'lucide-react'
 
 function Heading({ block }) {
@@ -77,13 +76,13 @@ function NewsletterCta({ block }) {
   )
 }
 
-function RelatedBlock({ block, articlesBySlug }) {
-  // articlesBySlug is pre-resolved by ArticlePage via fetchRelatedArticles
-  // (real mode); the mock lookup only covers mock mode, where no such map
-  // is passed down.
-  const related = articlesBySlug
-    ? block.articleSlugs.map((s) => articlesBySlug[s]).filter(Boolean)
-    : block.articleSlugs.map((s) => getArticleBySlug(s)).filter(Boolean)
+function RelatedBlock({ block, articlesBySlug = {} }) {
+  // ArticlePage pre-resolves every referenced slug through
+  // api/articles.js (fetchRelatedArticles) and passes the result down as
+  // articlesBySlug. This component never looks up article content itself;
+  // a slug ArticlePage couldn't resolve (e.g. it doesn't exist on the
+  // backend) is simply omitted, never independently looked up here.
+  const related = (block.articleSlugs || []).map((s) => articlesBySlug[s]).filter(Boolean)
   if (!related.length) return null
   return (
     <div className="my-10 border-y border-taupe-200 py-6">

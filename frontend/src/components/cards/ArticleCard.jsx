@@ -1,20 +1,19 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
-import { getAuthorBySlug } from '../../mock/authors'
-import { getTopicBySlug } from '../../mock/topics'
 import { formatShortDate } from '../../utils/format'
 
 /**
  * variant: 'lead' | 'secondary' | 'horizontal' | 'compact' | 'grid'
  * Article URLs are flat: /{slug} — never /articles/{slug}.
+ *
+ * `article` must be a normalized object from api/articles.js — its
+ * `author`/`topic` fields are already resolved there (mapArticle for real
+ * mode, enrichMockArticle for mock mode). This component never looks
+ * authors/topics up itself.
  */
 export default function ArticleCard({ article, variant = 'grid' }) {
   if (!article) return null
-  // Real-mode articles already carry resolved author/topic objects (see
-  // mapArticle in api/articles.js); the mock lookup is only a fallback for
-  // raw mock articles, which only have flat slug strings.
-  const author = article.author || getAuthorBySlug(article.authorSlug)
-  const topic = article.topic || getTopicBySlug(article.topicSlugs?.[0])
+  const { author, topic } = article
   const href = `/${article.slug}`
 
   if (variant === 'lead') {

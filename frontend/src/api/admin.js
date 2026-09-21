@@ -1,25 +1,22 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
-import {
-  adminPipelineArticles,
-  adminUsers,
-  roleDefinitions,
-  storySubmissions,
-  nominations,
-  partnershipInquiries,
-  adCampaigns,
-  dashboardStats,
-  pageViewsTrend,
-  trafficBySource,
-  topArticlesThisMonth,
-  subscriberGrowth,
-} from '../mock/admin'
+import { ROLE_DEFINITIONS } from '../constants/roles'
+import { attachMockCountry } from './geography'
+
+// The mock admin dataset is only needed when VITE_USE_MOCK=true —
+// dynamic-imported so a real-mode production build never fetches it.
+let _mockAdmin
+async function loadMockAdmin() {
+  if (!_mockAdmin) _mockAdmin = await import('../mock/admin')
+  return _mockAdmin
+}
 
 // GET /api/v1/admin/dashboard — real aggregate counts + trends. No mock
 // equivalent needed for the trend arrays beyond the existing static mock
 // fixtures (mock mode never had live traffic to aggregate).
 export async function fetchAdminDashboard() {
   if (!USE_MOCK) return (await apiClient.get('/admin/dashboard')).data
+  const { dashboardStats, pageViewsTrend, topArticlesThisMonth } = await loadMockAdmin()
   return delay({ ...dashboardStats, pageViewsTrend, topArticlesThisMonth })
 }
 
@@ -41,6 +38,7 @@ export async function fetchAdminArticles(params = {}) {
     const { data } = await apiClient.get('/admin/articles', { params })
     return { ...data, items: data.items.map(mapAdminArticle) }
   }
+  const { adminPipelineArticles } = await loadMockAdmin()
   const rows = [
     ...adminPipelineArticles.map((a) => ({
       id: a.id,
@@ -70,15 +68,23 @@ export async function fetchAdminUsers() {
       lastLogin: u.last_login_at,
     }))
   }
+  const { adminUsers } = await loadMockAdmin()
   return delay(adminUsers)
 }
 
+// The backend only knows role names, not display labels/descriptions —
+// merge the real role list with the static ROLE_DEFINITIONS labels so the
+// UI shows "Partnerships Manager" instead of "partnerships_manager", while
+// which roles actually exist still comes from the backend.
 export async function fetchAdminRoles() {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/admin/roles')
-    return data.map((r) => ({ key: r.name, label: r.name, description: r.description }))
+    return data.map((r) => {
+      const known = ROLE_DEFINITIONS.find((d) => d.key === r.name)
+      return { key: r.name, label: known?.label || r.name, description: known?.description || null }
+    })
   }
-  return delay(roleDefinitions)
+  return delay(ROLE_DEFINITIONS)
 }
 
 function mapHomepageModuleAdmin(m) {
@@ -138,11 +144,13 @@ export async function fetchAnalyticsSummary() {
 
 export async function fetchTrafficSources() {
   if (!USE_MOCK) return (await apiClient.get('/analytics/traffic-sources')).data
+  const { trafficBySource } = await loadMockAdmin()
   return delay(trafficBySource)
 }
 
 export async function fetchSubscriberGrowth() {
   if (!USE_MOCK) return (await apiClient.get('/analytics/subscriber-growth')).data
+  const { subscriberGrowth } = await loadMockAdmin()
   return delay(subscriberGrowth)
 }
 
@@ -155,12 +163,14 @@ export async function fetchStorySubmissions() {
       id: s.id,
       name: s.name,
       countryCode: s.country?.code || null,
+      country: s.country ? { code: s.country.code, name: s.country.name, region: s.country.region } : null,
       title: s.title,
       submittedAt: s.submitted_at,
       status: s.status,
     }))
   }
-  return delay(storySubmissions)
+  const { storySubmissions } = await loadMockAdmin()
+  return delay(storySubmissions.map(attachMockCountry))
 }
 
 export async function fetchNominations() {
@@ -170,12 +180,14 @@ export async function fetchNominations() {
       id: n.id,
       nomineeName: n.nominee_name,
       countryCode: n.country?.code || null,
+      country: n.country ? { code: n.country.code, name: n.country.name, region: n.country.region } : null,
       category: n.category,
       submittedAt: n.submitted_at,
       status: n.status,
     }))
   }
-  return delay(nominations)
+  const { nominations } = await loadMockAdmin()
+  return delay(nominations.map(attachMockCountry))
 }
 
 export async function fetchPartnershipInquiries() {
@@ -189,6 +201,7 @@ export async function fetchPartnershipInquiries() {
       status: p.status,
     }))
   }
+  const { partnershipInquiries } = await loadMockAdmin()
   return delay(partnershipInquiries)
 }
 
@@ -198,6 +211,7 @@ export async function fetchPartnershipInquiries() {
 // available" message for this section.
 export async function fetchAdCampaigns() {
   if (!USE_MOCK) return []
+  const { adCampaigns } = await loadMockAdmin()
   return delay(adCampaigns)
 }
 

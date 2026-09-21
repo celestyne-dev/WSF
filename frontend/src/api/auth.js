@@ -1,6 +1,13 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
-import { adminUsers } from '../mock/admin'
+
+// The mock admin users list is only needed when VITE_USE_MOCK=true —
+// dynamic-imported so a real-mode production build never fetches it.
+let _mockAdmin
+async function loadMockAdmin() {
+  if (!_mockAdmin) _mockAdmin = await import('../mock/admin')
+  return _mockAdmin
+}
 
 function mapUser(u) {
   if (!u) return null
@@ -21,6 +28,7 @@ export async function login({ email, password }) {
       return { success: false, message: err.apiError?.message || 'Invalid email or password.' }
     }
   }
+  const { adminUsers } = await loadMockAdmin()
   const user = adminUsers.find((u) => u.email.toLowerCase() === email.toLowerCase())
   if (!user || password.length < 4) {
     return delay({ success: false, message: 'Invalid email or password.' }, 400)
@@ -44,6 +52,7 @@ export async function fetchCurrentUser(token) {
       return null
     }
   }
+  const { adminUsers } = await loadMockAdmin()
   const userId = token?.replace('mock-jwt-', '')
   const user = adminUsers.find((u) => u.id === userId)
   return delay(user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null)

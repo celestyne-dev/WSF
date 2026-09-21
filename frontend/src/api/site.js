@@ -1,9 +1,29 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
-import { primaryNavigation, secondaryNavigation, footerNavigation, socialLinks } from '../mock/navigation'
-import { homepageModules } from '../mock/homepageModules'
-import { newsletterIssues, newsletterStats } from '../mock/newsletter'
-import { audienceStats } from '../mock/admin'
+
+// Each mock dataset here is only needed when VITE_USE_MOCK=true —
+// dynamic-imported per module so a real-mode production build never
+// fetches any of them.
+let _mockNavigation
+async function loadMockNavigation() {
+  if (!_mockNavigation) _mockNavigation = await import('../mock/navigation')
+  return _mockNavigation
+}
+let _mockHomepageModules
+async function loadMockHomepageModules() {
+  if (!_mockHomepageModules) _mockHomepageModules = await import('../mock/homepageModules')
+  return _mockHomepageModules
+}
+let _mockNewsletter
+async function loadMockNewsletter() {
+  if (!_mockNewsletter) _mockNewsletter = await import('../mock/newsletter')
+  return _mockNewsletter
+}
+let _mockAdmin
+async function loadMockAdmin() {
+  if (!_mockAdmin) _mockAdmin = await import('../mock/admin')
+  return _mockAdmin
+}
 
 function mapNavItem(item) {
   return {
@@ -64,6 +84,7 @@ function mapNewsletterIssue(i) {
 
 export async function fetchNavigation() {
   if (!USE_MOCK) return mapNavigation((await apiClient.get('/public/navigation')).data)
+  const { primaryNavigation, secondaryNavigation, footerNavigation, socialLinks } = await loadMockNavigation()
   return delay({ primary: primaryNavigation, secondary: secondaryNavigation, footer: footerNavigation, social: socialLinks })
 }
 
@@ -78,6 +99,7 @@ export async function fetchSiteSettings() {
 
 export async function fetchHomepageModules() {
   if (!USE_MOCK) return (await apiClient.get('/public/homepage')).data.map(mapHomepageModule)
+  const { homepageModules } = await loadMockHomepageModules()
   return delay([...homepageModules].filter((m) => m.enabled).sort((a, b) => a.order - b.order))
 }
 
@@ -96,6 +118,7 @@ export async function fetchNewsletterArchive() {
       },
     }
   }
+  const { newsletterIssues, newsletterStats } = await loadMockNewsletter()
   return delay({ issues: newsletterIssues, stats: newsletterStats })
 }
 
@@ -116,6 +139,7 @@ export async function subscribeToNewsletter(payload) {
 // pages' media-kit stats. Never hard-code these into a page component.
 export async function fetchAudienceStats() {
   if (!USE_MOCK) return (await apiClient.get('/partnerships/audience')).data
+  const { audienceStats } = await loadMockAdmin()
   return delay(audienceStats)
 }
 

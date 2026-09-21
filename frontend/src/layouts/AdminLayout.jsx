@@ -23,7 +23,7 @@ import {
   LayoutTemplate,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
-import { roleDefinitions } from '../mock/admin'
+import { getRoleLabel } from '../constants/roles'
 
 const NAV_GROUPS = [
   {
@@ -84,7 +84,7 @@ export default function AdminLayout() {
 
   if (!accessToken) return <Navigate to="/login" replace />
 
-  const roleLabel = roleDefinitions.find((r) => r.key === user?.role)?.label || user?.role
+  const roleLabel = user?.role ? getRoleLabel(user.role) : null
 
   return (
     <div className="flex min-h-screen bg-taupe-100 text-charcoal">

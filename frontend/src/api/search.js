@@ -1,12 +1,33 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
-import { articles } from '../mock/articles'
-import { people } from '../mock/people'
-import { jobs } from '../mock/jobs'
-import { opportunities } from '../mock/opportunities'
-import { events } from '../mock/events'
-import { resources } from '../mock/resources'
-import { organizations } from '../mock/organizations'
+
+// Every mock dataset search touches is only needed when
+// VITE_USE_MOCK=true — dynamic-imported as a batch so a real-mode
+// production build never fetches any of them.
+let _mockDeps
+async function loadMockDeps() {
+  if (!_mockDeps) {
+    const [articlesMod, peopleMod, jobsMod, opportunitiesMod, eventsMod, resourcesMod, organizationsMod] = await Promise.all([
+      import('../mock/articles'),
+      import('../mock/people'),
+      import('../mock/jobs'),
+      import('../mock/opportunities'),
+      import('../mock/events'),
+      import('../mock/resources'),
+      import('../mock/organizations'),
+    ])
+    _mockDeps = {
+      articles: articlesMod.articles,
+      people: peopleMod.people,
+      jobs: jobsMod.jobs,
+      opportunities: opportunitiesMod.opportunities,
+      events: eventsMod.events,
+      resources: resourcesMod.resources,
+      organizations: organizationsMod.organizations,
+    }
+  }
+  return _mockDeps
+}
 
 // GET /api/v1/search?q=&type=
 export async function globalSearch(query, type = 'all') {
@@ -14,6 +35,7 @@ export async function globalSearch(query, type = 'all') {
   const q = query.trim().toLowerCase()
   if (!q) return delay({ query, results: [] })
 
+  const { articles, people, jobs, opportunities, events, resources, organizations } = await loadMockDeps()
   const matches = (text) => text && text.toLowerCase().includes(q)
 
   const results = []

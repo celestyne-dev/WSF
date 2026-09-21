@@ -1,9 +1,30 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
-import { topics, getTopicBySlug as findTopic } from '../mock/topics'
-import { series, getSeriesBySlug as findSeries } from '../mock/series'
-import { authors, getAuthorBySlug as findAuthor } from '../mock/authors'
-import { organizations, getOrganizationBySlug as findOrg } from '../mock/organizations'
+import { attachMockCountry } from './geography'
+
+// Each mock dataset here is only needed when VITE_USE_MOCK=true —
+// dynamic-imported per module so a real-mode production build never
+// fetches any of them.
+let _mockTopics
+async function loadMockTopics() {
+  if (!_mockTopics) _mockTopics = await import('../mock/topics')
+  return _mockTopics
+}
+let _mockSeries
+async function loadMockSeries() {
+  if (!_mockSeries) _mockSeries = await import('../mock/series')
+  return _mockSeries
+}
+let _mockAuthors
+async function loadMockAuthors() {
+  if (!_mockAuthors) _mockAuthors = await import('../mock/authors')
+  return _mockAuthors
+}
+let _mockOrganizations
+async function loadMockOrganizations() {
+  if (!_mockOrganizations) _mockOrganizations = await import('../mock/organizations')
+  return _mockOrganizations
+}
 
 function mapTopic(t) {
   if (!t) return null
@@ -39,6 +60,7 @@ function mapAuthor(a) {
     expertise: a.expertise || [],
     location: a.location,
     countryCode: a.country?.code || a.country_code || null,
+    country: a.country ? { code: a.country.code, name: a.country.name, region: a.country.region } : null,
     social: a.social || {},
     website: a.website,
     articleCount: a.article_count,
@@ -54,6 +76,7 @@ function mapOrganization(o) {
     logo: o.logo?.public_url || null,
     industry: o.industry,
     countryCode: o.country?.code || o.country_code || null,
+    country: o.country ? { code: o.country.code, name: o.country.name, region: o.country.region } : null,
     type: o.org_type,
     description: o.description,
     website: o.website,
@@ -64,6 +87,7 @@ function mapOrganization(o) {
 
 export async function fetchTopics() {
   if (!USE_MOCK) return (await apiClient.get('/topics')).data.map(mapTopic)
+  const { topics } = await loadMockTopics()
   return delay(topics)
 }
 export async function fetchTopicBySlug(slug) {
@@ -75,11 +99,13 @@ export async function fetchTopicBySlug(slug) {
       throw err
     }
   }
-  return delay(findTopic(slug) || null)
+  const { getTopicBySlug } = await loadMockTopics()
+  return delay(getTopicBySlug(slug) || null)
 }
 
 export async function fetchSeries() {
   if (!USE_MOCK) return (await apiClient.get('/series')).data.map(mapSeries)
+  const { series } = await loadMockSeries()
   return delay(series)
 }
 export async function fetchSeriesBySlug(slug) {
@@ -91,12 +117,14 @@ export async function fetchSeriesBySlug(slug) {
       throw err
     }
   }
-  return delay(findSeries(slug) || null)
+  const { getSeriesBySlug } = await loadMockSeries()
+  return delay(getSeriesBySlug(slug) || null)
 }
 
 export async function fetchAuthors() {
   if (!USE_MOCK) return (await apiClient.get('/authors')).data.map(mapAuthor)
-  return delay(authors)
+  const { authors } = await loadMockAuthors()
+  return delay(authors.map(attachMockCountry))
 }
 export async function fetchAuthorBySlug(slug) {
   if (!USE_MOCK) {
@@ -107,12 +135,14 @@ export async function fetchAuthorBySlug(slug) {
       throw err
     }
   }
-  return delay(findAuthor(slug) || null)
+  const { getAuthorBySlug } = await loadMockAuthors()
+  return delay(attachMockCountry(getAuthorBySlug(slug)))
 }
 
 export async function fetchOrganizations() {
   if (!USE_MOCK) return (await apiClient.get('/organizations')).data.map(mapOrganization)
-  return delay(organizations)
+  const { organizations } = await loadMockOrganizations()
+  return delay(organizations.map(attachMockCountry))
 }
 export async function fetchOrganizationBySlug(slug) {
   if (!USE_MOCK) {
@@ -123,5 +153,6 @@ export async function fetchOrganizationBySlug(slug) {
       throw err
     }
   }
-  return delay(findOrg(slug) || null)
+  const { getOrganizationBySlug } = await loadMockOrganizations()
+  return delay(attachMockCountry(getOrganizationBySlug(slug)))
 }

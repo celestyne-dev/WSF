@@ -1,6 +1,13 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
-import { resources, getResourceBySlug as findBySlug } from '../mock/resources'
+
+// The mock resources dataset is only needed when VITE_USE_MOCK=true —
+// dynamic-imported so a real-mode production build never fetches it.
+let _mockResources
+async function loadMockResources() {
+  if (!_mockResources) _mockResources = await import('../mock/resources')
+  return _mockResources
+}
 
 function mapResource(r) {
   if (!r) return null
@@ -27,6 +34,7 @@ export async function fetchResources(params = {}) {
     const { data } = await apiClient.get('/resources', { params })
     return { ...data, items: data.items.map(mapResource) }
   }
+  const { resources } = await loadMockResources()
   let results = [...resources]
   if (params.topic) results = results.filter((r) => r.topicSlug === params.topic)
   if (params.type) results = results.filter((r) => r.type === params.type)
@@ -46,7 +54,8 @@ export async function fetchResourceBySlug(slug) {
       throw err
     }
   }
-  return delay(findBySlug(slug) || null)
+  const { getResourceBySlug } = await loadMockResources()
+  return delay(getResourceBySlug(slug) || null)
 }
 
 export async function fetchResourcesFilterOptions() {
@@ -55,5 +64,6 @@ export async function fetchResourcesFilterOptions() {
     const all = data.items.map(mapResource)
     return { types: [...new Set(all.map((r) => r.type))].filter(Boolean) }
   }
+  const { resources } = await loadMockResources()
   return delay({ types: [...new Set(resources.map((r) => r.type))] })
 }
