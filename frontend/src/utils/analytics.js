@@ -11,11 +11,13 @@
 // persisted into `<link rel="canonical">`, so they never create duplicate
 // canonical URLs or duplicate content for search engines).
 //
-// In production this same shape (`acquisition` on every event payload)
-// flows to `POST /api/v1/analytics/events`, which is what will eventually
-// power referral-source breakdowns in the admin Analytics screen. Nothing
-// here talks to LinkedIn's API — the site's own funnel works whether or
-// not that integration ever exists.
+// In real (non-mock) mode this same shape (`acquisition` on every event
+// payload) flows to `POST /api/v1/analytics/events`, which is what powers
+// referral-source breakdowns in the admin Analytics screen. Nothing here
+// talks to LinkedIn's API — the site's own funnel works whether or not
+// that integration ever exists.
+
+import { apiClient, USE_MOCK } from '../api/client'
 
 const STORAGE_KEY = 'wsf_acquisition'
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
@@ -99,20 +101,25 @@ export function withAcquisitionMetadata(payload = {}) {
  * Records a conversion or engagement event (newsletter signup, resource
  * download, event registration, job/opportunity click, partnership
  * enquiry, ...) tagged with the visitor's acquisition source. Logs to the
- * console in development; a real deployment posts this to
- * `/api/v1/analytics/events` instead.
+ * console in development; when running against the real backend it also
+ * posts to POST /api/v1/analytics/events (fire-and-forget — a dropped
+ * analytics beacon should never block or break the visitor's action).
  */
 export function trackEvent(eventName, payload = {}) {
+  const acquisition = getAcquisitionContext()
   const event = {
     event: eventName,
     ...payload,
-    acquisition: getAcquisitionContext(),
+    acquisition,
     path: typeof window !== 'undefined' ? window.location.pathname : null,
     timestamp: new Date().toISOString(),
   }
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
     console.debug('[analytics]', event)
+  }
+  if (!USE_MOCK) {
+    apiClient.post('/analytics/events', { eventName, payload, acquisition }).catch(() => {})
   }
   return event
 }

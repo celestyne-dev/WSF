@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
 import { ChevronUp, ChevronDown, Eye, EyeOff, Save } from 'lucide-react'
-import { homepageModules } from '../../mock/homepageModules'
+import { fetchAdminHomepage, saveAdminHomepage } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
+import PageLoader from '../../components/ui/PageLoader'
+import EmptyState from '../../components/ui/EmptyState'
 
 const TYPE_LABELS = {
   hero: 'Hero',
@@ -19,7 +21,19 @@ const TYPE_LABELS = {
 }
 
 export default function AdminHomepageBuilder() {
-  const [modules, setModules] = useState([...homepageModules].sort((a, b) => a.order - b.order))
+  const [modules, setModules] = useState(undefined)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    fetchAdminHomepage()
+      .then((data) => active && setModules([...data].sort((a, b) => a.order - b.order)))
+      .catch(() => active && setError('Something went wrong loading the homepage builder. Please try again.'))
+    return () => {
+      active = false
+    }
+  }, [])
 
   function move(index, direction) {
     setModules((prev) => {
@@ -39,14 +53,30 @@ export default function AdminHomepageBuilder() {
     setModules((prev) => prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)))
   }
 
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const saved = await saveAdminHomepage(modules)
+      setModules([...saved].sort((a, b) => a.order - b.order))
+      toast.success('Homepage layout saved.')
+    } catch {
+      toast.error('Something went wrong saving the homepage layout. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error) return <EmptyState title="Couldn't load the homepage builder" description={error} />
+  if (modules === undefined) return <PageLoader />
+
   return (
     <div>
       <AdminPageHeader
         title="Homepage Builder"
         description="Reorder, enable, and edit each homepage module. Changes here update the live homepage — no code required."
         actions={
-          <button type="button" onClick={() => toast.success('Homepage layout saved.')} className="btn-primary !px-4 !py-2 text-xs">
-            <Save size={14} /> Save layout
+          <button type="button" onClick={handleSave} disabled={saving} className="btn-primary !px-4 !py-2 text-xs disabled:opacity-60">
+            <Save size={14} /> {saving ? 'Saving…' : 'Save layout'}
           </button>
         }
       />

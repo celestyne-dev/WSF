@@ -1,25 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Pencil, ExternalLink, Search } from 'lucide-react'
-import { articles } from '../../mock/articles'
-import { adminPipelineArticles } from '../../mock/admin'
-import { getAuthorBySlug } from '../../mock/authors'
+import { fetchAdminArticles } from '../../api/admin'
 import { formatDate } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
-
-const rows = [
-  ...articles.map((a) => ({ id: a.id, slug: a.slug, title: a.title, authorSlug: a.authorSlug, status: a.status, date: a.publishDate, editable: true })),
-  ...adminPipelineArticles.map((a) => ({ id: a.id, slug: null, title: a.title, authorSlug: a.authorSlug, status: a.status, date: a.updatedAt, editable: true })),
-]
+import PageLoader from '../../components/ui/PageLoader'
+import EmptyState from '../../components/ui/EmptyState'
 
 export default function AdminArticles() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
+  const [rows, setRows] = useState(undefined)
+  const [error, setError] = useState(null)
 
-  const filtered = rows.filter(
-    (r) => r.title.toLowerCase().includes(query.toLowerCase()) && (!status || r.status === status),
-  )
+  useEffect(() => {
+    let active = true
+    setError(null)
+    fetchAdminArticles({ status, query, pageSize: 100 })
+      .then((res) => active && setRows(res.items))
+      .catch(() => active && setError('Something went wrong loading articles. Please try again.'))
+    return () => {
+      active = false
+    }
+  }, [status, query])
 
   return (
     <div>
@@ -48,28 +52,29 @@ export default function AdminArticles() {
         </select>
       </div>
 
-      <div className="overflow-x-auto border border-taupe-200 bg-white">
-        <table className="w-full min-w-[700px] text-left text-sm">
-          <thead className="bg-taupe-100 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-            <tr>
-              <th className="px-4 py-3">Title</th>
-              <th className="px-4 py-3">Author</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-taupe-200">
-            {filtered.map((row) => {
-              const author = getAuthorBySlug(row.authorSlug)
-              return (
+      {error && <EmptyState title="Couldn't load articles" description={error} />}
+      {!error && rows === undefined && <PageLoader />}
+      {!error && rows !== undefined && (
+        <div className="overflow-x-auto border border-taupe-200 bg-white">
+          <table className="w-full min-w-[700px] text-left text-sm">
+            <thead className="bg-taupe-100 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+              <tr>
+                <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Author</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-taupe-200">
+              {rows.map((row) => (
                 <tr key={row.id}>
                   <td className="max-w-xs truncate px-4 py-3 font-medium text-charcoal">{row.title}</td>
-                  <td className="px-4 py-3 text-charcoal-600">{author?.name}</td>
+                  <td className="px-4 py-3 text-charcoal-600">{row.authorName}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={row.status} />
                   </td>
-                  <td className="px-4 py-3 text-charcoal-600">{formatDate(row.date, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                  <td className="px-4 py-3 text-charcoal-600">{row.date ? formatDate(row.date, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
                       {row.slug && (
@@ -77,17 +82,17 @@ export default function AdminArticles() {
                           <ExternalLink size={15} />
                         </a>
                       )}
-                      <Link to={`/admin/articles/${row.id}`} aria-label="Edit" className="text-charcoal-600 hover:text-burgundy-600">
+                      <Link to={`/admin/articles/${row.slug || row.id}`} aria-label="Edit" className="text-charcoal-600 hover:text-burgundy-600">
                         <Pencil size={15} />
                       </Link>
                     </div>
                   </td>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

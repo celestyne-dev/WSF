@@ -1,20 +1,69 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
+import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
-import { audienceStats } from '../../mock/admin'
+import PageLoader from '../../components/ui/PageLoader'
+import EmptyState from '../../components/ui/EmptyState'
 
 const TABS = ['Site Identity', 'Navigation', 'Footer', 'Newsletter', 'Media Kit', 'Integrations']
+
+const DEFAULT_AUDIENCE = {
+  linkedinFollowers: 0,
+  linkedinAvgReach: 0,
+  linkedinEngagementRate: 0,
+  newsletterSubscribers: 0,
+  monthlyWebsiteVisitors: 0,
+  monthlyPageViews: 0,
+  countriesReached: 0,
+  audienceGeography: [],
+}
 
 export default function AdminSettings() {
   const [tab, setTab] = useState(TABS[0])
   const [siteName, setSiteName] = useState('Women Shaping Futures')
   const [tagline, setTagline] = useState('Stories, Opportunity & Growth for Women Worldwide')
   const [contactEmail, setContactEmail] = useState('hello@womenshapingfutures.org')
-  const [audience, setAudience] = useState(audienceStats)
+  const [audience, setAudience] = useState(undefined)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    fetchAdminSettings()
+      .then((data) => {
+        if (!active) return
+        setAudience({ ...DEFAULT_AUDIENCE, ...(data.audience_stats || {}) })
+        if (data.site_identity?.siteName) setSiteName(data.site_identity.siteName)
+        if (data.site_identity?.tagline) setTagline(data.site_identity.tagline)
+        if (data.site_identity?.contactEmail) setContactEmail(data.site_identity.contactEmail)
+      })
+      .catch(() => active && setError('Something went wrong loading settings. Please try again.'))
+    return () => {
+      active = false
+    }
+  }, [])
 
   function updateAudience(field, value) {
     setAudience((prev) => ({ ...prev, [field]: value }))
   }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await saveAdminSettings({
+        audience_stats: audience,
+        site_identity: { siteName, tagline, contactEmail },
+      })
+      toast.success('Settings saved.')
+    } catch {
+      toast.error('Something went wrong saving settings. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error) return <EmptyState title="Couldn't load settings" description={error} />
+  if (audience === undefined) return <PageLoader />
 
   return (
     <div>
@@ -57,8 +106,7 @@ export default function AdminSettings() {
 
         {tab === 'Navigation' && (
           <p className="text-sm text-charcoal-600">
-            Primary and footer navigation are managed here in production — add, rename, reorder, and hide menu items without a deploy. See{' '}
-            <code className="bg-taupe-100 px-1">src/mock/navigation.js</code> for the data shape this screen edits.
+            Primary and footer navigation are managed via GET/PUT <code className="bg-taupe-100 px-1">/api/v1/admin/navigation</code> — add, rename, reorder, and hide menu items without a deploy.
           </p>
         )}
 
@@ -102,27 +150,29 @@ export default function AdminSettings() {
               </div>
             </div>
 
-            <div className="pt-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Audience geography (region / %)</p>
-              <div className="mt-2 space-y-2">
-                {audience.audienceGeography.map((g, i) => (
-                  <div key={g.region} className="flex items-center gap-3">
-                    <span className="w-48 text-sm text-charcoal-600">{g.region}</span>
-                    <input
-                      type="number"
-                      value={g.percent}
-                      onChange={(e) => {
-                        const next = [...audience.audienceGeography]
-                        next[i] = { ...g, percent: Number(e.target.value) }
-                        updateAudience('audienceGeography', next)
-                      }}
-                      className="w-24 border border-taupe-300 px-3 py-1.5 text-sm focus:border-burgundy-500 focus:outline-none"
-                    />
-                    <span className="text-sm text-charcoal-600">%</span>
-                  </div>
-                ))}
+            {audience.audienceGeography.length > 0 && (
+              <div className="pt-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Audience geography (region / %)</p>
+                <div className="mt-2 space-y-2">
+                  {audience.audienceGeography.map((g, i) => (
+                    <div key={g.region} className="flex items-center gap-3">
+                      <span className="w-48 text-sm text-charcoal-600">{g.region}</span>
+                      <input
+                        type="number"
+                        value={g.percent}
+                        onChange={(e) => {
+                          const next = [...audience.audienceGeography]
+                          next[i] = { ...g, percent: Number(e.target.value) }
+                          updateAudience('audienceGeography', next)
+                        }}
+                        className="w-24 border border-taupe-300 px-3 py-1.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                      />
+                      <span className="text-sm text-charcoal-600">%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -138,8 +188,8 @@ export default function AdminSettings() {
           </div>
         )}
 
-        <button type="button" onClick={() => toast.success('Settings saved.')} className="btn-primary mt-6">
-          Save changes
+        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary mt-6 disabled:opacity-60">
+          {saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
     </div>

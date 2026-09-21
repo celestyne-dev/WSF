@@ -113,3 +113,22 @@ export async function fetchRelatedArticles(slugs = []) {
 export function isReservedSlug(slug) {
   return RESERVED_SLUGS.includes(slug)
 }
+
+// POST/PUT /api/v1/articles — admin create/update. Field names mirror
+// ArticleInputSchema's camelCase data_keys exactly, so the editor form can
+// send its state straight through.
+export async function createArticle(payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.post('/articles', payload)
+    return mapArticle(data)
+  }
+  return delay({ ...payload, id: `mock-${Date.now()}`, slug: payload.slug })
+}
+
+export async function updateArticle(slug, payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.put(`/articles/${slug}`, payload)
+    return mapArticle(data)
+  }
+  return delay({ ...payload, slug: payload.slug || slug })
+}

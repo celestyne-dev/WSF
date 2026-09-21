@@ -1,9 +1,33 @@
-import { adminUsers, roleDefinitions } from '../../mock/admin'
+import { useEffect, useState } from 'react'
+import { fetchAdminUsers, fetchAdminRoles } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
+import PageLoader from '../../components/ui/PageLoader'
+import EmptyState from '../../components/ui/EmptyState'
 import { formatDate } from '../../utils/format'
 
 export default function AdminUsers() {
+  const [users, setUsers] = useState(undefined)
+  const [roles, setRoles] = useState([])
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    Promise.all([fetchAdminUsers(), fetchAdminRoles()])
+      .then(([u, r]) => {
+        if (!active) return
+        setUsers(u)
+        setRoles(r)
+      })
+      .catch(() => active && setError('Something went wrong loading users. Please try again.'))
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (error) return <EmptyState title="Couldn't load users" description={error} />
+  if (users === undefined) return <PageLoader />
+
   return (
     <div>
       <AdminPageHeader title="Users & Roles" description="Team members with CMS access, and the role-based permissions available on the platform." />
@@ -20,11 +44,11 @@ export default function AdminUsers() {
             </tr>
           </thead>
           <tbody className="divide-y divide-taupe-200">
-            {adminUsers.map((u) => (
+            {users.map((u) => (
               <tr key={u.id}>
                 <td className="px-4 py-3 font-medium text-charcoal">{u.name}</td>
                 <td className="px-4 py-3 text-charcoal-600">{u.email}</td>
-                <td className="px-4 py-3 text-charcoal-600">{roleDefinitions.find((r) => r.key === u.role)?.label}</td>
+                <td className="px-4 py-3 text-charcoal-600">{(u.roles || []).join(', ') || u.role || '—'}</td>
                 <td className="px-4 py-3">
                   <StatusBadge status={u.status} />
                 </td>
@@ -38,10 +62,10 @@ export default function AdminUsers() {
       <div className="mt-8">
         <p className="mb-3 text-sm font-semibold text-charcoal">Role permissions reference</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {roleDefinitions.map((r) => (
+          {roles.map((r) => (
             <div key={r.key} className="border border-taupe-200 bg-white p-4">
               <p className="text-sm font-semibold text-charcoal">{r.label}</p>
-              <p className="mt-1 text-xs text-charcoal-600">{r.description}</p>
+              {r.description && <p className="mt-1 text-xs text-charcoal-600">{r.description}</p>}
             </div>
           ))}
         </div>

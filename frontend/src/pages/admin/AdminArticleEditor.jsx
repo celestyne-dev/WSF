@@ -1,14 +1,14 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Save, Eye } from 'lucide-react'
-import { articles } from '../../mock/articles'
-import { adminPipelineArticles } from '../../mock/admin'
-import { authors } from '../../mock/authors'
-import { topics } from '../../mock/topics'
+import { fetchArticleBySlug, createArticle, updateArticle } from '../../api/articles'
+import { fetchAuthors, fetchTopics } from '../../api/taxonomies'
 import { RESERVED_SLUGS } from '../../mock'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
+import PageLoader from '../../components/ui/PageLoader'
+import EmptyState from '../../components/ui/EmptyState'
 
 function slugify(text) {
   return text
@@ -21,66 +21,73 @@ function slugify(text) {
 
 const STATUSES = ['draft', 'in_review', 'changes_requested', 'approved', 'scheduled', 'published', 'archived']
 
-function findRecord(id) {
-  const published = articles.find((a) => a.id === id)
-  if (published) {
-    return {
-      title: published.title,
-      slug: published.slug,
-      subtitle: published.subtitle,
-      excerpt: published.excerpt,
-      heroImage: published.heroImage,
-      authorSlug: published.authorSlug,
-      topicSlugs: published.topicSlugs,
-      status: published.status,
-      seoTitle: published.seo?.title || '',
-      seoDescription: published.seo?.description || '',
-      isSponsored: published.isSponsored,
-    }
+function blankForm(defaultAuthorSlug) {
+  return {
+    title: '',
+    slug: '',
+    subtitle: '',
+    excerpt: '',
+    heroImage: '',
+    authorSlug: defaultAuthorSlug || '',
+    topicSlugs: [],
+    status: 'draft',
+    seoTitle: '',
+    seoDescription: '',
+    isSponsored: false,
   }
-  const pipeline = adminPipelineArticles.find((a) => a.id === id)
-  if (pipeline) {
-    return {
-      title: pipeline.title,
-      slug: '',
-      subtitle: '',
-      excerpt: '',
-      heroImage: '',
-      authorSlug: pipeline.authorSlug,
-      topicSlugs: [pipeline.topicSlug],
-      status: pipeline.status,
-      seoTitle: '',
-      seoDescription: '',
-      isSponsored: false,
-    }
-  }
-  return null
 }
 
-const blankForm = {
-  title: '',
-  slug: '',
-  subtitle: '',
-  excerpt: '',
-  heroImage: '',
-  authorSlug: authors[0].slug,
-  topicSlugs: [],
-  status: 'draft',
-  seoTitle: '',
-  seoDescription: '',
-  isSponsored: false,
+function toForm(article) {
+  return {
+    title: article.title || '',
+    slug: article.slug || '',
+    subtitle: article.subtitle || '',
+    excerpt: article.excerpt || '',
+    heroImage: article.heroImage || '',
+    authorSlug: article.authorSlug || article.author?.slug || '',
+    topicSlugs: article.topicSlugs || [],
+    status: article.status || 'draft',
+    seoTitle: article.seo?.title || '',
+    seoDescription: article.seo?.description || '',
+    isSponsored: !!article.isSponsored,
+  }
 }
 
 export default function AdminArticleEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isNew = !id
-  const existing = useMemo(() => (id ? findRecord(id) : null), [id])
-  const [form, setForm] = useState(existing || blankForm)
+
+  const [authors, setAuthors] = useState([])
+  const [topics, setTopics] = useState([])
+  const [form, setForm] = useState(undefined)
+  const [notFound, setNotFound] = useState(false)
   const [slugTouched, setSlugTouched] = useState(!isNew)
   const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState(null)
 
-  const allSlugs = articles.map((a) => a.slug)
+  useEffect(() => {
+    let active = true
+    Promise.all([fetchAuthors(), fetchTopics(), isNew ? Promise.resolve(null) : fetchArticleBySlug(id)])
+      .then(([authorList, topicList, existing]) => {
+        if (!active) return
+        setAuthors(authorList)
+        setTopics(topicList)
+        if (isNew) {
+          setForm(blankForm(authorList[0]?.slug))
+        } else if (existing) {
+          setForm(toForm(existing))
+        } else {
+          setNotFound(true)
+        }
+      })
+      .catch(() => active && setLoadError('Something went wrong loading the article editor. Please try again.'))
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isNew])
 
   function updateField(field, value) {
     setForm((prev) => {
@@ -95,7 +102,6 @@ export default function AdminArticleEditor() {
   function validateSlug(slug) {
     if (!slug) return 'Slug is required.'
     if (RESERVED_SLUGS.includes(slug)) return `"${slug}" is a reserved system route and cannot be used as an article slug.`
-    if (allSlugs.includes(slug) && slug !== existing?.slug) return 'This slug is already in use by another article.'
     return null
   }
 
@@ -106,7 +112,7 @@ export default function AdminArticleEditor() {
     }))
   }
 
-  function handleSave(nextStatus) {
+  async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
     if (slugError) {
       setErrors({ slug: slugError })
@@ -114,9 +120,36 @@ export default function AdminArticleEditor() {
       return
     }
     setErrors({})
-    toast.success(`Article ${nextStatus === 'published' ? 'published' : 'saved'} as ${nextStatus.replace('_', ' ')}.`)
-    if (isNew) navigate('/admin/articles')
+    setSaving(true)
+
+    const payload = {
+      title: form.title,
+      slug: form.slug,
+      subtitle: form.subtitle || null,
+      excerpt: form.excerpt || null,
+      authorSlug: form.authorSlug,
+      topicSlugs: form.topicSlugs,
+      status: nextStatus,
+      isSponsored: form.isSponsored,
+      seo: { title: form.seoTitle || null, description: form.seoDescription || null },
+    }
+
+    try {
+      const saved = isNew ? await createArticle(payload) : await updateArticle(id, payload)
+      toast.success(`Article ${nextStatus === 'published' ? 'published' : 'saved'} as ${nextStatus.replace('_', ' ')}.`)
+      if (isNew) navigate(`/admin/articles/${saved.slug}`)
+      else setForm(toForm(saved))
+    } catch (err) {
+      const message = err?.response?.data?.error?.message || 'Something went wrong saving this article. Please try again.'
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
   }
+
+  if (loadError) return <EmptyState title="Couldn't load the article editor" description={loadError} />
+  if (notFound) return <EmptyState title="Article not found" description="This article may have been deleted or the URL is incorrect." />
+  if (form === undefined) return <PageLoader />
 
   return (
     <div>
@@ -194,10 +227,10 @@ export default function AdminArticleEditor() {
               ))}
             </select>
             <div className="mt-4 space-y-2">
-              <button type="button" onClick={() => handleSave('draft')} className="btn-secondary w-full !py-2 text-xs">
-                <Save size={13} /> Save draft
+              <button type="button" onClick={() => handleSave('draft')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
+                <Save size={13} /> {saving ? 'Saving…' : 'Save draft'}
               </button>
-              <button type="button" onClick={() => handleSave('published')} className="btn-primary w-full !py-2 text-xs">
+              <button type="button" onClick={() => handleSave('published')} disabled={saving} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
                 Publish
               </button>
             </div>
