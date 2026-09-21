@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import NewsletterForm from '../components/ui/NewsletterForm'
-import { audienceStats } from '../mock/admin'
+import { fetchAudienceStats } from '../api/site'
 
 const FEATURES = [
   'Member profiles and a searchable member directory',
@@ -12,6 +13,18 @@ const FEATURES = [
 ]
 
 export default function CommunityPage() {
+  const [stats, setStats] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    fetchAudienceStats()
+      .then((data) => active && setStats(data))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
   useSeo({
     title: 'Community | Women Shaping Futures',
     description: 'The Women Shaping Futures community — connect with women across industries and career stages.',
@@ -23,7 +36,11 @@ export default function CommunityPage() {
       <PageHeader
         eyebrow="Community"
         title="The WSF Community"
-        description={`More than ${new Intl.NumberFormat('en-US').format(audienceStats.linkedinFollowers)} women follow Women Shaping Futures on LinkedIn and beyond. We're building a home for that community on our own platform.`}
+        description={
+          stats
+            ? `More than ${new Intl.NumberFormat('en-US').format(stats.linkedinFollowers)} women follow Women Shaping Futures on LinkedIn and beyond. We're building a home for that community on our own platform.`
+            : "We're building a home for our growing community on our own platform."
+        }
       />
       <div className="container-editorial grid grid-cols-1 gap-10 py-14 lg:grid-cols-2">
         <div>

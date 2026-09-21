@@ -1,10 +1,27 @@
-import { authors } from '../mock/authors'
-import { audienceStats } from '../mock/admin'
+import { useEffect, useState } from 'react'
+import { fetchAuthors } from '../api/taxonomies'
+import { fetchAudienceStats } from '../api/site'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import MediaImage from '../components/ui/MediaImage'
 
 export default function AboutPage() {
+  const [authors, setAuthors] = useState([])
+  const [stats, setStats] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    fetchAuthors()
+      .then((data) => active && setAuthors(data))
+      .catch(() => {})
+    fetchAudienceStats()
+      .then((data) => active && setStats(data))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
   useSeo({
     title: 'About Women Shaping Futures',
     description: 'Women Shaping Futures is a global media, opportunity, and community platform for ambitious women.',
@@ -16,7 +33,11 @@ export default function AboutPage() {
       <PageHeader
         eyebrow="About Us"
         title="A platform built to move women forward"
-        description={`Women Shaping Futures started in 2019 as a small LinkedIn page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching more than ${new Intl.NumberFormat('en-US').format(audienceStats.linkedinFollowers)} people across ${audienceStats.countriesReached} countries, with particularly strong readership in the United States.`}
+        description={
+          stats
+            ? `Women Shaping Futures started in 2019 as a small LinkedIn page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching more than ${new Intl.NumberFormat('en-US').format(stats.linkedinFollowers)} people across ${stats.countriesReached} countries, with particularly strong readership in the United States.`
+            : "Women Shaping Futures started in 2019 as a small LinkedIn page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching women worldwide."
+        }
       />
 
       <div className="container-editorial max-w-reading py-14">

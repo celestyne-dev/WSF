@@ -3,6 +3,7 @@ import { delay } from './mockUtils'
 import { primaryNavigation, secondaryNavigation, footerNavigation, socialLinks } from '../mock/navigation'
 import { homepageModules } from '../mock/homepageModules'
 import { newsletterIssues, newsletterStats } from '../mock/newsletter'
+import { audienceStats } from '../mock/admin'
 
 function mapNavItem(item) {
   return {
@@ -108,6 +109,14 @@ export async function subscribeToNewsletter(payload) {
     }
   }
   return delay({ success: true, message: 'You’re subscribed. Look out for WSF Weekly every Thursday.' }, 500)
+}
+
+// GET /api/v1/partnerships/audience — CMS-editable LinkedIn/newsletter/
+// website audience numbers for the About, Community, and Partnerships
+// pages' media-kit stats. Never hard-code these into a page component.
+export async function fetchAudienceStats() {
+  if (!USE_MOCK) return (await apiClient.get('/partnerships/audience')).data
+  return delay(audienceStats)
 }
 
 export async function submitPartnershipInquiry(payload) {

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchNewsletterArchive } from '../api/site'
-import { getArticleBySlug } from '../mock/articles'
 import { formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
@@ -11,7 +10,13 @@ export default function NewsletterPage() {
   const [archive, setArchive] = useState(null)
 
   useEffect(() => {
-    fetchNewsletterArchive().then(setArchive)
+    let active = true
+    fetchNewsletterArchive()
+      .then((data) => active && setArchive(data))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [])
 
   useSeo({
@@ -46,23 +51,20 @@ export default function NewsletterPage() {
         <div>
           <h2 className="font-serif text-2xl font-semibold text-charcoal">Recent issues</h2>
           <div className="mt-5 divide-y divide-taupe-200">
-            {archive?.issues.map((issue) => {
-              const article = getArticleBySlug(issue.featuredArticleSlug)
-              return (
-                <div key={issue.id} className="py-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600/70">
-                    Issue #{issue.issueNumber} &middot; {formatDate(issue.sendDate)}
-                  </p>
-                  <h3 className="mt-1 font-serif text-xl font-semibold text-charcoal">{issue.subject}</h3>
-                  <p className="mt-1 text-sm text-charcoal-600">{issue.summary}</p>
-                  {article && (
-                    <Link to={`/${article.slug}`} className="mt-2 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-                      Read the featured story &rarr;
-                    </Link>
-                  )}
-                </div>
-              )
-            })}
+            {archive?.issues.map((issue) => (
+              <div key={issue.id} className="py-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600/70">
+                  Issue #{issue.issueNumber} &middot; {formatDate(issue.sendDate)}
+                </p>
+                <h3 className="mt-1 font-serif text-xl font-semibold text-charcoal">{issue.subject}</h3>
+                <p className="mt-1 text-sm text-charcoal-600">{issue.summary}</p>
+                {issue.featuredArticleSlug && (
+                  <Link to={`/${issue.featuredArticleSlug}`} className="mt-2 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+                    Read the featured story &rarr;
+                  </Link>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
