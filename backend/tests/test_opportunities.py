@@ -121,8 +121,8 @@ def test_event_create_with_speakers_and_sponsors(client, admin_token):
             "title": "Women in Leadership Summit",
             "date": "2026-12-14",
             "countryCode": "KE",
-            "speakerSlugs": [speaker_slug],
-            "agenda": [{"time": "08:30", "title": "Registration"}],
+            "speakers": [{"personSlug": speaker_slug}],
+            "agenda": [{"startTime": "08:30", "title": "Registration"}],
             "description": [{"type": "paragraph", "text": "A leadership summit."}],
             "registrationUrl": "https://example.com/register/leadership-summit",
         },
@@ -130,7 +130,7 @@ def test_event_create_with_speakers_and_sponsors(client, admin_token):
     )
     assert event.status_code == 201
     body = event.get_json()["data"]
-    assert body["speakers"][0]["name"] == "Naliaka Wafula"
+    assert body["speakers"][0]["person"]["name"] == "Naliaka Wafula"
     assert body["agenda"][0]["title"] == "Registration"
 
     listed = client.get("/api/v1/events?country=KE")

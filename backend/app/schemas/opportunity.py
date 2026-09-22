@@ -15,8 +15,11 @@ from app.models.opportunity import (
     OPPORTUNITY_STATUSES,
     OPPORTUNITY_TYPES,
     REMOTE_SCOPES,
+    SPONSOR_TIERS,
     WORK_MODES,
     Event,
+    EventSpeaker,
+    EventSponsor,
     Job,
     Opportunity,
 )
@@ -98,11 +101,38 @@ class OpportunitySchema(ma.SQLAlchemyAutoSchema):
         return False
 
 
+class EventSpeakerSchema(ma.SQLAlchemyAutoSchema):
+    person = fields.Nested(PersonSchema, dump_only=True, only=("id", "slug", "name", "title", "photo"))
+    headshot = fields.Nested(MediaSchema, dump_only=True)
+
+    class Meta:
+        model = EventSpeaker
+        load_instance = False
+        exclude = ("event_id",)
+
+
+class EventSponsorSchema(ma.SQLAlchemyAutoSchema):
+    organization = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    logo = fields.Nested(MediaSchema, dump_only=True)
+
+    class Meta:
+        model = EventSponsor
+        load_instance = False
+        exclude = ("event_id",)
+
+
 class EventSchema(ma.SQLAlchemyAutoSchema):
     cover_media = fields.Nested(MediaSchema, dump_only=True)
     country = fields.Nested(CountrySchema, dump_only=True)
-    speakers = fields.Nested(PersonSchema, many=True, dump_only=True)
-    sponsors = fields.Nested(OrganizationSchema, many=True, dump_only=True)
+    # The stored JSON uses AgendaItemSchema's internal (snake_case) field
+    # names (agenda is loaded through EventInputSchema before it's saved,
+    # like every other JSON blob in this app) — re-declared here so dumping
+    # translates it back through the same data_key mapping into the
+    # camelCase shape the frontend actually consumes, the way a plain
+    # `fields.Dict()` column never would on its own.
+    agenda = fields.List(fields.Nested("AgendaItemSchema"), dump_only=True)
+    speakers = fields.Nested(EventSpeakerSchema, many=True, dump_only=True)
+    sponsors = fields.Nested(EventSponsorSchema, many=True, dump_only=True)
     # marshmallow-sqlalchemy's auto schema omits FK columns that back a
     # declared relationship — declared explicitly so the CMS editor can
     # always resolve/pre-select the linked Organization.
@@ -110,7 +140,11 @@ class EventSchema(ma.SQLAlchemyAutoSchema):
     organizer = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
     is_past = fields.Method("get_is_past")
     is_upcoming = fields.Method("get_is_upcoming")
+    is_ongoing = fields.Method("get_is_ongoing")
+    is_completed = fields.Method("get_is_completed")
     is_cancelled = fields.Method("get_is_cancelled")
+    is_postponed = fields.Method("get_is_postponed")
+    is_free = fields.Method("get_is_free")
 
     class Meta:
         model = Event
@@ -124,10 +158,34 @@ class EventSchema(ma.SQLAlchemyAutoSchema):
         return bool(end) and end < date.today()
 
     def get_is_upcoming(self, obj):
-        return not self.get_is_past(obj) and obj.status != "cancelled"
+        return not self.get_is_past(obj) and obj.status not in ("cancelled", "postponed")
+
+    def get_is_ongoing(self, obj):
+        """True only for a live, in-progress multi/single-day event — the
+        actual current date falls within [date, end_date] — and never for
+        a cancelled or postponed one, even if today falls in that range.
+        """
+        if obj.status in ("cancelled", "postponed") or not obj.date:
+            return False
+        end = obj.end_date or obj.date
+        today = date.today()
+        return obj.date <= today <= end
+
+    def get_is_completed(self, obj):
+        """The event's dates have fully passed and it actually happened —
+        distinct from a cancelled/postponed event, which is also "past"
+        its original date but never counts as completed.
+        """
+        return self.get_is_past(obj) and obj.status not in ("cancelled", "postponed")
 
     def get_is_cancelled(self, obj):
         return obj.status == "cancelled"
+
+    def get_is_postponed(self, obj):
+        return obj.status == "postponed"
+
+    def get_is_free(self, obj):
+        return not obj.ticket_price
 
 
 class JobInputSchema(ma.Schema):
@@ -272,8 +330,43 @@ class OpportunityInputSchema(ma.Schema):
 
 
 class AgendaItemSchema(ma.Schema):
-    time = fields.String(required=True)
+    # Ordered by array position, like every other structured list in this
+    # app (content blocks, gallery images) — no separate "order" field.
+    start_time = fields.String(required=True, data_key="startTime")
+    end_time = fields.String(required=False, allow_none=True, data_key="endTime")
     title = fields.String(required=True)
+    description = fields.String(required=False, allow_none=True)
+    session_type = fields.String(required=False, allow_none=True, data_key="sessionType")
+    speaker_names = fields.List(fields.String(), required=False, load_default=list, data_key="speakerNames")
+
+
+class EventSpeakerInputSchema(ma.Schema):
+    person_slug = fields.String(required=False, allow_none=True, data_key="personSlug")
+    # Fallback fields for a speaker without (yet) a People profile.
+    name = fields.String(required=False, allow_none=True)
+    title = fields.String(required=False, allow_none=True)
+    organization_name = fields.String(required=False, allow_none=True, data_key="organizationName")
+    bio = fields.String(required=False, allow_none=True)
+    headshot_media_id = fields.Integer(required=False, allow_none=True, data_key="headshotMediaId")
+
+    @validates_schema
+    def validate_identity(self, data, **kwargs):
+        if not data.get("person_slug") and not data.get("name"):
+            raise ValidationError("Each speaker needs either a linked person or a name.", field_name="name")
+
+
+class EventSponsorInputSchema(ma.Schema):
+    organization_id = fields.Integer(required=False, allow_none=True, data_key="organizationId")
+    # Fallback fields for a sponsor without (yet) an Organization profile.
+    name = fields.String(required=False, allow_none=True)
+    logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
+    url = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
+    tier = fields.String(required=False, allow_none=True, validate=validate.OneOf(SPONSOR_TIERS))
+
+    @validates_schema
+    def validate_identity(self, data, **kwargs):
+        if not data.get("organization_id") and not data.get("name"):
+            raise ValidationError("Each sponsor needs either a linked organization or a name.", field_name="name")
 
 
 class EventInputSchema(ma.Schema):
@@ -295,6 +388,7 @@ class EventInputSchema(ma.Schema):
     timezone = fields.String(required=False, allow_none=True)
     location = fields.String(required=False, allow_none=True)
     address = fields.String(required=False, allow_none=True)
+    city = fields.String(required=False, allow_none=True)
     country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
     venue = fields.String(required=False, allow_none=True)
     virtual_link = fields.String(required=False, allow_none=True, data_key="virtualLink")
@@ -318,8 +412,8 @@ class EventInputSchema(ma.Schema):
     cover_media_id = fields.Integer(required=False, allow_none=True, data_key="coverMediaId")
     featured = fields.Boolean(required=False, load_default=False)
     sponsored = fields.Boolean(required=False, load_default=False)
-    speaker_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="speakerSlugs")
-    sponsor_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="sponsorSlugs")
+    speakers = fields.List(fields.Nested(EventSpeakerInputSchema), required=False, load_default=list)
+    sponsors = fields.List(fields.Nested(EventSponsorInputSchema), required=False, load_default=list)
 
     @validates_schema
     def validate_dates(self, data, **kwargs):
@@ -333,3 +427,11 @@ class EventInputSchema(ma.Schema):
         deadline_limit = end_date or event_date
         if registration_deadline and deadline_limit and registration_deadline > deadline_limit:
             raise ValidationError("Registration deadline should be on or before the event date.", field_name="registration_deadline")
+
+    @validates_schema
+    def validate_pricing(self, data, **kwargs):
+        price = data.get("ticket_price")
+        if price is not None and price < 0:
+            raise ValidationError("Ticket price cannot be negative.", field_name="ticket_price")
+        if price and not data.get("currency"):
+            raise ValidationError("Paid events require a currency.", field_name="currency")

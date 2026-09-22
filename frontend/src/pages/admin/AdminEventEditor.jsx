@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
-import { Save, Eye, AlertTriangle, Archive, Trash2 } from 'lucide-react'
+import { Save, Eye, AlertTriangle, Archive, Trash2, ChevronUp, ChevronDown, Search, Plus } from 'lucide-react'
 import { fetchEventBySlug, createEvent, updateEvent, deleteEvent } from '../../api/events'
 import { fetchOrganizations } from '../../api/taxonomies'
 import { fetchPeople } from '../../api/people'
@@ -23,7 +23,7 @@ function slugify(text) {
     .replace(/-+/g, '-')
 }
 
-const STATUSES = ['draft', 'published', 'cancelled', 'archived']
+const STATUSES = ['draft', 'review', 'scheduled', 'published', 'postponed', 'cancelled', 'archived']
 const TYPES = [
   'Conference',
   'Summit',
@@ -35,6 +35,7 @@ const TYPES = [
   'Training',
   'Community Event',
   'Career Event',
+  'Leadership Event',
   'Founder Event',
   'Mentorship Event',
   'Awards Event',
@@ -45,6 +46,7 @@ const FORMATS = [
   { value: 'virtual', label: 'Virtual' },
   { value: 'hybrid', label: 'Hybrid' },
 ]
+const SPONSOR_TIERS = ['Presenting Sponsor', 'Gold Sponsor', 'Silver Sponsor', 'Supporting Partner', 'Community Partner']
 // A representative spread of IANA zones across every region — not
 // exhaustive (any valid IANA identifier can still be typed), just enough
 // to make the common cases a click instead of free typing, without
@@ -61,6 +63,7 @@ const COMMON_TIMEZONES = [
   'America/Sao_Paulo',
   'America/Mexico_City',
   'America/Bogota',
+  'America/Toronto',
   'Europe/London',
   'Europe/Paris',
   'Europe/Berlin',
@@ -91,14 +94,16 @@ function blankForm() {
     timezone: '',
     location: '',
     address: '',
+    city: '',
     countryCode: '',
     venue: '',
     virtualLink: '',
     virtualLinkPublic: false,
     organizerId: '',
     organizerName: '',
-    speakerSlugs: [],
-    sponsorSlugs: [],
+    speakers: [],
+    sponsors: [],
+    agenda: [],
     registrationUrl: '',
     registrationRequired: true,
     registrationDeadline: '',
@@ -133,14 +138,16 @@ function toForm(event) {
     timezone: event.timezone || '',
     location: event.location || '',
     address: event.address || '',
+    city: event.city || '',
     countryCode: event.countryCode || '',
     venue: event.venue || '',
     virtualLink: event.virtualLink || '',
     virtualLinkPublic: !!event.virtualLinkPublic,
     organizerId: event.organizerId || '',
     organizerName: event.organizer || '',
-    speakerSlugs: event.speakers || [],
-    sponsorSlugs: event.sponsors || [],
+    speakers: event.speakers || [],
+    sponsors: event.sponsors || [],
+    agenda: event.agenda || [],
     registrationUrl: event.registrationUrl || '',
     registrationRequired: event.registrationRequired !== false,
     registrationDeadline: event.registrationDeadline || '',
@@ -181,6 +188,236 @@ function Field({ label, hint, children }) {
   )
 }
 
+function ItemShell({ label, onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown, children }) {
+  return (
+    <div className="border border-taupe-200 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">{label}</span>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={onMoveUp} disabled={!canMoveUp} aria-label="Move up" className="p-1 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
+            <ChevronUp size={15} />
+          </button>
+          <button type="button" onClick={onMoveDown} disabled={!canMoveDown} aria-label="Move down" className="p-1 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
+            <ChevronDown size={15} />
+          </button>
+          <button type="button" onClick={onRemove} aria-label="Remove" className="p-1 text-charcoal-600 hover:text-rose-600">
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+const inputClass = 'w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
+
+// Speakers can either link an existing People profile (name/title/bio/
+// headshot always reused from there, never duplicated) or carry their own
+// fallback fields for a speaker without a profile yet.
+function SpeakersEditor({ speakers, people }) {
+  const setSpeakers = speakers.set
+  const list = speakers.value
+  const [search, setSearch] = useState('')
+  const filtered = search ? people.filter((p) => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 8) : []
+
+  function addFromPerson(person) {
+    setSpeakers([...list, { personSlug: person.slug, name: person.name, title: person.title || '', organizationName: '', bio: '', headshot: null, profileSlug: person.slug }])
+    setSearch('')
+  }
+  function addFallback() {
+    setSpeakers([...list, { personSlug: null, name: '', title: '', organizationName: '', bio: '', headshot: null }])
+  }
+  function updateAt(i, patch) {
+    setSpeakers(list.map((s, idx) => (idx === i ? { ...s, ...patch } : s)))
+  }
+  function removeAt(i) {
+    setSpeakers(list.filter((_, idx) => idx !== i))
+  }
+  function moveAt(i, dir) {
+    const target = i + dir
+    if (target < 0 || target >= list.length) return
+    const next = [...list]
+    ;[next[i], next[target]] = [next[target], next[i]]
+    setSpeakers(next)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <div className="flex items-center gap-2 border border-taupe-300 bg-white px-3 py-2">
+          <Search size={15} className="text-charcoal-600" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search existing People to add as a speaker…" className="w-full text-sm focus:outline-none" />
+        </div>
+        {filtered.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full border border-taupe-200 bg-white shadow-card">
+            {filtered.map((p) => (
+              <button key={p.slug} type="button" onClick={() => addFromPerson(p)} className="block w-full px-3 py-2 text-left text-sm hover:bg-taupe-100">
+                {p.name} {p.title && <span className="text-charcoal-600/60">— {p.title}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {list.map((s, i) => (
+        <ItemShell key={i} label={s.personSlug ? 'Linked speaker' : 'Fallback speaker'} onMoveUp={() => moveAt(i, -1)} onMoveDown={() => moveAt(i, 1)} onRemove={() => removeAt(i)} canMoveUp={i > 0} canMoveDown={i < list.length - 1}>
+          {s.personSlug ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-charcoal">
+                {s.name} {s.title && <span className="font-normal text-charcoal-600">— {s.title}</span>}
+              </p>
+              <input value={s.organizationName} onChange={(e) => updateAt(i, { organizationName: e.target.value })} placeholder="Organization override for this event (optional)" className={inputClass} />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input value={s.name} onChange={(e) => updateAt(i, { name: e.target.value })} placeholder="Speaker name" className={inputClass} />
+                <input value={s.title} onChange={(e) => updateAt(i, { title: e.target.value })} placeholder="Job title" className={inputClass} />
+              </div>
+              <input value={s.organizationName} onChange={(e) => updateAt(i, { organizationName: e.target.value })} placeholder="Organization" className={inputClass} />
+              <textarea rows={2} value={s.bio} onChange={(e) => updateAt(i, { bio: e.target.value })} placeholder="Short bio" className={inputClass} />
+              <MediaPicker label="Headshot" aspect={1} value={s.headshot} onChange={(media) => updateAt(i, { headshot: media })} />
+            </div>
+          )}
+        </ItemShell>
+      ))}
+
+      <button type="button" onClick={addFallback} className="btn-secondary !px-3 !py-1.5 text-xs">
+        <Plus size={13} /> Add speaker without a People profile
+      </button>
+    </div>
+  )
+}
+
+// Sponsors can either link an existing Organization (name/logo reused from
+// there) or carry a fallback name/logo/url for a sponsor without an
+// Organization profile yet.
+function SponsorsEditor({ sponsors, organizations }) {
+  const setSponsors = sponsors.set
+  const list = sponsors.value
+
+  function addFromOrg(org) {
+    setSponsors([...list, { organizationId: org.id, organizationSlug: org.slug, name: org.name, tier: '', logo: null, url: null }])
+  }
+  function addFallback() {
+    setSponsors([...list, { organizationId: null, name: '', url: '', logo: null, tier: '' }])
+  }
+  function updateAt(i, patch) {
+    setSponsors(list.map((s, idx) => (idx === i ? { ...s, ...patch } : s)))
+  }
+  function removeAt(i) {
+    setSponsors(list.filter((_, idx) => idx !== i))
+  }
+  function moveAt(i, dir) {
+    const target = i + dir
+    if (target < 0 || target >= list.length) return
+    const next = [...list]
+    ;[next[i], next[target]] = [next[target], next[i]]
+    setSponsors(next)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Add from an existing Organization" hint="optional">
+          <select
+            value=""
+            onChange={(e) => {
+              const org = organizations.find((o) => String(o.id) === e.target.value)
+              if (org) addFromOrg(org)
+            }}
+            className="w-64 border border-taupe-300 px-3 py-2 text-sm"
+          >
+            <option value="">— Select —</option>
+            {organizations.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <button type="button" onClick={addFallback} className="btn-secondary !px-3 !py-2 text-xs">
+          <Plus size={13} /> Add sponsor without an Organization
+        </button>
+      </div>
+
+      {list.map((s, i) => (
+        <ItemShell key={i} label={s.organizationId ? 'Linked sponsor' : 'Fallback sponsor'} onMoveUp={() => moveAt(i, -1)} onMoveDown={() => moveAt(i, 1)} onRemove={() => removeAt(i)} canMoveUp={i > 0} canMoveDown={i < list.length - 1}>
+          <div className="space-y-2">
+            {s.organizationId ? (
+              <p className="text-sm font-medium text-charcoal">{s.name}</p>
+            ) : (
+              <>
+                <input value={s.name} onChange={(e) => updateAt(i, { name: e.target.value })} placeholder="Sponsor name" className={inputClass} />
+                <input value={s.url || ''} onChange={(e) => updateAt(i, { url: e.target.value })} placeholder="https://…" className={inputClass} />
+                <MediaPicker label="Logo" aspect={2} value={s.logo} onChange={(media) => updateAt(i, { logo: media })} />
+              </>
+            )}
+            <select value={s.tier} onChange={(e) => updateAt(i, { tier: e.target.value })} className={inputClass}>
+              <option value="">— Tier —</option>
+              {SPONSOR_TIERS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        </ItemShell>
+      ))}
+    </div>
+  )
+}
+
+function AgendaEditor({ agenda }) {
+  const setAgenda = agenda.set
+  const list = agenda.value
+
+  function addItem() {
+    setAgenda([...list, { startTime: '', endTime: '', title: '', description: '', sessionType: '', speakerNames: [] }])
+  }
+  function updateAt(i, patch) {
+    setAgenda(list.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
+  }
+  function removeAt(i) {
+    setAgenda(list.filter((_, idx) => idx !== i))
+  }
+  function moveAt(i, dir) {
+    const target = i + dir
+    if (target < 0 || target >= list.length) return
+    const next = [...list]
+    ;[next[i], next[target]] = [next[target], next[i]]
+    setAgenda(next)
+  }
+
+  return (
+    <div className="space-y-3">
+      {list.map((item, i) => (
+        <ItemShell key={i} label={`Session ${i + 1}`} onMoveUp={() => moveAt(i, -1)} onMoveDown={() => moveAt(i, 1)} onRemove={() => removeAt(i)} canMoveUp={i > 0} canMoveDown={i < list.length - 1}>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <input type="time" value={item.startTime} onChange={(e) => updateAt(i, { startTime: e.target.value })} className={inputClass} />
+              <input type="time" value={item.endTime} onChange={(e) => updateAt(i, { endTime: e.target.value })} className={inputClass} />
+            </div>
+            <input value={item.title} onChange={(e) => updateAt(i, { title: e.target.value })} placeholder="Session title" className={inputClass} />
+            <input value={item.sessionType} onChange={(e) => updateAt(i, { sessionType: e.target.value })} placeholder="Session type — e.g. Keynote, Panel, Workshop, Networking" className={inputClass} />
+            <textarea rows={2} value={item.description} onChange={(e) => updateAt(i, { description: e.target.value })} placeholder="Description (optional)" className={inputClass} />
+            <input
+              value={(item.speakerNames || []).join(', ')}
+              onChange={(e) => updateAt(i, { speakerNames: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+              placeholder="Speaker names for this session, comma-separated (optional)"
+              className={inputClass}
+            />
+          </div>
+        </ItemShell>
+      ))}
+      <button type="button" onClick={addItem} className="btn-secondary !px-3 !py-1.5 text-xs">
+        <Plus size={13} /> Add agenda item
+      </button>
+    </div>
+  )
+}
+
 export default function AdminEventEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -189,7 +426,6 @@ export default function AdminEventEditor() {
   const [organizations, setOrganizations] = useState([])
   const [countries, setCountries] = useState([])
   const [people, setPeople] = useState([])
-  const [speakerSearch, setSpeakerSearch] = useState('')
   const [form, setForm] = useState(undefined)
   const [notFound, setNotFound] = useState(false)
   const [slugTouched, setSlugTouched] = useState(!isNew)
@@ -235,18 +471,15 @@ export default function AdminEventEditor() {
         const org = organizations.find((o) => String(o.id) === String(value))
         if (org && !prev.organizerName) next.organizerName = org.name
       }
-      if (field === 'format' && value !== 'in-person' && value !== 'hybrid') {
-        // keep venue/address as-is; only format visibility changes
-      }
       return next
     })
   }
 
-  function toggleSpeaker(slug) {
-    setForm((prev) => ({
-      ...prev,
-      speakerSlugs: prev.speakerSlugs.includes(slug) ? prev.speakerSlugs.filter((s) => s !== slug) : [...prev.speakerSlugs, slug],
-    }))
+  function setListField(field) {
+    return {
+      value: form[field],
+      set: (value) => setForm((prev) => ({ ...prev, [field]: value })),
+    }
   }
 
   function validateSlug(slug) {
@@ -263,7 +496,7 @@ export default function AdminEventEditor() {
   const endDateInvalid = form && form.endDate && form.date && form.endDate < form.date
   const endTimeInvalid = form && !form.endDate && form.startTime && form.endTime && form.endTime < form.startTime
   const registrationDeadlineInvalid = form && form.registrationDeadline && (form.endDate || form.date) && form.registrationDeadline > (form.endDate || form.date)
-  const filteredPeople = people.filter((p) => p.name.toLowerCase().includes(speakerSearch.toLowerCase()))
+  const paidWithoutCurrency = form && form.ticketPrice !== '' && Number(form.ticketPrice) > 0 && !form.currency
 
   async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
@@ -288,7 +521,15 @@ export default function AdminEventEditor() {
       toast.error('Registration deadline should be on or before the event date.')
       return
     }
-    if (nextStatus === 'published') {
+    if (paidWithoutCurrency) {
+      toast.error('A paid event needs a currency.')
+      return
+    }
+    if (form.ticketPrice !== '' && Number(form.ticketPrice) < 0) {
+      toast.error('Ticket price cannot be negative.')
+      return
+    }
+    if (nextStatus === 'published' || nextStatus === 'scheduled') {
       if (hasNoDescription) {
         toast.error('Add an event description before publishing.')
         return
@@ -315,14 +556,16 @@ export default function AdminEventEditor() {
       timezone: form.timezone || null,
       location: form.location || null,
       address: form.address || null,
+      city: form.city || null,
       countryCode: form.countryCode || null,
       venue: form.venue || null,
       virtualLink: form.virtualLink || null,
       virtualLinkPublic: form.virtualLinkPublic,
       organizerId: form.organizerId || null,
       organizerName: form.organizerName || selectedOrg?.name || null,
-      speakerSlugs: form.speakerSlugs,
-      sponsorSlugs: form.sponsorSlugs,
+      speakers: form.speakers,
+      sponsors: form.sponsors,
+      agenda: form.agenda,
       registrationUrl: form.registrationUrl || null,
       registrationRequired: form.registrationRequired,
       registrationDeadline: form.registrationDeadline || null,
@@ -421,7 +664,7 @@ export default function AdminEventEditor() {
             </Field>
           </Section>
 
-          <Section title="Description" description="Structure the content however makes sense — About the event, Who should attend, Agenda, What attendees will gain — you decide the headings.">
+          <Section title="Description" description="Structure the content however makes sense — About the event, Who should attend, What attendees will gain — you decide the headings.">
             <ArticleBlockEditor blocks={form.description} onChange={(description) => updateField('description', description)} />
           </Section>
 
@@ -452,9 +695,13 @@ export default function AdminEventEditor() {
                 ))}
               </datalist>
             </Field>
+            <Field label="Registration deadline" hint="optional">
+              <input type="date" value={form.registrationDeadline} onChange={(e) => updateField('registrationDeadline', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm" />
+            </Field>
+            {registrationDeadlineInvalid && <p className="text-xs text-rose-600">Registration deadline should be on or before the event date.</p>}
           </Section>
 
-          <Section title="Event format">
+          <Section title="Location &amp; format">
             <Field label="Format">
               <select value={form.format} onChange={(e) => updateField('format', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
                 <option value="">— None —</option>
@@ -465,48 +712,46 @@ export default function AdminEventEditor() {
                 ))}
               </select>
             </Field>
+            {showLocation && (
+              <>
+                <Field label="Venue" hint="optional">
+                  <input value={form.venue} onChange={(e) => updateField('venue', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                </Field>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Field label="City" hint="optional">
+                    <input value={form.city} onChange={(e) => updateField('city', e.target.value)} placeholder="Nairobi" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                  </Field>
+                  <Field label="City / location line" hint="optional, shown publicly">
+                    <input value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Nairobi, Kenya" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                  </Field>
+                  <Field label="Country" hint="optional">
+                    <select value={form.countryCode} onChange={(e) => updateField('countryCode', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                      <option value="">— None —</option>
+                      {countries.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Street address" hint="optional">
+                  <input value={form.address} onChange={(e) => updateField('address', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                </Field>
+              </>
+            )}
+            {showVirtual && (
+              <>
+                <Field label="Virtual joining link" hint="registered attendees only, unless made public below">
+                  <input value={form.virtualLink} onChange={(e) => updateField('virtualLink', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                </Field>
+                <label className="flex items-center gap-2 text-sm text-charcoal-600">
+                  <input type="checkbox" checked={form.virtualLinkPublic} onChange={(e) => updateField('virtualLinkPublic', e.target.checked)} />
+                  Show this link publicly on the event page (leave unchecked to send it only to registered attendees)
+                </label>
+              </>
+            )}
           </Section>
-
-          {(showLocation || showVirtual) && (
-            <Section title="Location">
-              {showLocation && (
-                <>
-                  <Field label="Venue" hint="optional">
-                    <input value={form.venue} onChange={(e) => updateField('venue', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-                  </Field>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field label="City / location" hint="optional">
-                      <input value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Nairobi, Kenya" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-                    </Field>
-                    <Field label="Country" hint="optional">
-                      <select value={form.countryCode} onChange={(e) => updateField('countryCode', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
-                        <option value="">— None —</option>
-                        {countries.map((c) => (
-                          <option key={c.code} value={c.code}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  </div>
-                  <Field label="Street address" hint="optional">
-                    <input value={form.address} onChange={(e) => updateField('address', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-                  </Field>
-                </>
-              )}
-              {showVirtual && (
-                <>
-                  <Field label="Virtual joining link" hint="registered attendees only, unless made public below">
-                    <input value={form.virtualLink} onChange={(e) => updateField('virtualLink', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-                  </Field>
-                  <label className="flex items-center gap-2 text-sm text-charcoal-600">
-                    <input type="checkbox" checked={form.virtualLinkPublic} onChange={(e) => updateField('virtualLinkPublic', e.target.checked)} />
-                    Show this link publicly on the event page (leave unchecked to send it only to registered attendees)
-                  </label>
-                </>
-              )}
-            </Section>
-          )}
 
           <Section title="Host / organizer" description="Use an existing Organization wherever possible — its logo and profile are reused automatically. Leave both blank for events hosted directly by Women Shaping Futures.">
             <Field label="Organization" hint="optional">
@@ -524,22 +769,6 @@ export default function AdminEventEditor() {
             </Field>
           </Section>
 
-          <Section title="Speakers" description="Searchable — pulled from published People profiles.">
-            <input value={speakerSearch} onChange={(e) => setSpeakerSearch(e.target.value)} placeholder="Search people…" className="w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none" />
-            <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto border border-taupe-200 p-3">
-              {filteredPeople.map((p) => (
-                <button
-                  key={p.slug}
-                  type="button"
-                  onClick={() => toggleSpeaker(p.slug)}
-                  className={`px-2.5 py-1 text-xs font-medium ${form.speakerSlugs.includes(p.slug) ? 'bg-plum-600 text-ivory' : 'bg-taupe-100 text-charcoal-600'}`}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </Section>
-
           <Section title="Registration">
             <label className="flex items-center gap-2 text-sm text-charcoal-600">
               <input type="checkbox" checked={form.registrationRequired} onChange={(e) => updateField('registrationRequired', e.target.checked)} />
@@ -548,10 +777,6 @@ export default function AdminEventEditor() {
             <Field label="Registration URL" hint="where WSF sends attendees to register">
               <input value={form.registrationUrl} onChange={(e) => updateField('registrationUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
-            <Field label="Registration deadline" hint="optional">
-              <input type="date" value={form.registrationDeadline} onChange={(e) => updateField('registrationDeadline', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm" />
-            </Field>
-            {registrationDeadlineInvalid && <p className="text-xs text-rose-600">Registration deadline should be on or before the event date.</p>}
             <Field label="Registration instructions" hint="optional — shown alongside the Register button">
               <textarea rows={2} value={form.registrationInstructions} onChange={(e) => updateField('registrationInstructions', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
@@ -564,15 +789,28 @@ export default function AdminEventEditor() {
             </label>
           </Section>
 
-          <Section title="Pricing" description="Leave blank for a free event.">
+          <Section title="Pricing" description="Leave the ticket price blank for a free event.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Ticket price" hint="optional — leave blank if free">
-                <input type="number" value={form.ticketPrice} onChange={(e) => updateField('ticketPrice', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                <input type="number" min="0" value={form.ticketPrice} onChange={(e) => updateField('ticketPrice', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
               <Field label="Currency" hint="ISO code, e.g. USD, KES, EUR">
                 <input value={form.currency} onChange={(e) => updateField('currency', e.target.value.toUpperCase().slice(0, 3))} className="w-full border border-taupe-300 px-3 py-2.5 text-sm uppercase focus:border-burgundy-500 focus:outline-none" />
               </Field>
             </div>
+            {paidWithoutCurrency && <p className="text-xs text-rose-600">A paid event needs a currency.</p>}
+          </Section>
+
+          <Section title="Speakers" description="Link an existing People profile wherever one exists, or add a speaker's details directly if they don't have one yet.">
+            <SpeakersEditor speakers={setListField('speakers')} people={people} />
+          </Section>
+
+          <Section title="Agenda" description="Structure the schedule as individual sessions — this is what renders as the event's agenda.">
+            <AgendaEditor agenda={setListField('agenda')} />
+          </Section>
+
+          <Section title="Sponsors" description="Link an existing Organization wherever one exists, or add a sponsor's details directly.">
+            <SponsorsEditor sponsors={setListField('sponsors')} organizations={organizations} />
           </Section>
 
           <Section title="Media">
@@ -603,6 +841,9 @@ export default function AdminEventEditor() {
                 </option>
               ))}
             </select>
+            {form.status === 'scheduled' && (
+              <p className="mt-2 text-xs text-charcoal-600/70">Becomes publicly visible automatically once its publish date arrives — no manual step needed.</p>
+            )}
 
             {hasNoDescription && (
               <div className="mt-3 flex gap-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
@@ -624,6 +865,11 @@ export default function AdminEventEditor() {
               <button type="button" onClick={() => handleSave('published')} disabled={saving} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
                 Publish
               </button>
+              {!isNew && form.status !== 'postponed' && (
+                <button type="button" onClick={() => handleSave('postponed')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
+                  Mark postponed
+                </button>
+              )}
               {!isNew && form.status !== 'cancelled' && (
                 <button type="button" onClick={() => handleSave('cancelled')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
                   Cancel event

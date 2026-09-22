@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from app.extensions import db
 from app.models.article import Article
 from app.models.cms import HomepageModule, SiteSetting
-from app.models.opportunity import Event, Job, Opportunity
+from app.models.opportunity import Event, EventSpeaker, EventSponsor, Job, Opportunity
 from app.models.people import Author, Organization, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Category, Series, Tag, Topic
@@ -68,6 +68,14 @@ def _get_or_create_organization(slug, **fields):
         for key, value in fields.items():
             setattr(org, key, value)
     return org
+
+
+def _get_or_create_event(slug):
+    event = Event.query.filter_by(slug=slug).first()
+    if event is None:
+        event = Event(slug=slug)
+        db.session.add(event)
+    return event
 
 
 def seed_demo_content():
@@ -558,33 +566,195 @@ def seed_demo_content():
 
     opportunity.countries_eligible = Country.query.filter(Country.code.in_(["US", "GB", "CA"])).all()
 
-    event = Event.query.filter_by(slug="women-in-leadership-summit").first()
-    if event is None:
-        event = Event(slug="women-in-leadership-summit")
-        db.session.add(event)
+    # Five events spanning WSF's actual global audience (strong US base,
+    # plus Kenya, the UK, Canada, and a virtual/global webinar) — not
+    # Africa-only, per explicit editorial direction.
+    event = _get_or_create_event("women-in-leadership-summit")
     event.title = "Women in Leadership Summit 2026"
-    event.short_description = "Our flagship annual summit bringing together executives, founders, and policymakers."
+    event.short_description = "Our flagship annual summit bringing together executives, founders, and policymakers shaping the next decade of business."
     event.description = [
-        {"type": "paragraph", "text": "Our flagship annual summit bringing together executives, founders, and policymakers to accelerate women's leadership across Africa and beyond."},
+        {"type": "paragraph", "text": "Our flagship annual summit bringing together executives, founders, and policymakers to accelerate women's leadership across every industry."},
         {"type": "heading", "level": 2, "text": "Who should attend"},
-        {"type": "list", "style": "bullet", "items": ["Senior executives and founders", "Policymakers and investors"]},
+        {"type": "list", "style": "bullet", "items": ["Senior executives and founders", "Policymakers and institutional investors", "Rising leaders preparing for their next executive role"]},
+        {"type": "heading", "level": 2, "text": "What you'll gain"},
+        {"type": "list", "style": "bullet", "items": ["A playbook for leading through uncertainty, drawn from six keynote case studies", "Direct access to 40+ senior leaders across finance, tech, and policy", "A working peer group that continues past the summit itself"]},
     ]
     event.type = "Conference"
     event.format = "in-person"
     event.date = date.today() + timedelta(days=90)
-    event.location = "Nairobi, Kenya"
-    event.country_code = "KE"
-    event.venue = "Kenyatta International Convention Centre"
+    event.location = "New York, United States"
+    event.city = "New York"
+    event.country_code = "US"
+    event.venue = "The Glasshouse"
     event.organizer_name = "Women Shaping Futures"
-    event.registration_url = "/events/women-in-leadership-summit/register"
+    event.registration_url = "https://wsf-events.example.com/register/leadership-summit"
     event.registration_required = True
-    event.ticket_price, event.currency = 8500, "KES"
-    event.capacity = 450
-    event.agenda = [{"time": "08:30", "title": "Registration & Breakfast"}]
+    event.registration_deadline = date.today() + timedelta(days=80)
+    event.ticket_price, event.currency = 425, "USD"
+    event.capacity = 600
+    event.agenda = [
+        {"startTime": "08:30", "endTime": "09:15", "title": "Registration & Breakfast", "sessionType": "Networking"},
+        {"startTime": "09:15", "endTime": "10:00", "title": "Opening Keynote: Leading Through Uncertainty", "description": "A candid look at the leadership decisions that don't make it into the case studies.", "sessionType": "Keynote", "speakerNames": ["Danielle Reyes"]},
+        {"startTime": "10:15", "endTime": "11:15", "title": "Panel: Building Boards That Actually Challenge You", "sessionType": "Panel"},
+        {"startTime": "12:30", "endTime": "13:30", "title": "Lunch & Structured Networking", "sessionType": "Networking"},
+        {"startTime": "16:00", "endTime": "16:30", "title": "Closing Remarks", "sessionType": "Keynote"},
+    ]
     event.status = "published"
     event.published_date = date.today()
     event.featured = True
-    event.speakers = [naliaka]
+    event.speakers = [EventSpeaker(person=danielle, position=0)]
+    event.sponsors = [
+        EventSponsor(organization=lumen, tier="Gold Sponsor", position=0),
+        EventSponsor(organization=northstar, tier="Community Partner", position=1),
+    ]
+
+    event = _get_or_create_event("founder-growth-workshop")
+    event.title = "Founder Growth Workshop"
+    event.short_description = "A hands-on working session for founders ready to move from early traction to their next stage of growth."
+    event.description = [
+        {"type": "paragraph", "text": "A full-day, hands-on workshop for founders who've found early traction and are now wrestling with the harder problems: hiring a real leadership team, raising a priced round, and building systems that don't depend on the founder doing everything."},
+        {"type": "heading", "level": 2, "text": "Who should attend"},
+        {"type": "list", "style": "bullet", "items": ["Founders with a live product and early revenue or users", "Early-stage operators preparing to raise institutional capital"]},
+    ]
+    event.type = "Workshop"
+    event.format = "in-person"
+    event.date = date.today() + timedelta(days=45)
+    event.location = "Nairobi, Kenya"
+    event.city = "Nairobi"
+    event.country_code = "KE"
+    event.venue = "Nairobi Garage"
+    event.organizer = kaziwave
+    event.organizer_name = kaziwave.name
+    event.registration_url = "https://wsf-events.example.com/register/founder-growth-workshop"
+    event.registration_required = True
+    event.ticket_price, event.currency = 3500, "KES"
+    event.capacity = 80
+    event.agenda = [
+        {"startTime": "09:00", "endTime": "09:30", "title": "Arrival & Coffee", "sessionType": "Networking"},
+        {"startTime": "09:30", "endTime": "11:00", "title": "Building a Leadership Team You Can Actually Delegate To", "sessionType": "Workshop", "speakerNames": ["Naliaka Wafula"]},
+        {"startTime": "11:15", "endTime": "12:30", "title": "Fundraising Clinic: Priced Rounds & Term Sheets", "description": "Bring your own cap table — we'll work through it live.", "sessionType": "Workshop"},
+        {"startTime": "13:30", "endTime": "15:00", "title": "Office Hours with Founders Who've Done It", "sessionType": "Mentoring"},
+    ]
+    event.status = "published"
+    event.published_date = date.today()
+    event.featured = False
+    event.speakers = [EventSpeaker(person=naliaka, position=0)]
+    event.sponsors = [EventSponsor(organization=kaziwave, tier="Presenting Sponsor", position=0)]
+
+    event = _get_or_create_event("women-in-technology-webinar")
+    event.title = "Women in Technology Webinar"
+    event.short_description = "A free, global webinar on scaling engineering teams without losing the culture that made them work."
+    event.description = [
+        {"type": "paragraph", "text": "Open to anyone, anywhere: a practical session on what actually changes when an engineering org grows past 100 people, and how to keep it a place people want to stay."},
+        {"type": "heading", "level": 2, "text": "What you'll learn"},
+        {"type": "list", "style": "bullet", "items": ["How to redesign your engineering org chart before it redesigns itself", "What to stop doing as a technical leader once you're managing managers", "A live Q&A with time reserved for audience questions"]},
+    ]
+    event.type = "Webinar"
+    event.format = "virtual"
+    event.date = date.today() + timedelta(days=20)
+    event.location = "Global / Virtual"
+    event.city = None
+    event.country_code = None
+    event.virtual_link = "https://wsf-events.example.com/webinar/women-in-technology"
+    event.virtual_link_public = True
+    event.organizer_name = "Women Shaping Futures"
+    event.registration_url = "https://wsf-events.example.com/register/women-in-technology-webinar"
+    event.registration_required = True
+    event.ticket_price = None
+    event.currency = None
+    event.capacity = 500
+    event.agenda = [
+        {"startTime": "12:00", "endTime": "12:05", "title": "Welcome", "sessionType": "Intro"},
+        {"startTime": "12:05", "endTime": "12:35", "title": "Scaling Engineering Without Losing the Culture", "sessionType": "Talk", "speakerNames": ["Fatima Al-Sayed"]},
+        {"startTime": "12:35", "endTime": "13:00", "title": "Live Q&A", "sessionType": "Q&A"},
+    ]
+    event.status = "published"
+    event.published_date = date.today()
+    event.featured = True
+    event.speakers = [
+        EventSpeaker(
+            name="Fatima Al-Sayed",
+            title="VP of Engineering",
+            organization_name="Skyline Cloud",
+            bio="Fatima leads a 120-person engineering organization and writes widely about scaling technical teams inclusively.",
+            position=0,
+        )
+    ]
+    event.sponsors = [EventSponsor(name="Skyline Cloud", url="https://skylinecloud.example.com", tier="Supporting Partner", position=0)]
+
+    event = _get_or_create_event("career-advancement-masterclass")
+    event.title = "Career Advancement Masterclass"
+    event.short_description = "A half-day masterclass on making the case for your next promotion — in the room or on camera."
+    event.description = [
+        {"type": "paragraph", "text": "A half-day masterclass for professionals preparing to make the case for their next promotion, whether that conversation happens in a London office or over video."},
+        {"type": "heading", "level": 2, "text": "Who should attend"},
+        {"type": "list", "style": "bullet", "items": ["Mid-career professionals targeting their next senior role", "Anyone preparing for a promotion or performance review conversation"]},
+    ]
+    event.type = "Masterclass"
+    event.format = "hybrid"
+    event.date = date.today() + timedelta(days=60)
+    event.location = "London, United Kingdom"
+    event.city = "London"
+    event.country_code = "GB"
+    event.venue = "Harrow & Vance Studio"
+    event.virtual_link = "https://wsf-events.example.com/webinar/career-advancement-masterclass"
+    event.virtual_link_public = True
+    event.organizer = harrow_vance
+    event.organizer_name = harrow_vance.name
+    event.registration_url = "https://wsf-events.example.com/register/career-advancement-masterclass"
+    event.registration_required = True
+    event.ticket_price, event.currency = 95, "GBP"
+    event.capacity = 120
+    event.agenda = [
+        {"startTime": "13:00", "endTime": "13:45", "title": "Building Your Promotion Case", "sessionType": "Talk", "speakerNames": ["Priya Chandrasekaran"]},
+        {"startTime": "13:45", "endTime": "14:30", "title": "Practice Rounds: Mock Promotion Conversations", "sessionType": "Workshop"},
+        {"startTime": "14:45", "endTime": "15:15", "title": "Closing Q&A", "sessionType": "Q&A"},
+    ]
+    event.status = "published"
+    event.published_date = date.today()
+    event.featured = False
+    event.speakers = [
+        EventSpeaker(
+            name="Priya Chandrasekaran",
+            title="Head of Talent Development",
+            organization_name="Harrow & Vance",
+            bio="Priya has coached over 400 professionals through promotion and career-transition conversations.",
+            position=0,
+        )
+    ]
+    event.sponsors = [EventSponsor(organization=harrow_vance, tier="Presenting Sponsor", position=0)]
+
+    event = _get_or_create_event("women-entrepreneurs-networking-event")
+    event.title = "Women Entrepreneurs Networking Event"
+    event.short_description = "An evening mixer for founders and operators building companies across Canada."
+    event.description = [
+        {"type": "paragraph", "text": "A relaxed evening mixer for founders, operators, and early-stage investors building companies across Canada — no panels, no pitches, just real conversation."},
+        {"type": "heading", "level": 2, "text": "Who should attend"},
+        {"type": "list", "style": "bullet", "items": ["Founders and early operators based in or building toward Canada", "Investors and advisors active in the Canadian founder community"]},
+    ]
+    event.type = "Networking Event"
+    event.format = "in-person"
+    event.date = date.today() + timedelta(days=35)
+    event.location = "Toronto, Canada"
+    event.city = "Toronto"
+    event.country_code = "CA"
+    event.venue = "Maple Ridge Capital HQ"
+    event.organizer = maple_ridge
+    event.organizer_name = maple_ridge.name
+    event.registration_url = "https://wsf-events.example.com/register/entrepreneurs-networking-toronto"
+    event.registration_required = True
+    event.ticket_price = None
+    event.currency = None
+    event.capacity = 150
+    event.agenda = [
+        {"startTime": "18:00", "endTime": "18:15", "title": "Doors Open", "sessionType": "Networking"},
+        {"startTime": "18:15", "endTime": "19:30", "title": "Open Networking", "sessionType": "Networking"},
+        {"startTime": "19:30", "endTime": "19:45", "title": "Closing Remarks", "sessionType": "Intro"},
+    ]
+    event.status = "published"
+    event.published_date = date.today()
+    event.featured = False
+    event.sponsors = [EventSponsor(organization=maple_ridge, tier="Presenting Sponsor", position=0)]
 
     resource = Resource.query.filter_by(slug="career-planning-guide").first()
     if resource is None:

@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Calendar, MapPin, Clock, Ticket, Globe2, AlertCircle } from 'lucide-react'
-import { fetchEventBySlug } from '../api/events'
-import { fetchPersonBySlug } from '../api/people'
-import { fetchOrganizationBySlug } from '../api/taxonomies'
+import { Calendar, MapPin, Clock, Ticket, Globe2, AlertCircle, CalendarPlus, PauseCircle } from 'lucide-react'
+import { fetchEventBySlug, fetchEvents } from '../api/events'
 import { formatDate, formatCurrency } from '../utils/format'
 import { resolveImage } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
@@ -11,7 +9,9 @@ import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
-import PersonCard from '../components/cards/PersonCard'
+import ShareBar from '../components/ui/ShareBar'
+import NewsletterForm from '../components/ui/NewsletterForm'
+import EventCard from '../components/cards/EventCard'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
@@ -22,11 +22,17 @@ const ATTENDANCE_MODE = {
   hybrid: 'https://schema.org/MixedEventAttendanceMode',
 }
 
+const EVENT_STATUS_SCHEMA = {
+  cancelled: 'https://schema.org/EventCancelled',
+  postponed: 'https://schema.org/EventPostponed',
+}
+
 // Valid schema.org Event structured data — built only from fields this
 // event record actually carries. Nothing is fabricated to "complete" the
 // schema; the private virtual join link is never included here even when
 // virtualLinkPublic is true off-page, since search engines index this
-// data publicly regardless of on-page visibility.
+// data publicly regardless of on-page visibility. Performers are only the
+// speakers WSF actually lists for this event — never invented.
 function useEventStructuredData(event, canonicalUrl) {
   useEffect(() => {
     if (!event) return
@@ -40,7 +46,7 @@ function useEventStructuredData(event, canonicalUrl) {
       ...(event.coverImage ? { image: resolveImage(event.coverImage, { width: 1200, height: 630 }) } : {}),
       startDate: startDateTime,
       ...(endDateTime ? { endDate: endDateTime } : {}),
-      eventStatus: event.isCancelled ? 'https://schema.org/EventCancelled' : 'https://schema.org/EventScheduled',
+      eventStatus: EVENT_STATUS_SCHEMA[event.isCancelled ? 'cancelled' : event.isPostponed ? 'postponed' : null] || 'https://schema.org/EventScheduled',
       ...(event.format ? { eventAttendanceMode: ATTENDANCE_MODE[event.format] } : {}),
       ...(event.organizer
         ? { organizer: { '@type': 'Organization', name: event.organizer } }
@@ -54,7 +60,7 @@ function useEventStructuredData(event, canonicalUrl) {
               address: {
                 '@type': 'PostalAddress',
                 ...(event.address ? { streetAddress: event.address } : {}),
-                ...(event.location ? { addressLocality: event.location } : {}),
+                ...(event.city ? { addressLocality: event.city } : event.location ? { addressLocality: event.location } : {}),
                 ...(event.country ? { addressCountry: event.country.code } : {}),
               },
             },
@@ -69,6 +75,9 @@ function useEventStructuredData(event, canonicalUrl) {
             },
           }
         : {}),
+      ...(event.speakers?.length
+        ? { performer: event.speakers.map((s) => ({ '@type': 'Person', name: s.name })).filter((p) => p.name) }
+        : {}),
     }
     let el = document.head.querySelector('script[data-event-structured-data]')
     if (!el) {
@@ -82,18 +91,127 @@ function useEventStructuredData(event, canonicalUrl) {
   }, [event, canonicalUrl])
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0')
+}
+
+function toCalendarDateTime(dateStr, timeStr) {
+  const compact = dateStr.replace(/-/g, '')
+  if (!timeStr) return compact
+  const [hh, mm] = timeStr.split(':')
+  return `${compact}T${pad2(hh)}${pad2(mm)}00`
+}
+
+function calendarLocation(event) {
+  if (event.format === 'virtual') return event.virtualLinkPublic ? event.virtualLink : 'Online — link sent to registered attendees'
+  return [event.venue, event.location].filter(Boolean).join(', ')
+}
+
+function buildGoogleCalendarUrl(event) {
+  const start = toCalendarDateTime(event.date, event.startTime)
+  const end = toCalendarDateTime(event.endDate || event.date, event.endTime || event.startTime)
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: event.title,
+    dates: `${start}/${end}`,
+    details: event.shortDescription || '',
+    location: calendarLocation(event),
+  })
+  if (event.timezone) params.set('ctz', event.timezone)
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
+function downloadIcs(event, canonicalUrl) {
+  const start = toCalendarDateTime(event.date, event.startTime)
+  const end = toCalendarDateTime(event.endDate || event.date, event.endTime || event.startTime)
+  const escapeIcs = (v) => String(v || '').replace(/,/g, '\\,').replace(/\n/g, ' ')
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Women Shaping Futures//Events//EN',
+    'BEGIN:VEVENT',
+    `UID:${event.slug}@womenshapingfutures.org`,
+    `SUMMARY:${escapeIcs(event.title)}`,
+    `DESCRIPTION:${escapeIcs(event.shortDescription)}`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    `LOCATION:${escapeIcs(calendarLocation(event))}`,
+    `URL:${canonicalUrl}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${event.slug}.ics`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+function SpeakerTile({ speaker }) {
+  const content = (
+    <>
+      <MediaImage media={speaker.headshot} width={160} height={160} aspect={1} alt={speaker.name} tone="plum" className="h-20 w-20 rounded-full object-cover" />
+      <div className="mt-2">
+        <p className="font-serif text-sm font-semibold text-charcoal">{speaker.name}</p>
+        {(speaker.title || speaker.organizationName) && (
+          <p className="text-xs text-charcoal-600">{[speaker.title, speaker.organizationName].filter(Boolean).join(' · ')}</p>
+        )}
+      </div>
+    </>
+  )
+  if (speaker.profileSlug) {
+    return (
+      <Link to={`/people/${speaker.profileSlug}`} className="group block text-center transition-colors hover:text-burgundy-600">
+        {content}
+      </Link>
+    )
+  }
+  return <div className="text-center">{content}</div>
+}
+
+function SponsorTile({ sponsor }) {
+  const inner = sponsor.logo?.mediaPath ? (
+    <MediaImage media={sponsor.logo} variant="thumbnail" width={160} height={80} aspect={2} tone="taupe" alt={sponsor.name} className="h-10 w-auto object-contain" />
+  ) : (
+    <span className="font-serif text-sm font-semibold text-charcoal">{sponsor.name}</span>
+  )
+  const content = (
+    <div className="flex flex-col items-start gap-1.5">
+      {inner}
+      {sponsor.tier && <span className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-600/60">{sponsor.tier}</span>}
+    </div>
+  )
+  if (sponsor.organizationSlug) {
+    return (
+      <Link to={`/organizations/${sponsor.organizationSlug}`} className="transition-opacity hover:opacity-80">
+        {content}
+      </Link>
+    )
+  }
+  if (sponsor.url) {
+    return (
+      <a href={sponsor.url} target="_blank" rel="noreferrer" className="transition-opacity hover:opacity-80">
+        {content}
+      </a>
+    )
+  }
+  return content
+}
+
 export default function EventDetailPage() {
   const { slug } = useParams()
   const [event, setEvent] = useState(undefined)
-  const [speakers, setSpeakers] = useState([])
-  const [sponsors, setSponsors] = useState([])
+  const [related, setRelated] = useState([])
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let active = true
     setEvent(undefined)
-    setSpeakers([])
-    setSponsors([])
+    setRelated([])
     setError(null)
 
     fetchEventBySlug(slug)
@@ -101,14 +219,13 @@ export default function EventDetailPage() {
         if (!active) return
         setEvent(data)
         if (!data) return
+        trackEvent('event_view', { eventSlug: data.slug })
 
-        Promise.all((data.speakers || []).map((s) => fetchPersonBySlug(s).catch(() => null)))
-          .then((people) => active && setSpeakers(people.filter(Boolean)))
-          .catch(() => {})
-
-        Promise.all((data.sponsors || []).map((s) => fetchOrganizationBySlug(s).catch(() => null)))
-          .then((orgs) => active && setSponsors(orgs.filter(Boolean)))
-          .catch(() => {})
+        if (data.type) {
+          fetchEvents({ type: data.type, when: 'upcoming', pageSize: 4 })
+            .then((res) => active && setRelated(res.items.filter((e) => e.slug !== slug).slice(0, 3)))
+            .catch(() => {})
+        }
       })
       .catch(() => active && setError('Something went wrong loading this event. Please try again.'))
 
@@ -137,12 +254,16 @@ export default function EventDetailPage() {
     trackEvent('event_registration_click', { eventSlug: event.slug })
   }
 
+  function handleAddToCalendar() {
+    trackEvent('event_add_to_calendar_click', { eventSlug: event.slug })
+  }
+
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this event" description={error} /></div>
   if (event === undefined) return <PageLoader />
   if (event === null) return <NotFoundPage />
 
-  const registrationClosed = event.isCancelled || event.soldOut || (event.registrationDeadline && event.registrationDeadline < new Date().toISOString().slice(0, 10))
-  const canRegister = event.registrationRequired ? Boolean(event.registrationUrl) && !registrationClosed : !event.isCancelled
+  const registrationClosed = event.isCancelled || event.isPostponed || event.soldOut || (event.registrationDeadline && event.registrationDeadline < new Date().toISOString().slice(0, 10))
+  const canRegister = event.registrationRequired ? Boolean(event.registrationUrl) && !registrationClosed : !event.isCancelled && !event.isPostponed
   const dateLine = event.endDate && event.endDate !== event.date
     ? `${formatDate(event.date, { month: 'long', day: 'numeric' })} – ${formatDate(event.endDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`
     : formatDate(event.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -154,7 +275,10 @@ export default function EventDetailPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-charcoal-800/80 to-transparent" />
         <div className="container-editorial absolute inset-x-0 bottom-0 pb-8 text-ivory">
           <Breadcrumb items={[{ label: 'Events', to: '/events' }, { label: event.title }]} />
-          {event.type && <p className="eyebrow mt-3 !text-blush-200">{event.type}</p>}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {event.type && <p className="eyebrow !text-blush-200">{event.type}</p>}
+            {event.isOngoing && <span className="inline-flex items-center gap-1 bg-emerald-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ivory">Happening now</span>}
+          </div>
           <h1 className="mt-1 font-serif text-3xl font-semibold sm:text-4xl">{event.title}</h1>
         </div>
       </div>
@@ -172,6 +296,12 @@ export default function EventDetailPage() {
             <span className="font-semibold">Event cancelled</span> — this event is no longer taking place.
           </div>
         )}
+        {event.isPostponed && (
+          <div className="mt-4 flex items-center gap-2 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <PauseCircle size={16} className="shrink-0" />
+            <span className="font-semibold">Event postponed</span> — a new date will be announced. Check back for updates.
+          </div>
+        )}
       </div>
 
       <div className="container-editorial grid grid-cols-1 gap-14 py-14 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -184,22 +314,30 @@ export default function EventDetailPage() {
             <div className="mt-10">
               <h2 className="font-serif text-2xl font-semibold text-charcoal">Agenda</h2>
               <ul className="mt-4 divide-y divide-taupe-200">
-                {event.agenda.map((item) => (
-                  <li key={item.time} className="flex gap-6 py-3">
-                    <span className="w-16 shrink-0 text-sm font-semibold text-burgundy-600">{item.time}</span>
-                    <span className="text-base text-charcoal-600">{item.title}</span>
+                {event.agenda.map((item, i) => (
+                  <li key={i} className="flex gap-6 py-4">
+                    <span className="w-28 shrink-0 text-sm font-semibold text-burgundy-600">
+                      {item.startTime}
+                      {item.endTime ? `–${item.endTime}` : ''}
+                    </span>
+                    <div>
+                      <p className="text-base font-medium text-charcoal">{item.title}</p>
+                      {item.sessionType && <span className="text-xs uppercase tracking-wide text-charcoal-600/60">{item.sessionType}</span>}
+                      {item.description && <p className="mt-1 text-sm text-charcoal-600">{item.description}</p>}
+                      {item.speakerNames?.length > 0 && <p className="mt-1 text-xs text-charcoal-600/70">{item.speakerNames.join(', ')}</p>}
+                    </div>
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {speakers.length > 0 && (
+          {event.speakers?.length > 0 && (
             <div className="mt-10">
               <h2 className="font-serif text-2xl font-semibold text-charcoal">Speakers</h2>
               <div className="mt-5 grid grid-cols-2 gap-6 sm:grid-cols-3">
-                {speakers.map((p) => (
-                  <PersonCard key={p.slug} person={p} />
+                {event.speakers.map((s, i) => (
+                  <SpeakerTile key={s.id ?? i} speaker={s} />
                 ))}
               </div>
             </div>
@@ -213,6 +351,10 @@ export default function EventDetailPage() {
               </a>
             </div>
           )}
+
+          <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-taupe-200 pt-6">
+            <ShareBar title={event.title} url={canonicalUrl} trackEventName="event_share_click" trackPayload={{ eventSlug: event.slug }} />
+          </div>
         </div>
 
         <aside className="space-y-6">
@@ -264,11 +406,22 @@ export default function EventDetailPage() {
               </a>
             ) : (
               <button type="button" disabled className="btn-secondary mt-5 flex w-full cursor-not-allowed justify-center opacity-60">
-                {event.isCancelled ? 'Event cancelled' : event.soldOut ? 'Sold out' : registrationClosed ? 'Registration closed' : 'Registration unavailable'}
+                {event.isCancelled ? 'Event cancelled' : event.isPostponed ? 'New date TBD' : event.soldOut ? 'Sold out' : registrationClosed ? 'Registration closed' : 'Registration unavailable'}
               </button>
             )}
             {event.registrationInstructions && !registrationClosed && (
               <p className="mt-3 text-xs text-charcoal-600">{event.registrationInstructions}</p>
+            )}
+
+            {!event.isCancelled && !event.isPostponed && !event.isPast && (
+              <div className="mt-3 flex items-center justify-center gap-4 text-xs">
+                <a href={buildGoogleCalendarUrl(event)} target="_blank" rel="noreferrer" onClick={handleAddToCalendar} className="inline-flex items-center gap-1 font-semibold text-charcoal-600 hover:text-burgundy-600">
+                  <CalendarPlus size={13} /> Add to calendar
+                </a>
+                <button type="button" onClick={() => downloadIcs(event, canonicalUrl)} className="font-semibold text-charcoal-600 hover:text-burgundy-600">
+                  Download .ics
+                </button>
+              </div>
             )}
           </div>
 
@@ -288,18 +441,33 @@ export default function EventDetailPage() {
             </div>
           )}
 
-          {sponsors.length > 0 && (
+          {event.sponsors?.length > 0 && (
             <div>
               <p className="eyebrow mb-3">Sponsored by</p>
-              <div className="flex flex-wrap gap-4">
-                {sponsors.map((s) => (
-                  <MediaImage key={s.slug} media={s.logoMedia} variant="thumbnail" mediaPath={s.logo} alt={s.name} width={140} height={70} aspect={2} tone="taupe" className="h-9 w-auto" />
+              <div className="flex flex-wrap gap-5">
+                {event.sponsors.map((s, i) => (
+                  <SponsorTile key={s.id ?? i} sponsor={s} />
                 ))}
               </div>
             </div>
           )}
+
+          <div className="border border-taupe-200 bg-cream p-5">
+            <NewsletterForm variant="light" source="event_detail" />
+          </div>
         </aside>
       </div>
+
+      {related.length > 0 && (
+        <div className="container-editorial border-t border-taupe-200 py-14">
+          <p className="eyebrow mb-6">More {event.type ? `${event.type.toLowerCase()} events` : 'events'}</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {related.map((e) => (
+              <EventCard key={e.id} event={e} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

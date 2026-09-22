@@ -6,12 +6,12 @@ from flask_restful import Api, Resource
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models.opportunity import Event
+from app.models.opportunity import Event, EventSpeaker, EventSponsor
 from app.models.people import Organization, Person
 from app.schemas.opportunity import EventInputSchema, EventSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
-from app.utils.filtering import apply_country_or_region_filter
+from app.utils.filtering import apply_country_or_region_filter, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
 
@@ -52,16 +52,6 @@ def _can_edit_or_none():
         return None
 
 
-def _lookup_all(model, slugs, label):
-    if not slugs:
-        return []
-    found = model.query.filter(model.slug.in_(slugs)).all()
-    missing = set(slugs) - {item.slug for item in found}
-    if missing:
-        raise ApiError(f'{label.capitalize()} "{sorted(missing)[0]}" not found.', 404, code="not_found")
-    return found
-
-
 def _resolve_organizer(organizer_id):
     if not organizer_id:
         return None
@@ -69,6 +59,58 @@ def _resolve_organizer(organizer_id):
     if org is None:
         raise ApiError("Organization not found.", 404, code="not_found")
     return org
+
+
+def _resolve_speakers(entries):
+    """Build ordered EventSpeaker rows from the input list — each entry
+    either links an existing Person (never duplicating their name/bio/
+    headshot) or carries its own fallback fields for a speaker with no
+    People profile yet.
+    """
+    speakers = []
+    for position, entry in enumerate(entries):
+        person = None
+        if entry.get("person_slug"):
+            person = Person.query.filter_by(slug=entry["person_slug"]).first()
+            if person is None:
+                raise ApiError(f'Person "{entry["person_slug"]}" not found.', 404, code="not_found")
+        speakers.append(
+            EventSpeaker(
+                person=person,
+                name=entry.get("name"),
+                title=entry.get("title"),
+                organization_name=entry.get("organization_name"),
+                bio=entry.get("bio"),
+                headshot_media_id=entry.get("headshot_media_id"),
+                position=position,
+            )
+        )
+    return speakers
+
+
+def _resolve_sponsors(entries):
+    """Build ordered EventSponsor rows — each entry either links an
+    existing Organization or carries fallback name/logo/url for a sponsor
+    with no Organization profile yet.
+    """
+    sponsors = []
+    for position, entry in enumerate(entries):
+        organization = None
+        if entry.get("organization_id"):
+            organization = db.session.get(Organization, entry["organization_id"])
+            if organization is None:
+                raise ApiError("Organization not found.", 404, code="not_found")
+        sponsors.append(
+            EventSponsor(
+                organization=organization,
+                name=entry.get("name"),
+                logo_media_id=entry.get("logo_media_id"),
+                url=entry.get("url"),
+                tier=entry.get("tier"),
+                position=position,
+            )
+        )
+    return sponsors
 
 
 def _apply_fields(event, data, organizer, speakers, sponsors):
@@ -84,6 +126,7 @@ def _apply_fields(event, data, organizer, speakers, sponsors):
     event.timezone = data.get("timezone")
     event.location = data.get("location")
     event.address = data.get("address")
+    event.city = data.get("city")
     event.country_code = data.get("country_code")
     event.venue = data.get("venue")
     event.virtual_link = data.get("virtual_link")
@@ -106,16 +149,17 @@ def _apply_fields(event, data, organizer, speakers, sponsors):
     event.sponsored = data.get("sponsored", False)
     event.speakers = speakers
     event.sponsors = sponsors
-    if event.status == "published" and event.published_date is None:
+    if event.status in ("published", "scheduled") and event.published_date is None:
         event.published_date = data.get("published_date") or date.today()
     elif data.get("published_date"):
         event.published_date = data["published_date"]
 
 
 def _validate_for_publish(event):
-    """A published event needs a real description, and a real registration
-    destination when it actually requires registration; a draft may stay
-    incomplete indefinitely.
+    """A published (or scheduled-to-publish) event needs a real
+    description, and a real registration destination when it actually
+    requires registration; a draft/review event may stay incomplete
+    indefinitely.
     """
     errors = []
     if not event.description:
@@ -132,14 +176,22 @@ class EventListResource(Resource):
         can_manage = bool(user and user.has_permission("events.manage"))
 
         query = Event.query.order_by(Event.featured.desc(), Event.date)
+        today = date.today()
         if can_manage:
             if request.args.get("status"):
                 query = query.filter(Event.status == request.args["status"])
         else:
-            query = query.filter(Event.status.in_(["published", "cancelled"]))
+            # A "scheduled" event is only publicly visible once its
+            # published_date has actually arrived — mirrors Job's identical
+            # scheduled-publish behavior.
+            query = query.filter(
+                or_(
+                    Event.status.in_(["published", "cancelled", "postponed"]),
+                    (Event.status == "scheduled") & (Event.published_date.isnot(None)) & (Event.published_date <= today),
+                )
+            )
 
         when = request.args.get("when")
-        today = date.today()
         end_expr = db.func.coalesce(Event.end_date, Event.date)
         if when == "past":
             query = query.filter(end_expr < today)
@@ -149,7 +201,16 @@ class EventListResource(Resource):
             # manager can still find/manage past events.
             query = query.filter(end_expr >= today)
 
+        date_from = request.args.get("dateFrom")
+        if date_from:
+            query = query.filter(Event.date >= date_from)
+        date_to = request.args.get("dateTo")
+        if date_to:
+            query = query.filter(Event.date <= date_to)
+
         query = apply_country_or_region_filter(query, Event, request.args)
+        if request.args.get("city"):
+            query = query.filter(Event.city.ilike(f"%{request.args['city']}%"))
         event_format = request.args.get("format")
         if event_format:
             query = query.filter(Event.format == event_format)
@@ -160,6 +221,14 @@ class EventListResource(Resource):
             query = query.filter(Event.organizer.has(slug=request.args["organizer"]))
         if request.args.get("featured") == "true":
             query = query.filter(Event.featured.is_(True))
+        price = request.args.get("price")
+        if price == "free":
+            query = query.filter(or_(Event.ticket_price.is_(None), Event.ticket_price == 0))
+        elif price == "paid":
+            query = query.filter(Event.ticket_price.isnot(None), Event.ticket_price > 0)
+
+        query = apply_search(query, Event, request.args, ["title", "short_description"], param="query")
+
         result = paginate(query, event_schema)
         return success_response(result["items"], meta=result["meta"])
 
@@ -167,8 +236,8 @@ class EventListResource(Resource):
         _require_manage()
         data = EventInputSchema().load(request.get_json(silent=True) or {})
         organizer = _resolve_organizer(data.get("organizer_id"))
-        speakers = _lookup_all(Person, data.pop("speaker_slugs", []), "speaker")
-        sponsors = _lookup_all(Organization, data.pop("sponsor_slugs", []), "sponsor")
+        speakers = _resolve_speakers(data.pop("speakers", []))
+        sponsors = _resolve_sponsors(data.pop("sponsors", []))
 
         event = Event()
         if data.get("slug"):
@@ -177,7 +246,7 @@ class EventListResource(Resource):
             event.slug = generate_unique_slug(Event, data["title"])
 
         _apply_fields(event, data, organizer, speakers, sponsors)
-        if event.status == "published":
+        if event.status in ("published", "scheduled"):
             _validate_for_publish(event)
         db.session.add(event)
         db.session.commit()
@@ -189,7 +258,10 @@ class EventDetailResource(Resource):
         event = Event.query.filter_by(slug=slug).first()
         if event is None:
             raise ApiError("Event not found.", 404, code="not_found")
-        if event.status not in ("published", "cancelled") and not _can_edit_or_none():
+        publicly_visible = event.status in ("published", "cancelled", "postponed") or (
+            event.status == "scheduled" and event.published_date and event.published_date <= date.today()
+        )
+        if not publicly_visible and not _can_edit_or_none():
             raise ApiError("Event not found.", 404, code="not_found")
         return success_response(event_schema.dump(event))
 
@@ -201,14 +273,14 @@ class EventDetailResource(Resource):
 
         data = EventInputSchema().load(request.get_json(silent=True) or {})
         organizer = _resolve_organizer(data.get("organizer_id"))
-        speakers = _lookup_all(Person, data.pop("speaker_slugs", []), "speaker")
-        sponsors = _lookup_all(Organization, data.pop("sponsor_slugs", []), "sponsor")
+        speakers = _resolve_speakers(data.pop("speakers", []))
+        sponsors = _resolve_sponsors(data.pop("sponsors", []))
 
         if data.get("slug") and data["slug"] != event.slug:
             event.slug = validate_explicit_slug(Event, data["slug"], current_id=event.id)
 
         _apply_fields(event, data, organizer, speakers, sponsors)
-        if event.status == "published":
+        if event.status in ("published", "scheduled"):
             _validate_for_publish(event)
         db.session.commit()
         return success_response(event_schema.dump(event))

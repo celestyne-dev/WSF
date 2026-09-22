@@ -47,17 +47,7 @@ opportunity_topics = db.Table(
     db.Column("topic_id", db.Integer, db.ForeignKey("topics.id", ondelete="CASCADE"), primary_key=True),
 )
 
-event_speakers = db.Table(
-    "event_speakers",
-    db.Column("event_id", db.Integer, db.ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("person_id", db.Integer, db.ForeignKey("people.id", ondelete="CASCADE"), primary_key=True),
-)
-
-event_sponsors = db.Table(
-    "event_sponsors",
-    db.Column("event_id", db.Integer, db.ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("organization_id", db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True),
-)
+SPONSOR_TIERS = ("Presenting Sponsor", "Gold Sponsor", "Silver Sponsor", "Supporting Partner", "Community Partner")
 
 
 class Job(db.Model):
@@ -254,6 +244,7 @@ EVENT_TYPES = (
     "Training",
     "Community Event",
     "Career Event",
+    "Leadership Event",
     "Founder Event",
     "Mentorship Event",
     "Awards Event",
@@ -264,13 +255,21 @@ _EVENT_TYPE_CHECK_SQL = "type IS NULL OR type IN (" + ", ".join(f"'{t}'" for t i
 EVENT_FORMATS = ("in-person", "virtual", "hybrid")
 _EVENT_FORMAT_CHECK_SQL = "format IS NULL OR format IN (" + ", ".join(f"'{f}'" for f in EVENT_FORMATS) + ")"
 
-# draft: incomplete/unpublished. published: live and publicly listed —
-# upcoming/past are computed from `date`/`end_date` at read time, not
-# stored, so editors never have to manually move an event between
-# sections. cancelled: still publicly visible (clearly marked) so
+# draft: incomplete/unpublished. review: submitted, awaiting editorial
+# approval. scheduled: approved, with published_date set in the future —
+# becomes publicly visible automatically once that date arrives (computed
+# at read time, no scheduler needed), mirroring Job's identical pattern.
+# published: live and publicly listed. postponed: publicly visible but
+# clearly marked as postponed (a new date TBD) rather than cancelled
+# outright. cancelled: still publicly visible (clearly marked) so
 # registrants can see it was called off. archived: retained for record but
 # no longer shown in any public listing.
-EVENT_STATUSES = ("draft", "published", "cancelled", "archived")
+#
+# "ongoing"/"completed" are NEVER stored here — like upcoming/past, they're
+# computed from `date`/`end_date` at read time (see EventSchema), so an
+# editor never has to manually flip a second, redundant status as an event
+# starts or ends.
+EVENT_STATUSES = ("draft", "review", "scheduled", "published", "postponed", "cancelled", "archived")
 _EVENT_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in EVENT_STATUSES) + ")"
 
 
@@ -304,6 +303,7 @@ class Event(db.Model):
 
     location = db.Column(db.String(300))
     address = db.Column(db.String(300))
+    city = db.Column(db.String(120))
     country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
     venue = db.Column(db.String(200))
     virtual_link = db.Column(db.String(500))
@@ -340,5 +340,59 @@ class Event(db.Model):
     country = db.relationship("Country", foreign_keys=[country_code])
     cover_media = db.relationship("Media", foreign_keys=[cover_media_id])
     organizer = db.relationship("Organization", foreign_keys=[organizer_id])
-    speakers = db.relationship("Person", secondary=event_speakers)
-    sponsors = db.relationship("Organization", secondary=event_sponsors)
+    speakers = db.relationship(
+        "EventSpeaker", order_by="EventSpeaker.position", cascade="all, delete-orphan", backref="event"
+    )
+    sponsors = db.relationship(
+        "EventSponsor", order_by="EventSponsor.position", cascade="all, delete-orphan", backref="event"
+    )
+
+
+class EventSpeaker(db.Model):
+    """An ordered speaker slot on an Event. Links to an existing Person
+    profile where one exists (`person_id`) — never duplicating their name/
+    bio/headshot — but every field also has a fallback so an event can list
+    a speaker who doesn't (yet) have a People profile, without blocking on
+    editorial onboarding.
+    """
+
+    __tablename__ = "event_speakers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    person_id = db.Column(db.Integer, db.ForeignKey("people.id"), nullable=True)
+
+    name = db.Column(db.String(200))  # fallback when person_id is unset
+    title = db.Column(db.String(200))  # job title, e.g. "CEO"
+    organization_name = db.Column(db.String(200))
+    bio = db.Column(db.Text)
+    headshot_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+
+    person = db.relationship("Person", foreign_keys=[person_id])
+    headshot = db.relationship("Media", foreign_keys=[headshot_media_id])
+
+
+class EventSponsor(db.Model):
+    """An ordered sponsor slot on an Event. Links to an existing
+    Organization where one exists — never duplicating its name/logo — with
+    a fallback name/logo/url for a sponsor that isn't (yet) an Organization
+    record. Distinct from commerce.Sponsor, which tracks a standing,
+    possibly multi-event sponsorship deal rather than a single event's
+    sponsor list.
+    """
+
+    __tablename__ = "event_sponsors"
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True)
+
+    name = db.Column(db.String(200))  # fallback when organization_id is unset
+    logo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)  # fallback logo
+    url = db.Column(db.String(500))  # fallback link
+    tier = db.Column(db.String(50))  # see SPONSOR_TIERS — free text, not enforced by CHECK (editorial nuance)
+    position = db.Column(db.Integer, nullable=False, default=0)
+
+    organization = db.relationship("Organization", foreign_keys=[organization_id])
+    logo = db.relationship("Media", foreign_keys=[logo_media_id])

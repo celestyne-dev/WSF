@@ -12,6 +12,44 @@ async function loadMockEvents() {
   return _mockEvents
 }
 
+function mapSpeaker(s) {
+  if (!s) return null
+  return {
+    id: s.id,
+    personSlug: s.person?.slug || null,
+    name: s.person?.name || s.name || '',
+    title: s.person?.title || s.title || '',
+    organizationName: s.organization_name || '',
+    bio: s.person?.short_bio || s.bio || '',
+    headshot: mapMediaRef(s.person?.photo || s.headshot),
+    profileSlug: s.person?.slug || null,
+  }
+}
+
+function mapSponsor(s) {
+  if (!s) return null
+  return {
+    id: s.id,
+    organizationId: s.organization?.id || null,
+    organizationSlug: s.organization?.slug || null,
+    name: s.organization?.name || s.name || '',
+    url: s.organization ? null : s.url || null,
+    logo: mapMediaRef(s.organization?.logo || s.logo),
+    tier: s.tier || '',
+  }
+}
+
+function mapAgendaItem(item) {
+  return {
+    startTime: item.startTime,
+    endTime: item.endTime || '',
+    title: item.title,
+    description: item.description || '',
+    sessionType: item.sessionType || '',
+    speakerNames: item.speakerNames || [],
+  }
+}
+
 function mapEvent(e) {
   if (!e) return null
   return {
@@ -29,6 +67,7 @@ function mapEvent(e) {
     timezone: e.timezone,
     location: e.location,
     address: e.address,
+    city: e.city || '',
     countryCode: e.country?.code || e.country_code || null,
     country: e.country ? { code: e.country.code, name: e.country.name, region: e.country.region } : null,
     venue: e.venue,
@@ -46,14 +85,18 @@ function mapEvent(e) {
     soldOut: e.sold_out ?? false,
     ticketPrice: e.ticket_price,
     currency: e.currency,
+    isFree: e.is_free ?? !e.ticket_price,
     capacity: e.capacity,
-    speakers: (e.speakers || []).map((p) => p.slug),
-    sponsors: (e.sponsors || []).map((o) => o.slug),
-    agenda: e.agenda || [],
+    speakers: (e.speakers || []).map(mapSpeaker),
+    sponsors: (e.sponsors || []).map(mapSponsor),
+    agenda: (e.agenda || []).map(mapAgendaItem),
     status: e.status,
     isPast: e.is_past ?? false,
     isUpcoming: e.is_upcoming ?? true,
+    isOngoing: e.is_ongoing ?? false,
+    isCompleted: e.is_completed ?? false,
     isCancelled: e.is_cancelled ?? false,
+    isPostponed: e.is_postponed ?? false,
     publishedDate: e.published_date,
     seo: e.seo || null,
     coverImage: e.cover_media?.public_url || null,
@@ -74,6 +117,13 @@ export async function fetchEvents(params = {}) {
   if (params.type) results = results.filter((e) => e.type === params.type)
   if (params.country) results = results.filter((e) => matchesCountry(e.countryCode, params.country))
   if (params.region) results = results.filter((e) => matchesRegion(e.countryCode, params.region))
+  if (params.city) results = results.filter((e) => (e.city || '').toLowerCase().includes(params.city.toLowerCase()))
+  if (params.organizer) results = results.filter((e) => e.organizerSlug === params.organizer)
+  if (params.featured === 'true' || params.featured === true) results = results.filter((e) => e.featured)
+  if (params.dateFrom) results = results.filter((e) => e.date >= params.dateFrom)
+  if (params.dateTo) results = results.filter((e) => e.date <= params.dateTo)
+  if (params.price === 'free') results = results.filter((e) => !e.ticketPrice)
+  else if (params.price === 'paid') results = results.filter((e) => e.ticketPrice)
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter((e) => e.title.toLowerCase().includes(q))
@@ -109,6 +159,7 @@ export async function fetchEventsFilterOptions() {
       formats: [...new Set(all.map((e) => e.format))].filter(Boolean),
       countries: countryOptionsFromItems(all),
       regions: regionFilterOptions(),
+      organizers: [...new Map(all.filter((e) => e.organizerSlug).map((e) => [e.organizerSlug, { value: e.organizerSlug, label: e.organizer }])).values()],
     }
   }
   const { events } = await loadMockEvents()
@@ -118,7 +169,40 @@ export async function fetchEventsFilterOptions() {
     formats: [...new Set(events.map((e) => e.format))],
     countries: countryOptionsFromItems(enriched),
     regions: regionFilterOptions(),
+    organizers: [],
   })
+}
+
+function toSpeakerPayload(s) {
+  return {
+    personSlug: s.personSlug || undefined,
+    name: s.personSlug ? undefined : s.name || undefined,
+    title: s.title || undefined,
+    organizationName: s.organizationName || undefined,
+    bio: s.bio || undefined,
+    headshotMediaId: s.headshot?.id || undefined,
+  }
+}
+
+function toSponsorPayload(s) {
+  return {
+    organizationId: s.organizationId || undefined,
+    name: s.organizationId ? undefined : s.name || undefined,
+    logoMediaId: s.organizationId ? undefined : s.logo?.id || undefined,
+    url: s.organizationId ? undefined : s.url || undefined,
+    tier: s.tier || undefined,
+  }
+}
+
+function toAgendaPayload(item) {
+  return {
+    startTime: item.startTime,
+    endTime: item.endTime || undefined,
+    title: item.title,
+    description: item.description || undefined,
+    sessionType: item.sessionType || undefined,
+    speakerNames: item.speakerNames || [],
+  }
 }
 
 function toApiPayload(form) {
@@ -136,6 +220,7 @@ function toApiPayload(form) {
     timezone: form.timezone || undefined,
     location: form.location || undefined,
     address: form.address || undefined,
+    city: form.city || undefined,
     countryCode: form.countryCode || undefined,
     venue: form.venue || undefined,
     virtualLink: form.virtualLink || undefined,
@@ -150,14 +235,14 @@ function toApiPayload(form) {
     ticketPrice: form.ticketPrice === '' || form.ticketPrice == null ? undefined : Number(form.ticketPrice),
     currency: form.currency || undefined,
     capacity: form.capacity === '' || form.capacity == null ? undefined : Number(form.capacity),
-    agenda: form.agenda || [],
+    agenda: (form.agenda || []).map(toAgendaPayload),
     status: form.status || 'draft',
     seo: form.seo || undefined,
     coverMediaId: form.coverMedia?.id || undefined,
     featured: !!form.featured,
     sponsored: !!form.sponsored,
-    speakerSlugs: form.speakerSlugs || [],
-    sponsorSlugs: form.sponsorSlugs || [],
+    speakers: (form.speakers || []).map(toSpeakerPayload),
+    sponsors: (form.sponsors || []).map(toSponsorPayload),
   }
 }
 

@@ -50,7 +50,7 @@ class Media(db.Model):
         """
         from app.models.article import Article
         from app.models.commerce import Product
-        from app.models.opportunity import Event, Job, Opportunity
+        from app.models.opportunity import Event, EventSpeaker, EventSponsor, Job, Opportunity
         from app.models.people import Author, Organization, Person
         from app.models.resource import Resource
         from app.models.taxonomy import Series
@@ -66,6 +66,8 @@ class Media(db.Model):
             (Job, "logo_media_id"),
             (Opportunity, "logo_media_id"),
             (Event, "cover_media_id"),
+            (EventSpeaker, "headshot_media_id"),
+            (EventSponsor, "logo_media_id"),
             (Resource, "cover_media_id"),
             (Product, "cover_media_id"),
         )
