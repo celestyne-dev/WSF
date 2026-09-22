@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Link as LinkIcon, Clock, Sparkles } from 'lucide-react'
-import SocialIcon from '../components/ui/SocialIcon'
-import { toast } from 'react-toastify'
+import { Clock, Sparkles } from 'lucide-react'
 import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles } from '../api/articles'
 import { fetchPersonBySlug } from '../api/people'
 import { resolveImage } from '../utils/media'
@@ -12,56 +10,11 @@ import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
+import ShareBar from '../components/ui/ShareBar'
 import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
 import PersonCard from '../components/cards/PersonCard'
 import NotFoundPage from './NotFoundPage'
-
-// LinkedIn leads the share bar — it's Women Shaping Futures' primary
-// distribution channel, so sharing an article back to LinkedIn is the
-// single most valuable action a reader can take after the newsletter CTA.
-function ShareBar({ title, url, articleSlug }) {
-  const encodedUrl = encodeURIComponent(url)
-  const encodedTitle = encodeURIComponent(title)
-  const links = [
-    { icon: 'linkedin', label: 'Share on LinkedIn', href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`, emphasize: true },
-    { icon: 'twitter', label: 'Share on X', href: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}` },
-    { icon: 'facebook', label: 'Share on Facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
-  ]
-  return (
-    <div className="flex items-center gap-3">
-      {links.map(({ icon, label, href, emphasize }) => (
-        <a
-          key={label}
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={label}
-          onClick={() => trackEvent('article_share_click', { articleSlug, network: icon })}
-          className={`flex h-9 w-9 items-center justify-center border transition-colors ${
-            emphasize
-              ? 'border-burgundy-500 bg-burgundy-500/10 text-burgundy-600 hover:bg-burgundy-500 hover:text-ivory'
-              : 'border-taupe-300 text-charcoal hover:border-burgundy-500 hover:text-burgundy-600'
-          }`}
-        >
-          <SocialIcon name={icon} size={16} />
-        </a>
-      ))}
-      <button
-        type="button"
-        aria-label="Copy link"
-        onClick={() => {
-          navigator.clipboard?.writeText(url)
-          trackEvent('article_share_click', { articleSlug, network: 'copy_link' })
-          toast.success('Link copied to clipboard')
-        }}
-        className="flex h-9 w-9 items-center justify-center border border-taupe-300 text-charcoal transition-colors hover:border-burgundy-500 hover:text-burgundy-600"
-      >
-        <LinkIcon size={16} />
-      </button>
-    </div>
-  )
-}
 
 // Subtle, non-alarming editorial transparency notice — shown only when an
 // editor has explicitly enabled it (article.aiDisclosureRequired) and
@@ -220,7 +173,7 @@ export default function ArticlePage() {
               </p>
             </div>
           </div>
-          <ShareBar title={article.title} url={canonicalUrl} articleSlug={article.slug} />
+          <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
         </div>
 
         {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}

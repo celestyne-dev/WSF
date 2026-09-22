@@ -12,6 +12,7 @@ from app.models.article import Article
 from app.models.cms import HomepageModule, Menu, SiteSetting
 from app.models.community import Nomination, StorySubmission
 from app.models.newsletter import NewsletterSubscriber
+from app.models.commerce import Sponsor
 from app.models.opportunity import Event, Job, Opportunity
 from app.models.user import Role, User
 from app.schemas.article import article_summary_schema
@@ -22,6 +23,7 @@ from app.schemas.cms import (
     NavigationInputSchema,
     SiteSettingsInputSchema,
 )
+from app.schemas.commerce import SponsorSchema
 from app.schemas.user import RoleSchema, UserSchema
 from app.services.cms import replace_homepage_modules, replace_menu, replace_social_links, upsert_site_settings
 from app.utils.filtering import apply_search
@@ -208,6 +210,19 @@ class AdminSettingsResource(Resource):
         return success_response({setting.key: setting.value for setting in settings})
 
 
+class AdminSponsorListResource(Resource):
+    """Read-only list of active sponsorship deals, for the Job editor's
+    sponsor selector. Full Sponsor CRUD is a separate future CMS module —
+    this exists only so a Job can link to a real Sponsor record instead of
+    requiring a raw ID.
+    """
+
+    @permission_required("jobs.manage")
+    def get(self):
+        sponsors = Sponsor.query.filter_by(active=True).order_by(Sponsor.created_at.desc()).all()
+        return success_response(SponsorSchema(many=True).dump(sponsors))
+
+
 api.add_resource(AdminUserListResource, "/users")
 api.add_resource(AdminRoleListResource, "/roles")
 api.add_resource(AdminHomepageResource, "/homepage")
@@ -215,3 +230,4 @@ api.add_resource(AdminNavigationResource, "/navigation")
 api.add_resource(AdminSettingsResource, "/settings")
 api.add_resource(AdminArticleListResource, "/articles")
 api.add_resource(AdminDashboardResource, "/dashboard")
+api.add_resource(AdminSponsorListResource, "/sponsors")

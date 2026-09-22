@@ -12,19 +12,20 @@ export default function AdminJobs() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [workMode, setWorkMode] = useState('')
+  const [featuredOnly, setFeaturedOnly] = useState(false)
   const [rows, setRows] = useState(undefined)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let active = true
     setError(null)
-    fetchJobs({ status, query, workMode, pageSize: 100 })
+    fetchJobs({ status, query, workMode, featured: featuredOnly || undefined, pageSize: 100 })
       .then((res) => active && setRows(res.items))
       .catch(() => active && setError('Something went wrong loading jobs. Please try again.'))
     return () => {
       active = false
     }
-  }, [status, query, workMode])
+  }, [status, query, workMode, featuredOnly])
 
   return (
     <div>
@@ -45,7 +46,7 @@ export default function AdminJobs() {
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="border border-taupe-300 bg-white px-3 py-2 text-sm">
           <option value="">All statuses</option>
-          {['draft', 'published', 'closed', 'archived'].map((s) => (
+          {['draft', 'review', 'scheduled', 'published', 'expired', 'archived'].map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
@@ -59,6 +60,10 @@ export default function AdminJobs() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-2 text-sm text-charcoal-600">
+          <input type="checkbox" checked={featuredOnly} onChange={(e) => setFeaturedOnly(e.target.checked)} />
+          Featured only
+        </label>
       </div>
 
       {error && <EmptyState title="Couldn't load jobs" description={error} />}

@@ -5,11 +5,13 @@ import { Save, Eye, AlertTriangle, Archive, Trash2, Copy } from 'lucide-react'
 import { fetchJobBySlug, createJob, updateJob, deleteJob, duplicateJob } from '../../api/jobs'
 import { fetchOrganizations } from '../../api/taxonomies'
 import { fetchCountries, regionOptions } from '../../api/geography'
+import { fetchSponsors } from '../../api/admin'
 import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import BulletListEditor from '../../components/cms/BulletListEditor'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -22,7 +24,7 @@ function slugify(text) {
     .replace(/-+/g, '-')
 }
 
-const STATUSES = ['draft', 'published', 'closed', 'archived']
+const STATUSES = ['draft', 'review', 'scheduled', 'published', 'expired', 'archived']
 const WORK_MODES = ['On-site', 'Hybrid', 'Remote']
 const EMPLOYMENT_TYPES = ['Full-time', 'Part-time', 'Contract', 'Temporary', 'Internship']
 const CAREER_LEVELS = ['Entry level', 'Junior', 'Mid-level', 'Senior', 'Manager', 'Director', 'Executive']
@@ -41,6 +43,11 @@ function blankForm() {
     logoMedia: null,
     shortDescription: '',
     description: [],
+    responsibilities: [],
+    requirements: [],
+    qualifications: [],
+    skills: [],
+    benefits: [],
     workMode: '',
     remoteScope: '',
     remoteRegion: '',
@@ -48,17 +55,22 @@ function blankForm() {
     careerLevel: '',
     industry: '',
     countryCode: '',
+    city: '',
     location: '',
     salaryMin: '',
     salaryMax: '',
     currency: '',
     salaryPeriod: 'year',
+    salaryVisible: true,
     applicationUrl: '',
+    applicationEmail: '',
     applicationInstructions: '',
     deadline: '',
     expiryDate: '',
+    publishedDate: '',
     featured: false,
     sponsored: false,
+    sponsorId: '',
     status: 'draft',
     seoTitle: '',
     seoDescription: '',
@@ -76,6 +88,11 @@ function toForm(job) {
     logoMedia: job.logoMediaId ? { ...job.logoMedia, id: job.logoMediaId } : null,
     shortDescription: job.shortDescription || '',
     description: job.description || [],
+    responsibilities: job.responsibilities || [],
+    requirements: job.requirements || [],
+    qualifications: job.qualifications || [],
+    skills: job.skills || [],
+    benefits: job.benefits || [],
     workMode: job.workMode || '',
     remoteScope: job.remoteScope || '',
     remoteRegion: job.remoteRegion || '',
@@ -83,17 +100,22 @@ function toForm(job) {
     careerLevel: job.careerLevel || '',
     industry: job.industry || '',
     countryCode: job.countryCode || '',
+    city: job.city || '',
     location: job.location || '',
     salaryMin: job.salaryMin ?? '',
     salaryMax: job.salaryMax ?? '',
     currency: job.currency || '',
     salaryPeriod: job.salaryPeriod || 'year',
+    salaryVisible: job.salaryVisible !== false,
     applicationUrl: job.applicationUrl || '',
+    applicationEmail: job.applicationEmail || '',
     applicationInstructions: job.applicationInstructions || '',
     deadline: job.deadline || '',
     expiryDate: job.expiryDate || '',
+    publishedDate: job.publishedDate || '',
     featured: !!job.featured,
     sponsored: !!job.sponsored,
+    sponsorId: job.sponsorId || '',
     status: job.status || 'draft',
     seoTitle: job.seo?.title || '',
     seoDescription: job.seo?.description || '',
@@ -130,6 +152,7 @@ export default function AdminJobEditor() {
 
   const [organizations, setOrganizations] = useState([])
   const [countries, setCountries] = useState([])
+  const [sponsors, setSponsors] = useState([])
   const [form, setForm] = useState(undefined)
   const [notFound, setNotFound] = useState(false)
   const [slugTouched, setSlugTouched] = useState(!isNew)
@@ -139,11 +162,17 @@ export default function AdminJobEditor() {
 
   useEffect(() => {
     let active = true
-    Promise.all([fetchOrganizations({ pageSize: 200 }), fetchCountries(), isNew ? Promise.resolve(null) : fetchJobBySlug(id)])
-      .then(([orgRes, countryList, existing]) => {
+    Promise.all([
+      fetchOrganizations({ pageSize: 200 }),
+      fetchCountries(),
+      fetchSponsors(),
+      isNew ? Promise.resolve(null) : fetchJobBySlug(id),
+    ])
+      .then(([orgRes, countryList, sponsorList, existing]) => {
         if (!active) return
         setOrganizations(orgRes.items)
         setCountries([...countryList].sort((a, b) => a.name.localeCompare(b.name)))
+        setSponsors(sponsorList)
         if (isNew) {
           setForm(blankForm())
         } else if (existing) {
@@ -189,9 +218,11 @@ export default function AdminJobEditor() {
   const selectedOrg = organizations.find((o) => String(o.id) === String(form?.organizationId))
   const hasNoEmployer = form && !form.organizationId && !form.companyName
   const hasNoDescription = form && form.description.length === 0
-  const hasNoApplicationUrl = form && !form.applicationUrl
+  const hasNoApplicationDestination = form && !form.applicationUrl && !form.applicationEmail
   const salaryRangeInvalid = form && form.salaryMin !== '' && form.salaryMax !== '' && Number(form.salaryMin) > Number(form.salaryMax)
   const dateOrderInvalid = form && form.deadline && form.expiryDate && form.deadline > form.expiryDate
+  const publishesLive = form && (form.status === 'published' || form.status === 'scheduled')
+  const canonicalPreview = `womenshapingfutures.org/jobs/${form?.slug || 'your-slug'}`
 
   async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
@@ -212,13 +243,17 @@ export default function AdminJobEditor() {
       toast.error("Application deadline cannot be after the listing's expiry date.")
       return
     }
-    if (nextStatus === 'published') {
+    if (nextStatus === 'published' || nextStatus === 'scheduled') {
       if (hasNoDescription) {
         toast.error('Add a job description before publishing.')
         return
       }
-      if (hasNoApplicationUrl) {
-        toast.error('Add an application URL before publishing — WSF never shows a fake Apply button.')
+      if (hasNoApplicationDestination) {
+        toast.error('Add an application URL or email before publishing — WSF never shows a fake Apply button.')
+        return
+      }
+      if (nextStatus === 'scheduled' && !form.publishedDate) {
+        toast.error('Set a publish date to schedule this job.')
         return
       }
     }
@@ -233,6 +268,11 @@ export default function AdminJobEditor() {
       logoMediaId: form.logoMedia?.id || null,
       shortDescription: form.shortDescription || null,
       description: form.description,
+      responsibilities: form.responsibilities.filter((item) => item.trim()),
+      requirements: form.requirements.filter((item) => item.trim()),
+      qualifications: form.qualifications.filter((item) => item.trim()),
+      skills: form.skills.filter((item) => item.trim()),
+      benefits: form.benefits.filter((item) => item.trim()),
       workMode: form.workMode || null,
       remoteScope: form.workMode === 'Remote' ? form.remoteScope || null : null,
       remoteRegion: form.remoteScope === 'region' ? form.remoteRegion || null : null,
@@ -240,17 +280,22 @@ export default function AdminJobEditor() {
       careerLevel: form.careerLevel || null,
       industry: form.industry || null,
       countryCode: form.countryCode || null,
+      city: form.city || null,
       location: form.location || null,
       salaryMin: form.salaryMin === '' ? null : Number(form.salaryMin),
       salaryMax: form.salaryMax === '' ? null : Number(form.salaryMax),
       currency: form.currency || null,
       salaryPeriod: form.salaryPeriod || null,
+      salaryVisible: form.salaryVisible,
       applicationUrl: form.applicationUrl || null,
+      applicationEmail: form.applicationEmail || null,
       applicationInstructions: form.applicationInstructions || null,
       deadline: form.deadline || null,
       expiryDate: form.expiryDate || null,
+      publishedDate: form.publishedDate || null,
       featured: form.featured,
       sponsored: form.sponsored,
+      sponsorId: form.sponsorId || null,
       status: nextStatus,
       seo: {
         title: form.seoTitle || null,
@@ -366,8 +411,25 @@ export default function AdminJobEditor() {
             )}
           </Section>
 
-          <Section title="Job description" description="Structure the content however makes sense — About the role, Responsibilities, Requirements, Benefits, How to apply — you decide the headings.">
-            <ArticleBlockEditor blocks={form.description} onChange={(description) => updateField('description', description)} />
+          <Section title="Job details" description="Write the full narrative below, then list Responsibilities/Requirements/Qualifications/Skills/Benefits as scannable bullets — each renders as its own section on the public page only when it has content.">
+            <Field label="Description">
+              <ArticleBlockEditor blocks={form.description} onChange={(description) => updateField('description', description)} />
+            </Field>
+            <Field label="Responsibilities" hint="optional">
+              <BulletListEditor items={form.responsibilities} onChange={(items) => updateField('responsibilities', items)} placeholder="e.g. Own the product roadmap" />
+            </Field>
+            <Field label="Requirements" hint="optional">
+              <BulletListEditor items={form.requirements} onChange={(items) => updateField('requirements', items)} placeholder="e.g. 5+ years of experience" />
+            </Field>
+            <Field label="Qualifications" hint="optional">
+              <BulletListEditor items={form.qualifications} onChange={(items) => updateField('qualifications', items)} placeholder="e.g. Bachelor's degree or equivalent" />
+            </Field>
+            <Field label="Skills" hint="optional">
+              <BulletListEditor items={form.skills} onChange={(items) => updateField('skills', items)} placeholder="e.g. Product strategy" />
+            </Field>
+            <Field label="Benefits" hint="optional">
+              <BulletListEditor items={form.benefits} onChange={(items) => updateField('benefits', items)} placeholder="e.g. Health insurance" />
+            </Field>
           </Section>
 
           <Section title="Employment details">
@@ -439,13 +501,16 @@ export default function AdminJobEditor() {
                   ))}
                 </select>
               </Field>
-              <Field label="City / location" hint="optional">
-                <input value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Nairobi, Kenya" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              <Field label="City" hint="optional">
+                <input value={form.city} onChange={(e) => updateField('city', e.target.value)} placeholder="Nairobi" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
             </div>
+            <Field label="Location" hint="optional — free text shown on the public page, e.g. Nairobi, Kenya">
+              <input value={form.location} onChange={(e) => updateField('location', e.target.value)} placeholder="Nairobi, Kenya" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+            </Field>
           </Section>
 
-          <Section title="Compensation" description="Leave blank if the employer doesn't want salary disclosed publicly.">
+          <Section title="Compensation" description="Salary figures can be entered for internal reference without being shown publicly — use the visibility toggle below.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Minimum salary" hint="optional">
                 <input type="number" value={form.salaryMin} onChange={(e) => updateField('salaryMin', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
@@ -469,11 +534,18 @@ export default function AdminJobEditor() {
             {salaryRangeInvalid && (
               <p className="text-xs text-rose-600">Minimum salary cannot exceed maximum salary.</p>
             )}
+            <label className="flex items-center gap-2 text-sm text-charcoal-600">
+              <input type="checkbox" checked={form.salaryVisible} onChange={(e) => updateField('salaryVisible', e.target.checked)} />
+              Show salary publicly
+            </label>
           </Section>
 
           <Section title="Application">
             <Field label="Application URL" hint="where WSF sends candidates to apply">
               <input value={form.applicationUrl} onChange={(e) => updateField('applicationUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+            </Field>
+            <Field label="Application email" hint="optional — used when there's no external application URL">
+              <input type="email" value={form.applicationEmail} onChange={(e) => updateField('applicationEmail', e.target.value)} placeholder="careers@company.com" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
             <Field label="Application instructions" hint="optional — shown alongside the Apply button">
               <textarea rows={2} value={form.applicationInstructions} onChange={(e) => updateField('applicationInstructions', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
@@ -490,6 +562,10 @@ export default function AdminJobEditor() {
             <Field label="Canonical URL" hint="only set this if this listing is republished from elsewhere">
               <input value={form.seoCanonical} onChange={(e) => updateField('seoCanonical', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
+            <p className="text-xs text-charcoal-600/70">Canonical preview: <span className="font-mono">{form.seoCanonical || canonicalPreview}</span></p>
+            {!publishesLive && (
+              <p className="text-xs text-amber-700">This job is not published, so search engines won't index it yet.</p>
+            )}
             <MediaPicker label="Social / OG image" aspect={1.91 / 1} value={form.seoOgMedia} onChange={(media) => updateField('seoOgMedia', media)} />
           </Section>
         </div>
@@ -504,6 +580,11 @@ export default function AdminJobEditor() {
                 </option>
               ))}
             </select>
+            {form.status === 'scheduled' && (
+              <Field label="Publish date" hint="job becomes publicly visible automatically on this date">
+                <input type="date" value={form.publishedDate} onChange={(e) => updateField('publishedDate', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm" />
+              </Field>
+            )}
             <Field label="Application deadline" hint="optional">
               <input type="date" value={form.deadline} onChange={(e) => updateField('deadline', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm" />
             </Field>
@@ -524,10 +605,10 @@ export default function AdminJobEditor() {
                 <span>Add a job description before publishing.</span>
               </div>
             )}
-            {hasNoApplicationUrl && (
+            {hasNoApplicationDestination && (
               <div className="mt-3 flex gap-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
                 <AlertTriangle size={16} className="shrink-0" />
-                <span>Add an application URL before publishing.</span>
+                <span>Add an application URL or email before publishing.</span>
               </div>
             )}
 
@@ -538,8 +619,8 @@ export default function AdminJobEditor() {
               <button type="button" onClick={() => handleSave('published')} disabled={saving} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
                 Publish
               </button>
-              {!isNew && form.status !== 'closed' && (
-                <button type="button" onClick={() => handleSave('closed')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
+              {!isNew && form.status !== 'expired' && (
+                <button type="button" onClick={() => handleSave('expired')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
                   Close to applications
                 </button>
               )}
@@ -569,6 +650,18 @@ export default function AdminJobEditor() {
                 Sponsored
               </label>
             </div>
+            {sponsors.length > 0 && (
+              <Field label="Linked sponsor deal" hint="optional — for internal attribution/reporting only">
+                <select value={form.sponsorId} onChange={(e) => updateField('sponsorId', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                  <option value="">— None —</option>
+                  {sponsors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.organizationName} ({s.tier})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
           </div>
 
           <Link to="/admin/jobs" className="block text-center text-xs font-semibold text-charcoal-600 hover:text-burgundy-600">

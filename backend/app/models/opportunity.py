@@ -1,10 +1,15 @@
 from app.extensions import db
 from app.models.geography import REGIONS
 
-# draft: incomplete/unpublished. published: live and accepting
-# applications. expired: past its expiry/deadline, no longer active but
-# kept for record. closed: manually closed to applications by the poster.
-JOB_STATUSES = ("draft", "published", "expired", "closed")
+# draft: incomplete, not yet submitted for review. review: submitted,
+# awaiting editorial approval before it can go live. scheduled: approved,
+# with published_date set in the future — becomes publicly visible
+# automatically once that date arrives (computed at read time, no
+# scheduler needed). published: live and accepting applications. expired:
+# past its deadline/expiry, no longer active but kept for record.
+# archived: retained for historical value, not shown in any public
+# listing.
+JOB_STATUSES = ("draft", "review", "scheduled", "published", "expired", "archived")
 _JOB_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in JOB_STATUSES) + ")"
 
 WORK_MODES = ("On-site", "Hybrid", "Remote")
@@ -75,6 +80,7 @@ class Job(db.Model):
     logo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
 
     location = db.Column(db.String(200))
+    city = db.Column(db.String(120))
     country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
     work_mode = db.Column(db.String(30))  # On-site / Hybrid / Remote
     # Only meaningful when work_mode == "Remote".
@@ -88,16 +94,29 @@ class Job(db.Model):
     salary_max = db.Column(db.Integer)
     currency = db.Column(db.String(3))
     salary_period = db.Column(db.String(10))  # year / month / hour
+    # When false, salary_min/max/currency are still stored (useful for
+    # internal benchmarking or admin review) but withheld from the public
+    # schema/pages — the poster entered real figures without committing to
+    # publish them.
+    salary_visible = db.Column(db.Boolean, nullable=False, default=True)
 
     short_description = db.Column(db.Text)  # one or two sentences, for cards
     # Ordered content-block list — same shape/sanitizer/editor as
     # Person.bio/Author.bio/Organization.description/Article.content. The
-    # employer/editor structures "About the role", "Responsibilities",
-    # "Requirements", "Benefits", "How to apply" etc. themselves with
-    # headings and lists rather than the app hard-coding those sections.
+    # employer/editor writes the free-form narrative ("About the role",
+    # "How to apply", etc.) here; the explicit structured lists below
+    # (responsibilities/requirements/qualifications/skills/benefits) are
+    # separate scannable fields the public page renders as their own
+    # sections whenever they're non-empty.
     description = db.Column(db.JSON, nullable=False, default=list)
+    responsibilities = db.Column(db.JSON, nullable=False, default=list)  # list[str]
+    requirements = db.Column(db.JSON, nullable=False, default=list)  # list[str]
+    qualifications = db.Column(db.JSON, nullable=False, default=list)  # list[str]
+    skills = db.Column(db.JSON, nullable=False, default=list)  # list[str]
+    benefits = db.Column(db.JSON, nullable=False, default=list)  # list[str]
 
     application_url = db.Column(db.String(500))
+    application_email = db.Column(db.String(255))
     application_instructions = db.Column(db.Text)
 
     deadline = db.Column(db.Date)
@@ -106,6 +125,11 @@ class Job(db.Model):
 
     featured = db.Column(db.Boolean, nullable=False, default=False)
     sponsored = db.Column(db.Boolean, nullable=False, default=False)
+    # Optional link to a specific paid-sponsorship deal record, for
+    # internal reporting/attribution — the public "Sponsored" badge is
+    # driven by the `sponsored` flag above regardless of whether a deal
+    # record is linked.
+    sponsor_id = db.Column(db.Integer, db.ForeignKey("sponsors.id"), nullable=True)
     status = db.Column(db.String(20), nullable=False, default="published")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
 
@@ -119,6 +143,7 @@ class Job(db.Model):
     logo = db.relationship("Media", foreign_keys=[logo_media_id])
     country = db.relationship("Country", foreign_keys=[country_code])
     posted_by = db.relationship("User", foreign_keys=[posted_by_id])
+    sponsor = db.relationship("Sponsor", foreign_keys=[sponsor_id])
 
 
 OPPORTUNITY_TYPES = (

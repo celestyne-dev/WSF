@@ -116,7 +116,7 @@ def seed_demo_content():
         name="Kaziwave",
         industry="Financial Technology",
         country_code="KE",
-        org_type="Startup",
+        org_type="company",
         description="Kaziwave builds payroll and benefits infrastructure for small businesses across East Africa.",
         featured=True,
     )
@@ -125,9 +125,33 @@ def seed_demo_content():
         name="Lumen Analytics",
         industry="Workforce Technology",
         country_code="US",
-        org_type="Startup",
+        org_type="company",
         description="Lumen Analytics builds workforce planning software for mid-market employers.",
         featured=True,
+    )
+    harrow_vance = _get_or_create_organization(
+        "harrow-vance",
+        name="Harrow & Vance",
+        industry="Marketing & Communications",
+        country_code="GB",
+        org_type="company",
+        description="Harrow & Vance is a London-based brand and communications agency for growth-stage consumer companies.",
+    )
+    maple_ridge = _get_or_create_organization(
+        "maple-ridge-capital",
+        name="Maple Ridge Capital",
+        industry="Financial Services",
+        country_code="CA",
+        org_type="company",
+        description="Maple Ridge Capital is a Toronto-based investment firm managing capital for mid-market growth companies.",
+    )
+    northstar = _get_or_create_organization(
+        "northstar-collective",
+        name="Northstar Collective",
+        industry="Communications",
+        country_code="US",
+        org_type="company",
+        description="Northstar Collective is a fully remote communications and public relations firm working with purpose-driven brands worldwide.",
     )
     db.session.flush()
 
@@ -242,34 +266,261 @@ def seed_demo_content():
         articles["the-negotiation-conversation-nobody-prepares-you-for"],
     ]
 
-    job = Job.query.filter_by(slug="senior-product-manager-lumen-analytics").first()
-    if job is None:
-        job = Job(slug="senior-product-manager-lumen-analytics")
-        db.session.add(job)
-    job.title = "Senior Product Manager"
-    job.organization = lumen
-    job.company_name = "Lumen Analytics"
-    job.location = "Austin, Texas, United States"
-    job.country_code = "US"
-    job.work_mode = "Hybrid"
-    job.employment_type = "Full-time"
-    job.career_level = "Senior"
-    job.industry = "Workforce Technology"
-    job.salary_min, job.salary_max, job.currency, job.salary_period = 145000, 175000, "USD", "year"
-    job.description = [
-        {"type": "paragraph", "text": "Own our workforce planning product line as we expand into two new market segments."},
-        {"type": "heading", "level": 2, "text": "Responsibilities"},
-        {"type": "list", "style": "bullet", "items": ["Own the product roadmap", "Partner with design and engineering"]},
-        {"type": "heading", "level": 2, "text": "Requirements"},
-        {"type": "list", "style": "bullet", "items": ["6+ years in product management"]},
-        {"type": "heading", "level": 2, "text": "Benefits"},
-        {"type": "list", "style": "bullet", "items": ["Health insurance", "401(k) match"]},
+    job_specs = [
+        {
+            "slug": "senior-product-manager-lumen-analytics",
+            "title": "Senior Product Manager",
+            "organization": lumen,
+            "company_name": "Lumen Analytics",
+            "city": "Austin",
+            "location": "Austin, Texas, United States",
+            "country_code": "US",
+            "work_mode": "Hybrid",
+            "employment_type": "Full-time",
+            "career_level": "Senior",
+            "industry": "Technology",
+            "salary_min": 145000,
+            "salary_max": 175000,
+            "currency": "USD",
+            "salary_period": "year",
+            "short_description": "Own our workforce planning product line as Lumen Analytics expands into two new market segments.",
+            "description": [
+                {"type": "paragraph", "text": "Lumen Analytics is hiring a Senior Product Manager to own our workforce planning product line end to end, from roadmap through launch, as we expand into two new market segments this year."},
+            ],
+            "responsibilities": [
+                "Own the product roadmap for our workforce planning suite",
+                "Partner with design and engineering on quarterly release planning",
+                "Run customer discovery with mid-market HR and people-ops leaders",
+                "Define and track success metrics for each release",
+            ],
+            "requirements": [
+                "6+ years in product management, ideally in B2B SaaS",
+                "Experience shipping enterprise or mid-market software",
+                "Strong written communication and stakeholder management",
+            ],
+            "qualifications": ["Bachelor's degree or equivalent practical experience"],
+            "skills": ["Product strategy", "SQL", "Roadmapping", "Cross-functional leadership"],
+            "benefits": ["Health, dental & vision insurance", "Hybrid-friendly", "401(k) match", "Annual learning budget"],
+            "application_url": "https://lumenanalytics.example.com/careers/senior-product-manager",
+            "deadline_days": 30,
+            "featured": True,
+        },
+        {
+            "slug": "marketing-director-harrow-vance",
+            "title": "Marketing Director",
+            "organization": harrow_vance,
+            "company_name": "Harrow & Vance",
+            "city": "London",
+            "location": "London, United Kingdom",
+            "country_code": "GB",
+            "work_mode": "Hybrid",
+            "employment_type": "Full-time",
+            "career_level": "Director",
+            "industry": "Marketing",
+            "salary_min": 75000,
+            "salary_max": 95000,
+            "currency": "GBP",
+            "salary_period": "year",
+            "short_description": "Lead brand and growth marketing for Harrow & Vance's portfolio of consumer clients.",
+            "description": [
+                {"type": "paragraph", "text": "Harrow & Vance is looking for a Marketing Director to lead brand strategy and growth marketing across our portfolio of consumer-facing clients, managing a team of six."},
+            ],
+            "responsibilities": [
+                "Set brand and growth marketing strategy across client accounts",
+                "Manage and mentor a team of six marketers",
+                "Own agency-wide campaign performance reporting",
+            ],
+            "requirements": [
+                "8+ years in marketing, with 3+ in a leadership role",
+                "Agency or in-house consumer brand experience",
+            ],
+            "qualifications": ["Bachelor's degree in marketing, communications, or related field"],
+            "skills": ["Brand strategy", "Team leadership", "Campaign analytics", "Client management"],
+            "benefits": ["Private healthcare", "25 days annual leave", "Hybrid working", "Professional development budget"],
+            "application_url": "https://harrowvance.example.co.uk/careers/marketing-director",
+            "deadline_days": 35,
+            "featured": True,
+        },
+        {
+            "slug": "senior-financial-analyst-maple-ridge-capital",
+            "title": "Senior Financial Analyst",
+            "organization": maple_ridge,
+            "company_name": "Maple Ridge Capital",
+            "city": "Toronto",
+            "location": "Toronto, Ontario, Canada",
+            "country_code": "CA",
+            "work_mode": "On-site",
+            "employment_type": "Full-time",
+            "career_level": "Senior",
+            "industry": "Finance",
+            "salary_min": 95000,
+            "salary_max": 115000,
+            "currency": "CAD",
+            "salary_period": "year",
+            "short_description": "Build financial models and diligence memos for Maple Ridge Capital's mid-market investment team.",
+            "description": [
+                {"type": "paragraph", "text": "Maple Ridge Capital is hiring a Senior Financial Analyst to support our investment team with financial modeling, diligence, and portfolio monitoring for mid-market growth companies."},
+            ],
+            "responsibilities": [
+                "Build and maintain financial models for prospective investments",
+                "Prepare diligence memos and present findings to the investment committee",
+                "Monitor portfolio company performance against quarterly targets",
+            ],
+            "requirements": [
+                "4+ years in investment banking, private equity, or corporate finance",
+                "Advanced Excel and financial modeling skills",
+            ],
+            "qualifications": ["CFA designation or in progress is an asset"],
+            "skills": ["Financial modeling", "Valuation", "Diligence", "Portfolio analysis"],
+            "benefits": ["Extended health benefits", "RRSP matching", "Performance bonus"],
+            "application_url": "https://mapleridgecapital.example.ca/careers/senior-financial-analyst",
+            "deadline_days": 21,
+            "featured": False,
+        },
+        {
+            "slug": "head-of-operations-kaziwave",
+            "title": "Head of Operations",
+            "organization": kaziwave,
+            "company_name": "Kaziwave",
+            "city": "Nairobi",
+            "location": "Nairobi, Kenya",
+            "country_code": "KE",
+            "work_mode": "On-site",
+            "employment_type": "Full-time",
+            "career_level": "Director",
+            "industry": "Operations",
+            "salary_min": 4200000,
+            "salary_max": 5400000,
+            "currency": "KES",
+            "salary_period": "year",
+            "short_description": "Scale Kaziwave's operations as it expands payroll infrastructure across East Africa.",
+            "description": [
+                {"type": "paragraph", "text": "Kaziwave is hiring a Head of Operations to build the processes and team that will support our expansion into three new East African markets over the next 18 months."},
+            ],
+            "responsibilities": [
+                "Design and scale operational processes across customer support, compliance, and payments",
+                "Build and lead an operations team as we expand into new markets",
+                "Partner with the CEO on quarterly operating plans",
+            ],
+            "requirements": [
+                "7+ years in operations, with experience scaling a startup",
+                "Experience in fintech or payments is a strong plus",
+            ],
+            "qualifications": ["Bachelor's degree in business, operations, or related field"],
+            "skills": ["Process design", "Team leadership", "Cross-market expansion", "Vendor management"],
+            "benefits": ["Medical cover for employee and dependents", "Performance bonus", "Professional development budget"],
+            "application_url": "https://kaziwave.example.com/careers/head-of-operations",
+            "deadline_days": 28,
+            "featured": True,
+        },
+        {
+            "slug": "business-development-lead-kaziwave",
+            "title": "Business Development Lead",
+            "organization": kaziwave,
+            "company_name": "Kaziwave",
+            "city": "Nairobi",
+            "location": "Nairobi, Kenya",
+            "country_code": "KE",
+            "work_mode": "Hybrid",
+            "employment_type": "Full-time",
+            "career_level": "Mid-level",
+            "industry": "Business Development",
+            "salary_min": 2800000,
+            "salary_max": 3600000,
+            "currency": "KES",
+            "salary_period": "year",
+            "short_description": "Grow Kaziwave's small-business customer base across East Africa through new partnerships.",
+            "description": [
+                {"type": "paragraph", "text": "Kaziwave is hiring a Business Development Lead to build partnerships with SACCOs, business associations, and financial institutions that bring small businesses onto our payroll platform."},
+            ],
+            "responsibilities": [
+                "Identify and close new partnership and channel opportunities",
+                "Manage a pipeline of mid-to-late-stage partnership conversations",
+                "Represent Kaziwave at industry events across the region",
+            ],
+            "requirements": [
+                "3+ years in business development, partnerships, or sales",
+                "Experience working with SMEs or financial institutions",
+            ],
+            "qualifications": [],
+            "skills": ["Partnership development", "Negotiation", "Pipeline management"],
+            "benefits": ["Medical cover", "Commission on closed partnerships", "Hybrid working"],
+            "application_url": "https://kaziwave.example.com/careers/business-development-lead",
+            "deadline_days": 25,
+            "featured": False,
+        },
+        {
+            "slug": "communications-manager-northstar-collective",
+            "title": "Communications Manager",
+            "organization": northstar,
+            "company_name": "Northstar Collective",
+            "city": None,
+            "location": "Remote — Worldwide",
+            "country_code": None,
+            "work_mode": "Remote",
+            "remote_scope": "worldwide",
+            "employment_type": "Full-time",
+            "career_level": "Mid-level",
+            "industry": "Communications",
+            "salary_min": 68000,
+            "salary_max": 82000,
+            "currency": "USD",
+            "salary_period": "year",
+            "short_description": "Lead media relations and messaging for purpose-driven clients, from anywhere in the world.",
+            "description": [
+                {"type": "paragraph", "text": "Northstar Collective is a fully remote communications firm looking for a Communications Manager to lead media relations and messaging strategy for a portfolio of purpose-driven clients."},
+            ],
+            "responsibilities": [
+                "Develop and execute media relations strategy for client accounts",
+                "Draft press releases, talking points, and executive messaging",
+                "Track and report on earned media coverage",
+            ],
+            "requirements": [
+                "4+ years in communications, PR, or journalism",
+                "Proven media relationships across business or trade press",
+            ],
+            "qualifications": ["Bachelor's degree in communications, journalism, or related field"],
+            "skills": ["Media relations", "Executive messaging", "Crisis communications"],
+            "benefits": ["Fully remote", "Flexible hours across time zones", "Home office stipend", "Unlimited PTO"],
+            "application_url": "https://northstarcollective.example.com/careers/communications-manager",
+            "deadline_days": 40,
+            "featured": False,
+        },
     ]
-    job.application_url = "https://lumenanalytics.example.com/careers/senior-product-manager"
-    job.deadline = date.today() + timedelta(days=30)
-    job.published_date = date.today()
-    job.featured = True
-    job.status = "published"
+
+    for spec in job_specs:
+        job = Job.query.filter_by(slug=spec["slug"]).first()
+        if job is None:
+            job = Job(slug=spec["slug"])
+            db.session.add(job)
+        job.title = spec["title"]
+        job.organization = spec["organization"]
+        job.company_name = spec["company_name"]
+        job.city = spec["city"]
+        job.location = spec["location"]
+        job.country_code = spec["country_code"]
+        job.work_mode = spec["work_mode"]
+        job.remote_scope = spec.get("remote_scope")
+        job.employment_type = spec["employment_type"]
+        job.career_level = spec["career_level"]
+        job.industry = spec["industry"]
+        job.salary_min = spec["salary_min"]
+        job.salary_max = spec["salary_max"]
+        job.currency = spec["currency"]
+        job.salary_period = spec["salary_period"]
+        job.salary_visible = True
+        job.short_description = spec["short_description"]
+        job.description = spec["description"]
+        job.responsibilities = spec["responsibilities"]
+        job.requirements = spec["requirements"]
+        job.qualifications = spec["qualifications"]
+        job.skills = spec["skills"]
+        job.benefits = spec["benefits"]
+        job.application_url = spec["application_url"]
+        job.deadline = date.today() + timedelta(days=spec["deadline_days"])
+        job.published_date = date.today()
+        job.featured = spec["featured"]
+        job.status = "published"
 
     opportunity = Opportunity.query.filter_by(slug="rising-leaders-fellowship").first()
     if opportunity is None:

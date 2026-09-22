@@ -222,3 +222,14 @@ export async function fetchRedirects() {
   }
   return delay([{ from: '/articles/how-women-are-redefining-leadership', to: '/how-women-are-redefining-leadership' }])
 }
+
+// GET /api/v1/admin/sponsors — active sponsorship deals, for the Job
+// editor's sponsor selector. Read-only; full Sponsor CRUD is a separate
+// future CMS module.
+export async function fetchSponsors() {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/admin/sponsors')
+    return data.map((s) => ({ id: s.id, tier: s.tier, organizationName: s.organization?.name || null }))
+  }
+  return delay([])
+}

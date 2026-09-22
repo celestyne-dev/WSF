@@ -12,6 +12,10 @@ async function loadMockJobs() {
   return _mockJobs
 }
 
+function asList(value) {
+  return Array.isArray(value) ? value : []
+}
+
 function mapJob(j) {
   if (!j) return null
   return {
@@ -25,6 +29,7 @@ function mapJob(j) {
     logoMedia: mapMediaRef(j.organization?.logo || j.logo),
     logoMediaId: j.logo?.id || null,
     location: j.location,
+    city: j.city,
     countryCode: j.country?.code || j.country_code || null,
     country: j.country ? { code: j.country.code, name: j.country.name, region: j.country.region } : null,
     workMode: j.work_mode,
@@ -37,6 +42,7 @@ function mapJob(j) {
     salaryMax: j.salary_max,
     currency: j.currency,
     salaryPeriod: j.salary_period,
+    salaryVisible: j.salary_visible ?? true,
     shortDescription: j.short_description,
     // Ordered content-block list — same shape as Article.content, rendered
     // with the shared ArticleContent component and edited with the shared
@@ -44,13 +50,22 @@ function mapJob(j) {
     // string, wrapped into a single paragraph block so both modes share
     // one shape.
     description: Array.isArray(j.description) ? j.description : j.description ? [{ type: 'paragraph', text: j.description }] : [],
+    responsibilities: asList(j.responsibilities),
+    requirements: asList(j.requirements),
+    qualifications: asList(j.qualifications),
+    skills: asList(j.skills),
+    benefits: asList(j.benefits),
     applicationUrl: j.application_url,
+    applicationEmail: j.application_email,
     applicationInstructions: j.application_instructions,
     deadline: j.deadline,
     featured: j.featured,
     sponsored: j.sponsored,
+    sponsorId: j.sponsor_id || j.sponsor?.id || null,
+    sponsorTier: j.sponsor?.tier || null,
     status: j.status || 'published',
     isClosed: j.is_closed ?? false,
+    isScheduled: j.is_scheduled ?? false,
     seo: j.seo || null,
     publishedDate: j.published_date,
     expiryDate: j.expiry_date,
@@ -62,7 +77,15 @@ function mapJob(j) {
 // paragraph block so both modes share one shape.
 function normalizeMockJobDescription(item) {
   if (!item) return item
-  return { ...item, description: Array.isArray(item.description) ? item.description : item.description ? [{ type: 'paragraph', text: item.description }] : [] }
+  return {
+    ...item,
+    description: Array.isArray(item.description) ? item.description : item.description ? [{ type: 'paragraph', text: item.description }] : [],
+    responsibilities: asList(item.responsibilities),
+    requirements: asList(item.requirements),
+    qualifications: asList(item.qualifications),
+    skills: asList(item.skills),
+    benefits: asList(item.benefits),
+  }
 }
 
 export async function fetchJobs(params = {}) {
@@ -74,17 +97,29 @@ export async function fetchJobs(params = {}) {
   let results = [...jobs]
   if (params.country) results = results.filter((j) => matchesCountry(j.countryCode, params.country))
   if (params.region) results = results.filter((j) => matchesRegion(j.countryCode, params.region))
+  if (params.city) results = results.filter((j) => (j.city || '').toLowerCase() === params.city.toLowerCase())
   if (params.industry) results = results.filter((j) => j.industry === params.industry)
   if (params.workMode) results = results.filter((j) => j.workMode === params.workMode)
   if (params.careerLevel) results = results.filter((j) => j.careerLevel === params.careerLevel)
   if (params.employmentType) results = results.filter((j) => j.employmentType === params.employmentType)
   if (params.organization) results = results.filter((j) => j.companySlug === params.organization)
   if (params.featured) results = results.filter((j) => j.featured)
+  if (params.salaryMin) results = results.filter((j) => !j.salaryMax || j.salaryMax >= Number(params.salaryMin))
+  if (params.salaryMax) results = results.filter((j) => !j.salaryMin || j.salaryMin <= Number(params.salaryMax))
+  if (params.closingWithinDays) {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() + Number(params.closingWithinDays))
+    results = results.filter((j) => j.deadline && new Date(j.deadline) <= cutoff)
+  }
   if (params.query) {
     const q = params.query.toLowerCase()
     results = results.filter((j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q))
   }
-  results.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0))
+  if (params.sort === 'deadline') {
+    results.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || new Date(a.deadline || 0) - new Date(b.deadline || 0))
+  } else {
+    results.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0))
+  }
   const page = paginate(results, params)
   return delay({ ...page, items: page.items.map(attachMockCountry).map(normalizeMockJobDescription) })
 }
@@ -148,6 +183,10 @@ export async function fetchJobsFilterOptions() {
       workModes: [...new Set(all.map((j) => j.workMode))].filter(Boolean).sort(),
       careerLevels: [...new Set(all.map((j) => j.careerLevel))].filter(Boolean),
       employmentTypes: [...new Set(all.map((j) => j.employmentType))].filter(Boolean),
+      companies: [...new Set(all.map((j) => j.companySlug ? j.company : null))].filter(Boolean).sort().map((name) => {
+        const job = all.find((j) => j.company === name)
+        return { value: job?.companySlug, label: name }
+      }).filter((o) => o.value),
     }
   }
   const { jobs } = await loadMockJobs()
@@ -159,5 +198,9 @@ export async function fetchJobsFilterOptions() {
     workModes: [...new Set(jobs.map((j) => j.workMode))].sort(),
     careerLevels: [...new Set(jobs.map((j) => j.careerLevel))],
     employmentTypes: [...new Set(jobs.map((j) => j.employmentType))],
+    companies: [...new Set(jobs.map((j) => j.companySlug))].filter(Boolean).map((slug) => {
+      const job = jobs.find((j) => j.companySlug === slug)
+      return { value: slug, label: job?.company }
+    }),
   })
 }

@@ -20,6 +20,7 @@ from app.models.opportunity import (
     Job,
     Opportunity,
 )
+from app.schemas.commerce import SponsorSchema
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import OrganizationSchema, PersonSchema
@@ -34,7 +35,10 @@ class JobSchema(ma.SQLAlchemyAutoSchema):
     # always resolve/pre-select the linked Organization.
     organization_id = fields.Integer(dump_only=True)
     organization = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    sponsor_id = fields.Integer(dump_only=True)
+    sponsor = fields.Nested(SponsorSchema, dump_only=True, only=("id", "tier", "organization"))
     is_closed = fields.Method("get_is_closed")
+    is_scheduled = fields.Method("get_is_scheduled")
 
     class Meta:
         model = Job
@@ -48,7 +52,7 @@ class JobSchema(ma.SQLAlchemyAutoSchema):
         """True when the job should present as no longer accepting
         applications — computed at read time rather than via a scheduler.
         """
-        if obj.status in ("closed", "expired"):
+        if obj.status in ("expired", "archived"):
             return True
         today = date.today()
         if obj.expiry_date and obj.expiry_date < today:
@@ -56,6 +60,13 @@ class JobSchema(ma.SQLAlchemyAutoSchema):
         if obj.deadline and obj.deadline < today:
             return True
         return False
+
+    def get_is_scheduled(self, obj):
+        """True while a scheduled job's publish date is still in the
+        future — flips to publicly visible automatically once that date
+        arrives, computed at read time rather than via a scheduler.
+        """
+        return obj.status == "scheduled" and bool(obj.published_date) and obj.published_date > date.today()
 
 
 class OpportunitySchema(ma.SQLAlchemyAutoSchema):
@@ -131,6 +142,7 @@ class JobInputSchema(ma.Schema):
     company_name = fields.String(required=False, allow_none=True, data_key="companyName")
     logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
     location = fields.String(required=False, allow_none=True)
+    city = fields.String(required=False, allow_none=True)
     country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
     work_mode = fields.String(required=False, allow_none=True, data_key="workMode", validate=validate.OneOf(WORK_MODES))
     remote_scope = fields.String(required=False, allow_none=True, data_key="remoteScope", validate=validate.OneOf(REMOTE_SCOPES))
@@ -146,19 +158,30 @@ class JobInputSchema(ma.Schema):
     salary_max = fields.Integer(required=False, allow_none=True, data_key="salaryMax")
     currency = fields.String(required=False, allow_none=True, validate=validate.Length(equal=3))
     salary_period = fields.String(required=False, allow_none=True, data_key="salaryPeriod")
+    # Salary figures may still be entered for internal use even when the
+    # poster doesn't want them shown publicly — the route strips
+    # salary_min/max/currency/period from the public response when false.
+    salary_visible = fields.Boolean(required=False, load_default=True, data_key="salaryVisible")
     short_description = fields.String(required=False, allow_none=True, data_key="shortDescription")
     # Ordered content-block list — same shape as Article.content, sanitized
     # through the same sanitize_content_blocks() service. The employer
-    # structures "About the role"/"Responsibilities"/"Requirements"/etc.
-    # themselves rather than the app hard-coding those headings.
+    # writes the free-form narrative here; the explicit structured lists
+    # below are separate scannable fields with their own public sections.
     description = fields.List(fields.Dict(), required=False, load_default=list)
+    responsibilities = fields.List(fields.String(), required=False, load_default=list)
+    requirements = fields.List(fields.String(), required=False, load_default=list)
+    qualifications = fields.List(fields.String(), required=False, load_default=list)
+    skills = fields.List(fields.String(), required=False, load_default=list)
+    benefits = fields.List(fields.String(), required=False, load_default=list)
     application_url = fields.String(required=False, allow_none=True, data_key="applicationUrl", validate=validate.URL(require_tld=True))
+    application_email = fields.Email(required=False, allow_none=True, data_key="applicationEmail")
     application_instructions = fields.String(required=False, allow_none=True, data_key="applicationInstructions")
     deadline = fields.Date(required=False, allow_none=True)
     published_date = fields.Date(required=False, allow_none=True, data_key="publishedDate")
     expiry_date = fields.Date(required=False, allow_none=True, data_key="expiryDate")
     featured = fields.Boolean(required=False, load_default=False)
     sponsored = fields.Boolean(required=False, load_default=False)
+    sponsor_id = fields.Integer(required=False, allow_none=True, data_key="sponsorId")
     status = fields.String(required=False, load_default="published", validate=validate.OneOf(JOB_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)
 
