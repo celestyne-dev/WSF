@@ -2,10 +2,10 @@ from marshmallow import fields, validate
 
 from app.extensions import ma
 from app.models.article import Article
-from app.models.people import PERSON_STATUSES, Author, Organization, Person
+from app.models.people import AUTHOR_STATUSES, PERSON_STATUSES, Author, Organization, Person
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
-from app.schemas.taxonomy import SeriesSchema
+from app.schemas.taxonomy import SeriesSchema, TopicSchema
 
 
 class OrganizationSchema(ma.SQLAlchemyAutoSchema):
@@ -31,14 +31,38 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
 class AuthorSchema(ma.SQLAlchemyAutoSchema):
     photo = fields.Nested(MediaSchema, dump_only=True)
     country = fields.Nested(CountrySchema, dump_only=True)
+    topics = fields.Nested(TopicSchema, many=True, dump_only=True, exclude=("article_count",))
+    # marshmallow-sqlalchemy's auto schema omits FK columns that back a
+    # declared relationship (same reason Person's organization_id/
+    # country_code/photo_media_id aren't auto-dumped) — declared explicitly
+    # so the CMS editor can always resolve/pre-select the linked Person
+    # (from its own permission-gated People list) even when that Person is
+    # still a draft.
+    person_id = fields.Integer(dump_only=True)
+    # A lightweight, published-only preview of the linked Person — never
+    # leaks an unpublished Person profile through an Author response.
+    person = fields.Method("get_person", dump_only=True)
     article_count = fields.Method("get_article_count")
 
     class Meta:
         model = Author
         load_instance = False
+        # user_id is the internal staff-login link — never part of any
+        # Author payload, public or CMS (this task doesn't manage it).
+        exclude = ("user_id",)
 
     def get_article_count(self, obj):
         return Article.query.filter_by(author_id=obj.id, status="published").count()
+
+    def get_person(self, obj):
+        if not obj.person or obj.person.status != "published":
+            return None
+        return {
+            "slug": obj.person.slug,
+            "name": obj.person.name,
+            "title": obj.person.title,
+            "photo": MediaSchema().dump(obj.person.photo) if obj.person.photo else None,
+        }
 
 
 class OrganizationInputSchema(ma.Schema):
@@ -87,11 +111,16 @@ class AuthorInputSchema(ma.Schema):
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=160))
     role = fields.String(required=False, allow_none=True)
     photo_media_id = fields.Integer(required=False, allow_none=True, data_key="photoMediaId")
-    bio = fields.String(required=False, allow_none=True)
+    # Ordered content-block list — same shape as Article.content/Person.bio,
+    # sanitized through the same sanitize_content_blocks() service.
+    bio = fields.List(fields.Dict(), required=False, load_default=list)
     short_bio = fields.String(required=False, allow_none=True, data_key="shortBio")
     expertise = fields.List(fields.String(), required=False, load_default=list)
+    topic_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="topicSlugs")
     location = fields.String(required=False, allow_none=True)
     country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
     social = fields.Dict(required=False, allow_none=True)
-    website = fields.String(required=False, allow_none=True)
-    user_id = fields.Integer(required=False, allow_none=True, data_key="userId")
+    website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
+    person_id = fields.Integer(required=False, allow_none=True, data_key="personId")
+    status = fields.String(required=False, load_default="draft", validate=validate.OneOf(AUTHOR_STATUSES))
+    seo = fields.Dict(required=False, allow_none=True)

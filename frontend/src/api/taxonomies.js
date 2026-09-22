@@ -67,14 +67,26 @@ function mapAuthor(a) {
     role: a.role,
     photo: a.photo?.public_url || null,
     photoMedia: mapMediaRef(a.photo),
-    bio: a.bio,
+    photoMediaId: a.photo?.id || null,
+    // Ordered content-block list — same shape as Article.content, rendered
+    // with the shared ArticleContent component and edited with the shared
+    // ArticleBlockEditor. Mock-mode demo data still carries a plain
+    // string, wrapped into a single paragraph block so both modes share
+    // one shape.
+    bio: Array.isArray(a.bio) ? a.bio : a.bio ? [{ type: 'paragraph', text: a.bio }] : [],
     shortBio: a.short_bio,
     expertise: a.expertise || [],
+    topics: (a.topics || []).map(mapTopic),
+    topicSlugs: (a.topics || []).map((t) => t.slug),
     location: a.location,
     countryCode: a.country?.code || a.country_code || null,
     country: a.country ? { code: a.country.code, name: a.country.name, region: a.country.region } : null,
     social: a.social || {},
     website: a.website,
+    personId: a.person_id || null,
+    person: a.person ? { slug: a.person.slug, name: a.person.name, title: a.person.title, photoMedia: mapMediaRef(a.person.photo) } : null,
+    status: a.status || 'active',
+    seo: a.seo || null,
     articleCount: a.article_count,
   }
 }
@@ -144,10 +156,28 @@ export async function fetchSeriesBySlug(slug) {
   return delay(getSeriesBySlug(slug) || null)
 }
 
-export async function fetchAuthors() {
-  if (!USE_MOCK) return (await apiClient.get('/authors')).data.map(mapAuthor)
+// Mock demo authors still carry a plain-string `bio` (pre-dating the
+// block-content shape the real API now returns) — wrapped into a single
+// paragraph block here so both modes hand components the same shape,
+// without needing to rewrite mock/authors.js's other already-correct,
+// pre-normalized fields through the real-mode mapAuthor() mapper.
+function normalizeMockAuthorBio(item) {
+  if (!item) return item
+  return { ...item, bio: Array.isArray(item.bio) ? item.bio : item.bio ? [{ type: 'paragraph', text: item.bio }] : [] }
+}
+
+export async function fetchAuthors(params = {}) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/authors', { params })
+    return { ...data, items: data.items.map(mapAuthor) }
+  }
   const { authors } = await loadMockAuthors()
-  return delay(authors.map(attachMockCountry))
+  let results = authors.map(attachMockCountry).map(normalizeMockAuthorBio)
+  if (params.query) {
+    const q = params.query.toLowerCase()
+    results = results.filter((a) => a.name.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q))
+  }
+  return delay({ items: results, pagination: { page: 1, pageSize: results.length, totalItems: results.length, totalPages: 1 } })
 }
 export async function fetchAuthorBySlug(slug) {
   if (!USE_MOCK) {
@@ -159,7 +189,37 @@ export async function fetchAuthorBySlug(slug) {
     }
   }
   const { getAuthorBySlug } = await loadMockAuthors()
-  return delay(attachMockCountry(getAuthorBySlug(slug)))
+  return delay(normalizeMockAuthorBio(attachMockCountry(getAuthorBySlug(slug))))
+}
+
+// POST/PUT /api/v1/authors — CMS create/update. Field names mirror
+// AuthorInputSchema's camelCase data_keys exactly.
+export async function createAuthor(payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.post('/authors', payload)
+    return mapAuthor(data)
+  }
+  return delay({ ...payload, id: `mock-${Date.now()}`, slug: payload.slug })
+}
+
+export async function updateAuthor(slug, payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.put(`/authors/${slug}`, payload)
+    return mapAuthor(data)
+  }
+  return delay({ ...payload, slug: payload.slug || slug })
+}
+
+// Hard delete — the backend rejects this with a 409 if the author is
+// credited on any article (byline or co-author), so the CMS should offer
+// archiving (status: "archived", via updateAuthor) as the safe
+// alternative for established authors rather than calling this blindly.
+export async function deleteAuthor(slug) {
+  if (!USE_MOCK) {
+    await apiClient.delete(`/authors/${slug}`)
+    return
+  }
+  return delay(undefined)
 }
 
 export async function fetchOrganizations() {

@@ -189,15 +189,22 @@ export default function AdminArticleEditor() {
   useEffect(() => {
     let active = true
     Promise.all([
-      fetchAuthors(),
+      // Only active authors are offered for new assignments; an existing
+      // article's already-assigned author is preserved below even if they
+      // later became archived — a historical byline must never break.
+      fetchAuthors({ status: 'active', pageSize: 200 }),
       fetchTopics(),
       fetchCategories(),
       fetchSeries(),
       fetchPeople({ pageSize: 200 }),
       isNew ? Promise.resolve(null) : fetchArticleBySlug(id),
     ])
-      .then(([authorList, topicList, categoryList, seriesList, peopleRes, existing]) => {
+      .then(([authorRes, topicList, categoryList, seriesList, peopleRes, existing]) => {
         if (!active) return
+        let authorList = authorRes.items
+        if (existing?.authorSlug && !authorList.some((a) => a.slug === existing.authorSlug)) {
+          authorList = [...authorList, { slug: existing.authorSlug, name: `${existing.author?.name || existing.authorSlug} (inactive)`, role: existing.author?.role }]
+        }
         setAuthors(authorList)
         setTopics(topicList)
         setCategories(categoryList)
@@ -395,6 +402,7 @@ export default function AdminArticleEditor() {
                   {authors.map((a) => (
                     <option key={a.slug} value={a.slug}>
                       {a.name}
+                      {a.role ? ` — ${a.role}` : ''}
                     </option>
                   ))}
                 </select>

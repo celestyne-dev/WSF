@@ -63,9 +63,9 @@ function mapArticle(a) {
     // author/topic up by slug themselves (only the mock branch needs the
     // slug-lookup fallback, since raw mock articles don't carry them).
     author: a.author
-      ? { slug: a.author.slug, name: a.author.name, photo: a.author.photo?.public_url || null, photoMedia: mapMediaRef(a.author.photo) }
+      ? { slug: a.author.slug, name: a.author.name, role: a.author.role, photo: a.author.photo?.public_url || null, photoMedia: mapMediaRef(a.author.photo) }
       : null,
-    coAuthors: (a.co_authors || []).map((x) => ({ slug: x.slug, name: x.name, photo: x.photo?.public_url || null, photoMedia: mapMediaRef(x.photo) })),
+    coAuthors: (a.co_authors || []).map((x) => ({ slug: x.slug, name: x.name, role: x.role, photo: x.photo?.public_url || null, photoMedia: mapMediaRef(x.photo) })),
     coAuthorSlugs: (a.co_authors || []).map((x) => x.slug),
     publishDate: a.publish_date,
     updatedDate: a.updated_at,

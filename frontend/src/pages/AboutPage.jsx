@@ -12,7 +12,7 @@ export default function AboutPage() {
   useEffect(() => {
     let active = true
     fetchAuthors()
-      .then((data) => active && setAuthors(data))
+      .then((res) => active && setAuthors(res.items))
       .catch(() => {})
     fetchAudienceStats()
       .then((data) => active && setStats(data))

@@ -7,10 +7,23 @@ from app.extensions import db
 PERSON_STATUSES = ("draft", "published", "archived")
 _PERSON_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{status}'" for status in PERSON_STATUSES) + ")"
 
+# draft: incomplete/unpublished. active: contributing, publicly listed.
+# archived: no longer active but kept so historical article bylines keep
+# resolving — mirrors Person's status shape with editorial-contributor
+# terminology instead of a profile's publish state.
+AUTHOR_STATUSES = ("draft", "active", "archived")
+_AUTHOR_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{status}'" for status in AUTHOR_STATUSES) + ")"
+
 person_series = db.Table(
     "person_series",
     db.Column("person_id", db.Integer, db.ForeignKey("people.id", ondelete="CASCADE"), primary_key=True),
     db.Column("series_id", db.Integer, db.ForeignKey("series.id", ondelete="CASCADE"), primary_key=True),
+)
+
+author_topics = db.Table(
+    "author_topics",
+    db.Column("author_id", db.Integer, db.ForeignKey("authors.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("topic_id", db.Integer, db.ForeignKey("topics.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -87,23 +100,36 @@ class Person(db.Model):
 
 class Author(db.Model):
     """A byline that writes for Women Shaping Futures — optionally linked
-    to a User account (for staff who log in to draft their own articles).
+    to a User account (for staff who log in to draft their own articles)
+    and, separately, optionally linked to a Person (when the same human is
+    also profiled editorially). Distinct from Person: an Author is a
+    contributor identity, not a profile subject — most Authors never have
+    a Person, and most People never write for WSF.
     """
 
     __tablename__ = "authors"
+    __table_args__ = (db.CheckConstraint(_AUTHOR_STATUS_CHECK_SQL, name="ck_authors_status"),)
 
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(160), unique=True, nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(200))
     photo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
-    bio = db.Column(db.Text)
+    # Ordered content-block list — same shape/sanitizer/editor as
+    # Person.bio and Article.content. short_bio stays plain text for
+    # bylines/cards.
+    bio = db.Column(db.JSON, nullable=False, default=list)
     short_bio = db.Column(db.Text)
-    expertise = db.Column(db.JSON)  # list[str]
+    expertise = db.Column(db.JSON)  # list[str] — legacy freeform tags; the
+    # CMS now prefers the `topics` relationship below (existing Topic
+    # taxonomy) for structured, filterable subject-matter classification.
     location = db.Column(db.String(200))
     country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
     social = db.Column(db.JSON)
     website = db.Column(db.String(300))
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
+    person_id = db.Column(db.Integer, db.ForeignKey("people.id"), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
@@ -112,4 +138,6 @@ class Author(db.Model):
 
     photo = db.relationship("Media", foreign_keys=[photo_media_id])
     country = db.relationship("Country", foreign_keys=[country_code])
+    person = db.relationship("Person", foreign_keys=[person_id])
     user = db.relationship("User", foreign_keys=[user_id])
+    topics = db.relationship("Topic", secondary=author_topics, backref="authors")

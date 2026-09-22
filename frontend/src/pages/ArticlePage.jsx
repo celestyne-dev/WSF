@@ -210,6 +210,7 @@ export default function ArticlePage() {
                   </span>
                 ))}
               </p>
+              {author?.role && <p className="text-xs text-charcoal-600/70">{author.role}</p>}
               <p className="mt-0.5 flex items-center gap-2 text-charcoal-600">
                 <span>{formatDate(article.publishDate)}</span>
                 <span aria-hidden="true">&middot;</span>
