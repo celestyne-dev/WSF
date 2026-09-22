@@ -26,7 +26,12 @@ function dedupeCountryOptions(pairs) {
 // name via the mock geography table — confined to this mock-only branch.
 function attachMockCountriesEligible(o) {
   if (!o) return null
-  return { ...o, countriesEligibleNames: o.countriesEligible.map((code) => getCountry(code)?.name || code) }
+  return {
+    ...o,
+    countriesEligibleNames: (o.countriesEligible || []).map((code) => getCountry(code)?.name || code),
+    description: Array.isArray(o.description) ? o.description : o.description ? [{ type: 'paragraph', text: o.description }] : [],
+    isClosed: o.isClosed ?? false,
+  }
 }
 
 function mapOpportunity(o) {
@@ -37,19 +42,34 @@ function mapOpportunity(o) {
     title: o.title,
     organization: o.organization?.name || o.organization_name || null,
     organizationSlug: o.organization?.slug || null,
-    logo: o.logo?.public_url || null,
-    logoMedia: mapMediaRef(o.logo),
+    organizationId: o.organization_id || o.organization?.id || null,
+    logo: o.organization?.logo?.public_url || o.logo?.public_url || null,
+    logoMedia: mapMediaRef(o.organization?.logo || o.logo),
     type: o.type,
-    description: o.description,
+    shortDescription: o.short_description,
+    description: Array.isArray(o.description) ? o.description : o.description ? [{ type: 'paragraph', text: o.description }] : [],
     eligibility: o.eligibility,
+    eligibilityNotes: o.eligibility_notes,
+    careerStage: o.career_stage,
     countriesEligible: (o.countries_eligible || []).map((c) => c.code),
     countriesEligibleNames: (o.countries_eligible || []).map((c) => c.name),
     location: o.location,
-    deadline: o.deadline,
+    fundingType: o.funding_type,
+    fundingMin: o.funding_min,
+    fundingMax: o.funding_max,
+    currency: o.currency,
     fundingValue: o.funding_value,
     applicationUrl: o.application_url,
+    applicationInstructions: o.application_instructions,
+    openingDate: o.opening_date,
+    deadline: o.deadline,
+    publishedDate: o.published_date,
+    expiryDate: o.expiry_date,
     featured: o.featured,
     sponsored: o.sponsored,
+    status: o.status,
+    isClosed: o.is_closed ?? false,
+    seo: o.seo || null,
     topicSlugs: (o.topics || []).map((t) => t.slug),
   }
 }
@@ -111,4 +131,51 @@ export async function fetchOpportunityFilterOptions() {
     ),
     regions: regionFilterOptions(),
   })
+}
+
+function toApiPayload(form) {
+  return {
+    title: form.title,
+    slug: form.slug || undefined,
+    organizationId: form.organizationId || undefined,
+    organizationName: form.organizationName || undefined,
+    logoMediaId: form.logoMediaId || undefined,
+    type: form.type || undefined,
+    shortDescription: form.shortDescription || undefined,
+    description: form.description || [],
+    eligibility: form.eligibility || undefined,
+    eligibilityNotes: form.eligibilityNotes || undefined,
+    careerStage: form.careerStage || undefined,
+    countriesEligible: form.countriesEligible || [],
+    location: form.location || undefined,
+    fundingType: form.fundingType || undefined,
+    fundingMin: form.fundingMin === '' || form.fundingMin == null ? undefined : Number(form.fundingMin),
+    fundingMax: form.fundingMax === '' || form.fundingMax == null ? undefined : Number(form.fundingMax),
+    currency: form.currency || undefined,
+    fundingValue: form.fundingValue || undefined,
+    applicationUrl: form.applicationUrl || undefined,
+    applicationInstructions: form.applicationInstructions || undefined,
+    openingDate: form.openingDate || undefined,
+    deadline: form.deadline || undefined,
+    expiryDate: form.expiryDate || undefined,
+    topicSlugs: form.topicSlugs || [],
+    featured: !!form.featured,
+    sponsored: !!form.sponsored,
+    status: form.status || 'draft',
+    seo: form.seo || undefined,
+  }
+}
+
+export async function createOpportunity(form) {
+  const { data } = await apiClient.post('/opportunities', toApiPayload(form))
+  return mapOpportunity(data)
+}
+
+export async function updateOpportunity(slug, form) {
+  const { data } = await apiClient.put(`/opportunities/${slug}`, toApiPayload(form))
+  return mapOpportunity(data)
+}
+
+export async function deleteOpportunity(slug) {
+  await apiClient.delete(`/opportunities/${slug}`)
 }

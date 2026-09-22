@@ -121,8 +121,43 @@ class Job(db.Model):
     posted_by = db.relationship("User", foreign_keys=[posted_by_id])
 
 
+OPPORTUNITY_TYPES = (
+    "Scholarship",
+    "Fellowship",
+    "Grant",
+    "Award",
+    "Competition",
+    "Accelerator",
+    "Incubator",
+    "Training Program",
+    "Mentorship Program",
+    "Internship",
+    "Volunteer Opportunity",
+    "Conference Opportunity",
+    "Funding Opportunity",
+    "Other",
+)
+_OPPORTUNITY_TYPE_CHECK_SQL = "type IS NULL OR type IN (" + ", ".join(f"'{t}'" for t in OPPORTUNITY_TYPES) + ")"
+
+# draft: incomplete/unpublished. published: live and accepting applications.
+# closed: manually closed to applications by the poster. archived: kept for
+# historical/reference value, no longer promoted in active listings.
+OPPORTUNITY_STATUSES = ("draft", "published", "closed", "archived")
+_OPPORTUNITY_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in OPPORTUNITY_STATUSES) + ")"
+
+FUNDING_TYPES = ("fully_funded", "partially_funded", "stipend", "unpaid", "not_applicable")
+_FUNDING_TYPE_CHECK_SQL = "funding_type IS NULL OR funding_type IN (" + ", ".join(
+    f"'{f}'" for f in FUNDING_TYPES
+) + ")"
+
+
 class Opportunity(db.Model):
     __tablename__ = "opportunities"
+    __table_args__ = (
+        db.CheckConstraint(_OPPORTUNITY_TYPE_CHECK_SQL, name="ck_opportunities_type"),
+        db.CheckConstraint(_OPPORTUNITY_STATUS_CHECK_SQL, name="ck_opportunities_status"),
+        db.CheckConstraint(_FUNDING_TYPE_CHECK_SQL, name="ck_opportunities_funding_type"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(220), unique=True, nullable=False, index=True)
@@ -132,17 +167,45 @@ class Opportunity(db.Model):
     organization_name = db.Column(db.String(200))
     logo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
 
-    type = db.Column(db.String(50))  # Fellowship / Grant / Scholarship / Accelerator / Competition
-    description = db.Column(db.Text)
-    eligibility = db.Column(db.Text)
+    type = db.Column(db.String(50))  # Scholarship / Fellowship / Grant / ... — see OPPORTUNITY_TYPES
+
+    short_description = db.Column(db.Text)  # one or two sentences, for cards
+    # Ordered content-block list — same shape/sanitizer/editor as
+    # Job.description/Article.content. The editor structures "About",
+    # "What's offered", "Eligibility", "How to apply" etc. themselves with
+    # headings and lists rather than the app hard-coding those sections.
+    description = db.Column(db.JSON, nullable=False, default=list)
+
+    # Eligibility is the one area every opportunity genuinely differs on, so
+    # it stays free text rather than a fixed set of demographic columns —
+    # this records what is actually true for THIS opportunity (which may
+    # mention age, gender, education, or experience only when the poster
+    # says so) instead of assuming a discriminatory classification applies
+    # to every listing.
+    eligibility = db.Column(db.Text)  # short, scannable eligibility summary
+    eligibility_notes = db.Column(db.Text)  # any further eligibility detail specific to this opportunity
+    career_stage = db.Column(db.String(60))  # free text, e.g. "Early-career", "Founders" — not a fixed taxonomy
+
     location = db.Column(db.String(300))
-    deadline = db.Column(db.Date)
-    funding_value = db.Column(db.String(200))
+
+    funding_type = db.Column(db.String(30))  # fully_funded / partially_funded / stipend / unpaid / not_applicable
+    funding_min = db.Column(db.Integer)
+    funding_max = db.Column(db.Integer)
+    currency = db.Column(db.String(3))
+    funding_value = db.Column(db.String(200))  # free-text summary, e.g. "$10,000 grant + mentorship"
+
     application_url = db.Column(db.String(500))
+    application_instructions = db.Column(db.Text)
+
+    opening_date = db.Column(db.Date)
+    deadline = db.Column(db.Date)
+    published_date = db.Column(db.Date)
+    expiry_date = db.Column(db.Date)
 
     featured = db.Column(db.Boolean, nullable=False, default=False)
     sponsored = db.Column(db.Boolean, nullable=False, default=False)
     status = db.Column(db.String(20), nullable=False, default="published")
+    seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(

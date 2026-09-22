@@ -278,12 +278,26 @@ def seed_demo_content():
     opportunity.title = "Rising Leaders Fellowship"
     opportunity.organization_name = "Foster Capital"
     opportunity.type = "Fellowship"
-    opportunity.description = "A six-month fellowship for women in mid-career technology and finance roles."
+    opportunity.short_description = "A six-month fellowship for women in mid-career technology and finance roles."
+    opportunity.description = [
+        {"type": "paragraph", "text": "A six-month fellowship for women in mid-career technology and finance roles, pairing structured leadership training with executive mentorship."},
+        {"type": "heading", "level": 2, "text": "What's offered"},
+        {"type": "list", "style": "bullet", "items": ["Quarterly in-person sessions in London and New York", "One-on-one executive mentorship", "A peer cohort of 20 fellows worldwide"]},
+    ]
     opportunity.eligibility = "Women with 5-12 years of professional experience."
+    opportunity.eligibility_notes = "Open to applicants currently working in technology or financial services."
+    opportunity.career_stage = "Mid-career"
     opportunity.location = "Hybrid — quarterly in-person sessions in London and New York"
     opportunity.deadline = date.today() + timedelta(days=60)
+    opportunity.opening_date = date.today() - timedelta(days=10)
+    opportunity.published_date = date.today()
+    opportunity.funding_type = "partially_funded"
+    opportunity.funding_min = 10000
+    opportunity.funding_max = 10000
+    opportunity.currency = "USD"
     opportunity.funding_value = "$10,000 grant + executive mentorship"
     opportunity.application_url = "https://fostercapital.example.com/rising-leaders"
+    opportunity.application_instructions = "Submit a CV and a 500-word statement of purpose through the link below."
     opportunity.featured = True
     opportunity.status = "published"
     opportunity.topics = [topics["leadership"], topics["careers"]]

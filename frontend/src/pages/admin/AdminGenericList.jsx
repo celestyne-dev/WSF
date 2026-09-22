@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { fetchOpportunities } from '../../api/opportunities'
 import { fetchEvents } from '../../api/events'
 import { fetchResources } from '../../api/resources'
 import { fetchNewsletterArchive } from '../../api/site'
@@ -20,15 +19,6 @@ import EmptyState from '../../components/ui/EmptyState'
 import { Users, Mail, MousePointerClick } from 'lucide-react'
 
 const CONFIGS = {
-  opportunities: {
-    title: 'Opportunities',
-    description: 'Scholarships, fellowships, grants, and accelerators.',
-    columns: ['Title', 'Organization', 'Type', 'Deadline'],
-    load: async () => {
-      const res = await fetchOpportunities({ pageSize: 100 })
-      return res.items.map((o) => [o.title, o.organization, o.type, formatDate(o.deadline)])
-    },
-  },
   events: {
     title: 'Events',
     description: 'WSF and partner events, webinars, and conferences.',

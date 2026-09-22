@@ -30,3 +30,21 @@ export function formatCurrency(amount, currency = 'KES') {
   if (!amount) return 'Free'
   return `${currency} ${new Intl.NumberFormat('en-US').format(amount)}`
 }
+
+// Prefers the free-text funding summary an editor wrote (handles compound
+// cases like "Full tuition + $2,000 stipend" that a number range can't
+// express); falls back to a structured min/max/currency range; returns
+// null when the opportunity genuinely carries no funding data rather than
+// fabricating a value.
+export function formatFunding(opportunity) {
+  if (!opportunity) return null
+  if (opportunity.fundingValue) return opportunity.fundingValue
+  const { fundingMin, fundingMax, currency } = opportunity
+  if (fundingMin == null && fundingMax == null) return null
+  const fmt = (n) => new Intl.NumberFormat('en-US').format(n)
+  const prefix = currency ? `${currency} ` : ''
+  if (fundingMin != null && fundingMax != null && fundingMin !== fundingMax) {
+    return `${prefix}${fmt(fundingMin)}–${fmt(fundingMax)}`
+  }
+  return `${prefix}${fmt(fundingMin ?? fundingMax)}`
+}

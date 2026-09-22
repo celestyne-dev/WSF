@@ -51,6 +51,8 @@ const AdminOrganizations = lazy(() => import('../pages/admin/AdminOrganizations'
 const AdminOrganizationEditor = lazy(() => import('../pages/admin/AdminOrganizationEditor'))
 const AdminJobs = lazy(() => import('../pages/admin/AdminJobs'))
 const AdminJobEditor = lazy(() => import('../pages/admin/AdminJobEditor'))
+const AdminOpportunities = lazy(() => import('../pages/admin/AdminOpportunities'))
+const AdminOpportunityEditor = lazy(() => import('../pages/admin/AdminOpportunityEditor'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
@@ -143,7 +145,9 @@ export default function AppRoutes() {
           <Route path="jobs" element={<AdminJobs />} />
           <Route path="jobs/new" element={<AdminJobEditor />} />
           <Route path="jobs/:id" element={<AdminJobEditor />} />
-          <Route path="opportunities" element={<AdminGenericList section="opportunities" />} />
+          <Route path="opportunities" element={<AdminOpportunities />} />
+          <Route path="opportunities/new" element={<AdminOpportunityEditor />} />
+          <Route path="opportunities/:id" element={<AdminOpportunityEditor />} />
           <Route path="events" element={<AdminGenericList section="events" />} />
           <Route path="resources" element={<AdminGenericList section="resources" />} />
           <Route path="newsletter" element={<AdminGenericList section="newsletter" />} />

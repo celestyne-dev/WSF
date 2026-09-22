@@ -85,6 +85,8 @@ def test_opportunity_create_with_countries_and_topics(client, admin_token):
             "countriesEligible": ["US", "GB", "CA"],
             "topicSlugs": ["leadership"],
             "fundingValue": "$10,000 grant",
+            "applicationUrl": "https://fostercapital.example.com/apply",
+            "description": [{"type": "paragraph", "text": "A fellowship for rising leaders."}],
         },
         headers=auth_headers(admin_token),
     )
@@ -98,7 +100,7 @@ def test_opportunity_create_with_countries_and_topics(client, admin_token):
 
     bad_country = client.post(
         "/api/v1/opportunities",
-        json={"title": "Bad", "countriesEligible": ["ZZ"]},
+        json={"title": "Bad", "organizationName": "Test Org", "countriesEligible": ["ZZ"]},
         headers=auth_headers(admin_token),
     )
     assert bad_country.status_code == 404
@@ -203,7 +205,13 @@ def test_jobs_opportunities_people_filter_by_organization(client, admin_token):
 
     client.post(
         "/api/v1/opportunities",
-        json={"title": "Rising Leaders Fellowship", "organizationId": org_id, "type": "Fellowship"},
+        json={
+            "title": "Rising Leaders Fellowship",
+            "organizationId": org_id,
+            "type": "Fellowship",
+            "applicationUrl": "https://example.com/apply/rising-leaders",
+            "description": [{"type": "paragraph", "text": "A fellowship for rising leaders."}],
+        },
         headers=auth_headers(admin_token),
     )
     opportunities = client.get(f"/api/v1/opportunities?organization={org_slug}")
@@ -257,12 +265,26 @@ def test_featured_filter_on_jobs_opportunities_events_resources(client, admin_to
 
     client.post(
         "/api/v1/opportunities",
-        json={"title": "Featured Fellowship", "type": "Fellowship", "featured": True},
+        json={
+            "title": "Featured Fellowship",
+            "organizationName": "Acme Foundation",
+            "type": "Fellowship",
+            "featured": True,
+            "applicationUrl": "https://example.com/apply/featured-fellowship",
+            "description": [{"type": "paragraph", "text": "A fellowship."}],
+        },
         headers=auth_headers(admin_token),
     )
     client.post(
         "/api/v1/opportunities",
-        json={"title": "Regular Grant", "type": "Grant", "featured": False},
+        json={
+            "title": "Regular Grant",
+            "organizationName": "Acme Foundation",
+            "type": "Grant",
+            "featured": False,
+            "applicationUrl": "https://example.com/apply/regular-grant",
+            "description": [{"type": "paragraph", "text": "A grant."}],
+        },
         headers=auth_headers(admin_token),
     )
     opportunities = client.get("/api/v1/opportunities?featured=true")

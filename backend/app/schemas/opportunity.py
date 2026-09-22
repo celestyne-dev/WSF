@@ -4,7 +4,19 @@ from marshmallow import fields, validate, validates_schema, ValidationError
 
 from app.extensions import ma
 from app.models.geography import REGIONS
-from app.models.opportunity import CAREER_LEVELS, EMPLOYMENT_TYPES, JOB_STATUSES, REMOTE_SCOPES, WORK_MODES, Event, Job, Opportunity
+from app.models.opportunity import (
+    CAREER_LEVELS,
+    EMPLOYMENT_TYPES,
+    FUNDING_TYPES,
+    JOB_STATUSES,
+    OPPORTUNITY_STATUSES,
+    OPPORTUNITY_TYPES,
+    REMOTE_SCOPES,
+    WORK_MODES,
+    Event,
+    Job,
+    Opportunity,
+)
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import OrganizationSchema, PersonSchema
@@ -47,11 +59,29 @@ class OpportunitySchema(ma.SQLAlchemyAutoSchema):
     logo = fields.Nested(MediaSchema, dump_only=True)
     countries_eligible = fields.Nested(CountrySchema, many=True, dump_only=True)
     topics = fields.Nested(TopicSchema, many=True, dump_only=True, exclude=("article_count",))
+    # marshmallow-sqlalchemy's auto schema omits FK columns that back a
+    # declared relationship — declared explicitly so the CMS editor can
+    # always resolve/pre-select the linked Organization.
+    organization_id = fields.Integer(dump_only=True)
     organization = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    is_closed = fields.Method("get_is_closed")
 
     class Meta:
         model = Opportunity
         load_instance = False
+
+    def get_is_closed(self, obj):
+        """True when the opportunity should present as no longer accepting
+        applications — computed at read time rather than via a scheduler.
+        """
+        if obj.status in ("closed", "archived"):
+            return True
+        today = date.today()
+        if obj.expiry_date and obj.expiry_date < today:
+            return True
+        if obj.deadline and obj.deadline < today:
+            return True
+        return False
 
 
 class EventSchema(ma.SQLAlchemyAutoSchema):
@@ -134,20 +164,64 @@ class OpportunityInputSchema(ma.Schema):
     title = fields.String(required=True, validate=validate.Length(min=1, max=200))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=220))
     organization_id = fields.Integer(required=False, allow_none=True, data_key="organizationId")
+    # Not required at the schema level — when an Organization is selected
+    # the route fills this from its name, so an editor never has to type a
+    # duplicate provider name. Still required overall for opportunities
+    # posted without a linked Organization (see validate_provider below).
     organization_name = fields.String(required=False, allow_none=True, data_key="organizationName")
     logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
-    type = fields.String(required=False, allow_none=True)
-    description = fields.String(required=False, allow_none=True)
+    type = fields.String(required=False, allow_none=True, validate=validate.OneOf(OPPORTUNITY_TYPES))
+    short_description = fields.String(required=False, allow_none=True, data_key="shortDescription")
+    # Ordered content-block list — same shape as Job.description, sanitized
+    # through the same sanitize_content_blocks() service. The editor
+    # structures "About"/"What's offered"/"Eligibility"/"How to apply" etc.
+    # themselves rather than the app hard-coding those headings.
+    description = fields.List(fields.Dict(), required=False, load_default=list)
     eligibility = fields.String(required=False, allow_none=True)
+    eligibility_notes = fields.String(required=False, allow_none=True, data_key="eligibilityNotes")
+    career_stage = fields.String(required=False, allow_none=True, data_key="careerStage")
     countries_eligible = fields.List(fields.String(), required=False, load_default=list, data_key="countriesEligible")
     location = fields.String(required=False, allow_none=True)
-    deadline = fields.Date(required=False, allow_none=True)
+    funding_type = fields.String(required=False, allow_none=True, data_key="fundingType", validate=validate.OneOf(FUNDING_TYPES))
+    funding_min = fields.Integer(required=False, allow_none=True, data_key="fundingMin")
+    funding_max = fields.Integer(required=False, allow_none=True, data_key="fundingMax")
+    currency = fields.String(required=False, allow_none=True, validate=validate.Length(equal=3))
     funding_value = fields.String(required=False, allow_none=True, data_key="fundingValue")
-    application_url = fields.String(required=False, allow_none=True, data_key="applicationUrl")
+    application_url = fields.String(required=False, allow_none=True, data_key="applicationUrl", validate=validate.URL(require_tld=True))
+    application_instructions = fields.String(required=False, allow_none=True, data_key="applicationInstructions")
+    opening_date = fields.Date(required=False, allow_none=True, data_key="openingDate")
+    deadline = fields.Date(required=False, allow_none=True)
+    published_date = fields.Date(required=False, allow_none=True, data_key="publishedDate")
+    expiry_date = fields.Date(required=False, allow_none=True, data_key="expiryDate")
     topic_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="topicSlugs")
     featured = fields.Boolean(required=False, load_default=False)
     sponsored = fields.Boolean(required=False, load_default=False)
-    status = fields.String(required=False, load_default="published", validate=validate.OneOf(["draft", "published", "closed"]))
+    status = fields.String(required=False, load_default="published", validate=validate.OneOf(OPPORTUNITY_STATUSES))
+    seo = fields.Dict(required=False, allow_none=True)
+
+    @validates_schema
+    def validate_provider(self, data, **kwargs):
+        if not data.get("organization_id") and not data.get("organization_name"):
+            raise ValidationError(
+                "Select an organization or enter a provider name.", field_name="organization_name"
+            )
+
+    @validates_schema
+    def validate_funding_range(self, data, **kwargs):
+        funding_min = data.get("funding_min")
+        funding_max = data.get("funding_max")
+        if funding_min is not None and funding_max is not None and funding_min > funding_max:
+            raise ValidationError("Minimum funding cannot exceed maximum funding.", field_name="funding_min")
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        opening_date = data.get("opening_date")
+        deadline = data.get("deadline")
+        expiry_date = data.get("expiry_date")
+        if opening_date and deadline and opening_date > deadline:
+            raise ValidationError("Opening date must be before the application deadline.", field_name="opening_date")
+        if deadline and expiry_date and deadline > expiry_date:
+            raise ValidationError("Application deadline cannot be after the listing's expiry date.", field_name="deadline")
 
 
 class AgendaItemSchema(ma.Schema):
