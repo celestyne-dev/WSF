@@ -12,7 +12,9 @@ const STYLES = {
   invited: 'bg-blush-200 text-burgundy-700',
   archived: 'bg-taupe-100 text-charcoal-600/70',
   ended: 'bg-taupe-100 text-charcoal-600/70',
+  past: 'bg-taupe-100 text-charcoal-600/70',
   rejected: 'bg-rose-100 text-rose-600',
+  cancelled: 'bg-rose-100 text-rose-600',
 }
 
 export default function StatusBadge({ status }) {

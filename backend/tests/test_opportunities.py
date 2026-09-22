@@ -123,6 +123,8 @@ def test_event_create_with_speakers_and_sponsors(client, admin_token):
             "countryCode": "KE",
             "speakerSlugs": [speaker_slug],
             "agenda": [{"time": "08:30", "title": "Registration"}],
+            "description": [{"type": "paragraph", "text": "A leadership summit."}],
+            "registrationUrl": "https://example.com/register/leadership-summit",
         },
         headers=auth_headers(admin_token),
     )
@@ -293,12 +295,26 @@ def test_featured_filter_on_jobs_opportunities_events_resources(client, admin_to
 
     client.post(
         "/api/v1/events",
-        json={"title": "Featured Summit", "date": "2026-11-01", "countryCode": "US", "featured": True},
+        json={
+            "title": "Featured Summit",
+            "date": "2026-11-01",
+            "countryCode": "US",
+            "featured": True,
+            "description": [{"type": "paragraph", "text": "A summit."}],
+            "registrationUrl": "https://example.com/register/featured-summit",
+        },
         headers=auth_headers(admin_token),
     )
     client.post(
         "/api/v1/events",
-        json={"title": "Regular Meetup", "date": "2026-11-02", "countryCode": "US", "featured": False},
+        json={
+            "title": "Regular Meetup",
+            "date": "2026-11-02",
+            "countryCode": "US",
+            "featured": False,
+            "description": [{"type": "paragraph", "text": "A meetup."}],
+            "registrationUrl": "https://example.com/register/regular-meetup",
+        },
         headers=auth_headers(admin_token),
     )
     events = client.get("/api/v1/events?featured=true")

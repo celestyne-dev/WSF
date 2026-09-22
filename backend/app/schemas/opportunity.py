@@ -7,6 +7,9 @@ from app.models.geography import REGIONS
 from app.models.opportunity import (
     CAREER_LEVELS,
     EMPLOYMENT_TYPES,
+    EVENT_FORMATS,
+    EVENT_STATUSES,
+    EVENT_TYPES,
     FUNDING_TYPES,
     JOB_STATUSES,
     OPPORTUNITY_STATUSES,
@@ -89,10 +92,31 @@ class EventSchema(ma.SQLAlchemyAutoSchema):
     country = fields.Nested(CountrySchema, dump_only=True)
     speakers = fields.Nested(PersonSchema, many=True, dump_only=True)
     sponsors = fields.Nested(OrganizationSchema, many=True, dump_only=True)
+    # marshmallow-sqlalchemy's auto schema omits FK columns that back a
+    # declared relationship — declared explicitly so the CMS editor can
+    # always resolve/pre-select the linked Organization.
+    organizer_id = fields.Integer(dump_only=True)
+    organizer = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    is_past = fields.Method("get_is_past")
+    is_upcoming = fields.Method("get_is_upcoming")
+    is_cancelled = fields.Method("get_is_cancelled")
 
     class Meta:
         model = Event
         load_instance = False
+
+    def get_is_past(self, obj):
+        """Computed from the event's own date(s), not stored — an event
+        never needs to be manually moved between upcoming and past.
+        """
+        end = obj.end_date or obj.date
+        return bool(end) and end < date.today()
+
+    def get_is_upcoming(self, obj):
+        return not self.get_is_past(obj) and obj.status != "cancelled"
+
+    def get_is_cancelled(self, obj):
+        return obj.status == "cancelled"
 
 
 class JobInputSchema(ma.Schema):
@@ -232,26 +256,57 @@ class AgendaItemSchema(ma.Schema):
 class EventInputSchema(ma.Schema):
     title = fields.String(required=True, validate=validate.Length(min=1, max=200))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=220))
-    description = fields.String(required=False, allow_none=True)
-    type = fields.String(required=False, allow_none=True)
-    format = fields.String(required=False, allow_none=True, validate=validate.OneOf(["in-person", "virtual", "hybrid"]))
+    short_description = fields.String(required=False, allow_none=True, data_key="shortDescription")
+    # Ordered content-block list — same shape as Job.description/
+    # Opportunity.description, sanitized through the same
+    # sanitize_content_blocks() service. The editor structures "About",
+    # "Who should attend", "Agenda", etc. themselves rather than the app
+    # hard-coding those headings.
+    description = fields.List(fields.Dict(), required=False, load_default=list)
+    type = fields.String(required=False, allow_none=True, validate=validate.OneOf(EVENT_TYPES))
+    format = fields.String(required=False, allow_none=True, validate=validate.OneOf(EVENT_FORMATS))
     date = fields.Date(required=True)
+    end_date = fields.Date(required=False, allow_none=True, data_key="endDate")
     start_time = fields.Time(required=False, allow_none=True, data_key="startTime")
     end_time = fields.Time(required=False, allow_none=True, data_key="endTime")
     timezone = fields.String(required=False, allow_none=True)
     location = fields.String(required=False, allow_none=True)
+    address = fields.String(required=False, allow_none=True)
     country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
     venue = fields.String(required=False, allow_none=True)
     virtual_link = fields.String(required=False, allow_none=True, data_key="virtualLink")
-    registration_url = fields.String(required=False, allow_none=True, data_key="registrationUrl")
+    virtual_link_public = fields.Boolean(required=False, load_default=False, data_key="virtualLinkPublic")
+    organizer_id = fields.Integer(required=False, allow_none=True, data_key="organizerId")
+    organizer_name = fields.String(required=False, allow_none=True, data_key="organizerName")
+    registration_url = fields.String(
+        required=False, allow_none=True, data_key="registrationUrl", validate=validate.URL(require_tld=True)
+    )
+    registration_required = fields.Boolean(required=False, load_default=True, data_key="registrationRequired")
+    registration_deadline = fields.Date(required=False, allow_none=True, data_key="registrationDeadline")
+    registration_instructions = fields.String(required=False, allow_none=True, data_key="registrationInstructions")
+    sold_out = fields.Boolean(required=False, load_default=False, data_key="soldOut")
     ticket_price = fields.Integer(required=False, allow_none=True, data_key="ticketPrice")
     currency = fields.String(required=False, allow_none=True, validate=validate.Length(equal=3))
     capacity = fields.Integer(required=False, allow_none=True)
     agenda = fields.List(fields.Nested(AgendaItemSchema), required=False, load_default=list)
-    status = fields.String(
-        required=False, load_default="upcoming", validate=validate.OneOf(["upcoming", "past", "cancelled"])
-    )
+    status = fields.String(required=False, load_default="published", validate=validate.OneOf(EVENT_STATUSES))
+    published_date = fields.Date(required=False, allow_none=True, data_key="publishedDate")
+    seo = fields.Dict(required=False, allow_none=True)
     cover_media_id = fields.Integer(required=False, allow_none=True, data_key="coverMediaId")
     featured = fields.Boolean(required=False, load_default=False)
+    sponsored = fields.Boolean(required=False, load_default=False)
     speaker_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="speakerSlugs")
     sponsor_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="sponsorSlugs")
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        event_date = data.get("date")
+        end_date = data.get("end_date")
+        registration_deadline = data.get("registration_deadline")
+        if end_date and event_date and end_date < event_date:
+            raise ValidationError("End date cannot be before the start date.", field_name="end_date")
+        if not end_date and data.get("start_time") and data.get("end_time") and data["end_time"] < data["start_time"]:
+            raise ValidationError("End time cannot be before the start time.", field_name="end_time")
+        deadline_limit = end_date or event_date
+        if registration_deadline and deadline_limit and registration_deadline > deadline_limit:
+            raise ValidationError("Registration deadline should be on or before the event date.", field_name="registration_deadline")

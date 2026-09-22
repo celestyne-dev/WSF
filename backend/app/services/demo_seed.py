@@ -312,18 +312,26 @@ def seed_demo_content():
         event = Event(slug="women-in-leadership-summit")
         db.session.add(event)
     event.title = "Women in Leadership Summit 2026"
-    event.description = "Our flagship annual summit bringing together executives, founders, and policymakers."
+    event.short_description = "Our flagship annual summit bringing together executives, founders, and policymakers."
+    event.description = [
+        {"type": "paragraph", "text": "Our flagship annual summit bringing together executives, founders, and policymakers to accelerate women's leadership across Africa and beyond."},
+        {"type": "heading", "level": 2, "text": "Who should attend"},
+        {"type": "list", "style": "bullet", "items": ["Senior executives and founders", "Policymakers and investors"]},
+    ]
     event.type = "Conference"
     event.format = "in-person"
     event.date = date.today() + timedelta(days=90)
     event.location = "Nairobi, Kenya"
     event.country_code = "KE"
     event.venue = "Kenyatta International Convention Centre"
+    event.organizer_name = "Women Shaping Futures"
     event.registration_url = "/events/women-in-leadership-summit/register"
+    event.registration_required = True
     event.ticket_price, event.currency = 8500, "KES"
     event.capacity = 450
     event.agenda = [{"time": "08:30", "title": "Registration & Breakfast"}]
-    event.status = "upcoming"
+    event.status = "published"
+    event.published_date = date.today()
     event.featured = True
     event.speakers = [naliaka]
 

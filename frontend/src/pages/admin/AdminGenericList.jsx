@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { fetchEvents } from '../../api/events'
 import { fetchResources } from '../../api/resources'
 import { fetchNewsletterArchive } from '../../api/site'
 import {
@@ -19,15 +18,6 @@ import EmptyState from '../../components/ui/EmptyState'
 import { Users, Mail, MousePointerClick } from 'lucide-react'
 
 const CONFIGS = {
-  events: {
-    title: 'Events',
-    description: 'WSF and partner events, webinars, and conferences.',
-    columns: ['Title', 'Type', 'Format', 'Date'],
-    load: async () => {
-      const res = await fetchEvents({ pageSize: 100 })
-      return res.items.map((e) => [e.title, e.type, e.format, formatDate(e.date)])
-    },
-  },
   resources: {
     title: 'Resources',
     description: 'Guides, templates, and worksheets in the resource library.',

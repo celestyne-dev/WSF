@@ -218,35 +218,94 @@ class Opportunity(db.Model):
     topics = db.relationship("Topic", secondary=opportunity_topics, backref="opportunities")
 
 
+EVENT_TYPES = (
+    "Conference",
+    "Summit",
+    "Workshop",
+    "Webinar",
+    "Networking Event",
+    "Panel",
+    "Masterclass",
+    "Training",
+    "Community Event",
+    "Career Event",
+    "Founder Event",
+    "Mentorship Event",
+    "Awards Event",
+    "Other",
+)
+_EVENT_TYPE_CHECK_SQL = "type IS NULL OR type IN (" + ", ".join(f"'{t}'" for t in EVENT_TYPES) + ")"
+
+EVENT_FORMATS = ("in-person", "virtual", "hybrid")
+_EVENT_FORMAT_CHECK_SQL = "format IS NULL OR format IN (" + ", ".join(f"'{f}'" for f in EVENT_FORMATS) + ")"
+
+# draft: incomplete/unpublished. published: live and publicly listed —
+# upcoming/past are computed from `date`/`end_date` at read time, not
+# stored, so editors never have to manually move an event between
+# sections. cancelled: still publicly visible (clearly marked) so
+# registrants can see it was called off. archived: retained for record but
+# no longer shown in any public listing.
+EVENT_STATUSES = ("draft", "published", "cancelled", "archived")
+_EVENT_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in EVENT_STATUSES) + ")"
+
+
 class Event(db.Model):
     __tablename__ = "events"
+    __table_args__ = (
+        db.CheckConstraint(_EVENT_TYPE_CHECK_SQL, name="ck_events_type"),
+        db.CheckConstraint(_EVENT_FORMAT_CHECK_SQL, name="ck_events_format"),
+        db.CheckConstraint(_EVENT_STATUS_CHECK_SQL, name="ck_events_status"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(220), unique=True, nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text)
 
-    type = db.Column(db.String(50))  # Conference / Workshop / Webinar / Networking
-    format = db.Column(db.String(20))  # in-person / virtual / hybrid
+    short_description = db.Column(db.Text)  # one or two sentences, for cards
+    # Ordered content-block list — same shape/sanitizer/editor as
+    # Job.description/Opportunity.description. The editor structures
+    # "About"/"Who should attend"/"What attendees will gain" etc.
+    # themselves rather than the app hard-coding those headings.
+    description = db.Column(db.JSON, nullable=False, default=list)
+
+    type = db.Column(db.String(50))  # see EVENT_TYPES
+    format = db.Column(db.String(20))  # in-person / virtual / hybrid — see EVENT_FORMATS
+
     date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date)  # set only for multi-day events; single-day events leave this null
     start_time = db.Column(db.Time)
     end_time = db.Column(db.Time)
-    timezone = db.Column(db.String(50))  # IANA tz name
+    timezone = db.Column(db.String(50))  # IANA tz name, e.g. Africa/Nairobi, America/New_York
 
     location = db.Column(db.String(300))
+    address = db.Column(db.String(300))
     country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
     venue = db.Column(db.String(200))
     virtual_link = db.Column(db.String(500))
+    # virtual_link is meant for registered attendees, not the open web —
+    # only rendered on the public page when this is explicitly true.
+    virtual_link_public = db.Column(db.Boolean, nullable=False, default=False)
+
+    organizer_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True)
+    organizer_name = db.Column(db.String(200))  # denormalized fallback when no Organization is linked
 
     registration_url = db.Column(db.String(500))
-    ticket_price = db.Column(db.Integer)  # whole currency units, paired with `currency`
+    registration_required = db.Column(db.Boolean, nullable=False, default=True)
+    registration_deadline = db.Column(db.Date)
+    registration_instructions = db.Column(db.Text)
+    sold_out = db.Column(db.Boolean, nullable=False, default=False)
+
+    ticket_price = db.Column(db.Integer)  # whole currency units, paired with `currency`; absent = free
     currency = db.Column(db.String(3))
     capacity = db.Column(db.Integer)
 
     agenda = db.Column(db.JSON)  # list[{time, title}]
-    status = db.Column(db.String(20), nullable=False, default="upcoming")  # upcoming/past/cancelled
+    status = db.Column(db.String(20), nullable=False, default="published")
+    published_date = db.Column(db.Date)
+    seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     cover_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
     featured = db.Column(db.Boolean, nullable=False, default=False)
+    sponsored = db.Column(db.Boolean, nullable=False, default=False)
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
@@ -255,5 +314,6 @@ class Event(db.Model):
 
     country = db.relationship("Country", foreign_keys=[country_code])
     cover_media = db.relationship("Media", foreign_keys=[cover_media_id])
+    organizer = db.relationship("Organization", foreign_keys=[organizer_id])
     speakers = db.relationship("Person", secondary=event_speakers)
     sponsors = db.relationship("Organization", secondary=event_sponsors)
