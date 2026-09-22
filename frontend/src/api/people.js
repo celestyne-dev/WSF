@@ -23,9 +23,14 @@ function mapPerson(p) {
     photoMedia: mapMediaRef(p.photo),
     photoMediaId: p.photo?.id || null,
     title: p.title,
-    organizationId: p.organization?.id || null,
+    // `organization_id` is always present (even when the linked
+    // Organization is still a draft, so the CMS editor can pre-select
+    // it); the nested `organization` object is only ever populated when
+    // that Organization is published — see PersonSchema.get_organization.
+    organizationId: p.organization_id || p.organization?.id || null,
     organizationSlug: p.organization?.slug || null,
     organization: p.organization?.name || null,
+    organizationLogo: mapMediaRef(p.organization?.logo),
     location: p.location,
     countryCode: p.country?.code || p.country_code || null,
     country: p.country ? { code: p.country.code, name: p.country.name, region: p.country.region } : null,

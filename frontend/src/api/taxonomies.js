@@ -99,13 +99,25 @@ function mapOrganization(o) {
     name: o.name,
     logo: o.logo?.public_url || null,
     logoMedia: mapMediaRef(o.logo),
+    logoMediaId: o.logo?.id || null,
     industry: o.industry,
     countryCode: o.country?.code || o.country_code || null,
     country: o.country ? { code: o.country.code, name: o.country.name, region: o.country.region } : null,
+    location: o.location,
+    foundedYear: o.founded_year,
     type: o.org_type,
-    description: o.description,
+    shortDescription: o.short_description,
+    // Ordered content-block list — same shape as Article.content, rendered
+    // with the shared ArticleContent component and edited with the shared
+    // ArticleBlockEditor. Mock-mode demo data still carries a plain
+    // string, wrapped into a single paragraph block so both modes share
+    // one shape.
+    description: Array.isArray(o.description) ? o.description : o.description ? [{ type: 'paragraph', text: o.description }] : [],
     website: o.website,
     social: o.social || {},
+    status: o.status || 'published',
+    seo: o.seo || null,
+    peopleCount: o.people_count,
     featured: o.featured,
   }
 }
@@ -222,10 +234,27 @@ export async function deleteAuthor(slug) {
   return delay(undefined)
 }
 
-export async function fetchOrganizations() {
-  if (!USE_MOCK) return (await apiClient.get('/organizations')).data.map(mapOrganization)
+// Mock demo organizations still carry a plain-string `description`
+// (pre-dating the block-content shape the real API now returns) —
+// wrapped into a single paragraph block so both modes share one shape.
+function normalizeMockOrgDescription(item) {
+  if (!item) return item
+  return { ...item, description: Array.isArray(item.description) ? item.description : item.description ? [{ type: 'paragraph', text: item.description }] : [] }
+}
+
+export async function fetchOrganizations(params = {}) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/organizations', { params })
+    return { ...data, items: data.items.map(mapOrganization) }
+  }
   const { organizations } = await loadMockOrganizations()
-  return delay(organizations.map(attachMockCountry))
+  let results = organizations.map(attachMockCountry).map(normalizeMockOrgDescription)
+  if (params.type) results = results.filter((o) => o.type === params.type)
+  if (params.query) {
+    const q = params.query.toLowerCase()
+    results = results.filter((o) => o.name.toLowerCase().includes(q) || o.industry?.toLowerCase().includes(q))
+  }
+  return delay({ items: results, pagination: { page: 1, pageSize: results.length, totalItems: results.length, totalPages: 1 } })
 }
 export async function fetchOrganizationBySlug(slug) {
   if (!USE_MOCK) {
@@ -237,5 +266,36 @@ export async function fetchOrganizationBySlug(slug) {
     }
   }
   const { getOrganizationBySlug } = await loadMockOrganizations()
-  return delay(attachMockCountry(getOrganizationBySlug(slug)))
+  return delay(normalizeMockOrgDescription(attachMockCountry(getOrganizationBySlug(slug))))
+}
+
+// POST/PUT /api/v1/organizations — CMS create/update. Field names mirror
+// OrganizationInputSchema's camelCase data_keys exactly.
+export async function createOrganization(payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.post('/organizations', payload)
+    return mapOrganization(data)
+  }
+  return delay({ ...payload, id: `mock-${Date.now()}`, slug: payload.slug })
+}
+
+export async function updateOrganization(slug, payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.put(`/organizations/${slug}`, payload)
+    return mapOrganization(data)
+  }
+  return delay({ ...payload, slug: payload.slug || slug })
+}
+
+// Hard delete — the backend rejects this with a 409 if the organization is
+// referenced by any Person, Job, Opportunity, Article, or Series, so the
+// CMS should offer archiving (status: "archived", via updateOrganization)
+// as the safe alternative for established organizations rather than
+// calling this blindly.
+export async function deleteOrganization(slug) {
+  if (!USE_MOCK) {
+    await apiClient.delete(`/organizations/${slug}`)
+    return
+  }
+  return delay(undefined)
 }

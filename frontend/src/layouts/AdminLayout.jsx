@@ -22,6 +22,7 @@ import {
   ExternalLink,
   LayoutTemplate,
   PenSquare,
+  Building2,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -38,6 +39,7 @@ const NAV_GROUPS = [
       { to: '/admin/homepage', icon: LayoutTemplate, label: 'Homepage' },
       { to: '/admin/people', icon: Users, label: 'People' },
       { to: '/admin/authors', icon: PenSquare, label: 'Authors' },
+      { to: '/admin/organizations', icon: Building2, label: 'Organizations' },
     ],
   },
   {

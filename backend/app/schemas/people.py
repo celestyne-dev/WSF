@@ -2,7 +2,15 @@ from marshmallow import fields, validate
 
 from app.extensions import ma
 from app.models.article import Article
-from app.models.people import AUTHOR_STATUSES, PERSON_STATUSES, Author, Organization, Person
+from app.models.people import (
+    AUTHOR_STATUSES,
+    ORGANIZATION_STATUSES,
+    ORGANIZATION_TYPES,
+    PERSON_STATUSES,
+    Author,
+    Organization,
+    Person,
+)
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.taxonomy import SeriesSchema, TopicSchema
@@ -11,21 +19,42 @@ from app.schemas.taxonomy import SeriesSchema, TopicSchema
 class OrganizationSchema(ma.SQLAlchemyAutoSchema):
     logo = fields.Nested(MediaSchema, dump_only=True)
     country = fields.Nested(CountrySchema, dump_only=True)
+    people_count = fields.Method("get_people_count")
 
     class Meta:
         model = Organization
         load_instance = False
 
+    def get_people_count(self, obj):
+        return Person.query.filter_by(organization_id=obj.id, status="published").count()
+
 
 class PersonSchema(ma.SQLAlchemyAutoSchema):
     photo = fields.Nested(MediaSchema, dump_only=True)
     country = fields.Nested(CountrySchema, dump_only=True)
-    organization = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    # marshmallow-sqlalchemy's auto schema omits FK columns that back a
+    # declared relationship — declared explicitly so the CMS editor can
+    # always resolve/pre-select the linked Organization even when that
+    # Organization is still a draft.
+    organization_id = fields.Integer(dump_only=True)
+    # A lightweight, published-only preview — never leaks an unpublished
+    # Organization through a Person response.
+    organization = fields.Method("get_organization", dump_only=True)
     series = fields.Nested(SeriesSchema, many=True, dump_only=True, exclude=("article_count",))
 
     class Meta:
         model = Person
         load_instance = False
+
+    def get_organization(self, obj):
+        if not obj.organization or obj.organization.status != "published":
+            return None
+        return {
+            "id": obj.organization.id,
+            "slug": obj.organization.slug,
+            "name": obj.organization.name,
+            "logo": MediaSchema().dump(obj.organization.logo) if obj.organization.logo else None,
+        }
 
 
 class AuthorSchema(ma.SQLAlchemyAutoSchema):
@@ -71,10 +100,17 @@ class OrganizationInputSchema(ma.Schema):
     logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
     industry = fields.String(required=False, allow_none=True)
     country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
-    org_type = fields.String(required=False, allow_none=True, data_key="type")
-    description = fields.String(required=False, allow_none=True)
-    website = fields.String(required=False, allow_none=True)
+    location = fields.String(required=False, allow_none=True)
+    founded_year = fields.Integer(required=False, allow_none=True, data_key="foundedYear")
+    org_type = fields.String(required=False, allow_none=True, data_key="type", validate=validate.OneOf(ORGANIZATION_TYPES))
+    short_description = fields.String(required=False, allow_none=True, data_key="shortDescription")
+    # Ordered content-block list — same shape as Article.content, sanitized
+    # through the same sanitize_content_blocks() service before persisting.
+    description = fields.List(fields.Dict(), required=False, load_default=list)
+    website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
     social = fields.Dict(required=False, allow_none=True)
+    status = fields.String(required=False, load_default="draft", validate=validate.OneOf(ORGANIZATION_STATUSES))
+    seo = fields.Dict(required=False, allow_none=True)
     featured = fields.Boolean(required=False, load_default=False)
 
 

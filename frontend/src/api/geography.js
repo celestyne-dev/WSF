@@ -1,6 +1,6 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
-import { COUNTRIES, getCountry } from '../mock/geography'
+import { COUNTRIES, getCountry, regionFilterOptions } from '../mock/geography'
 
 // GET /api/v1/public/countries — the Country reference table. The 8-region
 // taxonomy (REGIONS) and GLOBAL/REMOTE pseudo-locations are a fixed
@@ -31,6 +31,14 @@ export function attachMockCountry(item) {
 // identically for real-mode items (country nested by the backend) and
 // mock-mode items (country attached by attachMockCountry), so it never
 // needs its own mock/geography lookup.
+// The fixed 8-region taxonomy — not CMS data, so it's synchronous and
+// mode-independent (no network call in either real or mock mode). Kept
+// behind the api layer so presentation components never import
+// mock/geography directly.
+export function regionOptions() {
+  return regionFilterOptions()
+}
+
 export function countryOptionsFromItems(items, getItemCountry = (item) => item.country) {
   const seen = new Map()
   for (const item of items) {

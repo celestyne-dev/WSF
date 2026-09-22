@@ -202,10 +202,10 @@ export default function AdminPersonEditor() {
 
   useEffect(() => {
     let active = true
-    Promise.all([fetchOrganizations(), fetchSeries(), fetchCountries(), isNew ? Promise.resolve(null) : fetchPersonBySlug(id)])
-      .then(([orgList, seriesList, countryList, existing]) => {
+    Promise.all([fetchOrganizations({ pageSize: 200 }), fetchSeries(), fetchCountries(), isNew ? Promise.resolve(null) : fetchPersonBySlug(id)])
+      .then(([orgRes, seriesList, countryList, existing]) => {
         if (!active) return
-        setOrganizations(orgList)
+        setOrganizations(orgRes.items)
         setSeries(seriesList)
         setCountries([...countryList].sort((a, b) => a.name.localeCompare(b.name)))
         if (isNew) {

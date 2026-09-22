@@ -14,6 +14,28 @@ _PERSON_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{status}'" for status in
 AUTHOR_STATUSES = ("draft", "active", "archived")
 _AUTHOR_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{status}'" for status in AUTHOR_STATUSES) + ")"
 
+# draft: incomplete/unpublished. published: live in the public directory.
+# archived: no longer active but kept so historical relationships (People,
+# Jobs, Opportunities, Articles, Series sponsorship) keep resolving.
+ORGANIZATION_STATUSES = ("draft", "published", "archived")
+_ORGANIZATION_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in ORGANIZATION_STATUSES) + ")"
+
+# Deliberately includes "other" as a catch-all so this never blocks an
+# editor from saving — see AdminOrganizationEditor's Organization Type field.
+ORGANIZATION_TYPES = (
+    "company",
+    "nonprofit",
+    "foundation",
+    "government",
+    "educational_institution",
+    "media_organization",
+    "professional_association",
+    "social_enterprise",
+    "community_organization",
+    "other",
+)
+_ORGANIZATION_TYPE_CHECK_SQL = "org_type IS NULL OR org_type IN (" + ", ".join(f"'{t}'" for t in ORGANIZATION_TYPES) + ")"
+
 person_series = db.Table(
     "person_series",
     db.Column("person_id", db.Integer, db.ForeignKey("people.id", ondelete="CASCADE"), primary_key=True),
@@ -29,6 +51,10 @@ author_topics = db.Table(
 
 class Organization(db.Model):
     __tablename__ = "organizations"
+    __table_args__ = (
+        db.CheckConstraint(_ORGANIZATION_STATUS_CHECK_SQL, name="ck_organizations_status"),
+        db.CheckConstraint(_ORGANIZATION_TYPE_CHECK_SQL, name="ck_organizations_org_type"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(160), unique=True, nullable=False, index=True)
@@ -36,10 +62,17 @@ class Organization(db.Model):
     logo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
     industry = db.Column(db.String(140))
     country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
-    org_type = db.Column(db.String(80))  # Startup / Foundation / Corporate / Nonprofit / ...
-    description = db.Column(db.Text)
+    location = db.Column(db.String(200))  # headquarters city, e.g. "Nairobi, Kenya"
+    founded_year = db.Column(db.Integer)
+    org_type = db.Column(db.String(40))
+    short_description = db.Column(db.Text)
+    # Ordered content-block list — same shape/sanitizer/editor as
+    # Person.bio/Author.bio/Article.content.
+    description = db.Column(db.JSON, nullable=False, default=list)
     website = db.Column(db.String(300))
     social = db.Column(db.JSON)
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     featured = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
