@@ -173,6 +173,7 @@ export function mapMediaRef(raw) {
   if (!raw) return null
   const variants = raw.variants && typeof raw.variants === 'object' && !Array.isArray(raw.variants) ? raw.variants : null
   return {
+    id: raw.id,
     mediaPath: raw.public_url,
     altText: raw.alt_text || '',
     caption: raw.caption || '',

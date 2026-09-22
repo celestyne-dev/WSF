@@ -54,7 +54,7 @@ export default function MediaPicker({ value, onChange, label = 'Image', aspect =
   )
 }
 
-function MediaPickerModal({ onClose, onSelect }) {
+export function MediaPickerModal({ onClose, onSelect }) {
   const [tab, setTab] = useState('library')
   const [query, setQuery] = useState('')
   const [items, setItems] = useState(undefined)

@@ -11,6 +11,7 @@ const STYLES = {
   in_discussion: 'bg-blush-200 text-burgundy-700',
   invited: 'bg-blush-200 text-burgundy-700',
   archived: 'bg-taupe-100 text-charcoal-600/70',
+  unavailable: 'bg-amber-100 text-amber-700',
   ended: 'bg-taupe-100 text-charcoal-600/70',
   past: 'bg-taupe-100 text-charcoal-600/70',
   rejected: 'bg-rose-100 text-rose-600',

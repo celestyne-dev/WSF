@@ -31,6 +31,28 @@ export function formatCurrency(amount, currency = 'KES') {
   return `${currency} ${new Intl.NumberFormat('en-US').format(amount)}`
 }
 
+// Shop product pricing: zero displays as "Free" rather than "$0.00", and a
+// real currency symbol/code is rendered via Intl.NumberFormat instead of
+// manually concatenating one, so USD/GBP/EUR get their native symbol and a
+// currency without one (KES) falls back to its ISO code automatically.
+export function formatProductPrice(amount, currency = 'USD') {
+  if (amount === null || amount === undefined) return null
+  if (amount === 0) return 'Free'
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
+  } catch {
+    return `${currency} ${new Intl.NumberFormat('en-US').format(amount)}`
+  }
+}
+
+// Only ever called with real, already-validated price/salePrice values —
+// never fabricates a discount when sale_price is missing or not lower than
+// the regular price.
+export function formatDiscountPercent(price, salePrice) {
+  if (!price || salePrice == null || salePrice >= price) return null
+  return Math.round(((price - salePrice) / price) * 100)
+}
+
 // Prefers the free-text funding summary an editor wrote (handles compound
 // cases like "Full tuition + $2,000 stipend" that a number range can't
 // express); falls back to a structured min/max/currency range; returns

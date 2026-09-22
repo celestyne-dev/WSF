@@ -36,6 +36,7 @@ const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
 const CommunityPage = lazy(() => import('../pages/CommunityPage'))
 const LearningPage = lazy(() => import('../pages/LearningPage'))
 const ShopPage = lazy(() => import('../pages/ShopPage'))
+const ProductDetailPage = lazy(() => import('../pages/ProductDetailPage'))
 const ContactPage = lazy(() => import('../pages/ContactPage'))
 const LegalPage = lazy(() => import('../pages/LegalPage'))
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage'))
@@ -55,6 +56,8 @@ const AdminOpportunities = lazy(() => import('../pages/admin/AdminOpportunities'
 const AdminOpportunityEditor = lazy(() => import('../pages/admin/AdminOpportunityEditor'))
 const AdminEvents = lazy(() => import('../pages/admin/AdminEvents'))
 const AdminEventEditor = lazy(() => import('../pages/admin/AdminEventEditor'))
+const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
+const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
@@ -114,6 +117,7 @@ export default function AppRoutes() {
           <Route path="/community" element={<CommunityPage />} />
           <Route path="/learning" element={<LearningPage />} />
           <Route path="/shop" element={<ShopPage />} />
+          <Route path="/shop/:slug" element={<ProductDetailPage />} />
 
           <Route path="/privacy" element={<LegalPage docKey="privacy" />} />
           <Route path="/terms" element={<LegalPage docKey="terms" />} />
@@ -153,6 +157,9 @@ export default function AppRoutes() {
           <Route path="events" element={<AdminEvents />} />
           <Route path="events/new" element={<AdminEventEditor />} />
           <Route path="events/:id" element={<AdminEventEditor />} />
+          <Route path="products" element={<AdminProducts />} />
+          <Route path="products/new" element={<AdminProductEditor />} />
+          <Route path="products/:id" element={<AdminProductEditor />} />
           <Route path="resources" element={<AdminGenericList section="resources" />} />
           <Route path="newsletter" element={<AdminGenericList section="newsletter" />} />
           <Route path="submissions" element={<AdminGenericList section="submissions" />} />

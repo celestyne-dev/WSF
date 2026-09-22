@@ -23,6 +23,7 @@ import {
   LayoutTemplate,
   PenSquare,
   Building2,
+  ShoppingBag,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -50,6 +51,10 @@ const NAV_GROUPS = [
       { to: '/admin/events', icon: CalendarDays, label: 'Events' },
       { to: '/admin/resources', icon: BookOpen, label: 'Resources' },
     ],
+  },
+  {
+    heading: 'Shop',
+    items: [{ to: '/admin/products', icon: ShoppingBag, label: 'Products' }],
   },
   {
     heading: 'Community',
