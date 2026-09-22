@@ -13,8 +13,9 @@ export default function JobsListingPage() {
   const [industry, setIndustry] = useState('')
   const [workMode, setWorkMode] = useState('')
   const [careerLevel, setCareerLevel] = useState('')
+  const [employmentType, setEmploymentType] = useState('')
   const [jobs, setJobs] = useState(null)
-  const [options, setOptions] = useState({ countries: [], regions: [], industries: [], workModes: [], careerLevels: [] })
+  const [options, setOptions] = useState({ countries: [], regions: [], industries: [], workModes: [], careerLevels: [], employmentTypes: [] })
   const [error, setError] = useState(null)
 
   useSeo({
@@ -36,13 +37,13 @@ export default function JobsListingPage() {
   useEffect(() => {
     let active = true
     setError(null)
-    fetchJobs({ country, region, industry, workMode, careerLevel, pageSize: 100 })
+    fetchJobs({ country, region, industry, workMode, careerLevel, employmentType, pageSize: 100 })
       .then((res) => active && setJobs(res.items))
       .catch(() => active && setError('Something went wrong loading jobs. Please try again.'))
     return () => {
       active = false
     }
-  }, [country, region, industry, workMode, careerLevel])
+  }, [country, region, industry, workMode, careerLevel, employmentType])
 
   return (
     <div>
@@ -53,6 +54,7 @@ export default function JobsListingPage() {
           <FilterSelect label="Country" value={country} onChange={setCountry} options={options.countries} />
           <FilterSelect label="Industry" value={industry} onChange={setIndustry} options={options.industries} />
           <FilterSelect label="Work Mode" value={workMode} onChange={setWorkMode} options={options.workModes} />
+          <FilterSelect label="Employment Type" value={employmentType} onChange={setEmploymentType} options={options.employmentTypes} />
           <FilterSelect label="Career Level" value={careerLevel} onChange={setCareerLevel} options={options.careerLevels} />
         </div>
 

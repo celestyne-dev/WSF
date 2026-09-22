@@ -39,6 +39,8 @@ def test_job_create_and_country_region_filtering(client, admin_token):
             "salaryMin": 145000,
             "salaryMax": 175000,
             "currency": "USD",
+            "applicationUrl": "https://example.com/apply/senior-pm",
+            "description": [{"type": "paragraph", "text": "Role summary."}],
         },
         headers=auth_headers(admin_token),
     )
@@ -46,7 +48,14 @@ def test_job_create_and_country_region_filtering(client, admin_token):
 
     ke_job = client.post(
         "/api/v1/jobs",
-        json={"title": "Marketing Manager", "companyName": "Kaziwave", "countryCode": "KE", "currency": "KES"},
+        json={
+            "title": "Marketing Manager",
+            "companyName": "Kaziwave",
+            "countryCode": "KE",
+            "currency": "KES",
+            "applicationUrl": "https://example.com/apply/marketing-manager",
+            "description": [{"type": "paragraph", "text": "Role summary."}],
+        },
         headers=auth_headers(admin_token),
     )
     assert ke_job.status_code == 201
@@ -166,12 +175,26 @@ def test_jobs_opportunities_people_filter_by_organization(client, admin_token):
 
     client.post(
         "/api/v1/jobs",
-        json={"title": "Program Lead", "companyName": "Foster Capital", "organizationId": org_id, "countryCode": "US"},
+        json={
+            "title": "Program Lead",
+            "companyName": "Foster Capital",
+            "organizationId": org_id,
+            "countryCode": "US",
+            "applicationUrl": "https://example.com/apply/program-lead",
+            "description": [{"type": "paragraph", "text": "Role summary."}],
+        },
         headers=auth_headers(admin_token),
     )
     client.post(
         "/api/v1/jobs",
-        json={"title": "Marketing Manager", "companyName": "Kaziwave", "organizationId": other_org_id, "countryCode": "KE"},
+        json={
+            "title": "Marketing Manager",
+            "companyName": "Kaziwave",
+            "organizationId": other_org_id,
+            "countryCode": "KE",
+            "applicationUrl": "https://example.com/apply/marketing-manager-2",
+            "description": [{"type": "paragraph", "text": "Role summary."}],
+        },
         headers=auth_headers(admin_token),
     )
     jobs = client.get(f"/api/v1/jobs?organization={org_slug}")
@@ -206,12 +229,26 @@ def test_jobs_opportunities_people_filter_by_organization(client, admin_token):
 def test_featured_filter_on_jobs_opportunities_events_resources(client, admin_token):
     client.post(
         "/api/v1/jobs",
-        json={"title": "Featured Role", "companyName": "Acme", "countryCode": "US", "featured": True},
+        json={
+            "title": "Featured Role",
+            "companyName": "Acme",
+            "countryCode": "US",
+            "featured": True,
+            "applicationUrl": "https://example.com/apply/featured-role",
+            "description": [{"type": "paragraph", "text": "Role summary."}],
+        },
         headers=auth_headers(admin_token),
     )
     client.post(
         "/api/v1/jobs",
-        json={"title": "Regular Role", "companyName": "Acme", "countryCode": "US", "featured": False},
+        json={
+            "title": "Regular Role",
+            "companyName": "Acme",
+            "countryCode": "US",
+            "featured": False,
+            "applicationUrl": "https://example.com/apply/regular-role",
+            "description": [{"type": "paragraph", "text": "Role summary."}],
+        },
         headers=auth_headers(admin_token),
     )
     jobs = client.get("/api/v1/jobs?featured=true")

@@ -256,10 +256,15 @@ def seed_demo_content():
     job.career_level = "Senior"
     job.industry = "Workforce Technology"
     job.salary_min, job.salary_max, job.currency, job.salary_period = 145000, 175000, "USD", "year"
-    job.description = "Own our workforce planning product line as we expand into two new market segments."
-    job.responsibilities = ["Own the product roadmap", "Partner with design and engineering"]
-    job.requirements = ["6+ years in product management"]
-    job.benefits = ["Health insurance", "401(k) match"]
+    job.description = [
+        {"type": "paragraph", "text": "Own our workforce planning product line as we expand into two new market segments."},
+        {"type": "heading", "level": 2, "text": "Responsibilities"},
+        {"type": "list", "style": "bullet", "items": ["Own the product roadmap", "Partner with design and engineering"]},
+        {"type": "heading", "level": 2, "text": "Requirements"},
+        {"type": "list", "style": "bullet", "items": ["6+ years in product management"]},
+        {"type": "heading", "level": 2, "text": "Benefits"},
+        {"type": "list", "style": "bullet", "items": ["Health insurance", "401(k) match"]},
+    ]
     job.application_url = "https://lumenanalytics.example.com/careers/senior-product-manager"
     job.deadline = date.today() + timedelta(days=30)
     job.published_date = date.today()

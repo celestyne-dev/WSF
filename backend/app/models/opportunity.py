@@ -1,4 +1,34 @@
 from app.extensions import db
+from app.models.geography import REGIONS
+
+# draft: incomplete/unpublished. published: live and accepting
+# applications. expired: past its expiry/deadline, no longer active but
+# kept for record. closed: manually closed to applications by the poster.
+JOB_STATUSES = ("draft", "published", "expired", "closed")
+_JOB_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in JOB_STATUSES) + ")"
+
+WORK_MODES = ("On-site", "Hybrid", "Remote")
+_WORK_MODE_CHECK_SQL = "work_mode IS NULL OR work_mode IN (" + ", ".join(f"'{w}'" for w in WORK_MODES) + ")"
+
+EMPLOYMENT_TYPES = ("Full-time", "Part-time", "Contract", "Temporary", "Internship")
+_EMPLOYMENT_TYPE_CHECK_SQL = "employment_type IS NULL OR employment_type IN (" + ", ".join(
+    f"'{e}'" for e in EMPLOYMENT_TYPES
+) + ")"
+
+CAREER_LEVELS = ("Entry level", "Junior", "Mid-level", "Senior", "Manager", "Director", "Executive")
+_CAREER_LEVEL_CHECK_SQL = "career_level IS NULL OR career_level IN (" + ", ".join(
+    f"'{c}'" for c in CAREER_LEVELS
+) + ")"
+
+# Only meaningful when work_mode is "Remote": worldwide (no geographic
+# restriction), country (see country_code), or region (see remote_region).
+REMOTE_SCOPES = ("worldwide", "country", "region")
+_REMOTE_SCOPE_CHECK_SQL = "remote_scope IS NULL OR remote_scope IN (" + ", ".join(
+    f"'{s}'" for s in REMOTE_SCOPES
+) + ")"
+_REMOTE_REGION_CHECK_SQL = "remote_region IS NULL OR remote_region IN (" + ", ".join(
+    f"'{r}'" for r in REGIONS
+) + ")"
 
 opportunity_countries = db.Table(
     "opportunity_countries",
@@ -27,6 +57,14 @@ event_sponsors = db.Table(
 
 class Job(db.Model):
     __tablename__ = "jobs"
+    __table_args__ = (
+        db.CheckConstraint(_JOB_STATUS_CHECK_SQL, name="ck_jobs_status"),
+        db.CheckConstraint(_WORK_MODE_CHECK_SQL, name="ck_jobs_work_mode"),
+        db.CheckConstraint(_EMPLOYMENT_TYPE_CHECK_SQL, name="ck_jobs_employment_type"),
+        db.CheckConstraint(_CAREER_LEVEL_CHECK_SQL, name="ck_jobs_career_level"),
+        db.CheckConstraint(_REMOTE_SCOPE_CHECK_SQL, name="ck_jobs_remote_scope"),
+        db.CheckConstraint(_REMOTE_REGION_CHECK_SQL, name="ck_jobs_remote_region"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(220), unique=True, nullable=False, index=True)
@@ -38,8 +76,11 @@ class Job(db.Model):
 
     location = db.Column(db.String(200))
     country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
-    work_mode = db.Column(db.String(30))  # Remote / Hybrid / On-site
-    employment_type = db.Column(db.String(30))  # Full-time / Part-time / Contract
+    work_mode = db.Column(db.String(30))  # On-site / Hybrid / Remote
+    # Only meaningful when work_mode == "Remote".
+    remote_scope = db.Column(db.String(20))  # worldwide / country / region
+    remote_region = db.Column(db.String(50))  # set when remote_scope == "region"
+    employment_type = db.Column(db.String(30))
     career_level = db.Column(db.String(30))
     industry = db.Column(db.String(140))
 
@@ -48,10 +89,13 @@ class Job(db.Model):
     currency = db.Column(db.String(3))
     salary_period = db.Column(db.String(10))  # year / month / hour
 
-    description = db.Column(db.Text)
-    responsibilities = db.Column(db.JSON)  # list[str]
-    requirements = db.Column(db.JSON)  # list[str]
-    benefits = db.Column(db.JSON)  # list[str]
+    short_description = db.Column(db.Text)  # one or two sentences, for cards
+    # Ordered content-block list — same shape/sanitizer/editor as
+    # Person.bio/Author.bio/Organization.description/Article.content. The
+    # employer/editor structures "About the role", "Responsibilities",
+    # "Requirements", "Benefits", "How to apply" etc. themselves with
+    # headings and lists rather than the app hard-coding those sections.
+    description = db.Column(db.JSON, nullable=False, default=list)
 
     application_url = db.Column(db.String(500))
     application_instructions = db.Column(db.Text)
@@ -62,7 +106,8 @@ class Job(db.Model):
 
     featured = db.Column(db.Boolean, nullable=False, default=False)
     sponsored = db.Column(db.Boolean, nullable=False, default=False)
-    status = db.Column(db.String(20), nullable=False, default="published")  # draft/published/expired/closed
+    status = db.Column(db.String(20), nullable=False, default="published")
+    seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
 
     posted_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)

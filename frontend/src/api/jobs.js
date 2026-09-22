@@ -20,12 +20,16 @@ function mapJob(j) {
     title: j.title,
     company: j.company_name,
     companySlug: j.organization?.slug || null,
-    logo: j.logo?.public_url || null,
-    logoMedia: mapMediaRef(j.logo),
+    organizationId: j.organization_id || j.organization?.id || null,
+    logo: j.organization?.logo?.public_url || j.logo?.public_url || null,
+    logoMedia: mapMediaRef(j.organization?.logo || j.logo),
+    logoMediaId: j.logo?.id || null,
     location: j.location,
     countryCode: j.country?.code || j.country_code || null,
     country: j.country ? { code: j.country.code, name: j.country.name, region: j.country.region } : null,
     workMode: j.work_mode,
+    remoteScope: j.remote_scope,
+    remoteRegion: j.remote_region,
     employmentType: j.employment_type,
     careerLevel: j.career_level,
     industry: j.industry,
@@ -33,18 +37,32 @@ function mapJob(j) {
     salaryMax: j.salary_max,
     currency: j.currency,
     salaryPeriod: j.salary_period,
-    description: j.description,
-    responsibilities: j.responsibilities || [],
-    requirements: j.requirements || [],
-    benefits: j.benefits || [],
+    shortDescription: j.short_description,
+    // Ordered content-block list — same shape as Article.content, rendered
+    // with the shared ArticleContent component and edited with the shared
+    // ArticleBlockEditor. Mock-mode demo data still carries a plain
+    // string, wrapped into a single paragraph block so both modes share
+    // one shape.
+    description: Array.isArray(j.description) ? j.description : j.description ? [{ type: 'paragraph', text: j.description }] : [],
     applicationUrl: j.application_url,
     applicationInstructions: j.application_instructions,
     deadline: j.deadline,
     featured: j.featured,
     sponsored: j.sponsored,
+    status: j.status || 'published',
+    isClosed: j.is_closed ?? false,
+    seo: j.seo || null,
     publishedDate: j.published_date,
     expiryDate: j.expiry_date,
   }
+}
+
+// Mock demo jobs still carry a plain-string `description` (pre-dating the
+// block-content shape the real API now returns) — wrapped into a single
+// paragraph block so both modes share one shape.
+function normalizeMockJobDescription(item) {
+  if (!item) return item
+  return { ...item, description: Array.isArray(item.description) ? item.description : item.description ? [{ type: 'paragraph', text: item.description }] : [] }
 }
 
 export async function fetchJobs(params = {}) {
@@ -68,7 +86,7 @@ export async function fetchJobs(params = {}) {
   }
   results.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0))
   const page = paginate(results, params)
-  return delay({ ...page, items: page.items.map(attachMockCountry) })
+  return delay({ ...page, items: page.items.map(attachMockCountry).map(normalizeMockJobDescription) })
 }
 
 export async function fetchJobBySlug(slug) {
@@ -82,7 +100,41 @@ export async function fetchJobBySlug(slug) {
     }
   }
   const { getJobBySlug } = await loadMockJobs()
-  return delay(attachMockCountry(getJobBySlug(slug)))
+  return delay(normalizeMockJobDescription(attachMockCountry(getJobBySlug(slug))))
+}
+
+// POST/PUT /api/v1/jobs — CMS create/update. Field names mirror
+// JobInputSchema's camelCase data_keys exactly.
+export async function createJob(payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.post('/jobs', payload)
+    return mapJob(data)
+  }
+  return delay({ ...payload, id: `mock-${Date.now()}`, slug: payload.slug })
+}
+
+export async function updateJob(slug, payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.put(`/jobs/${slug}`, payload)
+    return mapJob(data)
+  }
+  return delay({ ...payload, slug: payload.slug || slug })
+}
+
+export async function deleteJob(slug) {
+  if (!USE_MOCK) {
+    await apiClient.delete(`/jobs/${slug}`)
+    return
+  }
+  return delay(undefined)
+}
+
+export async function duplicateJob(slug) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.post(`/jobs/${slug}/duplicate`)
+    return mapJob(data)
+  }
+  return delay({ id: `mock-${Date.now()}`, slug: `${slug}-copy` })
 }
 
 export async function fetchJobsFilterOptions() {
