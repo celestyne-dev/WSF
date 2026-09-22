@@ -121,7 +121,9 @@ class Article(db.Model):
     topics = db.relationship("Topic", secondary=article_topics, backref="articles")
     tags = db.relationship("Tag", secondary=article_tags, backref="articles")
     co_authors = db.relationship("Author", secondary=article_co_authors)
-    related_people = db.relationship("Person", secondary=article_related_people)
+    related_people = db.relationship(
+        "Person", secondary=article_related_people, backref=db.backref("related_articles", lazy="dynamic")
+    )
     related_organizations = db.relationship("Organization", secondary=article_related_organizations)
 
     related_articles = db.relationship(

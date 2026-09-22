@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Search } from 'lucide-react'
 import { fetchPeople, fetchPeopleFilterOptions } from '../api/people'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
@@ -10,6 +11,7 @@ import PageLoader from '../components/ui/PageLoader'
 const EMPTY_OPTIONS = { countries: [], regions: [], industries: [], expertise: [] }
 
 export default function PeopleDirectoryPage() {
+  const [query, setQuery] = useState('')
   const [country, setCountry] = useState('')
   const [region, setRegion] = useState('')
   const [industry, setIndustry] = useState('')
@@ -38,7 +40,7 @@ export default function PeopleDirectoryPage() {
     let active = true
     setPeople(null)
     setError(null)
-    fetchPeople({ country, region, industry, pageSize: 100 })
+    fetchPeople({ country, region, industry, query, pageSize: 100 })
       .then((res) => {
         if (active) setPeople(res.items)
       })
@@ -48,7 +50,7 @@ export default function PeopleDirectoryPage() {
     return () => {
       active = false
     }
-  }, [country, region, industry])
+  }, [country, region, industry, query])
 
   const filtered = (people || []).filter((p) => !expertise || p.expertise.includes(expertise))
 
@@ -57,6 +59,18 @@ export default function PeopleDirectoryPage() {
       <PageHeader eyebrow="People" title="The People Directory" description="Founders, executives, scientists, and public servants — the women building the future, profiled by WSF, from every region." />
       <div className="container-editorial py-10">
         <div className="flex flex-wrap items-end gap-4 border-b border-taupe-200 pb-8">
+          <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+            Search
+            <span className="flex min-w-[14rem] items-center gap-2 border border-taupe-300 bg-white px-3 py-2">
+              <Search size={15} className="shrink-0 text-charcoal-600" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name…"
+                className="w-full text-sm font-normal normal-case text-charcoal focus:outline-none"
+              />
+            </span>
+          </label>
           <FilterSelect label="Region" value={region} onChange={setRegion} options={options.regions} />
           <FilterSelect label="Country" value={country} onChange={setCountry} options={options.countries} />
           <FilterSelect label="Industry" value={industry} onChange={setIndustry} options={options.industries} />

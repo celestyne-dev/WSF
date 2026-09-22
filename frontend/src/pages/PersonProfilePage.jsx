@@ -5,13 +5,51 @@ import SocialIcon from '../components/ui/SocialIcon'
 import { fetchPersonBySlug } from '../api/people'
 import { fetchArticles } from '../api/articles'
 import { fetchSeriesBySlug } from '../api/taxonomies'
+import { resolveImage } from '../utils/media'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
+import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
+
+// Minimal schema.org Person structured data — built only from fields the
+// profile actually carries, never inferring or fabricating employment,
+// awards, or credentials the CMS didn't record.
+function usePersonStructuredData(person, canonicalUrl) {
+  useEffect(() => {
+    if (!person) return
+    const data = {
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name: person.name,
+      url: canonicalUrl,
+      ...(person.title ? { jobTitle: person.title } : {}),
+      ...(person.organization ? { worksFor: { '@type': 'Organization', name: person.organization } } : {}),
+      ...(person.photo ? { image: resolveImage(person.photo, { width: 600, height: 750 }) } : {}),
+      ...(person.website || person.social?.linkedin || person.social?.twitter
+        ? {
+            sameAs: [
+              person.website,
+              person.social?.linkedin && `https://linkedin.com/in/${person.social.linkedin}`,
+              person.social?.twitter && `https://twitter.com/${person.social.twitter}`,
+            ].filter(Boolean),
+          }
+        : {}),
+    }
+    let el = document.head.querySelector('script[data-person-structured-data]')
+    if (!el) {
+      el = document.createElement('script')
+      el.type = 'application/ld+json'
+      el.setAttribute('data-person-structured-data', 'true')
+      document.head.appendChild(el)
+    }
+    el.textContent = JSON.stringify(data)
+    return () => el?.remove()
+  }, [person, canonicalUrl])
+}
 
 export default function PersonProfilePage() {
   const { slug } = useParams()
@@ -48,16 +86,21 @@ export default function PersonProfilePage() {
     }
   }, [slug])
 
+  const canonicalUrl = `https://womenshapingfutures.org/people/${slug}`
+
   useSeo(
     person
       ? {
-          title: `${person.name} | Women Shaping Futures`,
-          description: person.shortBio,
-          canonical: `https://womenshapingfutures.org/people/${person.slug}`,
-          image: undefined,
+          title: person.seo?.title || `${person.name} | Women Shaping Futures`,
+          description: person.seo?.description || person.shortBio,
+          canonical: person.seo?.canonical || canonicalUrl,
+          image: person.photo ? resolveImage(person.photo, { width: 1200, height: 630 }) : undefined,
+          robots: person.seo?.robots,
         }
       : {},
   )
+
+  usePersonStructuredData(person, canonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this profile" description={error} /></div>
   if (person === undefined) return <PageLoader />
@@ -71,7 +114,9 @@ export default function PersonProfilePage() {
           <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-[220px_1fr] sm:items-center">
             <MediaImage media={person.photoMedia} variant="medium" mediaPath={person.photo} alt={person.name} width={440} height={550} aspect={0.8} className="aspect-[4/5] w-full max-w-[220px] object-cover" />
             <div>
-              <h1 className="font-serif text-4xl font-semibold text-charcoal sm:text-5xl">{person.name}</h1>
+              <h1 className="font-serif text-4xl font-semibold text-charcoal sm:text-5xl">
+                {person.name} {person.pronouns && <span className="text-xl font-normal text-charcoal-600/60">({person.pronouns})</span>}
+              </h1>
               <p className="mt-2 text-lg text-charcoal-600">
                 {person.title}
                 {person.organizationSlug ? (
@@ -85,9 +130,11 @@ export default function PersonProfilePage() {
                   person.organization && ` at ${person.organization}`
                 )}
               </p>
-              <p className="mt-1 text-sm text-charcoal-600">
-                {person.location} &middot; {person.industry}
-              </p>
+              {(person.location || person.industry) && (
+                <p className="mt-1 text-sm text-charcoal-600">
+                  {[person.location, person.industry].filter(Boolean).join(' · ')}
+                </p>
+              )}
               <div className="mt-4 flex flex-wrap gap-2">
                 {person.expertise.map((e) => (
                   <span key={e} className="bg-taupe-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
@@ -131,8 +178,12 @@ export default function PersonProfilePage() {
             </blockquote>
           )}
 
-          <h2 className="mt-10 font-serif text-2xl font-semibold text-charcoal">About</h2>
-          <p className="mt-4 text-lg leading-[1.85] text-charcoal-600">{person.bio}</p>
+          {person.bio?.length > 0 && (
+            <div>
+              <h2 className="mt-10 font-serif text-2xl font-semibold text-charcoal">About</h2>
+              <ArticleContent blocks={person.bio} />
+            </div>
+          )}
 
           {person.careerTimeline?.length > 0 && (
             <div className="mt-10">

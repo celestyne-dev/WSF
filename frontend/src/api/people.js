@@ -18,9 +18,12 @@ function mapPerson(p) {
     id: p.id,
     slug: p.slug,
     name: p.name,
+    pronouns: p.pronouns || '',
     photo: p.photo?.public_url || null,
     photoMedia: mapMediaRef(p.photo),
+    photoMediaId: p.photo?.id || null,
     title: p.title,
+    organizationId: p.organization?.id || null,
     organizationSlug: p.organization?.slug || null,
     organization: p.organization?.name || null,
     location: p.location,
@@ -31,13 +34,19 @@ function mapPerson(p) {
     expertise: p.expertise || [],
     featuredQuote: p.featured_quote,
     shortBio: p.short_bio,
-    bio: p.bio,
+    // Ordered content-block list — same shape as Article.content, rendered
+    // with the shared ArticleContent component and edited with the shared
+    // ArticleBlockEditor. Mock-mode demo data still carries a plain string,
+    // wrapped into a single paragraph block so both modes share one shape.
+    bio: Array.isArray(p.bio) ? p.bio : p.bio ? [{ type: 'paragraph', text: p.bio }] : [],
     achievements: p.achievements || [],
     careerTimeline: p.career_timeline || [],
     awards: p.awards || [],
     website: p.website,
     social: p.social || {},
     seriesSlugs: (p.series || []).map((s) => s.slug),
+    status: p.status || 'published',
+    seo: p.seo || null,
     featured: p.featured,
   }
 }
@@ -102,4 +111,35 @@ export async function fetchPeopleFilterOptions() {
     industries: [...new Set(people.map((p) => p.industry))].sort(),
     expertise: [...new Set(people.flatMap((p) => p.expertise))].sort(),
   })
+}
+
+// POST/PUT /api/v1/people — CMS create/update. Field names mirror
+// PersonInputSchema's camelCase data_keys exactly, so AdminPersonEditor's
+// form state can be sent straight through.
+export async function createPerson(payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.post('/people', payload)
+    return mapPerson(data)
+  }
+  return delay({ ...payload, id: `mock-${Date.now()}`, slug: payload.slug })
+}
+
+export async function updatePerson(slug, payload) {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.put(`/people/${slug}`, payload)
+    return mapPerson(data)
+  }
+  return delay({ ...payload, slug: payload.slug || slug })
+}
+
+// Hard delete — the backend rejects this with a 409 if the person is
+// referenced by any article, so the CMS should offer archiving (status:
+// "archived", via updatePerson) as the safe alternative for established
+// profiles rather than calling this blindly.
+export async function deletePerson(slug) {
+  if (!USE_MOCK) {
+    await apiClient.delete(`/people/${slug}`)
+    return
+  }
+  return delay(undefined)
 }

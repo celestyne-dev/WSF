@@ -189,7 +189,13 @@ def test_jobs_opportunities_people_filter_by_organization(client, admin_token):
 
     client.post(
         "/api/v1/people",
-        json={"name": "Amina Yusuf", "countryCode": "US", "organizationId": org_id},
+        json={
+            "name": "Amina Yusuf",
+            "countryCode": "US",
+            "organizationId": org_id,
+            "shortBio": "Program lead at Foster Capital.",
+            "status": "published",
+        },
         headers=auth_headers(admin_token),
     )
     people = client.get(f"/api/v1/people?organization={org_slug}")

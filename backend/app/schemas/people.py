@@ -2,7 +2,7 @@ from marshmallow import fields, validate
 
 from app.extensions import ma
 from app.models.article import Article
-from app.models.people import Author, Organization, Person
+from app.models.people import PERSON_STATUSES, Author, Organization, Person
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.taxonomy import SeriesSchema
@@ -57,6 +57,7 @@ class OrganizationInputSchema(ma.Schema):
 class PersonInputSchema(ma.Schema):
     name = fields.String(required=True, validate=validate.Length(min=1, max=200))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=160))
+    pronouns = fields.String(required=False, allow_none=True, validate=validate.Length(max=40))
     photo_media_id = fields.Integer(required=False, allow_none=True, data_key="photoMediaId")
     title = fields.String(required=False, allow_none=True)
     organization_id = fields.Integer(required=False, allow_none=True, data_key="organizationId")
@@ -67,13 +68,17 @@ class PersonInputSchema(ma.Schema):
     expertise = fields.List(fields.String(), required=False, load_default=list)
     featured_quote = fields.String(required=False, allow_none=True, data_key="featuredQuote")
     short_bio = fields.String(required=False, allow_none=True, data_key="shortBio")
-    bio = fields.String(required=False, allow_none=True)
+    # Ordered content-block list — same shape as Article.content, sanitized
+    # through the same sanitize_content_blocks() service before persisting.
+    bio = fields.List(fields.Dict(), required=False, load_default=list)
     achievements = fields.List(fields.String(), required=False, load_default=list)
     career_timeline = fields.List(fields.Dict(), required=False, load_default=list, data_key="careerTimeline")
     awards = fields.List(fields.String(), required=False, load_default=list)
     website = fields.String(required=False, allow_none=True)
     social = fields.Dict(required=False, allow_none=True)
     series_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="seriesSlugs")
+    status = fields.String(required=False, load_default="draft", validate=validate.OneOf(PERSON_STATUSES))
+    seo = fields.Dict(required=False, allow_none=True)
     featured = fields.Boolean(required=False, load_default=False)
 
 

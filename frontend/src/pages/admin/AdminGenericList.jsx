@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { fetchPeople } from '../../api/people'
 import { fetchJobs } from '../../api/jobs'
 import { fetchOpportunities } from '../../api/opportunities'
 import { fetchEvents } from '../../api/events'
@@ -22,15 +21,6 @@ import EmptyState from '../../components/ui/EmptyState'
 import { Users, Mail, MousePointerClick } from 'lucide-react'
 
 const CONFIGS = {
-  people: {
-    title: 'People',
-    description: 'Profiles shown in the People Directory.',
-    columns: ['Name', 'Title', 'Organization', 'Country', 'Featured'],
-    load: async () => {
-      const res = await fetchPeople({ pageSize: 100 })
-      return res.items.map((p) => [p.name, p.title, p.organization, p.country?.name || p.countryCode, p.featured ? 'Yes' : '—'])
-    },
-  },
   jobs: {
     title: 'Jobs',
     description: 'Job listings submitted by employers or added by the opportunities team.',

@@ -1,5 +1,12 @@
 from app.extensions import db
 
+# draft: incomplete/unpublished. published: live on the public profile.
+# archived: previously published, pulled from public view but kept for
+# editorial record — mirrors Article's draft/.../published/archived shape,
+# scoped down since Person doesn't need a review pipeline.
+PERSON_STATUSES = ("draft", "published", "archived")
+_PERSON_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{status}'" for status in PERSON_STATUSES) + ")"
+
 person_series = db.Table(
     "person_series",
     db.Column("person_id", db.Integer, db.ForeignKey("people.id", ondelete="CASCADE"), primary_key=True),
@@ -36,10 +43,12 @@ class Person(db.Model):
     """
 
     __tablename__ = "people"
+    __table_args__ = (db.CheckConstraint(_PERSON_STATUS_CHECK_SQL, name="ck_people_status"),)
 
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(160), unique=True, nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
+    pronouns = db.Column(db.String(40))
     photo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
     title = db.Column(db.String(200))
     organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True)
@@ -50,12 +59,20 @@ class Person(db.Model):
     expertise = db.Column(db.JSON)  # list[str]
     featured_quote = db.Column(db.Text)
     short_bio = db.Column(db.Text)
-    bio = db.Column(db.Text)
+    # Ordered block list — same shape/vocabulary as Article.content
+    # (paragraph/heading/list/blockquote/pullquote/image/divider/highlight),
+    # sanitized through the same sanitize_content_blocks() service and
+    # edited/rendered by the same ArticleBlockEditor/ArticleContent
+    # components. Not article-specific despite the name: the block types are
+    # a generic editorial vocabulary.
+    bio = db.Column(db.JSON, nullable=False, default=list)
     achievements = db.Column(db.JSON)  # list[str]
     career_timeline = db.Column(db.JSON)  # list[{year, title}]
     awards = db.Column(db.JSON)  # list[str]
     website = db.Column(db.String(300))
     social = db.Column(db.JSON)
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     featured = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
