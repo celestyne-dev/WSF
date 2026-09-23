@@ -44,22 +44,23 @@ def test_product_create_and_guest_checkout(client, admin_token):
     assert order.status_code == 201
     body = order.get_json()["data"]
     assert body["total_amount"] == 24
-    assert body["status"] == "pending_payment"
+    assert body["reference"].startswith("WSF-")
+    assert body["payment_status"] == "pending"
     order_uuid = body["uuid"]
 
     fetched = client.get(f"/api/v1/orders/{order_uuid}")
     assert fetched.status_code == 200
 
-    denied_status_change = client.patch(f"/api/v1/orders/{order_uuid}/status", json={"status": "paid"})
+    denied_status_change = client.patch(f"/api/v1/orders/{order_uuid}", json={"paymentStatus": "paid"})
     assert denied_status_change.status_code == 401  # no token at all
 
     marked_paid = client.patch(
-        f"/api/v1/orders/{order_uuid}/status",
-        json={"status": "paid", "paymentProvider": "mpesa", "paymentReference": "ABC123"},
+        f"/api/v1/orders/{order_uuid}",
+        json={"paymentStatus": "paid", "paymentProvider": "mpesa", "paymentReference": "ABC123"},
         headers=auth_headers(admin_token),
     )
     assert marked_paid.status_code == 200
-    assert marked_paid.get_json()["data"]["status"] == "paid"
+    assert marked_paid.get_json()["data"]["payment_status"] == "paid"
 
 
 def test_order_rejects_unknown_product(client):

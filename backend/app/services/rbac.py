@@ -34,6 +34,7 @@ ROLE_PERMISSIONS = {
     "opportunities_manager": ["opportunities.manage", "jobs.manage"],
     "events_manager": ["events.manage"],
     "products_manager": ["products.manage"],
+    "orders_manager": ["orders.manage"],
     "analyst": ["analytics.view"],
     "member": ["profile.manage"],
     "employer": ["jobs.create_own"],

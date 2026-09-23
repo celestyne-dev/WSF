@@ -160,25 +160,107 @@ class Product(db.Model):
     )
 
 
+# pending: just created, nothing confirmed yet. confirmed: reviewed and
+# accepted by staff (or auto-confirmed once paid, at admin discretion).
+# processing: actively being prepared/fulfilled. completed: done — the
+# order's full lifecycle. cancelled/refunded: terminal, non-fulfillment
+# outcomes. completed/cancelled/refunded are treated as terminal — the
+# route layer refuses a transition back to pending/confirmed/processing
+# from any of them, so "Completed" never casually reverts to "Pending".
+ORDER_STATUSES = ("pending", "confirmed", "processing", "completed", "cancelled", "refunded")
+_ORDER_STATUS_CHECK_SQL = "order_status IN (" + ", ".join(f"'{s}'" for s in ORDER_STATUSES) + ")"
+ORDER_STATUS_TERMINAL = ("completed", "cancelled", "refunded")
+
+# Deliberately separate from order_status — a "processing" order can be
+# unpaid (invoice sent, payment pending) or a "completed" order can still
+# show a manual "paid" record an admin entered by hand. No payment
+# gateway is wired up; these are administrative records, not the result of
+# real payment processing.
+PAYMENT_STATUSES = ("unpaid", "pending", "paid", "failed", "partially_refunded", "refunded")
+_PAYMENT_STATUS_CHECK_SQL = "payment_status IN (" + ", ".join(f"'{s}'" for s in PAYMENT_STATUSES) + ")"
+PAYMENT_STATUS_TERMINAL = ("refunded",)
+
+# not_applicable: no physical items in the order (pure digital/service) —
+# there's nothing to ship. Distinct from "unfulfilled" so a digital-only
+# order's list row doesn't read as an outstanding shipping task.
+FULFILLMENT_STATUSES = ("not_applicable", "unfulfilled", "processing", "shipped", "delivered", "cancelled")
+_FULFILLMENT_STATUS_CHECK_SQL = "fulfillment_status IN (" + ", ".join(f"'{s}'" for s in FULFILLMENT_STATUSES) + ")"
+
+
 class Order(db.Model):
-    """Payment gateway integration (M-Pesa Daraja/STK Push first, per
-    config.py's MPESA_* settings) is a pluggable payments.py service that
-    isn't wired up yet — this table exists so checkout can be built and
-    tested end-to-end against a 'pending_payment' -> 'paid' transition
-    an admin (or, later, a webhook) triggers.
+    """An administrative record of a purchase. No payment gateway is wired
+    up (M-Pesa Daraja/STK Push first, per config.py's MPESA_* settings, is
+    a pluggable payments.py service that doesn't exist yet) — `reference`
+    is what staff and customers use to identify an order; `uuid` remains
+    the unguessable lookup key for the existing guest order-confirmation
+    endpoint (same access-control role a confirmation-email link plays
+    anywhere else), and stays separate from the human-facing reference so
+    neither has to serve both purposes.
     """
 
     __tablename__ = "orders"
+    __table_args__ = (
+        db.CheckConstraint(_ORDER_STATUS_CHECK_SQL, name="ck_orders_order_status"),
+        db.CheckConstraint(_PAYMENT_STATUS_CHECK_SQL, name="ck_orders_payment_status"),
+        db.CheckConstraint(_FULFILLMENT_STATUS_CHECK_SQL, name="ck_orders_fulfillment_status"),
+        db.CheckConstraint("total_amount >= 0", name="ck_orders_total_nonnegative"),
+        db.CheckConstraint("subtotal_amount >= 0", name="ck_orders_subtotal_nonnegative"),
+        db.CheckConstraint("discount_amount >= 0", name="ck_orders_discount_nonnegative"),
+        db.CheckConstraint("tax_amount >= 0", name="ck_orders_tax_nonnegative"),
+        db.CheckConstraint("shipping_amount >= 0", name="ck_orders_shipping_nonnegative"),
+        db.CheckConstraint("refund_amount IS NULL OR refund_amount >= 0", name="ck_orders_refund_nonnegative"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     uuid = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid_lib.uuid4()))
+    # Human-friendly, unique, immutable after creation — e.g.
+    # "WSF-2026-000123". Generated once the row has an id (see
+    # app/services/orders.py:generate_order_reference) and never rewritten.
+    reference = db.Column(db.String(30), unique=True, nullable=True, index=True)
+
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # nullable: guest checkout
     email = db.Column(db.String(255), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default="pending_payment")
+    customer_name = db.Column(db.String(200))
+    phone = db.Column(db.String(50))
+    # {line1, line2, city, region, postalCode, countryCode} — optional,
+    # only meaningful when an order actually contains a physical item.
+    billing_address = db.Column(db.JSON)
+    shipping_address = db.Column(db.JSON)
+
+    order_status = db.Column(db.String(20), nullable=False, default="pending")
+    payment_status = db.Column(db.String(20), nullable=False, default="pending")
+    fulfillment_status = db.Column(db.String(20), nullable=False, default="unfulfilled")
+
+    # Whole currency units (matches Product.price/Event.ticket_price
+    # throughout this app) — integer arithmetic, never floating-point.
+    # subtotal is the sum of OrderItem.line_total at creation; discount/
+    # tax/shipping default to 0 since checkout doesn't collect them yet.
+    # total_amount is fixed at creation and never silently recalculated
+    # from current Product prices.
+    subtotal_amount = db.Column(db.Integer, nullable=False, default=0)
+    discount_amount = db.Column(db.Integer, nullable=False, default=0)
+    tax_amount = db.Column(db.Integer, nullable=False, default=0)
+    shipping_amount = db.Column(db.Integer, nullable=False, default=0)
     total_amount = db.Column(db.Integer, nullable=False)
     currency = db.Column(db.String(3), nullable=False, default="USD")
+
     payment_provider = db.Column(db.String(30))
     payment_reference = db.Column(db.String(200))
+    paid_at = db.Column(db.DateTime(timezone=True))
+
+    # A manual record of a refund decision — never an instruction to a
+    # payment provider to actually move money. payment_status carries the
+    # refunded/partially_refunded state; these carry the record details.
+    refund_amount = db.Column(db.Integer)
+    refund_reason = db.Column(db.Text)
+    refunded_at = db.Column(db.DateTime(timezone=True))
+
+    cancelled_at = db.Column(db.DateTime(timezone=True))
+    cancellation_reason = db.Column(db.Text)
+
+    archived = db.Column(db.Boolean, nullable=False, default=False)
+    archived_at = db.Column(db.DateTime(timezone=True))
+
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
@@ -186,16 +268,58 @@ class Order(db.Model):
 
     user = db.relationship("User", foreign_keys=[user_id])
     items = db.relationship("OrderItem", backref="order", cascade="all, delete-orphan")
+    notes = db.relationship(
+        "OrderNote", order_by="OrderNote.created_at.desc()", cascade="all, delete-orphan", backref="order"
+    )
 
 
 class OrderItem(db.Model):
+    """Preserves the commercial facts of a purchase at the time it was
+    made. Never re-derive product_name/sku/unit_price/line_total from the
+    current Product record — if the Product's price, name, or type
+    changes later (or it's archived), this row must keep reading exactly
+    as it did on the day of purchase.
+    """
+
     __tablename__ = "order_items"
+    __table_args__ = (
+        db.CheckConstraint("quantity > 0", name="ck_order_items_quantity_positive"),
+        db.CheckConstraint("unit_price >= 0", name="ck_order_items_unit_price_nonnegative"),
+        db.CheckConstraint("line_total >= 0", name="ck_order_items_line_total_nonnegative"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+
+    # Snapshots — copied from Product at purchase time, immutable after.
+    product_name = db.Column(db.String(200), nullable=False)
+    product_sku = db.Column(db.String(64))
+    product_slug = db.Column(db.String(220))
+    product_type = db.Column(db.String(30))  # see commerce.PRODUCT_TYPES at time of purchase
+
     quantity = db.Column(db.Integer, nullable=False, default=1)
     unit_price = db.Column(db.Integer, nullable=False)
+    line_total = db.Column(db.Integer, nullable=False)  # quantity * unit_price, fixed at creation
     currency = db.Column(db.String(3), nullable=False, default="USD")
 
     product = db.relationship("Product", foreign_keys=[product_id])
+
+
+class OrderNote(db.Model):
+    """An internal, staff-only note on an Order — never returned by any
+    public/customer-facing response. Its own small append-only table
+    (rather than one growing text field) so each entry carries its own
+    author and timestamp naturally, the same association-object pattern
+    used for ProductImage/EventSpeaker elsewhere in this app.
+    """
+
+    __tablename__ = "order_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+
+    user = db.relationship("User", foreign_keys=[user_id])

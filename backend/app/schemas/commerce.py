@@ -2,9 +2,13 @@ from marshmallow import fields, validate, validates_schema, ValidationError
 
 from app.extensions import ma
 from app.models.commerce import (
+    FULFILLMENT_STATUSES,
     Order,
     OrderItem,
+    OrderNote,
+    ORDER_STATUSES,
     PartnershipInquiry,
+    PAYMENT_STATUSES,
     Product,
     ProductCategory,
     ProductImage,
@@ -12,9 +16,11 @@ from app.models.commerce import (
     PRODUCT_TYPES,
     Sponsor,
 )
+from app.models.audit import AuditLog
 from app.schemas.media import MediaSchema
 from app.schemas.people import OrganizationSchema
 from app.schemas.resource import ResourceSchema
+from app.schemas.user import UserSchema
 
 
 class PartnershipInquirySchema(ma.SQLAlchemyAutoSchema):
@@ -132,34 +138,102 @@ class ProductInputSchema(ma.Schema):
 
 
 class OrderItemSchema(ma.SQLAlchemyAutoSchema):
-    product = fields.Nested(ProductSchema, dump_only=True)
+    # A lightweight preview of the CURRENT Product record, so the admin UI
+    # can link through to it — never the source of truth for what was
+    # actually purchased. product_name/product_sku/product_type/unit_price/
+    # line_total below are the immutable snapshot taken at purchase time
+    # and are what the CMS actually displays.
+    product = fields.Nested(ProductSchema, dump_only=True, only=("id", "slug", "name", "status"))
 
     class Meta:
         model = OrderItem
         load_instance = False
 
 
+class OrderNoteSchema(ma.SQLAlchemyAutoSchema):
+    user = fields.Nested(UserSchema, dump_only=True, only=("id", "full_name", "email"))
+
+    class Meta:
+        model = OrderNote
+        load_instance = False
+        exclude = ("order_id",)
+
+
 class OrderSchema(ma.SQLAlchemyAutoSchema):
     items = fields.Nested(OrderItemSchema, many=True, dump_only=True)
+    notes = fields.Nested(OrderNoteSchema, many=True, dump_only=True)
+    requires_shipping = fields.Method("get_requires_shipping")
 
     class Meta:
         model = Order
         load_instance = False
 
+    def get_requires_shipping(self, obj):
+        """Whether any item in this order is a physical product — computed
+        from each OrderItem's own snapshotted product_type, not the
+        current Product record, so this stays accurate even if a Product
+        is later reclassified.
+        """
+        return any(item.product_type == "physical" for item in obj.items)
+
 
 class OrderItemInputSchema(ma.Schema):
     product_slug = fields.String(required=True, data_key="productSlug")
-    quantity = fields.Integer(required=False, load_default=1)
+    quantity = fields.Integer(required=False, load_default=1, validate=validate.Range(min=1))
+
+
+class OrderAddressInputSchema(ma.Schema):
+    line1 = fields.String(required=False, allow_none=True)
+    line2 = fields.String(required=False, allow_none=True)
+    city = fields.String(required=False, allow_none=True)
+    region = fields.String(required=False, allow_none=True)
+    postal_code = fields.String(required=False, allow_none=True, data_key="postalCode")
+    country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
 
 
 class OrderInputSchema(ma.Schema):
     email = fields.Email(required=True)
+    customer_name = fields.String(required=False, allow_none=True, data_key="customerName")
+    phone = fields.String(required=False, allow_none=True)
+    billing_address = fields.Nested(OrderAddressInputSchema, required=False, allow_none=True, data_key="billingAddress")
+    shipping_address = fields.Nested(OrderAddressInputSchema, required=False, allow_none=True, data_key="shippingAddress")
     items = fields.List(fields.Nested(OrderItemInputSchema), required=True, validate=validate.Length(min=1))
 
 
-class OrderStatusInputSchema(ma.Schema):
-    status = fields.String(
-        required=True, validate=validate.OneOf(["pending_payment", "paid", "failed", "refunded"])
+class OrderAdminUpdateSchema(ma.Schema):
+    """Partial-update payload for the fields an admin may actually change
+    on an order after creation. Commercial facts (items, prices, totals)
+    are never editable here — see sections 8/9/28 of the task this schema
+    was built against.
+    """
+
+    order_status = fields.String(required=False, allow_none=True, data_key="orderStatus", validate=validate.OneOf(ORDER_STATUSES))
+    payment_status = fields.String(required=False, allow_none=True, data_key="paymentStatus", validate=validate.OneOf(PAYMENT_STATUSES))
+    fulfillment_status = fields.String(
+        required=False, allow_none=True, data_key="fulfillmentStatus", validate=validate.OneOf(FULFILLMENT_STATUSES)
     )
     payment_provider = fields.String(required=False, allow_none=True, data_key="paymentProvider")
     payment_reference = fields.String(required=False, allow_none=True, data_key="paymentReference")
+    refund_amount = fields.Integer(required=False, allow_none=True, data_key="refundAmount", validate=validate.Range(min=0))
+    refund_reason = fields.String(required=False, allow_none=True, data_key="refundReason")
+
+
+class OrderCancelInputSchema(ma.Schema):
+    reason = fields.String(required=False, allow_none=True)
+
+
+class OrderNoteInputSchema(ma.Schema):
+    body = fields.String(required=True, validate=validate.Length(min=1))
+
+
+class OrderHistoryEntrySchema(ma.SQLAlchemyAutoSchema):
+    """Reuses the existing app-wide AuditLog (app/services/audit.py) —
+    scoped here to just the entries for one Order rather than building a
+    separate Order-status-history table or a general audit-log viewer.
+    """
+
+    user = fields.Nested(UserSchema, dump_only=True, only=("id", "full_name", "email"))
+
+    class Meta:
+        model = AuditLog
+        load_instance = False
