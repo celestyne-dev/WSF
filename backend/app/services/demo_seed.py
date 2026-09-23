@@ -756,19 +756,249 @@ def seed_demo_content():
     event.featured = False
     event.sponsors = [EventSponsor(organization=maple_ridge, tier="Presenting Sponsor", position=0)]
 
-    resource = Resource.query.filter_by(slug="career-planning-guide").first()
-    if resource is None:
-        resource = Resource(slug="career-planning-guide")
-        db.session.add(resource)
+    def _get_or_create_resource(slug):
+        resource = Resource.query.filter_by(slug=slug).first()
+        if resource is None:
+            resource = Resource(slug=slug)
+            db.session.add(resource)
+        return resource
+
+    resource = _get_or_create_resource("career-planning-guide")
     resource.name = "The 5-Year Career Planning Guide"
-    resource.description = "A structured, worksheet-driven guide for mapping out your next five years."
+    resource.subtitle = "A structured framework for mapping out where your career is headed."
+    resource.short_description = "A worksheet-driven guide for mapping out your next five years, one deliberate decision at a time."
+    resource.description = [
+        {"type": "paragraph", "text": "Most career plans fail because they're really just wish lists. This guide walks you through a structured, worksheet-driven process for turning a vague sense of ambition into a concrete five-year plan — with checkpoints you'll actually return to."},
+        {"type": "heading", "level": 2, "text": "What's included"},
+        {"type": "list", "style": "bullet", "items": ["A five-year vision worksheet", "Quarterly milestone templates", "A skills-gap self-assessment", "A decision framework for evaluating new opportunities"]},
+        {"type": "heading", "level": 2, "text": "Who it's for"},
+        {"type": "paragraph", "text": "Mid-career professionals who feel busy but not necessarily on purpose, and want a plan they can revisit every quarter."},
+    ]
     resource.type = "Guide"
-    resource.topic = topics["careers"]
+    resource.topics = [topics["careers"], topics["personal-growth"]]
     resource.author = amara
     resource.price, resource.currency = 0, "USD"
+    resource.access_type = "direct_download"
+    resource.file_url = "https://cdn.wsf.example.com/resources/5-year-career-planning-guide.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 28
     resource.is_premium = False
     resource.featured = True
     resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=120)
+    resource.seo = {
+        "title": "The 5-Year Career Planning Guide | Women Shaping Futures",
+        "description": "A free, worksheet-driven guide for mapping out your next five years of career growth.",
+    }
+
+    resource = _get_or_create_resource("career-reset-workbook")
+    resource.name = "The Career Reset Workbook"
+    resource.subtitle = "A guided workbook for professionals rebuilding their career on their own terms."
+    resource.short_description = "Forty pages of prompts and exercises for anyone starting a deliberate career reset."
+    resource.description = [
+        {"type": "paragraph", "text": "Whether you're coming back from a career break, leaving a role that no longer fits, or simply ready for something different, this workbook gives you a structured way to reset — without pretending the process is linear."},
+        {"type": "heading", "level": 2, "text": "What's included"},
+        {"type": "list", "style": "bullet", "items": ["A values-and-strengths inventory", "A gap-analysis worksheet for resumes and career breaks", "A 90-day reset action plan", "Scripts for explaining a career gap in interviews"]},
+    ]
+    resource.type = "Workbook"
+    resource.topics = [topics["careers"], topics["personal-growth"]]
+    resource.author = amara
+    resource.price, resource.currency = 0, "USD"
+    resource.access_type = "email_gate"
+    resource.file_url = "https://cdn.wsf.example.com/resources/career-reset-workbook.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 40
+    resource.is_premium = False
+    resource.featured = True
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=60)
+    resource.seo = {
+        "title": "The Career Reset Workbook | Women Shaping Futures",
+        "description": "A free guided workbook for professionals rebuilding their career on their own terms.",
+    }
+
+    resource = _get_or_create_resource("salary-negotiation-checklist")
+    resource.name = "Salary Negotiation Checklist"
+    resource.subtitle = "A step-by-step checklist for walking into your next offer conversation prepared."
+    resource.short_description = "A one-page checklist covering research, scripts, and the questions to ask before you say yes."
+    resource.description = [
+        {"type": "paragraph", "text": "Negotiating pay is a skill, not a personality trait — and most people never get real practice at it. This checklist breaks the conversation into the research, timing, and language that make it far less intimidating."},
+        {"type": "heading", "level": 2, "text": "Key benefits"},
+        {"type": "list", "style": "bullet", "items": ["Know exactly what to research before the call", "Have language ready for the most common pushback", "Avoid the three mistakes that quietly cost candidates the most money"]},
+    ]
+    resource.type = "Checklist"
+    resource.topics = [topics["careers"], topics["money"]]
+    resource.author = jordan
+    resource.price, resource.currency = 0, "USD"
+    resource.access_type = "email_gate"
+    resource.file_url = "https://cdn.wsf.example.com/resources/salary-negotiation-checklist.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 2
+    resource.is_premium = False
+    resource.featured = True
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=45)
+    resource.seo = {
+        "title": "Salary Negotiation Checklist | Women Shaping Futures",
+        "description": "A free step-by-step checklist for negotiating your next salary or offer with confidence.",
+    }
+
+    resource = _get_or_create_resource("linkedin-personal-brand-guide")
+    resource.name = "LinkedIn Personal Brand Guide"
+    resource.subtitle = "How to build a LinkedIn presence that actually reflects your expertise."
+    resource.short_description = "A practical guide to positioning, profile structure, and a sustainable posting rhythm."
+    resource.description = [
+        {"type": "paragraph", "text": "Most LinkedIn advice is either generic growth-hacking or performative posting. This guide focuses on the fundamentals: a profile that reflects real expertise, a content approach you can sustain, and a way to build visibility that leads somewhere."},
+        {"type": "heading", "level": 2, "text": "What's included"},
+        {"type": "list", "style": "bullet", "items": ["A profile audit checklist", "Four proven post formats with examples", "A realistic weekly posting rhythm", "Guidance on engaging without feeling performative"]},
+    ]
+    resource.type = "Guide"
+    resource.topics = [topics["careers"], topics["workplace"]]
+    resource.author_name = "WSF Editorial Team"
+    resource.price, resource.currency = 0, "USD"
+    resource.access_type = "email_gate"
+    resource.file_url = "https://cdn.wsf.example.com/resources/linkedin-personal-brand-guide.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 22
+    resource.is_premium = False
+    resource.featured = False
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=20)
+    resource.seo = {
+        "title": "LinkedIn Personal Brand Guide | Women Shaping Futures",
+        "description": "A free guide to building a LinkedIn presence that reflects your real expertise.",
+    }
+
+    resource = _get_or_create_resource("women-founders-business-planning-toolkit")
+    resource.name = "Women Founders Business Planning Toolkit"
+    resource.subtitle = "A complete toolkit for turning a business idea into a fundable plan."
+    resource.short_description = "Templates and worksheets covering market sizing, financial projections, and pitch structure."
+    resource.description = [
+        {"type": "paragraph", "text": "Built with input from founders who've raised seed and Series A rounds, this toolkit walks through the planning work investors actually expect to see — without the jargon."},
+        {"type": "heading", "level": 2, "text": "What's included"},
+        {"type": "list", "style": "bullet", "items": ["A one-page business model canvas template", "A 12-month financial projection spreadsheet", "A market-sizing worksheet", "A pitch deck outline with section-by-section guidance"]},
+        {"type": "heading", "level": 2, "text": "Who it's for"},
+        {"type": "paragraph", "text": "Early-stage founders preparing to raise their first round, or formalize a plan for a growing business."},
+    ]
+    resource.type = "Toolkit"
+    resource.topics = [topics["entrepreneurship"], topics["business"], topics["money"]]
+    resource.author = jordan
+    resource.price, resource.currency = 4900, "USD"
+    resource.access_type = "premium"
+    resource.file_format = "ZIP"
+    resource.page_count = 46
+    resource.is_premium = True
+    resource.featured = True
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=15)
+    resource.seo = {
+        "title": "Women Founders Business Planning Toolkit | Women Shaping Futures",
+        "description": "A premium toolkit of templates for turning a business idea into a fundable plan.",
+    }
+
+    resource = _get_or_create_resource("leadership-reflection-workbook")
+    resource.name = "Leadership Reflection Workbook"
+    resource.subtitle = "A guided journal for leaders who want to grow deliberately, not just react."
+    resource.short_description = "Structured reflection prompts for new and experienced leaders alike."
+    resource.description = [
+        {"type": "paragraph", "text": "Leadership growth rarely comes from more information — it comes from reflection on real decisions. This workbook gives new and experienced leaders a structured way to process what's working, what isn't, and what to try next."},
+        {"type": "heading", "level": 2, "text": "What's included"},
+        {"type": "list", "style": "bullet", "items": ["Twelve weeks of guided reflection prompts", "A feedback-gathering template", "A framework for turning feedback into a growth plan"]},
+    ]
+    resource.type = "Workbook"
+    resource.topics = [topics["leadership"], topics["personal-growth"]]
+    resource.author = amara
+    resource.price, resource.currency = 0, "USD"
+    resource.access_type = "direct_download"
+    resource.file_url = "https://cdn.wsf.example.com/resources/leadership-reflection-workbook.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 34
+    resource.is_premium = False
+    resource.featured = False
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=90)
+    resource.seo = {
+        "title": "Leadership Reflection Workbook | Women Shaping Futures",
+        "description": "A free guided workbook for leaders who want to grow deliberately.",
+    }
+
+    resource = _get_or_create_resource("job-interview-preparation-guide")
+    resource.name = "Job Interview Preparation Guide"
+    resource.subtitle = "How to prepare for behavioral, technical, and panel interviews with confidence."
+    resource.short_description = "A complete interview-prep guide covering story-building, research, and follow-up."
+    resource.description = [
+        {"type": "paragraph", "text": "Strong candidates don't just answer questions well — they prepare deliberately. This guide covers how to build a bank of stories, research a company and interviewers, and handle the parts of interviewing most people dread."},
+        {"type": "heading", "level": 2, "text": "What's included"},
+        {"type": "list", "style": "bullet", "items": ["A STAR-method story-bank template", "A company and interviewer research checklist", "Answers to the ten most common tough questions", "A post-interview follow-up email template"]},
+    ]
+    resource.type = "Guide"
+    resource.topics = [topics["careers"]]
+    resource.author = jordan
+    resource.price, resource.currency = 0, "USD"
+    resource.access_type = "direct_download"
+    resource.file_url = "https://cdn.wsf.example.com/resources/job-interview-preparation-guide.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 31
+    resource.is_premium = False
+    resource.featured = False
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=10)
+    resource.seo = {
+        "title": "Job Interview Preparation Guide | Women Shaping Futures",
+        "description": "A free guide to preparing for behavioral, technical, and panel interviews.",
+    }
+
+    resource = _get_or_create_resource("30-day-career-growth-planner")
+    resource.name = "30-Day Career Growth Planner"
+    resource.subtitle = "A daily planner for building career-growth habits one month at a time."
+    resource.short_description = "Daily and weekly prompts for building momentum toward your next career move."
+    resource.description = [
+        {"type": "paragraph", "text": "Career growth rarely happens in one big leap — it happens in the small, consistent actions most people never get around to. This planner breaks a month into daily and weekly prompts that build real momentum."},
+        {"type": "heading", "level": 2, "text": "Who it's for"},
+        {"type": "paragraph", "text": "Anyone who wants a career growth plan but keeps putting it off for lack of structure."},
+    ]
+    resource.type = "Planner"
+    resource.topics = [topics["careers"], topics["personal-growth"]]
+    resource.author_name = "WSF Editorial Team"
+    resource.price, resource.currency = 0, "USD"
+    resource.access_type = "direct_download"
+    resource.file_url = "https://cdn.wsf.example.com/resources/30-day-career-growth-planner.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 36
+    resource.is_premium = False
+    resource.featured = False
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=5)
+    resource.seo = {
+        "title": "30-Day Career Growth Planner | Women Shaping Futures",
+        "description": "A free 30-day planner for building career-growth habits one month at a time.",
+    }
+
+    resource = _get_or_create_resource("networking-conversation-starter-guide")
+    resource.name = "Networking Conversation Starter Guide"
+    resource.subtitle = "Real conversation starters for people who dread networking events."
+    resource.short_description = "A practical guide to starting, sustaining, and following up on professional conversations."
+    resource.description = [
+        {"type": "paragraph", "text": "Most networking advice assumes you already enjoy small talk. This guide is for everyone else — with real openers, ways to exit a conversation gracefully, and a simple system for following up afterward."},
+        {"type": "heading", "level": 2, "text": "What's included"},
+        {"type": "list", "style": "bullet", "items": ["Thirty conversation starters for events, conferences, and virtual meetups", "A graceful-exit script bank", "A three-touch follow-up system"]},
+    ]
+    resource.type = "Checklist"
+    resource.topics = [topics["careers"], topics["workplace"]]
+    resource.author = amara
+    resource.price, resource.currency = 0, "USD"
+    resource.access_type = "direct_download"
+    resource.file_url = "https://cdn.wsf.example.com/resources/networking-conversation-starter-guide.pdf"
+    resource.file_format = "PDF"
+    resource.page_count = 12
+    resource.is_premium = False
+    resource.featured = False
+    resource.status = "published"
+    resource.published_date = date.today() - timedelta(days=3)
+    resource.seo = {
+        "title": "Networking Conversation Starter Guide | Women Shaping Futures",
+        "description": "A free guide with real conversation starters for professional networking.",
+    }
 
     # Navigation + social links
     replace_menu(

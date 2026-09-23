@@ -146,9 +146,12 @@ def test_resource_create_and_topic_filter(client, admin_token):
         json={
             "name": "The 5-Year Career Planning Guide",
             "type": "Guide",
-            "topicSlug": "career",
+            "topicSlugs": ["career"],
             "price": 0,
             "currency": "USD",
+            "status": "published",
+            "description": [{"type": "paragraph", "text": "A structured, worksheet-driven guide."}],
+            "fileUrl": "https://cdn.example.com/career-planning-guide.pdf",
         },
         headers=auth_headers(admin_token),
     )
@@ -323,12 +326,30 @@ def test_featured_filter_on_jobs_opportunities_events_resources(client, admin_to
 
     client.post(
         "/api/v1/resources",
-        json={"name": "Featured Guide", "type": "Guide", "price": 0, "currency": "USD", "featured": True},
+        json={
+            "name": "Featured Guide",
+            "type": "Guide",
+            "price": 0,
+            "currency": "USD",
+            "featured": True,
+            "status": "published",
+            "description": [{"type": "paragraph", "text": "A guide."}],
+            "fileUrl": "https://cdn.example.com/featured-guide.pdf",
+        },
         headers=auth_headers(admin_token),
     )
     client.post(
         "/api/v1/resources",
-        json={"name": "Regular Guide", "type": "Guide", "price": 0, "currency": "USD", "featured": False},
+        json={
+            "name": "Regular Guide",
+            "type": "Guide",
+            "price": 0,
+            "currency": "USD",
+            "featured": False,
+            "status": "published",
+            "description": [{"type": "paragraph", "text": "A guide."}],
+            "fileUrl": "https://cdn.example.com/regular-guide.pdf",
+        },
         headers=auth_headers(admin_token),
     )
     resources = client.get("/api/v1/resources?featured=true")
