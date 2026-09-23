@@ -72,6 +72,9 @@ const AdminPartnershipDetail = lazy(() => import('../pages/admin/AdminPartnershi
 const AdminSponsors = lazy(() => import('../pages/admin/AdminSponsors'))
 const AdminSponsorEditor = lazy(() => import('../pages/admin/AdminSponsorEditor'))
 const AdminAdvertise = lazy(() => import('../pages/admin/AdminAdvertise'))
+const AdminMembers = lazy(() => import('../pages/admin/AdminMembers'))
+const AdminMemberDetail = lazy(() => import('../pages/admin/AdminMemberDetail'))
+const AdminCommunityPage = lazy(() => import('../pages/admin/AdminCommunityPage'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
@@ -185,6 +188,9 @@ export default function AppRoutes() {
           <Route path="newsletter/issues/:slug" element={<AdminNewsletterEditor />} />
           <Route path="newsletter/subscribers" element={<AdminSubscribers />} />
           <Route path="newsletter/subscribers/:id" element={<AdminSubscriberDetail />} />
+          <Route path="members" element={<AdminMembers />} />
+          <Route path="members/:id" element={<AdminMemberDetail />} />
+          <Route path="community-page" element={<AdminCommunityPage />} />
           <Route path="submissions" element={<AdminGenericList section="submissions" />} />
           <Route path="nominations" element={<AdminGenericList section="nominations" />} />
           <Route path="partnerships" element={<AdminPartnerships />} />

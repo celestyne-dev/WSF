@@ -27,10 +27,18 @@ ROLE_PERMISSIONS = {
         "analytics.view",
         "orders.manage",
         "products.manage",
+        "community.manage",
+        "community.export",
     ],
     "editor": ["articles.manage", "articles.publish", "taxonomy.manage", "people.manage", "media.manage"],
     "author": ["articles.create", "articles.edit_own", "media.upload"],
-    "moderator": ["submissions.manage", "nominations.manage"],
+    # Moderator already reviews public submissions/nominations — community
+    # membership review/administration is the same kind of work, so it
+    # gets "community.manage" too. Export stays admin/community_manager
+    # only (see "community_manager" below), matching how newsletter.export
+    # is withheld from newsletter_manager: bulk personal-data export is
+    # gated more strictly than day-to-day member administration.
+    "moderator": ["submissions.manage", "nominations.manage", "community.manage"],
     "partnerships_manager": ["partnerships.manage"],
     "opportunities_manager": ["opportunities.manage", "jobs.manage"],
     "events_manager": ["events.manage"],
@@ -42,6 +50,7 @@ ROLE_PERMISSIONS = {
     # NewsletterSubscriberExportResource), so this role covers issues and
     # subscriber administration but not bulk export.
     "newsletter_manager": ["newsletter.manage"],
+    "community_manager": ["community.manage", "community.export"],
     "analyst": ["analytics.view"],
     "member": ["profile.manage"],
     "employer": ["jobs.create_own"],

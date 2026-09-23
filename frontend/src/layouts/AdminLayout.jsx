@@ -62,6 +62,8 @@ const NAV_GROUPS = [
   {
     heading: 'Community',
     items: [
+      { to: '/admin/members', icon: Users2, label: 'Members' },
+      { to: '/admin/community-page', icon: LayoutTemplate, label: 'Community Page' },
       { to: '/admin/newsletter', icon: Mail, label: 'Newsletter', end: true },
       { to: '/admin/newsletter/issues', icon: Send, label: 'Newsletter Issues' },
       { to: '/admin/newsletter/subscribers', icon: Users2, label: 'Subscribers' },
