@@ -3,7 +3,6 @@ import { fetchResources } from '../../api/resources'
 import {
   fetchStorySubmissions,
   fetchNominations,
-  fetchAdCampaigns,
   fetchRedirects,
 } from '../../api/admin'
 import { fetchArticles } from '../../api/articles'
@@ -40,22 +39,6 @@ const CONFIGS = {
       const rows = await fetchNominations()
       return rows.map((n) => [n.nomineeName, n.country?.name || n.countryCode, n.category, formatDate(n.submittedAt), <StatusBadge key={n.id} status={n.status} />])
     },
-  },
-  advertising: {
-    title: 'Advertising Campaigns',
-    description: 'Direct and sponsored ad campaigns across placements.',
-    columns: ['Advertiser', 'Placement', 'Impressions', 'Clicks', 'Status'],
-    load: async () => {
-      const rows = await fetchAdCampaigns()
-      return rows.map((a) => [
-        a.advertiser,
-        a.placement,
-        new Intl.NumberFormat('en-US').format(a.impressions),
-        new Intl.NumberFormat('en-US').format(a.clicks),
-        <StatusBadge key={a.id} status={a.status} />,
-      ])
-    },
-    emptyMessage: 'Ad campaign tracking isn’t built on the backend yet — nothing to show here in real mode.',
   },
 }
 

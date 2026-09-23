@@ -14,6 +14,12 @@ PARTNERSHIP_TYPES = (
     "Strategic Partnership",
     "Affiliate Partnership",
     "Research Partnership",
+    # Submitted by the public Advertise inquiry form — kept in this same
+    # controlled list (rather than a second inquiry model) so an
+    # advertising inquiry is just a PartnershipInquiry with this type,
+    # filterable in the existing AdminPartnerships list. See the
+    # Advertise/Media Kit CMS task's final report for why.
+    "Advertising",
     "Other",
 )
 _PARTNERSHIP_TYPE_CHECK_SQL = "partnership_type IS NULL OR partnership_type IN (" + ", ".join(

@@ -14,7 +14,16 @@ from app.models.audit import AuditLog  # noqa: F401
 from app.models.taxonomy import Category, Series, Tag, Topic  # noqa: F401
 from app.models.people import Author, Organization, Person  # noqa: F401
 from app.models.article import Article, ArticleRevision, Redirect  # noqa: F401
-from app.models.cms import HomepageModule, Menu, MenuItem, SiteSetting, SocialLink  # noqa: F401
+from app.models.cms import (  # noqa: F401
+    AdvertiseMetric,
+    AdvertiseOffering,
+    AdvertisePage,
+    HomepageModule,
+    Menu,
+    MenuItem,
+    SiteSetting,
+    SocialLink,
+)
 from app.models.opportunity import Event, Job, Opportunity  # noqa: F401
 from app.models.resource import Resource  # noqa: F401
 from app.models.newsletter import NewsletterIssue, NewsletterSubscriber  # noqa: F401
@@ -46,6 +55,9 @@ __all__ = [
     "MenuItem",
     "SiteSetting",
     "SocialLink",
+    "AdvertisePage",
+    "AdvertiseMetric",
+    "AdvertiseOffering",
     "Job",
     "Opportunity",
     "Event",

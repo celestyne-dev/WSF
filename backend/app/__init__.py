@@ -37,6 +37,7 @@ def create_app(config_name="development"):
     from app.api.v1.media import media_bp
     from app.api.v1.newsletter import newsletter_bp
     from app.api.v1.nominations import nominations_bp
+    from app.api.v1.advertise import advertise_bp
     from app.api.v1.opportunities import opportunities_bp
     from app.api.v1.orders import orders_bp
     from app.api.v1.organizations import organizations_bp
@@ -76,6 +77,7 @@ def create_app(config_name="development"):
     app.register_blueprint(search_bp, url_prefix="/api/v1/search")
     app.register_blueprint(analytics_bp, url_prefix="/api/v1/analytics")
     app.register_blueprint(sponsors_bp, url_prefix="/api/v1/sponsors")
+    app.register_blueprint(advertise_bp, url_prefix="/api/v1/advertise")
 
     @app.get("/api/v1/health")
     def health():

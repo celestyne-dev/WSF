@@ -190,16 +190,6 @@ export async function fetchNominations() {
   return delay(nominations.map(attachMockCountry))
 }
 
-// Ad campaigns have no backend model yet — nothing in Phase 5-7 built ad
-// serving/tracking. Real mode returns an empty list rather than silently
-// substituting mock data; AdminGenericList shows an explicit "not yet
-// available" message for this section.
-export async function fetchAdCampaigns() {
-  if (!USE_MOCK) return []
-  const { adCampaigns } = await loadMockAdmin()
-  return delay(adCampaigns)
-}
-
 export async function fetchRedirects() {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/redirects', { params: { pageSize: 50 } })
