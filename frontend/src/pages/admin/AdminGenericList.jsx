@@ -3,7 +3,6 @@ import { fetchResources } from '../../api/resources'
 import {
   fetchStorySubmissions,
   fetchNominations,
-  fetchPartnershipInquiries,
   fetchAdCampaigns,
   fetchRedirects,
 } from '../../api/admin'
@@ -40,15 +39,6 @@ const CONFIGS = {
     load: async () => {
       const rows = await fetchNominations()
       return rows.map((n) => [n.nomineeName, n.country?.name || n.countryCode, n.category, formatDate(n.submittedAt), <StatusBadge key={n.id} status={n.status} />])
-    },
-  },
-  partnerships: {
-    title: 'Partnership Inquiries',
-    description: 'Inbound sponsorship and partnership requests.',
-    columns: ['Company', 'Interest', 'Submitted', 'Status'],
-    load: async () => {
-      const rows = await fetchPartnershipInquiries()
-      return rows.map((p) => [p.company, p.interest, formatDate(p.submittedAt), <StatusBadge key={p.id} status={p.status} />])
     },
   },
   advertising: {

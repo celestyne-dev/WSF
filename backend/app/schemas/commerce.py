@@ -7,7 +7,10 @@ from app.models.commerce import (
     OrderItem,
     OrderNote,
     ORDER_STATUSES,
+    PARTNERSHIP_STATUSES,
+    PARTNERSHIP_TYPES,
     PartnershipInquiry,
+    PartnershipNote,
     PAYMENT_STATUSES,
     Product,
     ProductCategory,
@@ -17,16 +20,50 @@ from app.models.commerce import (
     Sponsor,
 )
 from app.models.audit import AuditLog
+from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import OrganizationSchema
 from app.schemas.resource import ResourceSchema
 from app.schemas.user import UserSchema
 
 
+class PartnershipNoteSchema(ma.SQLAlchemyAutoSchema):
+    user = fields.Nested(UserSchema, dump_only=True, only=("id", "full_name", "email"))
+
+    class Meta:
+        model = PartnershipNote
+        load_instance = False
+        exclude = ("partnership_id",)
+
+
 class PartnershipInquirySchema(ma.SQLAlchemyAutoSchema):
+    """Admin-only dump — the full record, including commercial/contact
+    fields and internal notes. Never used for a public response.
+    """
+
+    country = fields.Nested(CountrySchema, dump_only=True)
+    # marshmallow-sqlalchemy's auto schema omits FK columns that back a
+    # declared relationship — declared explicitly so the CMS editor can
+    # always resolve/pre-select the linked Organization/assignee.
+    organization_id = fields.Integer(dump_only=True)
+    organization = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    assigned_to_id = fields.Integer(dump_only=True)
+    assigned_to = fields.Nested(UserSchema, dump_only=True, only=("id", "full_name", "email"))
+    notes = fields.Nested(PartnershipNoteSchema, many=True, dump_only=True)
+
     class Meta:
         model = PartnershipInquiry
         load_instance = False
+
+
+class PartnershipInquiryConfirmationSchema(ma.Schema):
+    """What the public submit endpoint echoes back — a bare confirmation,
+    never the record itself (no id, no internal fields).
+    """
+
+    company = fields.String(dump_only=True)
+    status = fields.String(dump_only=True)
+    submitted_at = fields.DateTime(dump_only=True, data_key="submittedAt")
 
 
 class SponsorSchema(ma.SQLAlchemyAutoSchema):
@@ -38,12 +75,83 @@ class SponsorSchema(ma.SQLAlchemyAutoSchema):
 
 
 class PartnershipInquiryInputSchema(ma.Schema):
-    company = fields.String(required=True, validate=validate.Length(min=1, max=200))
-    contact_name = fields.String(required=True, data_key="contactName")
+    # Contact
+    contact_name = fields.String(required=True, data_key="contactName", validate=validate.Length(min=1, max=200))
     email = fields.Email(required=True)
-    interest = fields.String(required=False, allow_none=True)
-    message = fields.String(required=False, allow_none=True)
+    phone = fields.String(required=False, allow_none=True, validate=validate.Length(max=50))
+    job_title = fields.String(required=False, allow_none=True, data_key="jobTitle", validate=validate.Length(max=150))
+
+    # Organization — freeform; no existing Organization record required.
+    company = fields.String(required=True, validate=validate.Length(min=1, max=200))
+    website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
+    country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
+
+    # Inquiry
+    partnership_type = fields.String(
+        required=False, allow_none=True, data_key="partnershipType", validate=validate.OneOf(PARTNERSHIP_TYPES)
+    )
+    subject = fields.String(required=False, allow_none=True, validate=validate.Length(max=200))
+    message = fields.String(required=False, allow_none=True, validate=validate.Length(max=5000))
+    goals = fields.String(required=False, allow_none=True, validate=validate.Length(max=2000))
+    proposed_timing = fields.String(required=False, allow_none=True, data_key="proposedTiming", validate=validate.Length(max=100))
+    budget_range = fields.String(required=False, allow_none=True, data_key="budgetRange", validate=validate.Length(max=100))
+
+    consent_given = fields.Boolean(required=True, data_key="consentGiven")
     acquisition = fields.Dict(required=False, allow_none=True)
+
+    @validates_schema
+    def validate_consent(self, data, **kwargs):
+        if not data.get("consent_given"):
+            raise ValidationError(
+                "Please confirm we can use this information to respond to your inquiry.", field_name="consent_given"
+            )
+
+
+class PartnershipAdminUpdateSchema(ma.Schema):
+    """Admin edits to the inquiry's own fields — contact/organization/
+    inquiry/commercial content. Status, assignment, and the Organization
+    link each go through their own dedicated action so those changes stay
+    intentional and auditable rather than a side effect of a general save.
+    """
+
+    contact_name = fields.String(required=False, allow_none=True, data_key="contactName", validate=validate.Length(min=1, max=200))
+    email = fields.Email(required=False, allow_none=True)
+    phone = fields.String(required=False, allow_none=True, validate=validate.Length(max=50))
+    job_title = fields.String(required=False, allow_none=True, data_key="jobTitle", validate=validate.Length(max=150))
+    company = fields.String(required=False, allow_none=True, validate=validate.Length(min=1, max=200))
+    website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
+    country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
+    partnership_type = fields.String(
+        required=False, allow_none=True, data_key="partnershipType", validate=validate.OneOf(PARTNERSHIP_TYPES)
+    )
+    subject = fields.String(required=False, allow_none=True, validate=validate.Length(max=200))
+    message = fields.String(required=False, allow_none=True, validate=validate.Length(max=5000))
+    goals = fields.String(required=False, allow_none=True, validate=validate.Length(max=2000))
+    proposed_timing = fields.String(required=False, allow_none=True, data_key="proposedTiming", validate=validate.Length(max=100))
+    budget_range = fields.String(required=False, allow_none=True, data_key="budgetRange", validate=validate.Length(max=100))
+    estimated_value = fields.Integer(required=False, allow_none=True, data_key="estimatedValue", validate=validate.Range(min=0))
+    currency = fields.String(required=False, allow_none=True, validate=validate.Length(equal=3))
+    commercial_notes = fields.String(required=False, allow_none=True, data_key="commercialNotes", validate=validate.Length(max=5000))
+    proposed_start_date = fields.Date(required=False, allow_none=True, data_key="proposedStartDate")
+    proposed_end_date = fields.Date(required=False, allow_none=True, data_key="proposedEndDate")
+    actual_start_date = fields.Date(required=False, allow_none=True, data_key="actualStartDate")
+    actual_end_date = fields.Date(required=False, allow_none=True, data_key="actualEndDate")
+
+
+class PartnershipStatusInputSchema(ma.Schema):
+    status = fields.String(required=True, validate=validate.OneOf(PARTNERSHIP_STATUSES))
+
+
+class PartnershipAssignInputSchema(ma.Schema):
+    assigned_to_id = fields.Integer(required=False, allow_none=True, data_key="assignedToId")
+
+
+class PartnershipOrganizationLinkInputSchema(ma.Schema):
+    organization_slug = fields.String(required=False, allow_none=True, data_key="organizationSlug")
+
+
+class PartnershipNoteInputSchema(ma.Schema):
+    body = fields.String(required=True, validate=validate.Length(min=1, max=5000))
 
 
 class SponsorInputSchema(ma.Schema):
@@ -52,10 +160,6 @@ class SponsorInputSchema(ma.Schema):
     active = fields.Boolean(required=False, load_default=True)
     starts_at = fields.Date(required=False, allow_none=True, data_key="startsAt")
     ends_at = fields.Date(required=False, allow_none=True, data_key="endsAt")
-
-
-class PartnershipStatusInputSchema(ma.Schema):
-    status = fields.String(required=True, validate=validate.OneOf(["new", "contacted", "won", "lost"]))
 
 
 class ProductCategorySchema(ma.SQLAlchemyAutoSchema):

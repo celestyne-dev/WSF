@@ -2,22 +2,137 @@ import uuid as uuid_lib
 
 from app.extensions import db
 
+PARTNERSHIP_TYPES = (
+    "Brand Partnership",
+    "Content Partnership",
+    "Employer Partnership",
+    "Event Partnership",
+    "Community Partnership",
+    "Education Partnership",
+    "Resource Partnership",
+    "Recruitment Partnership",
+    "Strategic Partnership",
+    "Affiliate Partnership",
+    "Research Partnership",
+    "Other",
+)
+_PARTNERSHIP_TYPE_CHECK_SQL = "partnership_type IS NULL OR partnership_type IN (" + ", ".join(
+    f"'{t}'" for t in PARTNERSHIP_TYPES
+) + ")"
+
+# new: just submitted, untouched. reviewing: an admin is evaluating it.
+# contacted: WSF has replied. qualified: a real opportunity worth
+# pursuing. proposal: a proposal/discussion is underway. negotiating:
+# terms are being worked out. active: a live partnership. completed: ran
+# its course. declined: WSF or the partner passed. archived: retired from
+# active view, record kept for business history.
+PARTNERSHIP_STATUSES = (
+    "new",
+    "reviewing",
+    "contacted",
+    "qualified",
+    "proposal",
+    "negotiating",
+    "active",
+    "completed",
+    "declined",
+    "archived",
+)
+_PARTNERSHIP_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in PARTNERSHIP_STATUSES) + ")"
+
 
 class PartnershipInquiry(db.Model):
+    """A partnership opportunity, from first public inquiry through to an
+    active (and eventually completed/declined) partnership — one evolving
+    record rather than a separate "lead" and "partnership" table, since
+    nothing about this app's existing architecture draws that line and a
+    second table would just duplicate contact/organization/commercial
+    fields for no benefit. `status` is what tracks which stage it's in.
+    """
+
     __tablename__ = "partnership_inquiries"
+    __table_args__ = (
+        db.CheckConstraint(_PARTNERSHIP_TYPE_CHECK_SQL, name="ck_partnership_inquiries_type"),
+        db.CheckConstraint(_PARTNERSHIP_STATUS_CHECK_SQL, name="ck_partnership_inquiries_status"),
+        db.CheckConstraint(
+            "estimated_value IS NULL OR estimated_value >= 0", name="ck_partnership_inquiries_value_nonnegative"
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    company = db.Column(db.String(200), nullable=False)
+
+    # Contact
     contact_name = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(255), nullable=False)
-    interest = db.Column(db.String(200))  # e.g. "Newsletter sponsorship"
+    phone = db.Column(db.String(50))
+    job_title = db.Column(db.String(150))
+
+    # Organization — submitted free-text, since a public inquiry may come
+    # from a company that doesn't exist in WSF's Organizations yet.
+    # organization_id is set later, only by an admin who deliberately
+    # links (or a future Organizations-CMS-created) an existing record —
+    # never auto-created from a raw form submission.
+    company = db.Column(db.String(200), nullable=False)
+    website = db.Column(db.String(500))
+    country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True)
+
+    # Inquiry
+    partnership_type = db.Column(db.String(50))
+    subject = db.Column(db.String(200))  # short subject/title, e.g. "Newsletter sponsorship for Q1 launch"
     message = db.Column(db.Text)
-    status = db.Column(db.String(20), nullable=False, default="new")  # new/contacted/won/lost
+    goals = db.Column(db.Text)
+    proposed_timing = db.Column(db.String(100))  # freeform, e.g. "Q1 2026" — no fixed calendar structure assumed
+    # Freeform, not a hard-coded set of ranges — WSF has no established
+    # public pricing strategy to encode into fixed tiers (see PR notes).
+    budget_range = db.Column(db.String(100))
+    consent_given = db.Column(db.Boolean, nullable=False, default=False)
+
+    status = db.Column(db.String(20), nullable=False, default="new")
+
+    # Internal-only — never serialized to any public response.
+    assigned_to_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    estimated_value = db.Column(db.Integer)  # whole currency units, paired with `currency`
+    currency = db.Column(db.String(3))  # ISO 4217; no default — never assume USD
+    commercial_notes = db.Column(db.Text)
+
+    proposed_start_date = db.Column(db.Date)
+    proposed_end_date = db.Column(db.Date)
+    actual_start_date = db.Column(db.Date)
+    actual_end_date = db.Column(db.Date)
+
     acquisition = db.Column(db.JSON)
     submitted_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
     )
+
+    country = db.relationship("Country", foreign_keys=[country_code])
+    organization = db.relationship("Organization", foreign_keys=[organization_id])
+    assigned_to = db.relationship("User", foreign_keys=[assigned_to_id])
+    notes = db.relationship(
+        "PartnershipNote",
+        order_by="PartnershipNote.created_at.desc()",
+        cascade="all, delete-orphan",
+        backref="partnership",
+    )
+
+
+class PartnershipNote(db.Model):
+    """An internal, staff-only note on a partnership — never returned by
+    any public response. Same append-only association-object pattern as
+    OrderNote, so each entry carries its own author and timestamp.
+    """
+
+    __tablename__ = "partnership_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    partnership_id = db.Column(db.Integer, db.ForeignKey("partnership_inquiries.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+
+    user = db.relationship("User", foreign_keys=[user_id])
 
 
 class Sponsor(db.Model):

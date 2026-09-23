@@ -98,17 +98,7 @@ export async function fetchAudienceStats() {
   return delay(audienceStats)
 }
 
-export async function submitPartnershipInquiry(payload) {
-  if (!USE_MOCK) {
-    try {
-      await apiClient.post('/partnerships/inquiries', payload)
-      return { success: true, message: 'Thank you — our partnerships team will respond within two business days.' }
-    } catch (err) {
-      return { success: false, message: err.apiError?.message || 'Something went wrong. Please try again.' }
-    }
-  }
-  return delay({ success: true, message: 'Thank you — our partnerships team will respond within two business days.' }, 500)
-}
+// submitPartnershipInquiry lives in api/partnerships.js.
 
 export async function submitStory(payload) {
   if (!USE_MOCK) {

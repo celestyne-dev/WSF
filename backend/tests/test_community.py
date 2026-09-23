@@ -160,7 +160,8 @@ def test_partnership_inquiry_sponsor_and_audience_stats(client, admin_token):
             "company": "Equity Bank",
             "contactName": "James Muriuki",
             "email": "james@example.com",
-            "interest": "Newsletter sponsorship",
+            "subject": "Newsletter sponsorship",
+            "consentGiven": True,
         },
     )
     assert inquiry.status_code == 201
