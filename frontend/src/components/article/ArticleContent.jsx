@@ -149,6 +149,30 @@ function ButtonBlock({ block }) {
   )
 }
 
+// A self-contained snapshot of a published Article (title/excerpt/image
+// captured when an editor selected it — see ArticleBlockEditor's
+// articleCard block) rather than a live lookup, so a newsletter's sent
+// content keeps reading correctly even if the source article later
+// changes or is unpublished.
+function ArticleCardBlock({ block }) {
+  if (!block.articleSlug) return null
+  return (
+    <Link to={`/${block.articleSlug}`} className="group my-8 flex gap-4 border border-taupe-200 p-4 transition-colors hover:border-burgundy-500">
+      {block.imageUrl && <MediaImage mediaPath={block.imageUrl} alt={block.title} width={240} height={168} aspect={10 / 7} className="w-28 shrink-0 object-cover sm:w-36" />}
+      <div className="min-w-0">
+        <p className="eyebrow">Read the story</p>
+        <p className="mt-1 font-serif text-lg font-semibold text-charcoal group-hover:text-burgundy-600">{block.title}</p>
+        {block.excerpt && <p className="mt-1 line-clamp-2 text-sm text-charcoal-600">{block.excerpt}</p>}
+      </div>
+    </Link>
+  )
+}
+
+function FooterNoteBlock({ block }) {
+  if (!block.text) return null
+  return <InlineHtml as="p" html={block.text} className="mt-10 text-xs text-charcoal-600/70" />
+}
+
 function TableBlock({ block }) {
   return (
     <div className="my-8 overflow-x-auto">
@@ -211,6 +235,8 @@ const RENDERERS = {
   button: ButtonBlock,
   table: TableBlock,
   faq: FaqBlock,
+  articleCard: ArticleCardBlock,
+  footerNote: FooterNoteBlock,
 }
 
 export default function ArticleContent({ blocks = [], relatedArticlesBySlug }) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Bold,
   Italic,
@@ -15,8 +15,12 @@ import {
   ImagePlus,
   Minus,
   Megaphone,
+  MousePointerClick,
+  Newspaper,
+  AlignLeft,
 } from 'lucide-react'
 import MediaPicker from './MediaPicker'
+import { fetchArticles } from '../../api/articles'
 
 // No rich-text library dependency (Tiptap/Slate/Lexical, etc.) was added —
 // the only inline formatting this editor needs is bold/italic/links, which
@@ -211,6 +215,88 @@ function DividerBlock() {
   return <hr className="border-t-2 border-dashed border-taupe-300" />
 }
 
+function ButtonBlock({ block, onChange }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <input value={block.label || ''} onChange={(e) => onChange({ ...block, label: e.target.value })} placeholder="Button label" className={inputClass} />
+      <input value={block.url || ''} onChange={(e) => onChange({ ...block, url: e.target.value })} placeholder="https://…" className={inputClass} />
+    </div>
+  )
+}
+
+function FooterNoteBlock({ block, onChange }) {
+  return <RichTextField value={block.text} onChange={(text) => onChange({ ...block, text })} placeholder="Footer note — small print shown at the end…" />
+}
+
+// A snapshot of a published Article, not a live relationship — chosen so
+// a newsletter's sent history stays meaningful even if the article is
+// later edited, unpublished, or removed. Only ever offers published
+// articles: the search hits the same public /articles endpoint the site
+// itself uses, which already filters to status=published.
+function ArticleCardBlock({ block, onChange }) {
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState([])
+
+  useEffect(() => {
+    if (!search) {
+      setResults([])
+      return
+    }
+    let active = true
+    fetchArticles({ query: search, pageSize: 8 })
+      .then((res) => active && setResults(res.items))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [search])
+
+  function selectArticle(article) {
+    onChange({
+      ...block,
+      articleSlug: article.slug,
+      title: article.title,
+      excerpt: article.excerpt || '',
+      imageUrl: article.heroImage || '',
+    })
+    setSearch('')
+    setResults([])
+  }
+
+  if (block.articleSlug) {
+    return (
+      <div className="flex items-center justify-between gap-3 border border-taupe-200 bg-taupe-50 px-3 py-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-charcoal">{block.title}</p>
+          <p className="text-xs text-charcoal-600/70">/{block.articleSlug}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange({ ...block, articleSlug: '', title: '', excerpt: '', imageUrl: '' })}
+          className="shrink-0 text-xs font-semibold text-charcoal-600/70 hover:text-rose-600"
+        >
+          Change
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search published articles…" className={inputClass} />
+      {results.length > 0 && (
+        <div className="max-h-40 divide-y divide-taupe-200 overflow-y-auto border border-taupe-200">
+          {results.map((a) => (
+            <button key={a.slug} type="button" onClick={() => selectArticle(a)} className="block w-full px-3 py-2 text-left text-sm hover:bg-taupe-100">
+              {a.title}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const BLOCK_KINDS = {
   heading: { label: 'Heading', icon: Heading2, Editor: HeadingBlock },
   paragraph: { label: 'Paragraph', icon: Pilcrow, Editor: ParagraphBlock },
@@ -220,6 +306,9 @@ const BLOCK_KINDS = {
   image: { label: 'Image', icon: ImagePlus, Editor: ImageBlockEditor },
   divider: { label: 'Divider', icon: Minus, Editor: DividerBlock },
   highlight: { label: 'Callout', icon: Megaphone, Editor: HighlightBlock },
+  button: { label: 'Button / CTA', icon: MousePointerClick, Editor: ButtonBlock },
+  articleCard: { label: 'Article card', icon: Newspaper, Editor: ArticleCardBlock },
+  footerNote: { label: 'Footer note', icon: AlignLeft, Editor: FooterNoteBlock },
 }
 
 function blankBlock(type) {
@@ -237,6 +326,12 @@ function blankBlock(type) {
       return { type, media: null, alt: '', caption: '', credit: '' }
     case 'highlight':
       return { type, title: '', text: '' }
+    case 'button':
+      return { type, label: '', url: '' }
+    case 'articleCard':
+      return { type, articleSlug: '', title: '', excerpt: '', imageUrl: '' }
+    case 'footerNote':
+      return { type, text: '' }
     default:
       return { type }
   }
@@ -251,6 +346,16 @@ const ADD_MENU = [
   { type: 'image', label: 'Image', icon: ImagePlus },
   { type: 'highlight', label: 'Callout', icon: Megaphone },
   { type: 'divider', label: 'Divider', icon: Minus },
+  { type: 'button', label: 'Button / CTA', icon: MousePointerClick },
+  { type: 'articleCard', label: 'Article card', icon: Newspaper },
+  { type: 'footerNote', label: 'Footer note', icon: AlignLeft },
+]
+
+// The set every existing caller (the Article editor) sees when it doesn't
+// pass `blockTypes` — unchanged from before button/articleCard/footerNote
+// existed, so Article's own editor UI is untouched by this addition.
+const DEFAULT_BLOCK_TYPES = [
+  'paragraph', 'heading', 'list', 'blockquote', 'pullquote', 'image', 'highlight', 'divider',
 ]
 
 /**
@@ -259,9 +364,12 @@ const ADD_MENU = [
  * backend/app/services/content_blocks.py for the server-side sanitization
  * every text field here goes through before it's persisted). This is the
  * CMS's only place to write article body copy — there is no separate
- * unstructured textarea.
+ * unstructured textarea. Also reused by the Newsletter issue editor, which
+ * passes a wider `blockTypes` list (adding button/articleCard/footerNote,
+ * all still email-friendly — no columns, embeds, or raw HTML).
  */
-export default function ArticleBlockEditor({ blocks = [], onChange }) {
+export default function ArticleBlockEditor({ blocks = [], onChange, blockTypes = DEFAULT_BLOCK_TYPES }) {
+  const addMenu = ADD_MENU.filter((item) => blockTypes.includes(item.type))
   function updateBlock(i, next) {
     const copy = [...blocks]
     copy[i] = next
@@ -311,7 +419,7 @@ export default function ArticleBlockEditor({ blocks = [], onChange }) {
       <div className="border border-dashed border-taupe-300 p-3">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">Add a block</p>
         <div className="flex flex-wrap gap-2">
-          {ADD_MENU.map(({ type, label, icon: Icon }) => (
+          {addMenu.map(({ type, label, icon: Icon }) => (
             <button
               key={type}
               type="button"

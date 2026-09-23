@@ -23,6 +23,7 @@ ROLE_PERMISSIONS = {
         "submissions.manage",
         "nominations.manage",
         "newsletter.manage",
+        "newsletter.export",
         "analytics.view",
         "orders.manage",
         "products.manage",
@@ -36,6 +37,11 @@ ROLE_PERMISSIONS = {
     "products_manager": ["products.manage"],
     "orders_manager": ["orders.manage"],
     "resources_manager": ["resources.manage"],
+    # Deliberately excludes "newsletter.export" — subscriber export is
+    # gated more strictly than day-to-day CMS management (see
+    # NewsletterSubscriberExportResource), so this role covers issues and
+    # subscriber administration but not bulk export.
+    "newsletter_manager": ["newsletter.manage"],
     "analyst": ["analytics.view"],
     "member": ["profile.manage"],
     "employer": ["jobs.create_own"],

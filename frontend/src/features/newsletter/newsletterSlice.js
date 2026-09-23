@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
-import { subscribeToNewsletter } from '../../api/site'
+import { subscribeToNewsletter } from '../../api/newsletter'
 
 export const subscribe = createAsyncThunk('newsletter/subscribe', async (payload) => subscribeToNewsletter(payload))
 

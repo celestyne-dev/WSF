@@ -8,12 +8,12 @@ from sqlalchemy import or_
 from app.extensions import db
 from app.models.commerce import Product
 from app.models.media import Media
-from app.models.newsletter import NewsletterSubscriber
 from app.models.people import Author, Organization
 from app.models.resource import Resource as ResourceModel, ResourceImage, ResourceLead
 from app.models.taxonomy import Tag, Topic
 from app.schemas.resource import ResourceInputSchema, ResourceLeadInputSchema, ResourceSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.newsletter import upsert_subscriber
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.slugs import slugify
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -327,18 +327,18 @@ class ResourceAccessResource(Resource):
             db.session.add(lead)
 
             # Never force a subscription — only upsert into the newsletter
-            # list when the visitor explicitly consented.
+            # list when the visitor explicitly consented. Goes through the
+            # one shared newsletter consent function so suppression/
+            # resubscribe rules stay consistent with every other signup
+            # surface on the site.
             if data.get("newsletter_consent"):
-                subscriber = NewsletterSubscriber.query.filter_by(email=email).first()
-                if subscriber is None:
-                    subscriber = NewsletterSubscriber(email=email)
-                    db.session.add(subscriber)
-                subscriber.first_name = data.get("first_name") or subscriber.first_name
-                subscriber.country_code = data.get("country_code") or subscriber.country_code
-                subscriber.placement = subscriber.placement or "resource_download"
-                subscriber.acquisition = data.get("acquisition") or subscriber.acquisition
-                subscriber.status = "active"
-                subscriber.unsubscribed_at = None
+                upsert_subscriber(
+                    email,
+                    first_name=data.get("first_name"),
+                    country_code=data.get("country_code"),
+                    placement="resource_download",
+                    acquisition=data.get("acquisition"),
+                )
 
         resource.download_count = (resource.download_count or 0) + 1
         db.session.commit()

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { fetchResources } from '../../api/resources'
-import { fetchNewsletterArchive } from '../../api/site'
 import {
   fetchStorySubmissions,
   fetchNominations,
@@ -11,11 +10,9 @@ import {
 import { fetchArticles } from '../../api/articles'
 import { formatDate, formatCurrency } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
-import StatCard from '../../components/cms/StatCard'
 import StatusBadge from '../../components/cms/StatusBadge'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
-import { Users, Mail, MousePointerClick } from 'lucide-react'
 
 const CONFIGS = {
   resources: {
@@ -70,36 +67,6 @@ const CONFIGS = {
     },
     emptyMessage: 'Ad campaign tracking isn’t built on the backend yet — nothing to show here in real mode.',
   },
-}
-
-function NewsletterSection() {
-  const [archive, setArchive] = useState(undefined)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let active = true
-    fetchNewsletterArchive()
-      .then((data) => active && setArchive(data))
-      .catch(() => active && setError('Something went wrong loading the newsletter archive. Please try again.'))
-    return () => {
-      active = false
-    }
-  }, [])
-
-  if (error) return <EmptyState title="Couldn't load newsletter data" description={error} />
-  if (archive === undefined) return <PageLoader />
-
-  return (
-    <div>
-      <AdminPageHeader title="Newsletter" description="WSF Weekly subscriber base and issue archive." />
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Subscribers" value={new Intl.NumberFormat('en-US').format(archive.stats.subscriberCount)} icon={Users} />
-        <StatCard label="Average open rate" value={archive.stats.openRate != null ? `${Math.round(archive.stats.openRate * 100)}%` : '—'} icon={Mail} />
-        <StatCard label="Weekly sends" value={archive.stats.weeklySends ?? '—'} icon={MousePointerClick} />
-      </div>
-      <GenericTable columns={['Issue', 'Subject', 'Send Date']} rows={archive.issues.map((i) => [`#${i.issueNumber}`, i.subject, formatDate(i.sendDate)])} />
-    </div>
-  )
 }
 
 function SeoSection() {
@@ -195,7 +162,6 @@ function ConfiguredSection({ config }) {
 }
 
 export default function AdminGenericList({ section }) {
-  if (section === 'newsletter') return <NewsletterSection />
   if (section === 'seo') return <SeoSection />
 
   const config = CONFIGS[section]

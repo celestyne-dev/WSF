@@ -25,6 +25,8 @@ const ResourceDetailPage = lazy(() => import('../pages/ResourceDetailPage'))
 const OrganizationsIndexPage = lazy(() => import('../pages/OrganizationsIndexPage'))
 const OrganizationDetailPage = lazy(() => import('../pages/OrganizationDetailPage'))
 const NewsletterPage = lazy(() => import('../pages/NewsletterPage'))
+const NewsletterIssuePage = lazy(() => import('../pages/NewsletterIssuePage'))
+const NewsletterUnsubscribePage = lazy(() => import('../pages/NewsletterUnsubscribePage'))
 const PartnershipsPage = lazy(() => import('../pages/PartnershipsPage'))
 const AdvertisePage = lazy(() => import('../pages/AdvertisePage'))
 const AboutPage = lazy(() => import('../pages/AboutPage'))
@@ -60,6 +62,11 @@ const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
 const AdminResources = lazy(() => import('../pages/admin/AdminResources'))
 const AdminResourceEditor = lazy(() => import('../pages/admin/AdminResourceEditor'))
+const AdminNewsletterOverview = lazy(() => import('../pages/admin/AdminNewsletterOverview'))
+const AdminNewsletterIssues = lazy(() => import('../pages/admin/AdminNewsletterIssues'))
+const AdminNewsletterEditor = lazy(() => import('../pages/admin/AdminNewsletterEditor'))
+const AdminSubscribers = lazy(() => import('../pages/admin/AdminSubscribers'))
+const AdminSubscriberDetail = lazy(() => import('../pages/admin/AdminSubscriberDetail'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
@@ -107,6 +114,8 @@ export default function AppRoutes() {
           <Route path="/organizations/:slug" element={<OrganizationDetailPage />} />
 
           <Route path="/newsletter" element={<NewsletterPage />} />
+          <Route path="/newsletter/unsubscribe/:token" element={<NewsletterUnsubscribePage />} />
+          <Route path="/newsletter/:slug" element={<NewsletterIssuePage />} />
           <Route path="/partnerships" element={<PartnershipsPage />} />
           <Route path="/advertise" element={<AdvertisePage />} />
           <Route path="/about" element={<AboutPage />} />
@@ -165,7 +174,12 @@ export default function AppRoutes() {
           <Route path="resources" element={<AdminResources />} />
           <Route path="resources/new" element={<AdminResourceEditor />} />
           <Route path="resources/:id" element={<AdminResourceEditor />} />
-          <Route path="newsletter" element={<AdminGenericList section="newsletter" />} />
+          <Route path="newsletter" element={<AdminNewsletterOverview />} />
+          <Route path="newsletter/issues" element={<AdminNewsletterIssues />} />
+          <Route path="newsletter/issues/new" element={<AdminNewsletterEditor />} />
+          <Route path="newsletter/issues/:slug" element={<AdminNewsletterEditor />} />
+          <Route path="newsletter/subscribers" element={<AdminSubscribers />} />
+          <Route path="newsletter/subscribers/:id" element={<AdminSubscriberDetail />} />
           <Route path="submissions" element={<AdminGenericList section="submissions" />} />
           <Route path="nominations" element={<AdminGenericList section="nominations" />} />
           <Route path="partnerships" element={<AdminGenericList section="partnerships" />} />

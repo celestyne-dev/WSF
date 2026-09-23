@@ -14,11 +14,6 @@ async function loadMockHomepageModules() {
   if (!_mockHomepageModules) _mockHomepageModules = await import('../mock/homepageModules')
   return _mockHomepageModules
 }
-let _mockNewsletter
-async function loadMockNewsletter() {
-  if (!_mockNewsletter) _mockNewsletter = await import('../mock/newsletter')
-  return _mockNewsletter
-}
 let _mockAdmin
 async function loadMockAdmin() {
   if (!_mockAdmin) _mockAdmin = await import('../mock/admin')
@@ -70,18 +65,6 @@ function mapHomepageModule(m) {
   }
 }
 
-function mapNewsletterIssue(i) {
-  return {
-    id: i.id,
-    slug: i.slug,
-    issueNumber: i.issue_number,
-    subject: i.subject,
-    sendDate: i.send_date,
-    featuredArticleSlug: i.featured_article?.slug || null,
-    summary: i.summary,
-  }
-}
-
 export async function fetchNavigation() {
   if (!USE_MOCK) return mapNavigation((await apiClient.get('/public/navigation')).data)
   const { primaryNavigation, secondaryNavigation, footerNavigation, socialLinks } = await loadMockNavigation()
@@ -103,36 +86,8 @@ export async function fetchHomepageModules() {
   return delay([...homepageModules].filter((m) => m.enabled).sort((a, b) => a.order - b.order))
 }
 
-export async function fetchNewsletterArchive() {
-  if (!USE_MOCK) {
-    const [issuesRes, statsRes] = await Promise.all([
-      apiClient.get('/newsletter/issues'),
-      apiClient.get('/newsletter/stats'),
-    ])
-    return {
-      issues: issuesRes.data.items.map(mapNewsletterIssue),
-      stats: {
-        subscriberCount: statsRes.data.subscriberCount ?? 0,
-        openRate: statsRes.data.openRate ?? null,
-        weeklySends: statsRes.data.weeklySends ?? null,
-      },
-    }
-  }
-  const { newsletterIssues, newsletterStats } = await loadMockNewsletter()
-  return delay({ issues: newsletterIssues, stats: newsletterStats })
-}
-
-export async function subscribeToNewsletter(payload) {
-  if (!USE_MOCK) {
-    try {
-      await apiClient.post('/newsletter/subscribe', payload)
-      return { success: true, message: 'You’re subscribed. Look out for WSF Weekly every Thursday.' }
-    } catch (err) {
-      return { success: false, message: err.apiError?.message || 'Something went wrong. Please try again.' }
-    }
-  }
-  return delay({ success: true, message: 'You’re subscribed. Look out for WSF Weekly every Thursday.' }, 500)
-}
+// Newsletter archive/subscribe/unsubscribe live in api/newsletter.js —
+// import fetchNewsletterArchive / subscribeToNewsletter from there.
 
 // GET /api/v1/partnerships/audience — CMS-editable LinkedIn/newsletter/
 // website audience numbers for the About, Community, and Partnerships

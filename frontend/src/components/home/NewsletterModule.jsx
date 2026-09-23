@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchNewsletterArchive } from '../../api/site'
+import { fetchNewsletterArchive } from '../../api/newsletter'
 import NewsletterForm from '../ui/NewsletterForm'
 
 export default function NewsletterModule({ module }) {

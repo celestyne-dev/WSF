@@ -24,6 +24,8 @@ import {
   PenSquare,
   Building2,
   ShoppingBag,
+  Send,
+  Users2,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -59,7 +61,9 @@ const NAV_GROUPS = [
   {
     heading: 'Community',
     items: [
-      { to: '/admin/newsletter', icon: Mail, label: 'Newsletter' },
+      { to: '/admin/newsletter', icon: Mail, label: 'Newsletter', end: true },
+      { to: '/admin/newsletter/issues', icon: Send, label: 'Newsletter Issues' },
+      { to: '/admin/newsletter/subscribers', icon: Users2, label: 'Subscribers' },
       { to: '/admin/submissions', icon: Inbox, label: 'Submissions' },
       { to: '/admin/nominations', icon: Star, label: 'Nominations' },
     ],

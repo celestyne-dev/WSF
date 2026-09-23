@@ -28,7 +28,7 @@ def admin_token(client, app):
     return login.get_json()["data"]["access_token"]
 
 
-def test_newsletter_subscribe_unsubscribe_and_resubscribe(client):
+def test_newsletter_subscribe_unsubscribe_and_resubscribe(client, admin_token):
     subscribe = client.post(
         "/api/v1/newsletter/subscribe",
         json={
@@ -43,11 +43,19 @@ def test_newsletter_subscribe_unsubscribe_and_resubscribe(client):
     assert subscribe.get_json()["data"]["status"] == "active"
 
     # Subscribing again with the same email updates rather than duplicates.
+    # The public response is a privacy-trimmed confirmation (email/status/
+    # subscribedAt only), so the update itself is verified via the admin
+    # subscriber list rather than the public response body.
     again = client.post(
         "/api/v1/newsletter/subscribe", json={"email": "reader@example.com", "firstName": "Reader Updated"}
     )
     assert again.status_code == 201
-    assert again.get_json()["data"]["first_name"] == "Reader Updated"
+    assert set(again.get_json()["data"].keys()) == {"email", "status", "subscribedAt"}
+
+    admin_view = client.get("/api/v1/newsletter/subscribers?q=reader@example.com", headers=auth_headers(admin_token))
+    rows = admin_view.get_json()["data"]
+    assert len(rows) == 1
+    assert rows[0]["first_name"] == "Reader Updated"
 
     unsub = client.post("/api/v1/newsletter/unsubscribe", json={"email": "reader@example.com"})
     assert unsub.status_code == 200
