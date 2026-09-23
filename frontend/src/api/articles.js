@@ -82,6 +82,22 @@ function mapArticle(a) {
     promoted: a.promoted,
     isSponsored: a.is_sponsored,
     sponsor: a.sponsor,
+    sponsorId: a.sponsor_id || null,
+    // Present only when an admin explicitly linked a real Sponsor record —
+    // prefer this over the freeform `sponsor` dict above when rendering
+    // disclosure (see ArticlePage.jsx).
+    sponsorRecord: a.sponsorRecord
+      ? {
+          id: a.sponsorRecord.id,
+          campaignName: a.sponsorRecord.campaign_name,
+          publicName: a.sponsorRecord.publicName,
+          disclosureLabel: a.sponsorRecord.disclosure_label,
+          logo: mapMediaRef(a.sponsorRecord.logo),
+          organization: a.sponsorRecord.organization
+            ? { slug: a.sponsorRecord.organization.slug, name: a.sponsorRecord.organization.name }
+            : null,
+        }
+      : null,
     status: a.status,
     seo: a.seo,
     content: a.content,

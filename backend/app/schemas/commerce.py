@@ -18,6 +18,11 @@ from app.models.commerce import (
     PRODUCT_STATUSES,
     PRODUCT_TYPES,
     Sponsor,
+    SponsorPlacement,
+    SPONSOR_DISCLOSURE_LABELS,
+    SPONSOR_PLACEMENT_KEYS,
+    SPONSOR_STATUSES,
+    SPONSORSHIP_TYPES,
 )
 from app.models.audit import AuditLog
 from app.schemas.geography import CountrySchema
@@ -66,12 +71,135 @@ class PartnershipInquiryConfirmationSchema(ma.Schema):
     submitted_at = fields.DateTime(dump_only=True, data_key="submittedAt")
 
 
+class SponsorPlacementSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = SponsorPlacement
+        load_instance = False
+        exclude = ("sponsor_id",)
+
+
+class SponsorPlacementInputSchema(ma.Schema):
+    placement_key = fields.String(required=True, data_key="placementKey", validate=validate.OneOf(SPONSOR_PLACEMENT_KEYS))
+    position = fields.Integer(required=False, load_default=0, validate=validate.Range(min=0))
+    starts_at = fields.Date(required=False, allow_none=True, data_key="startsAt")
+    ends_at = fields.Date(required=False, allow_none=True, data_key="endsAt")
+    active = fields.Boolean(required=False, load_default=True)
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        starts_at, ends_at = data.get("starts_at"), data.get("ends_at")
+        if starts_at and ends_at and ends_at < starts_at:
+            raise ValidationError("End date can't be before the start date.", field_name="ends_at")
+
+
 class SponsorSchema(ma.SQLAlchemyAutoSchema):
-    organization = fields.Nested(OrganizationSchema, dump_only=True)
+    """Admin-only dump — the full record, including commercial fields and
+    internal notes. Never used for a public response; see
+    build_public_sponsor_payload() in api/v1/sponsors.py for that.
+    """
+
+    # marshmallow-sqlalchemy's auto schema omits FK columns that back a
+    # declared relationship — declared explicitly so the CMS editor can
+    # always resolve/pre-select the linked Organization/Partnership/media.
+    organization_id = fields.Integer(dump_only=True)
+    organization = fields.Nested(OrganizationSchema, dump_only=True, only=("id", "slug", "name", "logo"))
+    partnership_id = fields.Integer(dump_only=True)
+    partnership = fields.Nested(
+        PartnershipInquirySchema, dump_only=True, only=("id", "company", "subject", "status")
+    )
+    logo_media_id = fields.Integer(dump_only=True)
+    logo = fields.Nested(MediaSchema, dump_only=True)
+    # A plain @property on the model (public_name_override, falling back to
+    # the linked Organization's name) — not a mapped column, so it needs an
+    # explicit field to be dumpable at all (SQLAlchemyAutoSchema only
+    # auto-generates fields for actual columns).
+    resolved_public_name = fields.String(dump_only=True, data_key="publicName")
+    creative_media_id = fields.Integer(dump_only=True)
+    creative = fields.Nested(MediaSchema, dump_only=True)
+    placements = fields.Nested(SponsorPlacementSchema, many=True, dump_only=True)
 
     class Meta:
         model = Sponsor
         load_instance = False
+
+
+class SponsorInputSchema(ma.Schema):
+    """Create — general field validation shared with SponsorAdminUpdateSchema
+    below, minus `status` (never settable except via the dedicated
+    /status action, so every pipeline change stays deliberate/audited).
+    """
+
+    campaign_name = fields.String(required=True, data_key="campaignName", validate=validate.Length(min=1, max=200))
+    organization_slug = fields.String(required=True, data_key="organizationSlug")
+    partnership_id = fields.Integer(required=False, allow_none=True, data_key="partnershipId")
+    internal_reference = fields.String(required=False, allow_none=True, data_key="internalReference", validate=validate.Length(max=200))
+    public_name_override = fields.String(required=False, allow_none=True, data_key="publicNameOverride", validate=validate.Length(max=200))
+    public_description = fields.String(required=False, allow_none=True, data_key="publicDescription", validate=validate.Length(max=2000))
+    sponsorship_type = fields.String(required=False, allow_none=True, data_key="sponsorshipType", validate=validate.OneOf(SPONSORSHIP_TYPES))
+    starts_at = fields.Date(required=False, allow_none=True, data_key="startsAt")
+    ends_at = fields.Date(required=False, allow_none=True, data_key="endsAt")
+    logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
+    creative_media_id = fields.Integer(required=False, allow_none=True, data_key="creativeMediaId")
+    sponsor_url = fields.String(required=False, allow_none=True, data_key="sponsorUrl", validate=validate.URL(require_tld=True, schemes={"http", "https"}))
+    cta_label = fields.String(required=False, allow_none=True, data_key="ctaLabel", validate=validate.Length(max=50))
+    disclosure_label = fields.String(required=False, load_default="Sponsored by", data_key="disclosureLabel", validate=validate.OneOf(SPONSOR_DISCLOSURE_LABELS))
+    public_visible = fields.Boolean(required=False, load_default=False, data_key="publicVisible")
+    is_exclusive = fields.Boolean(required=False, load_default=False, data_key="isExclusive")
+    exclusivity_notes = fields.String(required=False, allow_none=True, data_key="exclusivityNotes")
+    tier = fields.String(required=False, allow_none=True, validate=validate.Length(max=50))
+    estimated_value = fields.Integer(required=False, allow_none=True, data_key="estimatedValue", validate=validate.Range(min=0))
+    currency = fields.String(required=False, allow_none=True, validate=validate.Length(equal=3))
+    commercial_notes = fields.String(required=False, allow_none=True, data_key="commercialNotes")
+    internal_notes = fields.String(required=False, allow_none=True, data_key="internalNotes")
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        starts_at, ends_at = data.get("starts_at"), data.get("ends_at")
+        if starts_at and ends_at and ends_at < starts_at:
+            raise ValidationError("End date can't be before the start date.", field_name="ends_at")
+
+
+class SponsorAdminUpdateSchema(ma.Schema):
+    """Edit — same field set as create, but every field is genuinely
+    optional and carries no `load_default`: a key simply absent from the
+    request is left untouched on the record (a Draft may be saved
+    incomplete, and a partial save must never silently reset
+    public_visible/is_exclusive/disclosure_label back to their create-time
+    defaults).
+    """
+
+    campaign_name = fields.String(required=False, data_key="campaignName", validate=validate.Length(min=1, max=200))
+    organization_slug = fields.String(required=False, allow_none=True, data_key="organizationSlug")
+    partnership_id = fields.Integer(required=False, allow_none=True, data_key="partnershipId")
+    internal_reference = fields.String(required=False, allow_none=True, data_key="internalReference", validate=validate.Length(max=200))
+    public_name_override = fields.String(required=False, allow_none=True, data_key="publicNameOverride", validate=validate.Length(max=200))
+    public_description = fields.String(required=False, allow_none=True, data_key="publicDescription", validate=validate.Length(max=2000))
+    sponsorship_type = fields.String(required=False, allow_none=True, data_key="sponsorshipType", validate=validate.OneOf(SPONSORSHIP_TYPES))
+    starts_at = fields.Date(required=False, allow_none=True, data_key="startsAt")
+    ends_at = fields.Date(required=False, allow_none=True, data_key="endsAt")
+    logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
+    creative_media_id = fields.Integer(required=False, allow_none=True, data_key="creativeMediaId")
+    sponsor_url = fields.String(required=False, allow_none=True, data_key="sponsorUrl", validate=validate.URL(require_tld=True, schemes={"http", "https"}))
+    cta_label = fields.String(required=False, allow_none=True, data_key="ctaLabel", validate=validate.Length(max=50))
+    disclosure_label = fields.String(required=False, data_key="disclosureLabel", validate=validate.OneOf(SPONSOR_DISCLOSURE_LABELS))
+    public_visible = fields.Boolean(required=False, data_key="publicVisible")
+    is_exclusive = fields.Boolean(required=False, data_key="isExclusive")
+    exclusivity_notes = fields.String(required=False, allow_none=True, data_key="exclusivityNotes")
+    tier = fields.String(required=False, allow_none=True, validate=validate.Length(max=50))
+    estimated_value = fields.Integer(required=False, allow_none=True, data_key="estimatedValue", validate=validate.Range(min=0))
+    currency = fields.String(required=False, allow_none=True, validate=validate.Length(equal=3))
+    commercial_notes = fields.String(required=False, allow_none=True, data_key="commercialNotes")
+    internal_notes = fields.String(required=False, allow_none=True, data_key="internalNotes")
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        starts_at, ends_at = data.get("starts_at"), data.get("ends_at")
+        if starts_at and ends_at and ends_at < starts_at:
+            raise ValidationError("End date can't be before the start date.", field_name="ends_at")
+
+
+class SponsorStatusInputSchema(ma.Schema):
+    status = fields.String(required=True, validate=validate.OneOf(SPONSOR_STATUSES))
 
 
 class PartnershipInquiryInputSchema(ma.Schema):
@@ -152,14 +280,6 @@ class PartnershipOrganizationLinkInputSchema(ma.Schema):
 
 class PartnershipNoteInputSchema(ma.Schema):
     body = fields.String(required=True, validate=validate.Length(min=1, max=5000))
-
-
-class SponsorInputSchema(ma.Schema):
-    organization_slug = fields.String(required=True, data_key="organizationSlug")
-    tier = fields.String(required=False, allow_none=True)
-    active = fields.Boolean(required=False, load_default=True)
-    starts_at = fields.Date(required=False, allow_none=True, data_key="startsAt")
-    ends_at = fields.Date(required=False, allow_none=True, data_key="endsAt")
 
 
 class ProductCategorySchema(ma.SQLAlchemyAutoSchema):

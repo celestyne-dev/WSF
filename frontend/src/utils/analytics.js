@@ -105,7 +105,7 @@ export function withAcquisitionMetadata(payload = {}) {
  * posts to POST /api/v1/analytics/events (fire-and-forget — a dropped
  * analytics beacon should never block or break the visitor's action).
  */
-export function trackEvent(eventName, payload = {}) {
+export function trackEvent(eventName, payload = {}, { entityType, entityId } = {}) {
   const acquisition = getAcquisitionContext()
   const event = {
     event: eventName,
@@ -119,7 +119,7 @@ export function trackEvent(eventName, payload = {}) {
     console.debug('[analytics]', event)
   }
   if (!USE_MOCK) {
-    apiClient.post('/analytics/events', { eventName, payload, acquisition }).catch(() => {})
+    apiClient.post('/analytics/events', { eventName, payload, acquisition, entityType, entityId }).catch(() => {})
   }
   return event
 }

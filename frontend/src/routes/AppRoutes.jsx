@@ -69,6 +69,8 @@ const AdminSubscribers = lazy(() => import('../pages/admin/AdminSubscribers'))
 const AdminSubscriberDetail = lazy(() => import('../pages/admin/AdminSubscriberDetail'))
 const AdminPartnerships = lazy(() => import('../pages/admin/AdminPartnerships'))
 const AdminPartnershipDetail = lazy(() => import('../pages/admin/AdminPartnershipDetail'))
+const AdminSponsors = lazy(() => import('../pages/admin/AdminSponsors'))
+const AdminSponsorEditor = lazy(() => import('../pages/admin/AdminSponsorEditor'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
@@ -186,6 +188,9 @@ export default function AppRoutes() {
           <Route path="nominations" element={<AdminGenericList section="nominations" />} />
           <Route path="partnerships" element={<AdminPartnerships />} />
           <Route path="partnerships/:id" element={<AdminPartnershipDetail />} />
+          <Route path="sponsors" element={<AdminSponsors />} />
+          <Route path="sponsors/new" element={<AdminSponsorEditor />} />
+          <Route path="sponsors/:id" element={<AdminSponsorEditor />} />
           <Route path="advertising" element={<AdminGenericList section="advertising" />} />
           <Route path="media" element={<AdminMediaLibrary />} />
           <Route path="seo" element={<AdminGenericList section="seo" />} />

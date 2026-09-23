@@ -12,6 +12,7 @@ import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ShareBar from '../components/ui/ShareBar'
 import ArticleContent from '../components/article/ArticleContent'
+import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
 import ArticleCard from '../components/cards/ArticleCard'
 import PersonCard from '../components/cards/PersonCard'
 import NotFoundPage from './NotFoundPage'
@@ -133,10 +134,16 @@ export default function ArticlePage() {
         <h1 className="mt-3 font-serif text-4xl font-semibold leading-[1.1] text-charcoal sm:text-5xl">{article.title}</h1>
         {article.subtitle && <p className="mt-4 font-serif text-xl italic leading-snug text-charcoal-600">{article.subtitle}</p>}
 
-        {article.isSponsored && article.sponsor && (
+        {article.isSponsored && (article.sponsorRecord || article.sponsor) && (
           <div className="mt-5 flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
-            <span className="font-semibold uppercase tracking-wide text-burgundy-600">Sponsored</span>
-            <span>{article.sponsor.disclosure}</span>
+            <span className="font-semibold uppercase tracking-wide text-burgundy-600">
+              {article.sponsorRecord?.disclosureLabel || 'Sponsored'}
+            </span>
+            <span>
+              {article.sponsorRecord
+                ? article.sponsorRecord.publicName || article.sponsorRecord.organization?.name
+                : article.sponsor?.disclosure}
+            </span>
           </div>
         )}
 
@@ -230,9 +237,7 @@ export default function ArticlePage() {
         </div>
 
         <aside className="space-y-10">
-          <div className="flex h-64 items-center justify-center border border-dashed border-taupe-300 bg-taupe-100/60 text-xs uppercase tracking-wide text-charcoal-600/60">
-            Advertisement — article_sidebar
-          </div>
+          <SponsorPlacementStrip placementKey="article_sidebar" layout="stack" />
           <div>
             <p className="eyebrow mb-4">Popular on WSF</p>
             {popular.map((a) => (

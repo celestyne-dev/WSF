@@ -180,14 +180,14 @@ def test_partnership_inquiry_sponsor_and_audience_stats(client, admin_token):
         db.session.commit()
 
     sponsor = client.post(
-        "/api/v1/partnerships/sponsors",
-        json={"organizationSlug": "kaziwave", "tier": "Gold"},
+        "/api/v1/sponsors/",
+        json={"campaignName": "Kaziwave Sponsorship", "organizationSlug": "kaziwave", "tier": "Gold"},
         headers=auth_headers(admin_token),
     )
     assert sponsor.status_code == 201
     assert sponsor.get_json()["data"]["organization"]["name"] == "Kaziwave"
 
-    sponsors = client.get("/api/v1/partnerships/sponsors")
+    sponsors = client.get("/api/v1/sponsors/", headers=auth_headers(admin_token))
     assert sponsors.status_code == 200
     assert len(sponsors.get_json()["data"]) == 1
 

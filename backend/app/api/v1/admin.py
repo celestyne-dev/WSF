@@ -212,14 +212,14 @@ class AdminSettingsResource(Resource):
 
 class AdminSponsorListResource(Resource):
     """Read-only list of active sponsorship deals, for the Job editor's
-    sponsor selector. Full Sponsor CRUD is a separate future CMS module —
-    this exists only so a Job can link to a real Sponsor record instead of
-    requiring a raw ID.
+    sponsor selector. Full Sponsor CRUD lives in the dedicated Sponsors
+    CMS (api/v1/sponsors.py) — this exists only so a Job can link to a
+    real Sponsor record instead of requiring a raw ID.
     """
 
     @permission_required("jobs.manage")
     def get(self):
-        sponsors = Sponsor.query.filter_by(active=True).order_by(Sponsor.created_at.desc()).all()
+        sponsors = Sponsor.query.filter_by(status="active").order_by(Sponsor.created_at.desc()).all()
         return success_response(SponsorSchema(many=True).dump(sponsors))
 
 

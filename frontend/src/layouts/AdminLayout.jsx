@@ -13,6 +13,7 @@ import {
   Inbox,
   Star,
   Handshake,
+  Gem,
   Megaphone,
   Image,
   Search,
@@ -72,6 +73,7 @@ const NAV_GROUPS = [
     heading: 'Revenue',
     items: [
       { to: '/admin/partnerships', icon: Handshake, label: 'Partnerships' },
+      { to: '/admin/sponsors', icon: Gem, label: 'Sponsors' },
       { to: '/admin/advertising', icon: Megaphone, label: 'Advertising' },
     ],
   },

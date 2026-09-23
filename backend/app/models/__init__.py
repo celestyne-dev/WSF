@@ -19,7 +19,7 @@ from app.models.opportunity import Event, Job, Opportunity  # noqa: F401
 from app.models.resource import Resource  # noqa: F401
 from app.models.newsletter import NewsletterIssue, NewsletterSubscriber  # noqa: F401
 from app.models.community import Nomination, StorySubmission  # noqa: F401
-from app.models.commerce import Order, OrderItem, PartnershipInquiry, Product, Sponsor  # noqa: F401
+from app.models.commerce import Order, OrderItem, PartnershipInquiry, Product, Sponsor, SponsorPlacement  # noqa: F401
 from app.models.analytics import AnalyticsEvent  # noqa: F401
 
 __all__ = [
@@ -56,6 +56,7 @@ __all__ = [
     "StorySubmission",
     "PartnershipInquiry",
     "Sponsor",
+    "SponsorPlacement",
     "Product",
     "Order",
     "OrderItem",

@@ -5,6 +5,7 @@ import { Save, Eye, AlertTriangle, X } from 'lucide-react'
 import { fetchArticleBySlug, createArticle, updateArticle } from '../../api/articles'
 import { fetchAuthors, fetchTopics, fetchCategories, fetchSeries } from '../../api/taxonomies'
 import { fetchPeople } from '../../api/people'
+import { fetchSponsors } from '../../api/admin'
 import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
@@ -58,6 +59,7 @@ function blankForm(defaultAuthorSlug) {
     isSponsored: false,
     sponsorName: '',
     sponsorDisclosure: '',
+    sponsorId: '',
     publishDate: '',
     seoTitle: '',
     seoDescription: '',
@@ -93,6 +95,7 @@ function toForm(article) {
     isSponsored: !!article.isSponsored,
     sponsorName: article.sponsor?.name || '',
     sponsorDisclosure: article.sponsor?.disclosure || '',
+    sponsorId: article.sponsorId ? String(article.sponsorId) : '',
     publishDate: toDatetimeLocalValue(article.publishDate),
     seoTitle: article.seo?.title || '',
     seoDescription: article.seo?.description || '',
@@ -179,6 +182,7 @@ export default function AdminArticleEditor() {
   const [categories, setCategories] = useState([])
   const [series, setSeries] = useState([])
   const [people, setPeople] = useState([])
+  const [sponsors, setSponsors] = useState([])
   const [form, setForm] = useState(undefined)
   const [notFound, setNotFound] = useState(false)
   const [slugTouched, setSlugTouched] = useState(!isNew)
@@ -197,9 +201,10 @@ export default function AdminArticleEditor() {
       fetchCategories(),
       fetchSeries(),
       fetchPeople({ pageSize: 200 }),
+      fetchSponsors(),
       isNew ? Promise.resolve(null) : fetchArticleBySlug(id),
     ])
-      .then(([authorRes, topicList, categoryList, seriesList, peopleRes, existing]) => {
+      .then(([authorRes, topicList, categoryList, seriesList, peopleRes, sponsorList, existing]) => {
         if (!active) return
         let authorList = authorRes.items
         if (existing?.authorSlug && !authorList.some((a) => a.slug === existing.authorSlug)) {
@@ -210,6 +215,7 @@ export default function AdminArticleEditor() {
         setCategories(categoryList)
         setSeries(seriesList)
         setPeople(peopleRes.items)
+        setSponsors(sponsorList)
         if (isNew) {
           setForm(blankForm(authorList[0]?.slug))
         } else if (existing) {
@@ -290,6 +296,7 @@ export default function AdminArticleEditor() {
       promoted: form.promoted,
       isSponsored: form.isSponsored,
       sponsor: form.isSponsored ? { name: form.sponsorName || null, disclosure: form.sponsorDisclosure || null } : null,
+      sponsorId: form.isSponsored && form.sponsorId ? Number(form.sponsorId) : null,
       publishDate: form.publishDate ? new Date(form.publishDate).toISOString() : null,
       seo: {
         title: form.seoTitle || null,
@@ -508,6 +515,18 @@ export default function AdminArticleEditor() {
               </label>
               {form.isSponsored && (
                 <div className="space-y-2 pl-6">
+                  <select
+                    value={form.sponsorId}
+                    onChange={(e) => updateField('sponsorId', e.target.value)}
+                    className="w-full border border-taupe-300 px-3 py-2 text-xs focus:border-burgundy-500 focus:outline-none"
+                  >
+                    <option value="">No linked Sponsor record (freeform disclosure below)</option>
+                    {sponsors.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.organizationName || `Sponsor #${s.id}`} {s.tier ? `(${s.tier})` : ''}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     value={form.sponsorName}
                     onChange={(e) => updateField('sponsorName', e.target.value)}

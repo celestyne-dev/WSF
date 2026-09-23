@@ -14,6 +14,7 @@ import ResourcesModule from '../components/home/ResourcesModule'
 import EventsModule from '../components/home/EventsModule'
 import NewsletterModule from '../components/home/NewsletterModule'
 import PartnersModule from '../components/home/PartnersModule'
+import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
 
 // Maps each CMS module `type` to its renderer. Adding a new homepage block
 // type in the CMS only requires registering it here — no page rewrite.
@@ -55,6 +56,11 @@ export default function HomePage() {
         if (!Component) return null
         return <Component key={module.id} module={module} />
       })}
+      {/* Real Sponsors CMS placements — separate from the "partners" module
+          above (general, undisclosed collaborators), since these are paid
+          and carry an explicit disclosure label. Renders nothing when no
+          sponsor is configured for this placement. */}
+      <SponsorPlacementStrip placementKey="homepage_featured" heading="Our Sponsors" />
     </div>
   )
 }

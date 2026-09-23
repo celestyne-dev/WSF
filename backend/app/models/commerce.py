@@ -135,27 +135,194 @@ class PartnershipNote(db.Model):
     user = db.relationship("User", foreign_keys=[user_id])
 
 
+SPONSORSHIP_TYPES = (
+    "Brand Sponsor",
+    "Newsletter Sponsor",
+    "Event Sponsor",
+    "Content Sponsor",
+    "Series Sponsor",
+    "Resource Sponsor",
+    "Employer Sponsor",
+    "Community Sponsor",
+    "Supporting Partner",
+    "Presenting Sponsor",
+    "Other",
+)
+_SPONSORSHIP_TYPE_CHECK_SQL = "sponsorship_type IS NULL OR sponsorship_type IN (" + ", ".join(
+    f"'{t}'" for t in SPONSORSHIP_TYPES
+) + ")"
+
+# draft: being configured, never public. scheduled: fully configured and
+# will go live once its start date arrives. active: currently live and
+# eligible for public placement. paused: temporarily hidden without
+# losing its configuration. completed: ran its course normally. archived:
+# retired, kept for business history.
+SPONSOR_STATUSES = ("draft", "scheduled", "active", "paused", "completed", "archived")
+_SPONSOR_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in SPONSOR_STATUSES) + ")"
+
+# The label a public placement shows next to the sponsor — kept to a
+# small controlled set so disclosure language stays consistent and
+# accurate to the actual relationship (never a freeform, editable-into-
+# something-misleading string).
+SPONSOR_DISCLOSURE_LABELS = ("Sponsored", "Sponsored by", "Presented by", "In partnership with")
+_SPONSOR_DISCLOSURE_CHECK_SQL = "disclosure_label IN (" + ", ".join(
+    f"'{d}'" for d in SPONSOR_DISCLOSURE_LABELS
+) + ")"
+
+# Where a sponsor placement can actually render — deliberately limited to
+# the surfaces this app has real rendering for (homepage strip, article
+# disclosure banner), not every location named in the spec's example
+# list, so the CMS never offers a placement key that silently does
+# nothing.
+SPONSOR_PLACEMENT_KEYS = ("homepage_featured", "homepage_footer", "article_sidebar", "article_inline")
+_SPONSOR_PLACEMENT_KEY_CHECK_SQL = "placement_key IN (" + ", ".join(
+    f"'{p}'" for p in SPONSOR_PLACEMENT_KEYS
+) + ")"
+
+
 class Sponsor(db.Model):
-    """A currently-active (or scheduled) sponsorship deal — distinct from
-    Organization, which is just the company's editorial profile. The same
-    Organization can be featured editorially without being a paying
-    sponsor, and vice versa.
+    """A sponsorship campaign/record — distinct from Organization, which is
+    just the company's editorial profile. The same Organization can be
+    featured editorially without being a paying sponsor, and vice versa.
+    One evolving record spans the whole lifecycle (draft through
+    archived) rather than separate lead/active tables, mirroring
+    PartnershipInquiry's design for the same reason: nothing here draws a
+    clean line that would justify a second table.
     """
 
     __tablename__ = "sponsors"
+    __table_args__ = (
+        db.CheckConstraint(_SPONSORSHIP_TYPE_CHECK_SQL, name="ck_sponsors_type"),
+        db.CheckConstraint(_SPONSOR_STATUS_CHECK_SQL, name="ck_sponsors_status"),
+        db.CheckConstraint(_SPONSOR_DISCLOSURE_CHECK_SQL, name="ck_sponsors_disclosure_label"),
+        db.CheckConstraint(
+            "estimated_value IS NULL OR estimated_value >= 0", name="ck_sponsors_value_nonnegative"
+        ),
+        db.CheckConstraint("ends_at IS NULL OR starts_at IS NULL OR ends_at >= starts_at", name="ck_sponsors_dates"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
+
+    # Basic information
+    campaign_name = db.Column(db.String(200), nullable=False)
     organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=False)
-    tier = db.Column(db.String(50))  # Presenting / Gold / Silver / Community
-    active = db.Column(db.Boolean, nullable=False, default=True)
+    # Optional — a sponsorship doesn't require an existing Partnership record.
+    partnership_id = db.Column(db.Integer, db.ForeignKey("partnership_inquiries.id"), nullable=True)
+    internal_reference = db.Column(db.String(200))
+    public_name_override = db.Column(db.String(200))
+    public_description = db.Column(db.Text)
+
+    # Sponsorship type
+    sponsorship_type = db.Column(db.String(50))
+
+    # Campaign dates — date-only; this app has no need for time-of-day
+    # sponsorship scheduling.
     starts_at = db.Column(db.Date)
     ends_at = db.Column(db.Date)
+
+    # Media / creative
+    logo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)  # campaign-specific override
+    creative_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)  # banner/card artwork
+
+    # CTA / destination
+    sponsor_url = db.Column(db.String(500))
+    cta_label = db.Column(db.String(50))
+
+    # Disclosure
+    disclosure_label = db.Column(db.String(30), nullable=False, default="Sponsored by")
+
+    # Publishing / status
+    status = db.Column(db.String(20), nullable=False, default="draft")
+    # Independent of `status` — an Active campaign is not public until this
+    # is explicitly turned on (see spec: never accidentally publish).
+    public_visible = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Exclusivity — internal reference only, never enforced automatically.
+    is_exclusive = db.Column(db.Boolean, nullable=False, default=False)
+    exclusivity_notes = db.Column(db.Text)
+
+    # Commercial information — internal only, never serialized publicly.
+    tier = db.Column(db.String(50))  # internal package/reference, e.g. "Gold", "Presenting"
+    estimated_value = db.Column(db.Integer)  # whole currency units, paired with `currency`
+    currency = db.Column(db.String(3))  # ISO 4217; no default — never assume USD
+    commercial_notes = db.Column(db.Text)
+    internal_notes = db.Column(db.Text)
+
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
     )
 
     organization = db.relationship("Organization", foreign_keys=[organization_id])
+    partnership = db.relationship("PartnershipInquiry", foreign_keys=[partnership_id])
+    logo = db.relationship("Media", foreign_keys=[logo_media_id])
+    creative = db.relationship("Media", foreign_keys=[creative_media_id])
+    placements = db.relationship(
+        "SponsorPlacement",
+        order_by="SponsorPlacement.position",
+        cascade="all, delete-orphan",
+        backref="sponsor",
+    )
+
+    def is_publicly_eligible(self, today=None):
+        """The one authoritative rule for whether this sponsor may appear
+        in ANY public placement right now — reused by every placement
+        query so date/status/visibility checks never drift out of sync
+        between endpoints.
+        """
+        import datetime as _dt
+
+        today = today or _dt.date.today()
+        if self.status != "active" or not self.public_visible:
+            return False
+        if self.starts_at and self.starts_at > today:
+            return False
+        if self.ends_at and self.ends_at < today:
+            return False
+        return True
+
+    @property
+    def resolved_public_name(self):
+        return self.public_name_override or (self.organization.name if self.organization else None)
+
+
+class SponsorPlacement(db.Model):
+    """One approved slot for a Sponsor on a specific, controlled surface
+    (homepage strip, article disclosure banner, ...). A sponsor can have
+    several — e.g. both a homepage and an article placement — each with
+    its own ordering and optional date override.
+    """
+
+    __tablename__ = "sponsor_placements"
+    __table_args__ = (
+        db.CheckConstraint(_SPONSOR_PLACEMENT_KEY_CHECK_SQL, name="ck_sponsor_placements_key"),
+        db.CheckConstraint(
+            "ends_at IS NULL OR starts_at IS NULL OR ends_at >= starts_at", name="ck_sponsor_placements_dates"
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    sponsor_id = db.Column(db.Integer, db.ForeignKey("sponsors.id", ondelete="CASCADE"), nullable=False)
+    placement_key = db.Column(db.String(30), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    # Optional placement-specific override — falls back to the sponsor's
+    # own campaign dates when unset.
+    starts_at = db.Column(db.Date)
+    ends_at = db.Column(db.Date)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+
+    def is_currently_active(self, today=None):
+        import datetime as _dt
+
+        today = today or _dt.date.today()
+        if not self.active:
+            return False
+        if self.starts_at and self.starts_at > today:
+            return False
+        if self.ends_at and self.ends_at < today:
+            return False
+        return True
 
 
 PRODUCT_TYPES = ("digital", "physical", "downloadable", "service", "other")

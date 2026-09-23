@@ -90,7 +90,11 @@ class Article(db.Model):
     featured = db.Column(db.Boolean, nullable=False, default=False)
     promoted = db.Column(db.Boolean, nullable=False, default=False)
     is_sponsored = db.Column(db.Boolean, nullable=False, default=False)
-    sponsor = db.Column(db.JSON)  # {name, disclosure}
+    sponsor = db.Column(db.JSON)  # {name, disclosure} — freeform fallback, kept for articles with no Sponsor record
+    # Optional link to a real Sponsor campaign record — when set, the
+    # public disclosure prefers the Sponsor's own name/logo/disclosure
+    # label over the freeform `sponsor` JSON above.
+    sponsor_id = db.Column(db.Integer, db.ForeignKey("sponsors.id"), nullable=True)
 
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
@@ -114,6 +118,7 @@ class Article(db.Model):
 
     hero_media = db.relationship("Media", foreign_keys=[hero_media_id])
     author = db.relationship("Author", foreign_keys=[author_id])
+    sponsor_record = db.relationship("Sponsor", foreign_keys=[sponsor_id])
     category = db.relationship("Category")
     series = db.relationship("Series", backref="articles")
     created_by = db.relationship("User", foreign_keys=[created_by_id])

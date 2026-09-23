@@ -10,7 +10,7 @@ from app.auth.decorators import permission_required
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.cms import SiteSetting
-from app.models.commerce import PartnershipInquiry, PartnershipNote, Sponsor
+from app.models.commerce import PartnershipInquiry, PartnershipNote
 from app.models.people import Organization
 from app.models.user import User
 from app.schemas.commerce import (
@@ -22,8 +22,6 @@ from app.schemas.commerce import (
     PartnershipNoteInputSchema,
     PartnershipOrganizationLinkInputSchema,
     PartnershipStatusInputSchema,
-    SponsorInputSchema,
-    SponsorSchema,
 )
 from app.services.audit import log_action
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
@@ -35,7 +33,6 @@ api = Api(partnerships_bp)
 
 inquiry_schema = PartnershipInquirySchema()
 confirmation_schema = PartnershipInquiryConfirmationSchema()
-sponsor_schema = SponsorSchema()
 
 _EXPORT_COLUMNS = (
     "company", "contact_name", "work_email", "partnership_type", "status", "country",
@@ -286,24 +283,6 @@ class PartnershipOverviewResource(Resource):
         )
 
 
-class SponsorListResource(Resource):
-    def get(self):
-        sponsors = Sponsor.query.filter_by(active=True).all()
-        return success_response(sponsor_schema.dump(sponsors, many=True))
-
-    @permission_required("partnerships.manage")
-    def post(self):
-        data = SponsorInputSchema().load(request.get_json(silent=True) or {})
-        organization = Organization.query.filter_by(slug=data.pop("organization_slug")).first()
-        if organization is None:
-            raise ApiError("Organization not found.", 404, code="not_found")
-
-        sponsor = Sponsor(organization=organization, **data)
-        db.session.add(sponsor)
-        db.session.commit()
-        return success_response(sponsor_schema.dump(sponsor), status=201)
-
-
 class AudienceStatsResource(Resource):
     """CMS-editable LinkedIn/newsletter/website audience numbers for the
     Partnerships page and media kit — stored as a SiteSetting row
@@ -326,5 +305,4 @@ api.add_resource(PartnershipInquiryOrganizationResource, "/inquiries/<int:inquir
 api.add_resource(PartnershipInquiryNoteListResource, "/inquiries/<int:inquiry_id>/notes")
 api.add_resource(PartnershipInquiryArchiveResource, "/inquiries/<int:inquiry_id>/archive")
 api.add_resource(PartnershipInquiryHistoryResource, "/inquiries/<int:inquiry_id>/history")
-api.add_resource(SponsorListResource, "/sponsors")
 api.add_resource(AudienceStatsResource, "/audience")

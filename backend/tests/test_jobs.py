@@ -487,7 +487,7 @@ def test_job_sponsor_relationship(client, app, manager_token, organization_id):
         from app.extensions import db
         from app.models.commerce import Sponsor
 
-        sponsor = Sponsor(organization_id=organization_id, tier="Gold", active=True)
+        sponsor = Sponsor(campaign_name="Job Board Sponsorship", organization_id=organization_id, tier="Gold", status="active")
         db.session.add(sponsor)
         db.session.commit()
         sponsor_id = sponsor.id

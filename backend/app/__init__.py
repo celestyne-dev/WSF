@@ -47,6 +47,7 @@ def create_app(config_name="development"):
     from app.api.v1.redirects import redirects_bp
     from app.api.v1.resources import resources_bp
     from app.api.v1.search import search_bp
+    from app.api.v1.sponsors import sponsors_bp
     from app.api.v1.submissions import submissions_bp
     from app.api.v1.taxonomy import categories_bp, series_bp, topics_bp
 
@@ -74,6 +75,7 @@ def create_app(config_name="development"):
     app.register_blueprint(orders_bp, url_prefix="/api/v1/orders")
     app.register_blueprint(search_bp, url_prefix="/api/v1/search")
     app.register_blueprint(analytics_bp, url_prefix="/api/v1/analytics")
+    app.register_blueprint(sponsors_bp, url_prefix="/api/v1/sponsors")
 
     @app.get("/api/v1/health")
     def health():

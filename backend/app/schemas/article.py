@@ -2,6 +2,7 @@ from marshmallow import fields, validate
 
 from app.extensions import ma
 from app.models.article import AI_INVOLVEMENT_VALUES, ARTICLE_STATUSES, Article
+from app.schemas.commerce import SponsorSchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema, PersonSchema
 from app.schemas.taxonomy import CategorySchema, SeriesSchema, TagSchema, TopicSchema
@@ -32,6 +33,16 @@ class ArticleSchema(ma.SQLAlchemyAutoSchema):
     related_people = fields.Nested(PersonSchema, many=True, dump_only=True)
     related_organizations = fields.Nested(OrganizationSchema, many=True, dump_only=True)
     related_articles = fields.Nested(ArticleRelatedSchema, many=True, dump_only=True)
+    # marshmallow-sqlalchemy's auto schema omits FK columns that back a
+    # declared relationship — declared explicitly so the CMS editor can
+    # pre-select the linked Sponsor. Restricted to non-commercial fields
+    # even here, since this same schema (minus ai_editorial_notes) is what
+    # public readers see — see public_article_schema() below.
+    sponsor_id = fields.Integer(dump_only=True)
+    sponsor_record = fields.Nested(
+        SponsorSchema, dump_only=True, data_key="sponsorRecord",
+        only=("id", "campaign_name", "resolved_public_name", "logo", "disclosure_label", "organization"),
+    )
 
     class Meta:
         model = Article
@@ -109,6 +120,10 @@ class ArticleInputSchema(ma.Schema):
     promoted = fields.Boolean(required=False, load_default=False)
     is_sponsored = fields.Boolean(required=False, load_default=False, data_key="isSponsored")
     sponsor = fields.Dict(required=False, allow_none=True)
+    # Optional link to a real Sponsor campaign record — see Sponsor.sponsor_id
+    # comment. Kept separate from `sponsor` (the freeform fallback dict)
+    # since an Article may have one without the other.
+    sponsor_id = fields.Integer(required=False, allow_none=True, data_key="sponsorId")
 
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(ARTICLE_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)
