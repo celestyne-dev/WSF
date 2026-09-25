@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchResources } from '../../api/resources'
 import {
-  fetchStorySubmissions,
   fetchNominations,
   fetchRedirects,
 } from '../../api/admin'
@@ -20,15 +19,6 @@ const CONFIGS = {
     load: async () => {
       const res = await fetchResources({ pageSize: 100 })
       return res.items.map((r) => [r.name, r.type, r.isPremium ? 'Premium' : 'Free', r.isPremium ? formatCurrency(r.price, r.currency) : '—'])
-    },
-  },
-  submissions: {
-    title: 'Story Submissions',
-    description: 'Reader-submitted stories awaiting editorial review.',
-    columns: ['Name', 'Country', 'Title', 'Submitted', 'Status'],
-    load: async () => {
-      const rows = await fetchStorySubmissions()
-      return rows.map((s) => [s.name, s.country?.name || s.countryCode, s.title, formatDate(s.submittedAt), <StatusBadge key={s.id} status={s.status} />])
     },
   },
   nominations: {

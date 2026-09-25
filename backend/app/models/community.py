@@ -206,28 +206,6 @@ class CommunityPage(db.Model):
     hero_media = db.relationship("Media", foreign_keys=[hero_media_id])
 
 
-class StorySubmission(db.Model):
-    __tablename__ = "story_submissions"
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    email = db.Column(db.String(255), nullable=False)
-    country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
-    title = db.Column(db.String(300), nullable=False)
-    excerpt = db.Column(db.Text)
-    body = db.Column(db.Text)  # the full pitch/draft, if provided
-    status = db.Column(db.String(20), nullable=False, default="new")
-    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    acquisition = db.Column(db.JSON)
-    submitted_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
-    updated_at = db.Column(
-        db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
-    )
-
-    country = db.relationship("Country", foreign_keys=[country_code])
-    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
-
-
 class Nomination(db.Model):
     __tablename__ = "nominations"
 

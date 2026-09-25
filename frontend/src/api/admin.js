@@ -154,25 +154,8 @@ export async function fetchSubscriberGrowth() {
   return delay(subscriberGrowth)
 }
 
-// Backing data for AdminGenericList's review-queue sections — each hits a
+// Backing data for AdminGenericList's review-queue sections — hits a
 // real, permission-gated admin endpoint built in an earlier phase.
-export async function fetchStorySubmissions() {
-  if (!USE_MOCK) {
-    const { data } = await apiClient.get('/submissions', { params: { pageSize: 100 } })
-    return data.items.map((s) => ({
-      id: s.id,
-      name: s.name,
-      countryCode: s.country?.code || null,
-      country: s.country ? { code: s.country.code, name: s.country.name, region: s.country.region } : null,
-      title: s.title,
-      submittedAt: s.submitted_at,
-      status: s.status,
-    }))
-  }
-  const { storySubmissions } = await loadMockAdmin()
-  return delay(storySubmissions.map(attachMockCountry))
-}
-
 export async function fetchNominations() {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/nominations', { params: { pageSize: 100 } })

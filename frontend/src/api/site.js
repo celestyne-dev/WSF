@@ -100,18 +100,6 @@ export async function fetchAudienceStats() {
 
 // submitPartnershipInquiry lives in api/partnerships.js.
 
-export async function submitStory(payload) {
-  if (!USE_MOCK) {
-    try {
-      await apiClient.post('/submissions', payload)
-      return { success: true, message: 'Your story has been received and entered our editorial review queue.' }
-    } catch (err) {
-      return { success: false, message: err.apiError?.message || 'Something went wrong. Please try again.' }
-    }
-  }
-  return delay({ success: true, message: 'Your story has been received and entered our editorial review queue.' }, 500)
-}
-
 export async function submitNomination(payload) {
   if (!USE_MOCK) {
     try {

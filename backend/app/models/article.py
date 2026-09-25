@@ -116,7 +116,18 @@ class Article(db.Model):
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
     )
 
+    # Minimal Story-Submissions-CMS handoff compatibility: set only when an
+    # editor deliberately converts an Approved submission into this draft
+    # (see app/api/v1/submissions.py). Admin-only provenance — never
+    # exposed on the public article schema. Article content stays
+    # independent of the Submission after creation; this is a pointer for
+    # navigation, not a live sync.
+    source_submission_id = db.Column(db.Integer, db.ForeignKey("story_submissions.id"), nullable=True)
+
     hero_media = db.relationship("Media", foreign_keys=[hero_media_id])
+    resulting_from_submission = db.relationship(
+        "StorySubmission", foreign_keys=[source_submission_id], backref=db.backref("resulting_article", uselist=False)
+    )
     author = db.relationship("Author", foreign_keys=[author_id])
     sponsor_record = db.relationship("Sponsor", foreign_keys=[sponsor_id])
     category = db.relationship("Category")

@@ -10,10 +10,11 @@ from app.extensions import db
 from app.models.analytics import AnalyticsEvent
 from app.models.article import Article
 from app.models.cms import HomepageModule, Menu, SiteSetting
-from app.models.community import Nomination, StorySubmission
+from app.models.community import Nomination
 from app.models.newsletter import NewsletterSubscriber
 from app.models.commerce import Sponsor
 from app.models.opportunity import Event, Job, Opportunity
+from app.models.submissions import StorySubmission
 from app.models.user import Role, User
 from app.schemas.article import article_summary_schema
 from app.schemas.cms import (
@@ -90,7 +91,7 @@ class AdminDashboardResource(Resource):
         active_jobs = Job.query.filter_by(status="published").count()
         active_opportunities = Opportunity.query.filter_by(status="published").count()
         upcoming_events = Event.query.filter_by(status="upcoming").count()
-        pending_submissions = StorySubmission.query.filter_by(status="new").count()
+        pending_submissions = StorySubmission.query.filter_by(status="submitted").count()
         pending_nominations = Nomination.query.filter_by(status="new").count()
 
         boundaries, _ = _last_six_month_boundaries()

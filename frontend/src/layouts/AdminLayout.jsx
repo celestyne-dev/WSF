@@ -71,7 +71,7 @@ const NAV_GROUPS = [
       { to: '/admin/newsletter', icon: Mail, label: 'Newsletter', end: true },
       { to: '/admin/newsletter/issues', icon: Send, label: 'Newsletter Issues' },
       { to: '/admin/newsletter/subscribers', icon: Users2, label: 'Subscribers' },
-      { to: '/admin/submissions', icon: Inbox, label: 'Submissions' },
+      { to: '/admin/submissions', icon: Inbox, label: 'Story Submissions' },
       { to: '/admin/nominations', icon: Star, label: 'Nominations' },
     ],
   },

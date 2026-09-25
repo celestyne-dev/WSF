@@ -31,7 +31,14 @@ ROLE_PERMISSIONS = {
         "community.export",
         "mentorship.manage",
     ],
-    "editor": ["articles.manage", "articles.publish", "taxonomy.manage", "people.manage", "media.manage"],
+    "editor": [
+        "articles.manage",
+        "articles.publish",
+        "taxonomy.manage",
+        "people.manage",
+        "media.manage",
+        "submissions.manage",
+    ],
     "author": ["articles.create", "articles.edit_own", "media.upload"],
     # Moderator already reviews public submissions/nominations — community
     # membership review/administration is the same kind of work, so it
@@ -53,6 +60,7 @@ ROLE_PERMISSIONS = {
     "newsletter_manager": ["newsletter.manage"],
     "community_manager": ["community.manage", "community.export"],
     "mentorship_manager": ["mentorship.manage"],
+    "submissions_manager": ["submissions.manage"],
     "analyst": ["analytics.view"],
     "member": ["profile.manage"],
     "employer": ["jobs.create_own"],

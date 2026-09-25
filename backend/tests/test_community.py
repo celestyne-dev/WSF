@@ -101,34 +101,6 @@ def test_newsletter_subscribers_list_requires_permission(client, admin_token):
     assert allowed.get_json()["meta"]["total"] == 1
 
 
-def test_story_submission_lifecycle(client, admin_token):
-    created = client.post(
-        "/api/v1/submissions",
-        json={
-            "name": "Beatrice Achieng",
-            "email": "beatrice@example.com",
-            "countryCode": "KE",
-            "title": "How I Rebuilt My Career",
-            "excerpt": "After ten years raising three children...",
-        },
-    )
-    assert created.status_code == 201
-    submission_id = created.get_json()["data"]["id"]
-    assert created.get_json()["data"]["status"] == "new"
-
-    listed = client.get("/api/v1/submissions", headers=auth_headers(admin_token))
-    assert listed.status_code == 200
-    assert listed.get_json()["meta"]["total"] == 1
-
-    updated = client.patch(
-        f"/api/v1/submissions/{submission_id}/status",
-        json={"status": "accepted"},
-        headers=auth_headers(admin_token),
-    )
-    assert updated.status_code == 200
-    assert updated.get_json()["data"]["status"] == "accepted"
-
-
 def test_nomination_lifecycle(client, admin_token):
     created = client.post(
         "/api/v1/nominations",

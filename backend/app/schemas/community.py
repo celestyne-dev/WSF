@@ -10,7 +10,6 @@ from app.models.community import (
     MEMBERSHIP_STATUSES,
     MEMBERSHIP_TYPES,
     Nomination,
-    StorySubmission,
 )
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
@@ -19,30 +18,12 @@ from app.schemas.taxonomy import TopicSchema
 from app.schemas.user import UserSchema
 
 
-class StorySubmissionSchema(ma.SQLAlchemyAutoSchema):
-    country = fields.Nested(CountrySchema, dump_only=True)
-
-    class Meta:
-        model = StorySubmission
-        load_instance = False
-
-
 class NominationSchema(ma.SQLAlchemyAutoSchema):
     country = fields.Nested(CountrySchema, dump_only=True)
 
     class Meta:
         model = Nomination
         load_instance = False
-
-
-class StorySubmissionInputSchema(ma.Schema):
-    name = fields.String(required=True, validate=validate.Length(min=1, max=200))
-    email = fields.Email(required=True)
-    country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
-    title = fields.String(required=True, validate=validate.Length(min=1, max=300))
-    excerpt = fields.String(required=False, allow_none=True)
-    body = fields.String(required=False, allow_none=True)
-    acquisition = fields.Dict(required=False, allow_none=True)
 
 
 class NominationInputSchema(ma.Schema):
