@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { ROLE_DEFINITIONS } from '../constants/roles'
+import { mapMediaRef } from '../utils/media'
 
 // The mock admin dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -96,6 +97,14 @@ function mapHomepageModuleAdmin(m) {
     subheading: m.subheading,
     selectionMode: m.selection_mode,
     config: m.config || {},
+    mediaId: m.media_id,
+    media: mapMediaRef(m.media),
+    ctaLabel: m.cta_label,
+    ctaUrl: m.cta_url,
+    secondaryCtaLabel: m.secondary_cta_label,
+    secondaryCtaUrl: m.secondary_cta_url,
+    updatedAt: m.updated_at,
+    warnings: m.warnings || [],
   }
 }
 
@@ -105,7 +114,7 @@ export async function fetchAdminHomepage() {
     return data.map(mapHomepageModuleAdmin)
   }
   const { homepageModules } = await import('../mock/homepageModules')
-  return delay([...homepageModules].sort((a, b) => a.order - b.order))
+  return delay([...homepageModules].sort((a, b) => a.order - b.order).map((m) => ({ ...m, warnings: [] })))
 }
 
 export async function saveAdminHomepage(modules) {
@@ -118,6 +127,11 @@ export async function saveAdminHomepage(modules) {
         subheading: m.subheading,
         selectionMode: m.selectionMode,
         config: m.config || {},
+        mediaId: m.mediaId ?? null,
+        ctaLabel: m.ctaLabel ?? null,
+        ctaUrl: m.ctaUrl ?? null,
+        secondaryCtaLabel: m.secondaryCtaLabel ?? null,
+        secondaryCtaUrl: m.secondaryCtaUrl ?? null,
       })),
     }
     const { data } = await apiClient.put('/admin/homepage', body)

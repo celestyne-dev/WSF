@@ -1,5 +1,6 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
+import { mapMediaRef } from '../utils/media'
 
 // Each mock dataset here is only needed when VITE_USE_MOCK=true —
 // dynamic-imported per module so a real-mode production build never
@@ -61,6 +62,11 @@ function mapHomepageModule(m) {
     heading: m.heading,
     subheading: m.subheading,
     selectionMode: m.selection_mode,
+    media: mapMediaRef(m.media),
+    ctaLabel: m.cta_label,
+    ctaUrl: m.cta_url,
+    secondaryCtaLabel: m.secondary_cta_label,
+    secondaryCtaUrl: m.secondary_cta_url,
     ...(m.config || {}),
   }
 }
@@ -81,7 +87,11 @@ export async function fetchSiteSettings() {
 }
 
 export async function fetchHomepageModules() {
-  if (!USE_MOCK) return (await apiClient.get('/public/homepage')).data.map(mapHomepageModule)
+  // The backend response carries a `meta.updatedAt` cache hint alongside
+  // the module array, so the shared response interceptor (see api/client.js)
+  // treats it like any other {data: [...], meta} paginated-list response
+  // and unwraps it to {items, pagination} rather than a bare array.
+  if (!USE_MOCK) return (await apiClient.get('/public/homepage')).data.items.map(mapHomepageModule)
   const { homepageModules } = await loadMockHomepageModules()
   return delay([...homepageModules].filter((m) => m.enabled).sort((a, b) => a.order - b.order))
 }

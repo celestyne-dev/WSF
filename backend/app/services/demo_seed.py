@@ -1235,40 +1235,143 @@ def seed_demo_content():
         ]
     )
 
-    # Homepage modules
-    HomepageModule.query.delete()
-    db.session.add(
-        HomepageModule(
-            type="hero",
-            enabled=True,
-            sort_order=0,
-            selection_mode="manual",
-            config={
-                "leadArticleSlug": "how-women-are-redefining-leadership",
-                "secondaryArticleSlugs": ["building-a-saas-company-from-austin-not-silicon-valley"],
-            },
+    # Homepage modules — create-only, like _seed_pages() below: if an
+    # admin has already opened the Homepage Builder and saved a layout,
+    # re-running this seed must never wipe their arrangement out from
+    # under them. HomepageModule has no natural unique key to upsert
+    # against (a re-run can't tell "the admin's hero" from "the seed's
+    # hero"), so the only safe idempotent behavior is "skip entirely if
+    # any row already exists" — exactly like every other create-only
+    # seed block in this function.
+    if HomepageModule.query.first() is None:
+        db.session.add_all(
+            [
+                HomepageModule(
+                    type="hero",
+                    enabled=True,
+                    sort_order=0,
+                    selection_mode="manual",
+                    config={
+                        "leadArticleSlug": "how-women-are-redefining-leadership",
+                        "secondaryArticleSlugs": ["building-a-saas-company-from-austin-not-silicon-valley"],
+                    },
+                ),
+                HomepageModule(
+                    type="featured_stories",
+                    enabled=True,
+                    sort_order=1,
+                    heading="Featured Stories",
+                    subheading="Editors' picks — the stories we don't want you to miss.",
+                    selection_mode="manual",
+                    config={
+                        "articleSlugs": [
+                            "the-negotiation-conversation-nobody-prepares-you-for",
+                            "building-a-saas-company-from-austin-not-silicon-valley",
+                        ]
+                    },
+                ),
+                HomepageModule(
+                    type="latest_stories",
+                    enabled=True,
+                    sort_order=2,
+                    heading="Latest Stories",
+                    subheading="Fresh reporting and essays, published this week.",
+                    selection_mode="automatic",
+                    config={"itemCount": 8},
+                ),
+                HomepageModule(
+                    type="featured_woman",
+                    enabled=True,
+                    sort_order=3,
+                    heading="Women Shaping Futures Spotlight",
+                    subheading="A woman worth knowing, featured every month.",
+                    selection_mode="manual",
+                    config={"personSlug": "danielle-reyes"},
+                ),
+                HomepageModule(
+                    type="series_feature",
+                    enabled=True,
+                    sort_order=4,
+                    heading="Women Doing Incredible Things",
+                    selection_mode="manual",
+                    config={"seriesSlug": "women-doing-incredible-things", "itemCount": 3},
+                ),
+                HomepageModule(
+                    type="topic_collection",
+                    enabled=True,
+                    sort_order=5,
+                    heading="Leadership",
+                    subheading="Editorial guidance for the way you work now.",
+                    selection_mode="manual",
+                    config={"topicSlug": "leadership", "itemCount": 3},
+                ),
+                HomepageModule(
+                    type="opportunities",
+                    enabled=True,
+                    sort_order=6,
+                    heading="Opportunities Worth Applying For",
+                    subheading="Fellowships, scholarships, and grants closing soon.",
+                    selection_mode="automatic",
+                    config={"itemCount": 3},
+                ),
+                HomepageModule(
+                    type="jobs",
+                    enabled=True,
+                    sort_order=7,
+                    heading="Jobs We're Watching",
+                    subheading="Featured roles from employers hiring now.",
+                    selection_mode="automatic",
+                    config={"itemCount": 4},
+                ),
+                HomepageModule(
+                    type="events",
+                    enabled=True,
+                    sort_order=8,
+                    heading="Upcoming Events",
+                    subheading="Join us online or in person.",
+                    selection_mode="automatic",
+                    config={"itemCount": 3},
+                ),
+                HomepageModule(
+                    type="resources",
+                    enabled=True,
+                    sort_order=9,
+                    heading="Resources to Save",
+                    subheading="Guides, templates, and worksheets from our library.",
+                    selection_mode="automatic",
+                    config={"itemCount": 3},
+                ),
+                HomepageModule(
+                    type="newsletter",
+                    enabled=True,
+                    sort_order=10,
+                    heading="WSF Weekly",
+                    subheading="The stories, jobs, and opportunities worth your Thursday morning coffee.",
+                ),
+                HomepageModule(
+                    type="partners",
+                    enabled=True,
+                    sort_order=11,
+                    heading="In Partnership With",
+                    selection_mode="manual",
+                    # Only kaziwave/lumen-analytics are seeded as "published"
+                    # organizations — harrow-vance/maple-ridge-capital/
+                    # northstar-collective are deliberately seeded as
+                    # "draft" (they're referenced as Article/Job employers,
+                    # not as public partner logos), so listing them here
+                    # would immediately surface a real "no longer
+                    # published" warning in the builder.
+                    config={"partnerSlugs": ["kaziwave", "lumen-analytics"]},
+                ),
+                HomepageModule(
+                    type="sponsor_placement",
+                    enabled=True,
+                    sort_order=12,
+                    heading="Our Sponsors",
+                    config={"placementKey": "homepage_featured"},
+                ),
+            ]
         )
-    )
-    db.session.add(
-        HomepageModule(
-            type="latest_stories",
-            enabled=True,
-            sort_order=1,
-            heading="Latest Stories",
-            selection_mode="automatic",
-            config={"itemCount": 8},
-        )
-    )
-    db.session.add(
-        HomepageModule(
-            type="featured_woman",
-            enabled=True,
-            sort_order=2,
-            heading="Women Shaping Futures Spotlight",
-            selection_mode="manual",
-            config={"personSlug": "danielle-reyes"},
-        )
-    )
 
     # Site settings
     upsert_site_settings(

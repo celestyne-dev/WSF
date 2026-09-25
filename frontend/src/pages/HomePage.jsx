@@ -4,6 +4,7 @@ import { loadHomepageModules } from '../features/site/siteSlice'
 import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
 import HeroModule from '../components/home/HeroModule'
+import FeaturedStoriesModule from '../components/home/FeaturedStoriesModule'
 import LatestStoriesModule from '../components/home/LatestStoriesModule'
 import FeaturedWomanModule from '../components/home/FeaturedWomanModule'
 import SeriesFeatureModule from '../components/home/SeriesFeatureModule'
@@ -14,12 +15,19 @@ import ResourcesModule from '../components/home/ResourcesModule'
 import EventsModule from '../components/home/EventsModule'
 import NewsletterModule from '../components/home/NewsletterModule'
 import PartnersModule from '../components/home/PartnersModule'
-import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
+import CommunityCtaModule from '../components/home/CommunityCtaModule'
+import MentorshipCtaModule from '../components/home/MentorshipCtaModule'
+import EditorialCalloutModule from '../components/home/EditorialCalloutModule'
+import SponsorPlacementModule from '../components/home/SponsorPlacementModule'
 
 // Maps each CMS module `type` to its renderer. Adding a new homepage block
-// type in the CMS only requires registering it here — no page rewrite.
+// type in the CMS only requires registering it here (and in the shared
+// HOMEPAGE_MODULE_TYPES allow-list on the backend) — no page rewrite. An
+// unrecognized `type` (should never happen — the backend validates against
+// the same registry) is skipped rather than crashing the page.
 const MODULE_COMPONENTS = {
   hero: HeroModule,
+  featured_stories: FeaturedStoriesModule,
   latest_stories: LatestStoriesModule,
   featured_woman: FeaturedWomanModule,
   series_feature: SeriesFeatureModule,
@@ -30,6 +38,10 @@ const MODULE_COMPONENTS = {
   events: EventsModule,
   newsletter: NewsletterModule,
   partners: PartnersModule,
+  community_cta: CommunityCtaModule,
+  mentorship_cta: MentorshipCtaModule,
+  editorial_callout: EditorialCalloutModule,
+  sponsor_placement: SponsorPlacementModule,
 }
 
 export default function HomePage() {
@@ -56,11 +68,6 @@ export default function HomePage() {
         if (!Component) return null
         return <Component key={module.id} module={module} />
       })}
-      {/* Real Sponsors CMS placements — separate from the "partners" module
-          above (general, undisclosed collaborators), since these are paid
-          and carry an explicit disclosure label. Renders nothing when no
-          sponsor is configured for this placement. */}
-      <SponsorPlacementStrip placementKey="homepage_featured" heading="Our Sponsors" />
     </div>
   )
 }

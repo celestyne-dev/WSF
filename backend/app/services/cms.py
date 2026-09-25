@@ -4,7 +4,10 @@ from app.models.cms import HomepageModule, Menu, MenuItem, SiteSetting, SocialLi
 
 def replace_homepage_modules(modules_data):
     """The homepage builder saves its whole ordered arrangement at once —
-    simpler and safer than tracking per-module diffs client-side.
+    simpler and safer than tracking per-module diffs client-side. This is
+    also the app's "publish" action for the homepage: there is no separate
+    draft copy, so a save takes effect immediately (see final report for
+    why a full staged-version system was judged out of scope).
     """
     HomepageModule.query.delete()
     for index, data in enumerate(modules_data):
@@ -17,6 +20,11 @@ def replace_homepage_modules(modules_data):
                 subheading=data.get("subheading"),
                 selection_mode=data.get("selection_mode"),
                 config=data.get("config") or {},
+                media_id=data.get("media_id"),
+                cta_label=data.get("cta_label"),
+                cta_url=data.get("cta_url"),
+                secondary_cta_label=data.get("secondary_cta_label"),
+                secondary_cta_url=data.get("secondary_cta_url"),
             )
         )
 

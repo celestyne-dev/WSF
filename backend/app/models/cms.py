@@ -1,5 +1,54 @@
 from app.extensions import db
 
+# Controlled homepage module registry — the single source of truth the
+# frontend (HomePage.jsx's MODULE_COMPONENTS, AdminHomepageBuilder's "Add
+# section" menu) and backend (HomepageModuleInputSchema) both key off of.
+# Adding a new module type means adding it here, not accepting arbitrary
+# strings from an admin request. "hero" is a singleton — everything else
+# may repeat (e.g. two editorial_callout modules in different positions).
+HOMEPAGE_MODULE_TYPES = (
+    "hero",
+    "featured_stories",
+    "latest_stories",
+    "featured_woman",
+    "series_feature",
+    "topic_collection",
+    "opportunities",
+    "jobs",
+    "events",
+    "resources",
+    "newsletter",
+    "partners",
+    "community_cta",
+    "mentorship_cta",
+    "editorial_callout",
+    "sponsor_placement",
+)
+_HOMEPAGE_MODULE_TYPE_CHECK_SQL = "type IN (" + ", ".join(f"'{t}'" for t in HOMEPAGE_MODULE_TYPES) + ")"
+
+HOMEPAGE_SINGLETON_TYPES = frozenset({"hero"})
+
+# (min, max) allowed values for config.itemCount, per type — keeps the
+# public layout from being asked to render 200 cards. Types absent here
+# either don't take an item count (hero/newsletter/partners/*_cta/
+# sponsor_placement) or aren't bounded (none, currently).
+HOMEPAGE_MODULE_ITEM_COUNT_BOUNDS = {
+    "featured_stories": (1, 8),
+    "latest_stories": (1, 12),
+    "series_feature": (1, 6),
+    "topic_collection": (1, 6),
+    "opportunities": (1, 6),
+    "jobs": (1, 6),
+    "events": (1, 6),
+    "resources": (1, 6),
+}
+
+# The only Sponsors-CMS placement key currently wired up for the homepage
+# (see components/sponsors/SponsorPlacementStrip.jsx). A controlled list
+# (of one, today) rather than a free-text field — Homepage Builder selects
+# an approved placement, it never manages sponsor campaign data itself.
+HOMEPAGE_SPONSOR_PLACEMENT_KEYS = ("homepage_featured",)
+
 
 class HomepageModule(db.Model):
     """One row per homepage section, rendered in `sort_order` by the
@@ -8,23 +57,41 @@ class HomepageModule(db.Model):
     in for. `config` holds whatever fields that module `type` needs
     (leadArticleSlug, personSlug, seriesSlug, itemCount, partnerSlugs, ...)
     since each type's shape is different enough that a fixed column per
-    field would mean most rows leave most columns null.
+    field would mean most rows leave most columns null. `media_id`/
+    `cta_label`/`cta_url`/`secondary_cta_*` are real columns rather than
+    JSON because they follow the same dedicated-column convention as every
+    other hero/CTA-bearing model in this app (AdvertisePage, Page, Person,
+    ...), and because `media_id` needs a real FK for Media.is_referenced()
+    delete protection to see it.
     """
 
     __tablename__ = "homepage_modules"
+    __table_args__ = (db.CheckConstraint(_HOMEPAGE_MODULE_TYPE_CHECK_SQL, name="ck_homepage_modules_type"),)
 
     id = db.Column(db.Integer, primary_key=True)
     type = db.Column(db.String(50), nullable=False)
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     heading = db.Column(db.String(200))
-    subheading = db.Column(db.String(400))
+    subheading = db.Column(db.Text)
     selection_mode = db.Column(db.String(20))  # manual / automatic
     config = db.Column(db.JSON, nullable=False, default=dict)
+
+    media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
+    cta_label = db.Column(db.String(50))
+    cta_url = db.Column(db.String(500))
+    secondary_cta_label = db.Column(db.String(50))
+    secondary_cta_url = db.Column(db.String(500))
+
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
     )
+
+    media = db.relationship("Media", foreign_keys=[media_id])
+
+    def is_singleton(self):
+        return self.type in HOMEPAGE_SINGLETON_TYPES
 
 
 class Menu(db.Model):

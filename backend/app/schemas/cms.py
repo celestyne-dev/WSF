@@ -5,6 +5,8 @@ from app.models.cms import (
     ADVERTISE_OFFERING_STATUSES,
     ADVERTISE_PAGE_STATUSES,
     ADVERTISE_PRICING_MODES,
+    HOMEPAGE_MODULE_TYPES,
+    HOMEPAGE_SPONSOR_PLACEMENT_KEYS,
     AdvertiseMetric,
     AdvertiseOffering,
     AdvertisePage,
@@ -13,9 +15,19 @@ from app.models.cms import (
     SocialLink,
 )
 from app.schemas.media import MediaSchema
+from app.services.homepage import validate_cta_url, validate_item_count
 
 
 class HomepageModuleSchema(ma.SQLAlchemyAutoSchema):
+    """Admin dump — every column, including `id`/timestamps, so the
+    builder can key React state and show "last updated". The public
+    endpoint dumps with this same schema too (see api/v1/public.py):
+    nothing here is sensitive (no author identity, no internal notes),
+    unlike Page/Article which need a separate PublicSchema.
+    """
+
+    media = fields.Nested(MediaSchema, dump_only=True)
+
     class Meta:
         model = HomepageModule
         load_instance = False
@@ -53,16 +65,49 @@ class SocialLinkSchema(ma.SQLAlchemyAutoSchema):
 
 
 class HomepageModuleInputSchema(ma.Schema):
-    type = fields.String(required=True)
+    """Every homepage module goes through this schema, whatever its
+    `type` — the controlled fields (media/CTA) are shared columns rather
+    than per-type schemas, since which fields a type actually *uses* is a
+    frontend/rendering concern (see HOMEPAGE_MODULE_TYPES's docstring),
+    not something the write path needs to branch on.
+    """
+
+    type = fields.String(required=True, validate=validate.OneOf(HOMEPAGE_MODULE_TYPES))
     enabled = fields.Boolean(required=False, load_default=True)
-    heading = fields.String(required=False, allow_none=True)
+    heading = fields.String(required=False, allow_none=True, validate=validate.Length(max=200))
     subheading = fields.String(required=False, allow_none=True)
     selection_mode = fields.String(required=False, allow_none=True, data_key="selectionMode")
     config = fields.Dict(required=False, load_default=dict)
 
+    media_id = fields.Integer(required=False, allow_none=True, data_key="mediaId")
+    cta_label = fields.String(required=False, allow_none=True, data_key="ctaLabel", validate=validate.Length(max=50))
+    cta_url = fields.String(required=False, allow_none=True, data_key="ctaUrl", validate=validate.Length(max=500))
+    secondary_cta_label = fields.String(
+        required=False, allow_none=True, data_key="secondaryCtaLabel", validate=validate.Length(max=50)
+    )
+    secondary_cta_url = fields.String(
+        required=False, allow_none=True, data_key="secondaryCtaUrl", validate=validate.Length(max=500)
+    )
+
+    @validates_schema
+    def validate_module(self, data, **kwargs):
+        validate_cta_url(data.get("cta_url"), field_name="cta_url")
+        validate_cta_url(data.get("secondary_cta_url"), field_name="secondary_cta_url")
+        validate_item_count(data.get("type"), (data.get("config") or {}).get("itemCount"))
+        if data.get("type") == "sponsor_placement":
+            key = (data.get("config") or {}).get("placementKey")
+            if key and key not in HOMEPAGE_SPONSOR_PLACEMENT_KEYS:
+                raise ValidationError("Unknown sponsor placement key.", field_name="config")
+
 
 class HomepageInputSchema(ma.Schema):
     modules = fields.List(fields.Nested(HomepageModuleInputSchema), required=True)
+
+    @validates_schema
+    def validate_singletons(self, data, **kwargs):
+        from app.services.homepage import validate_no_duplicate_singletons
+
+        validate_no_duplicate_singletons(data.get("modules") or [])
 
 
 class MenuItemInputSchema(ma.Schema):

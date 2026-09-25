@@ -30,7 +30,12 @@ class CountriesResource(Resource):
 class HomepageResource(Resource):
     def get(self):
         modules = HomepageModule.query.filter_by(enabled=True).order_by(HomepageModule.sort_order).all()
-        return success_response(homepage_module_schema.dump(modules, many=True))
+        # A cheap cache-invalidation hint for a CDN in front of this
+        # high-traffic endpoint — no caching infrastructure added here,
+        # just a deterministic timestamp a cache layer could key on.
+        updated_at = max((m.updated_at for m in modules), default=None)
+        meta = {"updatedAt": updated_at.isoformat() if updated_at else None}
+        return success_response(homepage_module_schema.dump(modules, many=True), meta=meta)
 
 
 class NavigationResource(Resource):

@@ -26,7 +26,9 @@ from app.schemas.cms import (
 )
 from app.schemas.commerce import SponsorSchema
 from app.schemas.user import RoleSchema, UserSchema
+from app.services.audit import log_action
 from app.services.cms import replace_homepage_modules, replace_menu, replace_social_links, upsert_site_settings
+from app.services.homepage import modules_with_warnings
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -159,18 +161,35 @@ class AdminRoleListResource(Resource):
 
 class AdminHomepageResource(Resource):
     """The homepage builder always reads/writes the full ordered module
-    list — see app/services/cms.py:replace_homepage_modules.
+    list — see app/services/cms.py:replace_homepage_modules. Gated by its
+    own homepage.manage/homepage.publish permissions (not settings.manage,
+    which Navigation/Site Settings keep using unchanged) so Editors — who
+    have no reason to touch Navigation or global Settings — can still run
+    the homepage day to day, matching how Article/Pages split .manage from
+    .publish. There's no separate draft copy: PUT is the save action *and*
+    the publish action in one atomic replace, so `homepage.manage` alone
+    already implies "can publish" (same OR-semantics as pages.publish).
     """
 
-    @permission_required("settings.manage")
+    @permission_required("homepage.manage")
     def get(self):
         modules = HomepageModule.query.order_by(HomepageModule.sort_order).all()
-        return success_response(homepage_module_schema.dump(modules, many=True))
+        warnings = modules_with_warnings(modules)
+        data = homepage_module_schema.dump(modules, many=True)
+        for row in data:
+            row["warnings"] = warnings.get(row["id"], [])
+        return success_response(data)
 
-    @permission_required("settings.manage")
+    @permission_required("homepage.publish", "homepage.manage")
     def put(self):
         data = HomepageInputSchema().load(request.get_json(silent=True) or {})
         replace_homepage_modules(data["modules"])
+        log_action(
+            current_user,
+            "homepage.publish",
+            "HomepageModule",
+            changes={"module_count": len(data["modules"]), "types": [m["type"] for m in data["modules"]]},
+        )
         db.session.commit()
         modules = HomepageModule.query.order_by(HomepageModule.sort_order).all()
         return success_response(homepage_module_schema.dump(modules, many=True))
