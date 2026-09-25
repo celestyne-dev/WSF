@@ -253,9 +253,11 @@ export async function fetchProgram(id) {
   return delay(mapProgram(MOCK_PROGRAMS.find((p) => String(p.id) === String(id))))
 }
 
+// Shared with create; `slug` is appended separately by createProgram()
+// only — MentorshipProgramUpdateSchema treats it as immutable after
+// creation and rejects it as an unknown field on PATCH.
 function buildProgramPayload(payload) {
   return {
-    slug: payload.slug,
     name: payload.name,
     shortDescription: payload.shortDescription || undefined,
     fullDescription: payload.fullDescription,
@@ -275,7 +277,7 @@ function buildProgramPayload(payload) {
 }
 
 export async function createProgram(payload) {
-  const { data } = await apiClient.post('/mentorship/programs', buildProgramPayload(payload))
+  const { data } = await apiClient.post('/mentorship/programs', { ...buildProgramPayload(payload), slug: payload.slug })
   return mapProgram(data)
 }
 
