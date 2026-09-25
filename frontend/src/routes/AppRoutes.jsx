@@ -68,6 +68,8 @@ const AdminCategories = lazy(() => import('../pages/admin/AdminCategories'))
 const AdminSeries = lazy(() => import('../pages/admin/AdminSeries'))
 const AdminSeriesEditor = lazy(() => import('../pages/admin/AdminSeriesEditor'))
 const AdminTags = lazy(() => import('../pages/admin/AdminTags'))
+const AdminPages = lazy(() => import('../pages/admin/AdminPages'))
+const AdminPageEditor = lazy(() => import('../pages/admin/AdminPageEditor'))
 const AdminNewsletterOverview = lazy(() => import('../pages/admin/AdminNewsletterOverview'))
 const AdminNewsletterIssues = lazy(() => import('../pages/admin/AdminNewsletterIssues'))
 const AdminNewsletterEditor = lazy(() => import('../pages/admin/AdminNewsletterEditor'))
@@ -207,6 +209,9 @@ export default function AppRoutes() {
           <Route path="taxonomy/series/new" element={<AdminSeriesEditor />} />
           <Route path="taxonomy/series/:id" element={<AdminSeriesEditor />} />
           <Route path="taxonomy/tags" element={<AdminTags />} />
+          <Route path="pages" element={<AdminPages />} />
+          <Route path="pages/new" element={<AdminPageEditor />} />
+          <Route path="pages/:id" element={<AdminPageEditor />} />
           <Route path="newsletter" element={<AdminNewsletterOverview />} />
           <Route path="newsletter/issues" element={<AdminNewsletterIssues />} />
           <Route path="newsletter/issues/new" element={<AdminNewsletterEditor />} />

@@ -40,6 +40,7 @@ from app.models.mentorship import (  # noqa: F401
 from app.models.submissions import StorySubmission, SubmissionMedia, SubmissionNote  # noqa: F401
 from app.models.nominations import Nomination, NominationNote  # noqa: F401
 from app.models.analytics import AnalyticsEvent  # noqa: F401
+from app.models.page import Page, PageRevision  # noqa: F401
 
 __all__ = [
     "Country",

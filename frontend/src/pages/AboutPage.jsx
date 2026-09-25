@@ -1,16 +1,24 @@
 import { useEffect, useState } from 'react'
 import { fetchAuthors } from '../api/taxonomies'
 import { fetchAudienceStats } from '../api/site'
+import { fetchPublicPage } from '../api/pages'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import MediaImage from '../components/ui/MediaImage'
+import ArticleContent from '../components/article/ArticleContent'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 
 export default function AboutPage() {
+  const [page, setPage] = useState(undefined)
   const [authors, setAuthors] = useState([])
   const [stats, setStats] = useState(null)
 
   useEffect(() => {
     let active = true
+    fetchPublicPage('about')
+      .then((res) => active && setPage(res))
+      .catch(() => active && setPage(null))
     fetchAuthors()
       .then((res) => active && setAuthors(res.items))
       .catch(() => {})
@@ -23,45 +31,27 @@ export default function AboutPage() {
   }, [])
 
   useSeo({
-    title: 'About Women Shaping Futures',
-    description: 'Women Shaping Futures is a global media, opportunity, and community platform for ambitious women.',
+    title: page?.seo?.title || 'About Women Shaping Futures',
+    description: page?.seo?.description || 'Women Shaping Futures is a global media, opportunity, and community platform for ambitious women.',
     canonical: 'https://womenshapingfutures.org/about',
   })
 
+  if (page === undefined) return <PageLoader />
+  if (page === null) return <EmptyState title="This page isn't available right now" description="Please check back shortly." />
+
+  // The mission/hero description can incorporate live reach numbers once
+  // they've loaded; the page's own CMS-authored subtitle is the fallback
+  // shown immediately and whenever stats aren't available.
+  const description = stats
+    ? `Women Shaping Futures started in 2019 as a small LinkedIn page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching more than ${new Intl.NumberFormat('en-US').format(stats.linkedinFollowers)} people across ${stats.countriesReached} countries, with particularly strong readership in the United States.`
+    : page.subtitle
+
   return (
     <div>
-      <PageHeader
-        eyebrow="About Us"
-        title="A platform built to move women forward"
-        description={
-          stats
-            ? `Women Shaping Futures started in 2019 as a small LinkedIn page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching more than ${new Intl.NumberFormat('en-US').format(stats.linkedinFollowers)} people across ${stats.countriesReached} countries, with particularly strong readership in the United States.`
-            : "Women Shaping Futures started in 2019 as a small LinkedIn page sharing stories of women in business. Today, we're a global editorial and opportunity platform reaching women worldwide."
-        }
-      />
+      <PageHeader eyebrow="About Us" title={page.title} description={description} />
 
       <div className="container-editorial max-w-reading py-14">
-        <h2 className="font-serif text-2xl font-semibold text-charcoal">Our mission</h2>
-        <p className="mt-4 text-lg leading-relaxed text-charcoal-600">
-          We exist to amplify women's stories, connect women with opportunity, and equip them with the resources to lead, grow, and shape their own
-          futures. We believe representation matters — but representation without access to jobs, mentors, and capital is incomplete. That's why
-          we built more than a media brand: a platform spanning journalism, community, opportunity, and education.
-        </p>
-
-        <h2 className="mt-10 font-serif text-2xl font-semibold text-charcoal">What we do</h2>
-        <ul className="mt-4 list-disc space-y-2 pl-5 text-base text-charcoal-600">
-          <li><strong className="text-charcoal">Inspire</strong> — profiles, interviews, and stories of women shaping their industries.</li>
-          <li><strong className="text-charcoal">Inform</strong> — original journalism, guides, and expert-driven advice.</li>
-          <li><strong className="text-charcoal">Connect</strong> — a directory of people, mentors, organizations, and events.</li>
-          <li><strong className="text-charcoal">Educate</strong> — resources, workshops, and learning tracks.</li>
-          <li><strong className="text-charcoal">Create opportunity</strong> — jobs, grants, scholarships, and fellowships.</li>
-        </ul>
-
-        <h2 className="mt-10 font-serif text-2xl font-semibold text-charcoal">Editorial standards</h2>
-        <p className="mt-4 text-lg leading-relaxed text-charcoal-600">
-          Every story we publish is fact-checked and edited to a professional publishing standard. Sponsored content is always clearly disclosed and
-          never disguised as independent editorial. Read our full Editorial Policy for details on sourcing, corrections, and disclosure.
-        </p>
+        <ArticleContent blocks={page.content} />
       </div>
 
       <div className="border-t border-taupe-200 bg-cream py-14">

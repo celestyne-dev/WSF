@@ -44,6 +44,7 @@ def create_app(config_name="development"):
     from app.api.v1.opportunities import opportunities_bp
     from app.api.v1.orders import orders_bp
     from app.api.v1.organizations import organizations_bp
+    from app.api.v1.pages import pages_bp
     from app.api.v1.partnerships import partnerships_bp
     from app.api.v1.people import people_bp
     from app.api.v1.products import products_bp
@@ -84,6 +85,7 @@ def create_app(config_name="development"):
     app.register_blueprint(community_bp, url_prefix="/api/v1/community")
     app.register_blueprint(mentorship_bp, url_prefix="/api/v1/mentorship")
     app.register_blueprint(admin_taxonomy_bp, url_prefix="/api/v1/admin/taxonomy")
+    app.register_blueprint(pages_bp, url_prefix="/api/v1/pages")
 
     @app.get("/api/v1/health")
     def health():

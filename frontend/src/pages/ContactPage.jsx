@@ -1,34 +1,38 @@
-import { Mail, MapPin } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { fetchPublicPage } from '../api/pages'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
+import ArticleContent from '../components/article/ArticleContent'
+import PageLoader from '../components/ui/PageLoader'
+import EmptyState from '../components/ui/EmptyState'
 
 export default function ContactPage() {
+  const [page, setPage] = useState(undefined)
+
+  useEffect(() => {
+    let active = true
+    fetchPublicPage('contact')
+      .then((res) => active && setPage(res))
+      .catch(() => active && setPage(null))
+    return () => {
+      active = false
+    }
+  }, [])
+
   useSeo({
-    title: 'Contact | Women Shaping Futures',
-    description: 'Get in touch with the Women Shaping Futures editorial, partnerships, and support teams.',
+    title: page?.seo?.title || 'Contact | Women Shaping Futures',
+    description: page?.seo?.description || 'Get in touch with the Women Shaping Futures editorial, partnerships, and support teams.',
     canonical: 'https://womenshapingfutures.org/contact',
   })
 
+  if (page === undefined) return <PageLoader />
+  if (page === null) return <EmptyState title="This page isn't available right now" description="Please check back shortly." />
+
   return (
     <div>
-      <PageHeader eyebrow="Contact" title="Get in Touch" description="Reach the right team, faster." />
-      <div className="container-editorial grid grid-cols-1 gap-6 py-14 sm:grid-cols-3">
-        {[
-          { team: 'Editorial', email: 'editorial@womenshapingfutures.org', note: 'Story tips, corrections, and press inquiries.' },
-          { team: 'Partnerships', email: 'partnerships@womenshapingfutures.org', note: 'Sponsorships, advertising, and brand collaborations.' },
-          { team: 'General', email: 'hello@womenshapingfutures.org', note: 'Everything else, including account support.' },
-        ].map((c) => (
-          <div key={c.team} className="border border-taupe-200 bg-white p-6">
-            <h3 className="font-serif text-lg font-semibold text-charcoal">{c.team}</h3>
-            <p className="mt-2 text-sm text-charcoal-600">{c.note}</p>
-            <a href={`mailto:${c.email}`} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-burgundy-600 hover:underline">
-              <Mail size={14} /> {c.email}
-            </a>
-          </div>
-        ))}
-      </div>
-      <div className="container-editorial flex items-center gap-2 pb-14 text-sm text-charcoal-600">
-        <MapPin size={16} /> Nairobi, Kenya — serving a global audience
+      <PageHeader eyebrow="Contact" title={page.title} description={page.subtitle} />
+      <div className="container-editorial max-w-reading py-14">
+        <ArticleContent blocks={page.content} />
       </div>
     </div>
   )
