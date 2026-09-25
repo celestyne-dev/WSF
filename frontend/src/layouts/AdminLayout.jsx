@@ -27,6 +27,10 @@ import {
   ShoppingBag,
   Send,
   Users2,
+  GraduationCap,
+  UserCheck,
+  UserPlus,
+  Link2,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -69,6 +73,17 @@ const NAV_GROUPS = [
       { to: '/admin/newsletter/subscribers', icon: Users2, label: 'Subscribers' },
       { to: '/admin/submissions', icon: Inbox, label: 'Submissions' },
       { to: '/admin/nominations', icon: Star, label: 'Nominations' },
+    ],
+  },
+  {
+    heading: 'Mentorship',
+    items: [
+      { to: '/admin/mentorship', icon: GraduationCap, label: 'Overview', end: true },
+      { to: '/admin/mentorship/programs', icon: CalendarDays, label: 'Programs' },
+      { to: '/admin/mentorship/applications', icon: Inbox, label: 'Applications' },
+      { to: '/admin/mentorship/mentors', icon: UserCheck, label: 'Mentors' },
+      { to: '/admin/mentorship/mentees', icon: UserPlus, label: 'Mentees' },
+      { to: '/admin/mentorship/matches', icon: Link2, label: 'Matches' },
     ],
   },
   {

@@ -75,6 +75,13 @@ const AdminAdvertise = lazy(() => import('../pages/admin/AdminAdvertise'))
 const AdminMembers = lazy(() => import('../pages/admin/AdminMembers'))
 const AdminMemberDetail = lazy(() => import('../pages/admin/AdminMemberDetail'))
 const AdminCommunityPage = lazy(() => import('../pages/admin/AdminCommunityPage'))
+const AdminMentorshipOverview = lazy(() => import('../pages/admin/AdminMentorshipOverview'))
+const AdminMentorshipPrograms = lazy(() => import('../pages/admin/AdminMentorshipPrograms'))
+const AdminMentorshipProgramEditor = lazy(() => import('../pages/admin/AdminMentorshipProgramEditor'))
+const AdminMentorshipApplications = lazy(() => import('../pages/admin/AdminMentorshipApplications'))
+const AdminMentorshipApplicationDetail = lazy(() => import('../pages/admin/AdminMentorshipApplicationDetail'))
+const AdminMentorshipMatches = lazy(() => import('../pages/admin/AdminMentorshipMatches'))
+const AdminMentorshipMatchDetail = lazy(() => import('../pages/admin/AdminMentorshipMatchDetail'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
@@ -191,6 +198,16 @@ export default function AppRoutes() {
           <Route path="members" element={<AdminMembers />} />
           <Route path="members/:id" element={<AdminMemberDetail />} />
           <Route path="community-page" element={<AdminCommunityPage />} />
+          <Route path="mentorship" element={<AdminMentorshipOverview />} />
+          <Route path="mentorship/programs" element={<AdminMentorshipPrograms />} />
+          <Route path="mentorship/programs/new" element={<AdminMentorshipProgramEditor />} />
+          <Route path="mentorship/programs/:id" element={<AdminMentorshipProgramEditor />} />
+          <Route path="mentorship/applications" element={<AdminMentorshipApplications />} />
+          <Route path="mentorship/applications/:id" element={<AdminMentorshipApplicationDetail />} />
+          <Route path="mentorship/mentors" element={<AdminMentorshipApplications defaultRole="mentor" />} />
+          <Route path="mentorship/mentees" element={<AdminMentorshipApplications defaultRole="mentee" />} />
+          <Route path="mentorship/matches" element={<AdminMentorshipMatches />} />
+          <Route path="mentorship/matches/:id" element={<AdminMentorshipMatchDetail />} />
           <Route path="submissions" element={<AdminGenericList section="submissions" />} />
           <Route path="nominations" element={<AdminGenericList section="nominations" />} />
           <Route path="partnerships" element={<AdminPartnerships />} />
