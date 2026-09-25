@@ -31,6 +31,10 @@ import {
   UserCheck,
   UserPlus,
   Link2,
+  Hash,
+  Folder,
+  Layers,
+  Tag,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -48,6 +52,15 @@ const NAV_GROUPS = [
       { to: '/admin/people', icon: Users, label: 'People' },
       { to: '/admin/authors', icon: PenSquare, label: 'Authors' },
       { to: '/admin/organizations', icon: Building2, label: 'Organizations' },
+    ],
+  },
+  {
+    heading: 'Taxonomy',
+    items: [
+      { to: '/admin/taxonomy/topics', icon: Hash, label: 'Topics' },
+      { to: '/admin/taxonomy/categories', icon: Folder, label: 'Categories' },
+      { to: '/admin/taxonomy/series', icon: Layers, label: 'Series' },
+      { to: '/admin/taxonomy/tags', icon: Tag, label: 'Tags' },
     ],
   },
   {

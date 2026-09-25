@@ -29,12 +29,33 @@ async function loadMockOrganizations() {
 
 function mapTopic(t) {
   if (!t) return null
-  return { id: t.id, slug: t.slug, name: t.name, description: t.description, articleCount: t.article_count }
+  return {
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+    description: t.description,
+    heroImage: t.hero_media?.public_url || null,
+    heroMedia: mapMediaRef(t.hero_media),
+    heroMediaId: t.hero_media_id || null,
+    seo: t.seo || null,
+    status: t.status || 'published',
+    sortOrder: t.sort_order || 0,
+    articleCount: t.article_count,
+    usageCount: t.usageCount,
+  }
 }
 
 function mapCategory(c) {
   if (!c) return null
-  return { id: c.id, slug: c.slug, name: c.name, description: c.description }
+  return {
+    id: c.id,
+    slug: c.slug,
+    name: c.name,
+    description: c.description,
+    status: c.status || 'published',
+    sortOrder: c.sort_order || 0,
+    usageCount: c.usageCount,
+  }
 }
 
 function mapSeries(s) {
@@ -43,6 +64,7 @@ function mapSeries(s) {
     id: s.id,
     slug: s.slug,
     name: s.name,
+    subtitle: s.subtitle,
     description: s.description,
     coverImage: s.cover_media?.public_url || null,
     coverMedia: mapMediaRef(s.cover_media),
@@ -53,8 +75,23 @@ function mapSeries(s) {
           logoMedia: mapMediaRef(s.sponsor_organization.logo),
         }
       : null,
+    seo: s.seo || null,
     featured: s.featured,
+    status: s.status || 'published',
+    sortOrder: s.sort_order || 0,
     articleCount: s.article_count,
+    usageCount: s.usageCount,
+  }
+}
+
+function mapTag(t) {
+  if (!t) return null
+  return {
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+    status: t.status || 'published',
+    usageCount: t.usageCount,
   }
 }
 
@@ -166,6 +203,96 @@ export async function fetchSeriesBySlug(slug) {
   }
   const { getSeriesBySlug } = await loadMockSeries()
   return delay(getSeriesBySlug(slug) || null)
+}
+
+// ---------------------------------------------------------------------------
+// Taxonomy admin (Topics/Categories/Series/Tags) — CMS CRUD + status/merge.
+// Every call hits /api/v1/admin/taxonomy/* under taxonomy.manage; unlike
+// the public fetch* functions above, these have no mock-mode fallback (the
+// admin TAXONOMY area is real-data-only, same as every other CMS section).
+// Field names mirror the *InputSchema/*UpdateSchema camelCase data_keys.
+// ---------------------------------------------------------------------------
+
+export async function fetchTopicsAdmin(params = {}) {
+  const { data } = await apiClient.get('/admin/taxonomy/topics', { params })
+  return { ...data, items: data.items.map(mapTopic) }
+}
+export async function fetchTopicAdmin(id) {
+  return mapTopic((await apiClient.get(`/admin/taxonomy/topics/${id}`)).data)
+}
+export async function createTopic(payload) {
+  return mapTopic((await apiClient.post('/admin/taxonomy/topics', payload)).data)
+}
+export async function updateTopic(id, payload) {
+  return mapTopic((await apiClient.put(`/admin/taxonomy/topics/${id}`, payload)).data)
+}
+export async function setTopicStatus(id, status) {
+  return mapTopic((await apiClient.put(`/admin/taxonomy/topics/${id}/status`, { status })).data)
+}
+// Hard delete — the backend rejects this with a 409 if any content still
+// references the topic. Archive (via setTopicStatus) is the safe default.
+export async function deleteTopic(id) {
+  await apiClient.delete(`/admin/taxonomy/topics/${id}`)
+}
+
+export async function fetchCategoriesAdmin(params = {}) {
+  const { data } = await apiClient.get('/admin/taxonomy/categories', { params })
+  return { ...data, items: data.items.map(mapCategory) }
+}
+export async function fetchCategoryAdmin(id) {
+  return mapCategory((await apiClient.get(`/admin/taxonomy/categories/${id}`)).data)
+}
+export async function createCategory(payload) {
+  return mapCategory((await apiClient.post('/admin/taxonomy/categories', payload)).data)
+}
+export async function updateCategory(id, payload) {
+  return mapCategory((await apiClient.put(`/admin/taxonomy/categories/${id}`, payload)).data)
+}
+export async function setCategoryStatus(id, status) {
+  return mapCategory((await apiClient.put(`/admin/taxonomy/categories/${id}/status`, { status })).data)
+}
+export async function deleteCategory(id) {
+  await apiClient.delete(`/admin/taxonomy/categories/${id}`)
+}
+
+export async function fetchSeriesAdmin(params = {}) {
+  const { data } = await apiClient.get('/admin/taxonomy/series', { params })
+  return { ...data, items: data.items.map(mapSeries) }
+}
+export async function fetchSeriesAdminById(id) {
+  return mapSeries((await apiClient.get(`/admin/taxonomy/series/${id}`)).data)
+}
+export async function createSeries(payload) {
+  return mapSeries((await apiClient.post('/admin/taxonomy/series', payload)).data)
+}
+export async function updateSeries(id, payload) {
+  return mapSeries((await apiClient.put(`/admin/taxonomy/series/${id}`, payload)).data)
+}
+export async function setSeriesStatus(id, status) {
+  return mapSeries((await apiClient.put(`/admin/taxonomy/series/${id}/status`, { status })).data)
+}
+export async function deleteSeries(id) {
+  await apiClient.delete(`/admin/taxonomy/series/${id}`)
+}
+
+export async function fetchTags(params = {}) {
+  const { data } = await apiClient.get('/admin/taxonomy/tags', { params })
+  return { ...data, items: data.items.map(mapTag) }
+}
+export async function createTag(payload) {
+  return mapTag((await apiClient.post('/admin/taxonomy/tags', payload)).data)
+}
+export async function updateTag(id, payload) {
+  return mapTag((await apiClient.put(`/admin/taxonomy/tags/${id}`, payload)).data)
+}
+export async function deleteTag(id) {
+  await apiClient.delete(`/admin/taxonomy/tags/${id}`)
+}
+// Moves every Article/Resource relationship off fromTagId onto toTagId,
+// then deletes the source tag — the only bulk-editing operation offered
+// for taxonomy. Returns the (now-merged-into) destination tag.
+export async function mergeTags(fromTagId, toTagId) {
+  return mapTag((await apiClient.post('/admin/taxonomy/tags/merge', { fromTagId, toTagId })).data)
 }
 
 // Mock demo authors still carry a plain-string `bio` (pre-dating the

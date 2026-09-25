@@ -41,8 +41,13 @@ def author_slug(client, editor_token):
 
 
 def test_topic_and_category_creation_and_listing(client, editor_token):
+    # Taxonomy create/manage now lives under /admin/taxonomy (see
+    # test_taxonomy_cms.py for full CRUD coverage) — this test keeps
+    # verifying that a published Topic shows up on the public listing.
     resp = client.post(
-        "/api/v1/topics", json={"name": "Leadership"}, headers=auth_headers(editor_token)
+        "/api/v1/admin/taxonomy/topics",
+        json={"name": "Leadership", "status": "published"},
+        headers=auth_headers(editor_token),
     )
     assert resp.status_code == 201
     assert resp.get_json()["data"]["slug"] == "leadership"
@@ -112,7 +117,7 @@ def test_article_create_publish_and_slug_change_redirects(client, editor_token, 
 
 
 def test_article_listing_filters_by_topic(client, editor_token, author_slug):
-    client.post("/api/v1/topics", json={"name": "Careers"}, headers=auth_headers(editor_token))
+    client.post("/api/v1/admin/taxonomy/topics", json={"name": "Careers"}, headers=auth_headers(editor_token))
     create = client.post(
         "/api/v1/articles",
         json={

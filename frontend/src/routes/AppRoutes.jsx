@@ -62,6 +62,12 @@ const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
 const AdminResources = lazy(() => import('../pages/admin/AdminResources'))
 const AdminResourceEditor = lazy(() => import('../pages/admin/AdminResourceEditor'))
+const AdminTopics = lazy(() => import('../pages/admin/AdminTopics'))
+const AdminTopicEditor = lazy(() => import('../pages/admin/AdminTopicEditor'))
+const AdminCategories = lazy(() => import('../pages/admin/AdminCategories'))
+const AdminSeries = lazy(() => import('../pages/admin/AdminSeries'))
+const AdminSeriesEditor = lazy(() => import('../pages/admin/AdminSeriesEditor'))
+const AdminTags = lazy(() => import('../pages/admin/AdminTags'))
 const AdminNewsletterOverview = lazy(() => import('../pages/admin/AdminNewsletterOverview'))
 const AdminNewsletterIssues = lazy(() => import('../pages/admin/AdminNewsletterIssues'))
 const AdminNewsletterEditor = lazy(() => import('../pages/admin/AdminNewsletterEditor'))
@@ -193,6 +199,14 @@ export default function AppRoutes() {
           <Route path="resources" element={<AdminResources />} />
           <Route path="resources/new" element={<AdminResourceEditor />} />
           <Route path="resources/:id" element={<AdminResourceEditor />} />
+          <Route path="taxonomy/topics" element={<AdminTopics />} />
+          <Route path="taxonomy/topics/new" element={<AdminTopicEditor />} />
+          <Route path="taxonomy/topics/:id" element={<AdminTopicEditor />} />
+          <Route path="taxonomy/categories" element={<AdminCategories />} />
+          <Route path="taxonomy/series" element={<AdminSeries />} />
+          <Route path="taxonomy/series/new" element={<AdminSeriesEditor />} />
+          <Route path="taxonomy/series/:id" element={<AdminSeriesEditor />} />
+          <Route path="taxonomy/tags" element={<AdminTags />} />
           <Route path="newsletter" element={<AdminNewsletterOverview />} />
           <Route path="newsletter/issues" element={<AdminNewsletterIssues />} />
           <Route path="newsletter/issues/new" element={<AdminNewsletterEditor />} />

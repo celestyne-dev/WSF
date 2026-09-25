@@ -74,7 +74,7 @@ def test_job_create_and_country_region_filtering(client, admin_token):
 
 
 def test_opportunity_create_with_countries_and_topics(client, admin_token):
-    client.post("/api/v1/topics", json={"name": "Leadership"}, headers=auth_headers(admin_token))
+    client.post("/api/v1/admin/taxonomy/topics", json={"name": "Leadership"}, headers=auth_headers(admin_token))
 
     created = client.post(
         "/api/v1/opportunities",
@@ -139,7 +139,7 @@ def test_event_create_with_speakers_and_sponsors(client, admin_token):
 
 
 def test_resource_create_and_topic_filter(client, admin_token):
-    client.post("/api/v1/topics", json={"name": "Career"}, headers=auth_headers(admin_token))
+    client.post("/api/v1/admin/taxonomy/topics", json={"name": "Career"}, headers=auth_headers(admin_token))
 
     created = client.post(
         "/api/v1/resources",

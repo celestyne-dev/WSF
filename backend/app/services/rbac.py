@@ -63,6 +63,7 @@ ROLE_PERMISSIONS = {
     "mentorship_manager": ["mentorship.manage"],
     "submissions_manager": ["submissions.manage"],
     "nominations_manager": ["nominations.manage"],
+    "taxonomy_manager": ["taxonomy.manage"],
     "analyst": ["analytics.view"],
     "member": ["profile.manage"],
     "employer": ["jobs.create_own"],

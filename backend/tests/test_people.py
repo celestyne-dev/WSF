@@ -160,7 +160,7 @@ def test_person_list_hides_drafts_from_anonymous_requests(client, editor_token):
 
 def test_person_series_relationship(client, editor_token):
     series_resp = client.post(
-        "/api/v1/series", json={"name": "Women Doing Incredible Things"}, headers=auth_headers(editor_token)
+        "/api/v1/admin/taxonomy/series", json={"name": "Women Doing Incredible Things"}, headers=auth_headers(editor_token)
     )
     assert series_resp.status_code == 201
     series_slug = series_resp.get_json()["data"]["slug"]

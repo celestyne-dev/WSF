@@ -2,7 +2,7 @@ from marshmallow import fields, validate
 
 from app.extensions import ma
 from app.models.article import Article
-from app.models.taxonomy import Category, Series, Tag, Topic
+from app.models.taxonomy import TAXONOMY_STATUSES, Category, Series, Tag, Topic
 from app.schemas.media import MediaSchema
 
 
@@ -20,6 +20,7 @@ class TagSchema(ma.SQLAlchemyAutoSchema):
 
 class TopicSchema(ma.SQLAlchemyAutoSchema):
     article_count = fields.Method("get_article_count")
+    hero_media = fields.Nested(MediaSchema, dump_only=True)
 
     class Meta:
         model = Topic
@@ -45,19 +46,80 @@ class CategoryInputSchema(ma.Schema):
     name = fields.String(required=True, validate=validate.Length(min=1, max=140))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
     description = fields.String(required=False, allow_none=True)
+    status = fields.String(required=False, load_default="draft", validate=validate.OneOf(TAXONOMY_STATUSES))
+    sort_order = fields.Integer(required=False, load_default=0, data_key="sortOrder")
+
+
+class CategoryUpdateSchema(ma.Schema):
+    name = fields.String(required=False, validate=validate.Length(min=1, max=140))
+    slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
+    description = fields.String(required=False, allow_none=True)
+    status = fields.String(required=False, validate=validate.OneOf(TAXONOMY_STATUSES))
+    sort_order = fields.Integer(required=False, data_key="sortOrder")
 
 
 class TopicInputSchema(ma.Schema):
     name = fields.String(required=True, validate=validate.Length(min=1, max=140))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
     description = fields.String(required=False, allow_none=True)
+    hero_media_id = fields.Integer(required=False, allow_none=True, data_key="heroMediaId")
+    seo = fields.Dict(required=False, allow_none=True)
+    status = fields.String(required=False, load_default="draft", validate=validate.OneOf(TAXONOMY_STATUSES))
     sort_order = fields.Integer(required=False, load_default=0, data_key="sortOrder")
+
+
+class TopicUpdateSchema(ma.Schema):
+    name = fields.String(required=False, validate=validate.Length(min=1, max=140))
+    slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
+    description = fields.String(required=False, allow_none=True)
+    hero_media_id = fields.Integer(required=False, allow_none=True, data_key="heroMediaId")
+    seo = fields.Dict(required=False, allow_none=True)
+    status = fields.String(required=False, validate=validate.OneOf(TAXONOMY_STATUSES))
+    sort_order = fields.Integer(required=False, data_key="sortOrder")
 
 
 class SeriesInputSchema(ma.Schema):
     name = fields.String(required=True, validate=validate.Length(min=1, max=200))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
+    subtitle = fields.String(required=False, allow_none=True, validate=validate.Length(max=300))
     description = fields.String(required=False, allow_none=True)
     cover_media_id = fields.Integer(required=False, allow_none=True, data_key="coverMediaId")
     sponsor_organization_id = fields.Integer(required=False, allow_none=True, data_key="sponsorOrganizationId")
+    seo = fields.Dict(required=False, allow_none=True)
     featured = fields.Boolean(required=False, load_default=False)
+    status = fields.String(required=False, load_default="draft", validate=validate.OneOf(TAXONOMY_STATUSES))
+    sort_order = fields.Integer(required=False, load_default=0, data_key="sortOrder")
+
+
+class SeriesUpdateSchema(ma.Schema):
+    name = fields.String(required=False, validate=validate.Length(min=1, max=200))
+    slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
+    subtitle = fields.String(required=False, allow_none=True, validate=validate.Length(max=300))
+    description = fields.String(required=False, allow_none=True)
+    cover_media_id = fields.Integer(required=False, allow_none=True, data_key="coverMediaId")
+    sponsor_organization_id = fields.Integer(required=False, allow_none=True, data_key="sponsorOrganizationId")
+    seo = fields.Dict(required=False, allow_none=True)
+    featured = fields.Boolean(required=False)
+    status = fields.String(required=False, validate=validate.OneOf(TAXONOMY_STATUSES))
+    sort_order = fields.Integer(required=False, data_key="sortOrder")
+
+
+class TagInputSchema(ma.Schema):
+    name = fields.String(required=True, validate=validate.Length(min=1, max=140))
+    slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
+    status = fields.String(required=False, load_default="published", validate=validate.OneOf(TAXONOMY_STATUSES))
+
+
+class TagUpdateSchema(ma.Schema):
+    name = fields.String(required=False, validate=validate.Length(min=1, max=140))
+    slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=140))
+    status = fields.String(required=False, validate=validate.OneOf(TAXONOMY_STATUSES))
+
+
+class TaxonomyStatusUpdateSchema(ma.Schema):
+    status = fields.String(required=True, validate=validate.OneOf(TAXONOMY_STATUSES))
+
+
+class TagMergeSchema(ma.Schema):
+    from_tag_id = fields.Integer(required=True, data_key="fromTagId")
+    to_tag_id = fields.Integer(required=True, data_key="toTagId")

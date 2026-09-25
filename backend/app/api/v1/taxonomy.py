@@ -1,22 +1,22 @@
-from flask import Blueprint, request
+from flask import Blueprint
+
 from flask_restful import Api, Resource
 
-from app.auth.decorators import permission_required
-from app.extensions import db
 from app.models.article import Article
 from app.models.taxonomy import Category, Series, Topic
 from app.schemas.article import article_summary_schema
-from app.schemas.taxonomy import (
-    CategoryInputSchema,
-    CategorySchema,
-    SeriesInputSchema,
-    SeriesSchema,
-    TopicInputSchema,
-    TopicSchema,
-)
-from app.services.slugs import generate_unique_slug
+from app.schemas.taxonomy import CategorySchema, SeriesSchema, TopicSchema
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
+
+# Public, unauthenticated, published-only — the read side of Topic/
+# Category/Series taxonomy. All create/update/delete/status/merge
+# operations live in app/api/v1/admin_taxonomy.py under taxonomy.manage;
+# this file's response contract (flat arrays, {topic/category/series,
+# articles} detail shape) is unchanged so TopicsIndexPage/TopicDetailPage/
+# SeriesIndexPage/SeriesDetailPage and every other editor's selector
+# (Article/Person/Resource/...) that calls fetchTopics/fetchCategories/
+# fetchSeries need no frontend changes.
 
 topics_bp = Blueprint("topics", __name__)
 categories_bp = Blueprint("categories", __name__)
@@ -38,26 +38,13 @@ def _articles_for(query):
 
 class TopicListResource(Resource):
     def get(self):
-        topics = Topic.query.order_by(Topic.sort_order, Topic.name).all()
+        topics = Topic.query.filter_by(status="published").order_by(Topic.sort_order, Topic.name).all()
         return success_response(topic_schema.dump(topics, many=True))
-
-    @permission_required("taxonomy.manage")
-    def post(self):
-        data = TopicInputSchema().load(request.get_json(silent=True) or {})
-        topic = Topic(
-            name=data["name"],
-            description=data.get("description"),
-            sort_order=data.get("sort_order", 0),
-        )
-        topic.slug = data.get("slug") or generate_unique_slug(Topic, data["name"])
-        db.session.add(topic)
-        db.session.commit()
-        return success_response(topic_schema.dump(topic), status=201)
 
 
 class TopicDetailResource(Resource):
     def get(self, slug):
-        topic = Topic.query.filter_by(slug=slug).first()
+        topic = Topic.query.filter_by(slug=slug, status="published").first()
         if topic is None:
             raise ApiError("Topic not found.", 404, code="not_found")
         result = _articles_for(Article.query.filter(Article.topics.any(id=topic.id)))
@@ -67,22 +54,13 @@ class TopicDetailResource(Resource):
 
 class CategoryListResource(Resource):
     def get(self):
-        categories = Category.query.order_by(Category.name).all()
+        categories = Category.query.filter_by(status="published").order_by(Category.sort_order, Category.name).all()
         return success_response(category_schema.dump(categories, many=True))
-
-    @permission_required("taxonomy.manage")
-    def post(self):
-        data = CategoryInputSchema().load(request.get_json(silent=True) or {})
-        category = Category(name=data["name"], description=data.get("description"))
-        category.slug = data.get("slug") or generate_unique_slug(Category, data["name"])
-        db.session.add(category)
-        db.session.commit()
-        return success_response(category_schema.dump(category), status=201)
 
 
 class CategoryDetailResource(Resource):
     def get(self, slug):
-        category = Category.query.filter_by(slug=slug).first()
+        category = Category.query.filter_by(slug=slug, status="published").first()
         if category is None:
             raise ApiError("Category not found.", 404, code="not_found")
         result = _articles_for(Article.query.filter_by(category_id=category.id))
@@ -94,28 +72,13 @@ class CategoryDetailResource(Resource):
 
 class SeriesListResource(Resource):
     def get(self):
-        items = Series.query.order_by(Series.name).all()
+        items = Series.query.filter_by(status="published").order_by(Series.sort_order, Series.name).all()
         return success_response(series_schema.dump(items, many=True))
-
-    @permission_required("taxonomy.manage")
-    def post(self):
-        data = SeriesInputSchema().load(request.get_json(silent=True) or {})
-        item = Series(
-            name=data["name"],
-            description=data.get("description"),
-            cover_media_id=data.get("cover_media_id"),
-            sponsor_organization_id=data.get("sponsor_organization_id"),
-            featured=data.get("featured", False),
-        )
-        item.slug = data.get("slug") or generate_unique_slug(Series, data["name"])
-        db.session.add(item)
-        db.session.commit()
-        return success_response(series_schema.dump(item), status=201)
 
 
 class SeriesDetailResource(Resource):
     def get(self, slug):
-        item = Series.query.filter_by(slug=slug).first()
+        item = Series.query.filter_by(slug=slug, status="published").first()
         if item is None:
             raise ApiError("Series not found.", 404, code="not_found")
         result = _articles_for(Article.query.filter_by(series_id=item.id))

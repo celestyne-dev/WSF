@@ -162,7 +162,7 @@ def test_author_list_hides_drafts_from_anonymous_requests(client, editor_token):
 
 def test_author_topics_relationship(client, editor_token):
     topic_resp = client.post(
-        "/api/v1/topics", json={"name": "Fintech"}, headers=auth_headers(editor_token)
+        "/api/v1/admin/taxonomy/topics", json={"name": "Fintech"}, headers=auth_headers(editor_token)
     )
     assert topic_resp.status_code == 201
     topic_slug = topic_resp.get_json()["data"]["slug"]
