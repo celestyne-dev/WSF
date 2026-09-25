@@ -95,6 +95,7 @@ const AdminStorySubmissionDetail = lazy(() => import('../pages/admin/AdminStoryS
 const AdminNominations = lazy(() => import('../pages/admin/AdminNominations'))
 const AdminNominationDetail = lazy(() => import('../pages/admin/AdminNominationDetail'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
+const AdminNavigation = lazy(() => import('../pages/admin/AdminNavigation'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
 const AdminUsers = lazy(() => import('../pages/admin/AdminUsers'))
@@ -177,6 +178,7 @@ export default function AppRoutes() {
           <Route path="articles/new" element={<AdminArticleEditor />} />
           <Route path="articles/:id" element={<AdminArticleEditor />} />
           <Route path="homepage" element={<AdminHomepageBuilder />} />
+          <Route path="navigation" element={<AdminNavigation />} />
           <Route path="people" element={<AdminPeople />} />
           <Route path="people/new" element={<AdminPersonEditor />} />
           <Route path="people/:id" element={<AdminPersonEditor />} />

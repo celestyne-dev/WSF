@@ -109,14 +109,47 @@ class Menu(db.Model):
         return MenuItem.query.filter_by(menu_id=self.id, parent_id=None).order_by(MenuItem.sort_order).all()
 
 
+# A navigation item's controlled "what does this point at" type. "route" is
+# a plain internal path (the pre-existing behavior — `url` stored as-is);
+# "topic"/"series"/"page" are entity-aware links (the item stores a FK, not
+# a URL, so a slug rename on that entity is reflected automatically and
+# never needs a matching Navigation edit — see MenuItem.effective_url());
+# "external" is a validated http(s) link; "group" is a non-clickable
+# grouping label that exists only to hold children (see MenuItemInputSchema
+# for how "must a destination be present" is enforced per type).
+MENU_ITEM_TYPES = ("route", "topic", "series", "page", "external", "group")
+_MENU_ITEM_TYPE_CHECK_SQL = "item_type IN (" + ", ".join(f"'{t}'" for t in MENU_ITEM_TYPES) + ")"
+
+MENU_ITEM_STYLES = ("standard", "cta")
+_MENU_ITEM_STYLE_CHECK_SQL = "style IN (" + ", ".join(f"'{s}'" for s in MENU_ITEM_STYLES) + ")"
+
+# At most one level of nesting (top-level item -> children) — matches the
+# depth the current header/mobile-nav components actually render; see
+# spec's "avoid enterprise mega-menu recursion" guidance.
+MENU_MAX_DEPTH = 2
+
+
 class MenuItem(db.Model):
     __tablename__ = "menu_items"
+    __table_args__ = (
+        db.CheckConstraint(_MENU_ITEM_TYPE_CHECK_SQL, name="ck_menu_items_item_type"),
+        db.CheckConstraint(_MENU_ITEM_STYLE_CHECK_SQL, name="ck_menu_items_style"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     menu_id = db.Column(db.Integer, db.ForeignKey("menus.id", ondelete="CASCADE"), nullable=False)
     parent_id = db.Column(db.Integer, db.ForeignKey("menu_items.id", ondelete="CASCADE"), nullable=True)
     label = db.Column(db.String(100), nullable=False)
-    url = db.Column(db.String(300), nullable=False)
+    item_type = db.Column(db.String(20), nullable=False, default="route")
+    # Only meaningful for item_type in ("route", "external") — entity types
+    # derive their public URL from the referenced row instead (see
+    # effective_url()); "group" never has one.
+    url = db.Column(db.String(300), nullable=True)
+    topic_id = db.Column(db.Integer, db.ForeignKey("topics.id", ondelete="SET NULL"), nullable=True)
+    series_id = db.Column(db.Integer, db.ForeignKey("series.id", ondelete="SET NULL"), nullable=True)
+    page_id = db.Column(db.Integer, db.ForeignKey("pages.id", ondelete="SET NULL"), nullable=True)
+    open_new_tab = db.Column(db.Boolean, nullable=False, default=False)
+    style = db.Column(db.String(20), nullable=False, default="standard")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     visible = db.Column(db.Boolean, nullable=False, default=True)
 
@@ -128,6 +161,41 @@ class MenuItem(db.Model):
         single_parent=True,
     )
     menu = db.relationship("Menu", foreign_keys=[menu_id])
+    topic = db.relationship("Topic", foreign_keys=[topic_id])
+    series = db.relationship("Series", foreign_keys=[series_id])
+    page = db.relationship("Page", foreign_keys=[page_id])
+
+    def linked_entity(self):
+        return {"topic": self.topic, "series": self.series, "page": self.page}.get(self.item_type)
+
+    def is_entity_public(self):
+        """Whether the item's linked entity (if any) is currently public.
+        Route/external/group items have no entity to check, so they're
+        always considered eligible here — safety for those is enforced at
+        input-validation time instead (see services/navigation.py).
+        """
+        entity = self.linked_entity()
+        if entity is None:
+            return True
+        return entity.status == "published"
+
+    def effective_url(self):
+        """The real URL this item points to right now. Entity-typed items
+        never store their own URL — this always reflects that entity's
+        CURRENT slug, so renaming a Topic/Series/Page slug in its own CMS
+        automatically repoints every nav item that links to it, with no
+        Navigation edit required (see spec's "label/route are separate
+        concepts" requirement).
+        """
+        if self.item_type == "topic":
+            return f"/topics/{self.topic.slug}" if self.topic else None
+        if self.item_type == "series":
+            return f"/series/{self.series.slug}" if self.series else None
+        if self.item_type == "page":
+            return f"/{self.page.slug}" if self.page else None
+        if self.item_type == "group":
+            return None
+        return self.url
 
 
 class SiteSetting(db.Model):

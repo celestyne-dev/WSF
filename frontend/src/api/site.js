@@ -21,14 +21,22 @@ async function loadMockAdmin() {
   return _mockAdmin
 }
 
+// The public /public/navigation shape (see backend
+// services/navigation.py:serialize_public_menu_item) already excludes
+// hidden/non-public items and resolves entity-typed items (Topic/Series/
+// Page) to a real `url` — the frontend never needs to know an item was a
+// "topic" vs a "route" to render it, only whether it's clickable (`url`
+// present) or a non-clickable "group" grouping label (`itemType ===
+// 'group'`, `url` null).
 function mapNavItem(item) {
   return {
     id: item.id,
     label: item.label,
     url: item.url,
-    order: item.sort_order,
-    visible: item.visible,
-    children: (item.children || []).map((c) => ({ id: c.id, label: c.label, url: c.url })),
+    itemType: item.itemType,
+    openNewTab: item.openNewTab,
+    style: item.style,
+    children: (item.children || []).map(mapNavItem),
   }
 }
 

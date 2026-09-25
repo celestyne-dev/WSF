@@ -3,8 +3,9 @@ from flask_restful import Api, Resource
 
 from app.models.cms import HomepageModule, Menu, SiteSetting, SocialLink
 from app.models.geography import Country
-from app.schemas.cms import HomepageModuleSchema, MenuSchema, SiteSettingSchema, SocialLinkSchema
+from app.schemas.cms import HomepageModuleSchema, SiteSettingSchema, SocialLinkSchema
 from app.schemas.geography import CountrySchema
+from app.services.navigation import serialize_public_menu
 from app.utils.responses import success_response
 
 # Read-only, unauthenticated endpoints the public frontend needs before a
@@ -16,7 +17,6 @@ api = Api(public_bp)
 
 country_schema = CountrySchema()
 homepage_module_schema = HomepageModuleSchema()
-menu_schema = MenuSchema()
 site_setting_schema = SiteSettingSchema()
 social_link_schema = SocialLinkSchema()
 
@@ -40,7 +40,7 @@ class HomepageResource(Resource):
 
 class NavigationResource(Resource):
     def get(self):
-        menus = {menu.key: menu_schema.dump(menu) for menu in Menu.query.all()}
+        menus = {menu.key: serialize_public_menu(menu) for menu in Menu.query.all()}
         social_links = SocialLink.query.order_by(SocialLink.sort_order).all()
         return success_response({"menus": menus, "socialLinks": social_link_schema.dump(social_links, many=True)})
 

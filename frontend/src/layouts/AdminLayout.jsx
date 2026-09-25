@@ -36,6 +36,7 @@ import {
   Layers,
   Tag,
   FileText,
+  Compass,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -50,6 +51,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/admin/articles', icon: Newspaper, label: 'Articles' },
       { to: '/admin/homepage', icon: LayoutTemplate, label: 'Homepage' },
+      { to: '/admin/navigation', icon: Compass, label: 'Navigation' },
       { to: '/admin/people', icon: Users, label: 'People' },
       { to: '/admin/authors', icon: PenSquare, label: 'Authors' },
       { to: '/admin/organizations', icon: Building2, label: 'Organizations' },

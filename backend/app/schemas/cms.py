@@ -7,6 +7,8 @@ from app.models.cms import (
     ADVERTISE_PRICING_MODES,
     HOMEPAGE_MODULE_TYPES,
     HOMEPAGE_SPONSOR_PLACEMENT_KEYS,
+    MENU_ITEM_STYLES,
+    MENU_ITEM_TYPES,
     AdvertiseMetric,
     AdvertiseOffering,
     AdvertisePage,
@@ -16,6 +18,7 @@ from app.models.cms import (
 )
 from app.schemas.media import MediaSchema
 from app.services.homepage import validate_cta_url, validate_item_count
+from app.services.navigation import compute_item_warnings, validate_depth, validate_item_type_requirements
 
 
 class HomepageModuleSchema(ma.SQLAlchemyAutoSchema):
@@ -34,12 +37,40 @@ class HomepageModuleSchema(ma.SQLAlchemyAutoSchema):
 
 
 class MenuItemSchema(ma.Schema):
+    """Admin dump — every raw editable field, plus `effective_url` (a
+    read-only preview of where the item actually points right now — for
+    entity types this is derived, not stored) and `warnings` (this item's
+    own destination-eligibility issues; see services/navigation.py). The
+    public shape is a separate, deliberately smaller function
+    (services/navigation.py:serialize_public_menu) rather than a
+    marshmallow schema, since it needs to drop invisible/non-public
+    children entirely and suppress an emptied-out "group" heading —
+    conditional exclusion marshmallow doesn't make clean.
+    """
+
     id = fields.Integer(dump_only=True)
     label = fields.String()
-    url = fields.String()
+    item_type = fields.String(data_key="itemType")
+    url = fields.String(allow_none=True)
+    topic_id = fields.Integer(allow_none=True, data_key="topicId")
+    series_id = fields.Integer(allow_none=True, data_key="seriesId")
+    page_id = fields.Integer(allow_none=True, data_key="pageId")
+    open_new_tab = fields.Boolean(data_key="openNewTab")
+    style = fields.String()
     sort_order = fields.Integer()
     visible = fields.Boolean()
-    children = fields.List(fields.Nested(lambda: MenuItemSchema()), dump_only=True)
+    effective_url = fields.Method("get_effective_url", data_key="effectiveUrl")
+    warnings = fields.Method("get_warnings")
+    children = fields.Method("get_children")
+
+    def get_effective_url(self, obj):
+        return obj.effective_url()
+
+    def get_warnings(self, obj):
+        return compute_item_warnings(obj)
+
+    def get_children(self, obj):
+        return MenuItemSchema(many=True).dump(obj.children)
 
 
 class MenuSchema(ma.Schema):
@@ -112,15 +143,31 @@ class HomepageInputSchema(ma.Schema):
 
 class MenuItemInputSchema(ma.Schema):
     label = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    url = fields.String(required=True, validate=validate.Length(min=1, max=300))
+    item_type = fields.String(
+        required=False, load_default="route", data_key="itemType", validate=validate.OneOf(MENU_ITEM_TYPES)
+    )
+    url = fields.String(required=False, allow_none=True, validate=validate.Length(max=300))
+    topic_id = fields.Integer(required=False, allow_none=True, data_key="topicId")
+    series_id = fields.Integer(required=False, allow_none=True, data_key="seriesId")
+    page_id = fields.Integer(required=False, allow_none=True, data_key="pageId")
+    open_new_tab = fields.Boolean(required=False, load_default=False, data_key="openNewTab")
+    style = fields.String(required=False, load_default="standard", validate=validate.OneOf(MENU_ITEM_STYLES))
     visible = fields.Boolean(required=False, load_default=True)
     children = fields.List(fields.Nested(lambda: MenuItemInputSchema()), required=False, load_default=list)
+
+    @validates_schema
+    def validate_item(self, data, **kwargs):
+        validate_item_type_requirements(data)
 
 
 class MenuInputSchema(ma.Schema):
     key = fields.String(required=True)
     heading = fields.String(required=False, allow_none=True)
     items = fields.List(fields.Nested(MenuItemInputSchema), required=False, load_default=list)
+
+    @validates_schema
+    def validate_menu(self, data, **kwargs):
+        validate_depth(data.get("items") or [])
 
 
 class NavigationInputSchema(ma.Schema):

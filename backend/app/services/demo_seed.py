@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models.article import Article
-from app.models.cms import HomepageModule, SiteSetting
+from app.models.cms import HomepageModule, Menu, MenuItem, SiteSetting
 from app.models.opportunity import Event, EventSpeaker, EventSponsor, Job, Opportunity
 from app.models.page import Page
 from app.models.people import Author, Organization, Person
@@ -26,6 +26,19 @@ TOPICS = [
     ("opportunities", "Opportunities", "Jobs, scholarships, fellowships, and grants."),
     ("women-impact", "Women & Impact", "Founder stories and voices from around the world."),
 ]
+
+
+def _seed_menu_if_empty(key, heading, items_data):
+    """Unlike replace_menu() (used for a deliberate admin save, where
+    fully replacing a menu's items is exactly what's wanted), seeding must
+    never overwrite a menu an admin has already configured — this checks
+    for any existing items under `key` first and skips entirely if found,
+    matching the create-only convention used for Homepage/Pages seeding.
+    """
+    menu = Menu.query.filter_by(key=key).first()
+    if menu is not None and MenuItem.query.filter_by(menu_id=menu.id).first() is not None:
+        return
+    replace_menu(key, heading, items_data)
 
 
 def _get_or_create_topic(slug, name, description):
@@ -1196,12 +1209,30 @@ def seed_demo_content():
         "description": "A free guide with real conversation starters for professional networking.",
     }
 
-    # Navigation + social links
-    replace_menu(
+    # Navigation + social links — create-only (see _seed_menu_if_empty): an
+    # admin's saved navigation must never be overwritten by a reseed.
+    about_page = Page.query.filter_by(key="about").first()
+
+    def _topic_child(slug, label):
+        return {"label": label, "item_type": "topic", "topic_id": topics[slug].id}
+
+    _seed_menu_if_empty(
         "primary",
         None,
         [
             {"label": "Stories", "url": "/topics"},
+            {
+                "label": "Topics",
+                "item_type": "group",
+                "children": [
+                    _topic_child("leadership", "Leadership"),
+                    _topic_child("careers", "Career"),
+                    _topic_child("business", "Business"),
+                    _topic_child("entrepreneurship", "Entrepreneurship"),
+                    _topic_child("workplace", "Workplace"),
+                    _topic_child("women-impact", "Women & Impact"),
+                ],
+            },
             {
                 "label": "People",
                 "url": "/people",
@@ -1213,21 +1244,34 @@ def seed_demo_content():
             },
             {"label": "Opportunities", "url": "/opportunities"},
             {"label": "Resources", "url": "/resources"},
+            {"label": "Events", "url": "/events"},
+            {"label": "Community", "url": "/community"},
+            {"label": "Shop", "url": "/shop"},
         ],
     )
-    replace_menu("secondary", None, [{"label": "Newsletter", "url": "/newsletter"}, {"label": "About", "url": "/about"}])
-    replace_menu(
+    # The header's dark utility bar reads this "secondary" menu — About
+    # links to the real Pages-CMS row (item_type="page") rather than a
+    # hard-coded "/about" string, so a future slug change there needs no
+    # matching Navigation edit.
+    secondary_items = [
+        {"label": "WSF Weekly Newsletter", "url": "/newsletter"},
+        {"label": "Partner With Us", "url": "/partnerships"},
+    ]
+    if about_page is not None:
+        secondary_items.append({"label": "About", "item_type": "page", "page_id": about_page.id})
+    _seed_menu_if_empty("secondary", None, secondary_items)
+    _seed_menu_if_empty(
         "footer_explore",
         "Explore",
         [{"label": "Stories", "url": "/topics"}, {"label": "People", "url": "/people"}],
     )
-    replace_menu(
+    _seed_menu_if_empty(
         "footer_opportunity",
         "Opportunity",
         [{"label": "Jobs", "url": "/jobs"}, {"label": "Opportunities", "url": "/opportunities"}],
     )
-    replace_menu("footer_wsf", "WSF", [{"label": "About", "url": "/about"}, {"label": "Partnerships", "url": "/partnerships"}])
-    replace_menu("footer_legal", "Legal", [{"label": "Privacy Policy", "url": "/privacy"}, {"label": "Terms of Use", "url": "/terms"}])
+    _seed_menu_if_empty("footer_wsf", "WSF", [{"label": "About", "url": "/about"}, {"label": "Partnerships", "url": "/partnerships"}])
+    _seed_menu_if_empty("footer_legal", "Legal", [{"label": "Privacy Policy", "url": "/privacy"}, {"label": "Terms of Use", "url": "/terms"}])
     replace_social_links(
         [
             {"platform": "linkedin", "url": "https://linkedin.com/company/womenshapingfutures", "handle": "Women Shaping Futures"},

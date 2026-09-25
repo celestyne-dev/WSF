@@ -29,6 +29,7 @@ from app.schemas.user import RoleSchema, UserSchema
 from app.services.audit import log_action
 from app.services.cms import replace_homepage_modules, replace_menu, replace_social_links, upsert_site_settings
 from app.services.homepage import modules_with_warnings
+from app.services.navigation import find_duplicate_top_level_destinations
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -195,23 +196,47 @@ class AdminHomepageResource(Resource):
         return success_response(homepage_module_schema.dump(modules, many=True))
 
 
-class AdminNavigationResource(Resource):
-    @permission_required("settings.manage")
-    def get(self):
-        menus = Menu.query.all()
-        return success_response(menu_schema.dump(menus, many=True))
+def _dump_menus_with_duplicate_warnings():
+    menus = Menu.query.all()
+    dumped = menu_schema.dump(menus, many=True)
+    for menu, menu_data in zip(menus, dumped):
+        duplicates = find_duplicate_top_level_destinations(menu.top_level_items())
+        for item_data in menu_data["items"]:
+            item_data["warnings"] = list(item_data.get("warnings") or []) + duplicates.get(item_data["id"], [])
+    return dumped
 
-    @permission_required("settings.manage")
+
+class AdminNavigationResource(Resource):
+    """Gated by its own navigation.manage/navigation.publish permissions
+    (not settings.manage, which Site Settings keeps using unchanged) —
+    same reasoning as Homepage's split: Editors have a real reason to
+    reorder/relabel navigation day to day, but no reason to touch global
+    Settings. PUT replaces whichever menu keys are included in the
+    payload (existing behavior, unchanged) — an omitted menu key is left
+    exactly as it was, so a save that only touches "primary" can never
+    wipe the footer menus.
+    """
+
+    @permission_required("navigation.manage")
+    def get(self):
+        return success_response(_dump_menus_with_duplicate_warnings())
+
+    @permission_required("navigation.publish", "navigation.manage")
     def put(self):
         data = NavigationInputSchema().load(request.get_json(silent=True) or {})
         for menu_data in data["menus"]:
             replace_menu(menu_data["key"], menu_data.get("heading"), menu_data.get("items", []))
         if data.get("social_links"):
             replace_social_links(data["social_links"])
+        log_action(
+            current_user,
+            "navigation.publish",
+            "Menu",
+            changes={"menu_keys": [m["key"] for m in data["menus"]]},
+        )
         db.session.commit()
 
-        menus = Menu.query.all()
-        return success_response(menu_schema.dump(menus, many=True))
+        return success_response(_dump_menus_with_duplicate_warnings())
 
 
 class AdminSettingsResource(Resource):
