@@ -99,15 +99,4 @@ export async function fetchAudienceStats() {
 }
 
 // submitPartnershipInquiry lives in api/partnerships.js.
-
-export async function submitNomination(payload) {
-  if (!USE_MOCK) {
-    try {
-      await apiClient.post('/nominations', payload)
-      return { success: true, message: 'Thank you for your nomination — our editorial team reviews every submission.' }
-    } catch (err) {
-      return { success: false, message: err.apiError?.message || 'Something went wrong. Please try again.' }
-    }
-  }
-  return delay({ success: true, message: 'Thank you for your nomination — our editorial team reviews every submission.' }, 500)
-}
+// submitNomination lives in api/nominations.js.

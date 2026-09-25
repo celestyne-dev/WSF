@@ -43,65 +43,6 @@ export const adminUsers = [
 // Role display labels/descriptions live in ../constants/roles.js — they're
 // static UI metadata, not mock database records.
 
-export const nominations = [
-  {
-    id: 'nom1',
-    nomineeName: 'Judith Kilonzo',
-    countryCode: 'KE',
-    profession: 'Chief Financial Officer',
-    organization: 'Kaziwave',
-    achievements: 'Led Kaziwave through two funding rounds and built its finance function from scratch.',
-    nominatorName: 'Naliaka Wafula',
-    nominatorEmail: 'naliaka@kaziwave.example.com',
-    relationship: 'Colleague / Manager',
-    submittedAt: '2026-09-11T10:00:00Z',
-    status: 'reviewing',
-    category: 'Women to Watch',
-  },
-  {
-    id: 'nom2',
-    nomineeName: 'Rehema Suleiman',
-    countryCode: 'TZ',
-    profession: 'Marine Biologist',
-    organization: 'University of Dar es Salaam',
-    achievements: 'Leading coral reef restoration research recognized by two international science journals.',
-    nominatorName: 'Anonymous',
-    nominatorEmail: 'anon@example.com',
-    relationship: 'Peer',
-    submittedAt: '2026-09-09T16:40:00Z',
-    status: 'received',
-    category: 'Women in STEM',
-  },
-  {
-    id: 'nom3',
-    nomineeName: 'Comfort Adjei',
-    countryCode: 'GH',
-    profession: 'Founder',
-    organization: 'Adjei Textiles',
-    achievements: 'Built a textile export business employing 80 women artisans across rural Ghana.',
-    nominatorName: 'Kwame Mensah',
-    nominatorEmail: 'kwame.m@example.com',
-    relationship: 'Business partner',
-    submittedAt: '2026-09-05T09:10:00Z',
-    status: 'accepted',
-    category: 'Founder Stories',
-  },
-  {
-    id: 'nom4',
-    nomineeName: 'Christina Alvarez',
-    countryCode: 'US',
-    profession: 'Founder',
-    organization: 'A Chicago-based logistics startup',
-    achievements: 'Built a same-day delivery logistics platform now operating in eight US metro areas, entirely bootstrapped.',
-    nominatorName: 'Danielle Reyes',
-    nominatorEmail: 'danielle@lumenanalytics.example.com',
-    relationship: 'Peer founder',
-    submittedAt: '2026-09-14T12:00:00Z',
-    status: 'received',
-    category: 'Founder Stories',
-  },
-]
-
 export const partnershipInquiries = [
   {
     id: 'pi1',

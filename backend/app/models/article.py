@@ -124,9 +124,18 @@ class Article(db.Model):
     # navigation, not a live sync.
     source_submission_id = db.Column(db.Integer, db.ForeignKey("story_submissions.id"), nullable=True)
 
+    # Same minimal handoff compatibility for the Nominations CMS (see
+    # app/api/v1/nominations.py) — independent of source_submission_id
+    # since a Nomination and a StorySubmission are distinct provenance
+    # sources and an Article can only originate from one or neither.
+    source_nomination_id = db.Column(db.Integer, db.ForeignKey("nominations.id"), nullable=True)
+
     hero_media = db.relationship("Media", foreign_keys=[hero_media_id])
     resulting_from_submission = db.relationship(
         "StorySubmission", foreign_keys=[source_submission_id], backref=db.backref("resulting_article", uselist=False)
+    )
+    resulting_from_nomination = db.relationship(
+        "Nomination", foreign_keys=[source_nomination_id], backref=db.backref("resulting_article", uselist=False)
     )
     author = db.relationship("Author", foreign_keys=[author_id])
     sponsor_record = db.relationship("Sponsor", foreign_keys=[sponsor_id])

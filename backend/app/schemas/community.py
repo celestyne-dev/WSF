@@ -9,38 +9,12 @@ from app.models.community import (
     MEMBERSHIP_SOURCES,
     MEMBERSHIP_STATUSES,
     MEMBERSHIP_TYPES,
-    Nomination,
 )
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import PersonSchema
 from app.schemas.taxonomy import TopicSchema
 from app.schemas.user import UserSchema
-
-
-class NominationSchema(ma.SQLAlchemyAutoSchema):
-    country = fields.Nested(CountrySchema, dump_only=True)
-
-    class Meta:
-        model = Nomination
-        load_instance = False
-
-
-class NominationInputSchema(ma.Schema):
-    nominee_name = fields.String(required=True, validate=validate.Length(min=1, max=200), data_key="nomineeName")
-    country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
-    profession = fields.String(required=False, allow_none=True)
-    organization = fields.String(required=False, allow_none=True)
-    achievements = fields.String(required=False, allow_none=True)
-    nominator_name = fields.String(required=True, data_key="nominatorName")
-    nominator_email = fields.Email(required=True, data_key="nominatorEmail")
-    relationship_to_nominee = fields.String(required=False, allow_none=True, data_key="relationship")
-    category = fields.String(required=False, allow_none=True)
-    acquisition = fields.Dict(required=False, allow_none=True)
-
-
-class ReviewStatusInputSchema(ma.Schema):
-    status = fields.String(required=True, validate=validate.OneOf(["new", "reviewing", "accepted", "declined"]))
 
 
 # ---------------------------------------------------------------------------

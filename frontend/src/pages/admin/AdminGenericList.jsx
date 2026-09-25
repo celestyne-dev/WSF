@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react'
 import { fetchResources } from '../../api/resources'
-import {
-  fetchNominations,
-  fetchRedirects,
-} from '../../api/admin'
+import { fetchRedirects } from '../../api/admin'
 import { fetchArticles } from '../../api/articles'
-import { formatDate, formatCurrency } from '../../utils/format'
+import { formatCurrency } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
-import StatusBadge from '../../components/cms/StatusBadge'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -19,15 +15,6 @@ const CONFIGS = {
     load: async () => {
       const res = await fetchResources({ pageSize: 100 })
       return res.items.map((r) => [r.name, r.type, r.isPremium ? 'Premium' : 'Free', r.isPremium ? formatCurrency(r.price, r.currency) : '—'])
-    },
-  },
-  nominations: {
-    title: 'Nominations',
-    description: 'Reader nominations for Women to Watch and other features.',
-    columns: ['Nominee', 'Country', 'Category', 'Submitted', 'Status'],
-    load: async () => {
-      const rows = await fetchNominations()
-      return rows.map((n) => [n.nomineeName, n.country?.name || n.countryCode, n.category, formatDate(n.submittedAt), <StatusBadge key={n.id} status={n.status} />])
     },
   },
 }

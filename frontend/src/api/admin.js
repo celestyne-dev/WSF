@@ -1,7 +1,6 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { ROLE_DEFINITIONS } from '../constants/roles'
-import { attachMockCountry } from './geography'
 
 // The mock admin dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -152,25 +151,6 @@ export async function fetchSubscriberGrowth() {
   if (!USE_MOCK) return (await apiClient.get('/analytics/subscriber-growth')).data
   const { subscriberGrowth } = await loadMockAdmin()
   return delay(subscriberGrowth)
-}
-
-// Backing data for AdminGenericList's review-queue sections — hits a
-// real, permission-gated admin endpoint built in an earlier phase.
-export async function fetchNominations() {
-  if (!USE_MOCK) {
-    const { data } = await apiClient.get('/nominations', { params: { pageSize: 100 } })
-    return data.items.map((n) => ({
-      id: n.id,
-      nomineeName: n.nominee_name,
-      countryCode: n.country?.code || null,
-      country: n.country ? { code: n.country.code, name: n.country.name, region: n.country.region } : null,
-      category: n.category,
-      submittedAt: n.submitted_at,
-      status: n.status,
-    }))
-  }
-  const { nominations } = await loadMockAdmin()
-  return delay(nominations.map(attachMockCountry))
 }
 
 export async function fetchRedirects() {

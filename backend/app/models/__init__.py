@@ -27,7 +27,7 @@ from app.models.cms import (  # noqa: F401
 from app.models.opportunity import Event, Job, Opportunity  # noqa: F401
 from app.models.resource import Resource  # noqa: F401
 from app.models.newsletter import NewsletterIssue, NewsletterSubscriber  # noqa: F401
-from app.models.community import CommunityPage, Member, MemberNote, Nomination  # noqa: F401
+from app.models.community import CommunityPage, Member, MemberNote  # noqa: F401
 from app.models.commerce import Order, OrderItem, PartnershipInquiry, Product, Sponsor, SponsorPlacement  # noqa: F401
 from app.models.mentorship import (  # noqa: F401
     MentorshipApplication,
@@ -38,6 +38,7 @@ from app.models.mentorship import (  # noqa: F401
     MentorshipSession,
 )
 from app.models.submissions import StorySubmission, SubmissionMedia, SubmissionNote  # noqa: F401
+from app.models.nominations import Nomination, NominationNote  # noqa: F401
 from app.models.analytics import AnalyticsEvent  # noqa: F401
 
 __all__ = [
@@ -74,6 +75,7 @@ __all__ = [
     "NewsletterIssue",
     "NewsletterSubscriber",
     "Nomination",
+    "NominationNote",
     "StorySubmission",
     "SubmissionNote",
     "SubmissionMedia",

@@ -101,30 +101,6 @@ def test_newsletter_subscribers_list_requires_permission(client, admin_token):
     assert allowed.get_json()["meta"]["total"] == 1
 
 
-def test_nomination_lifecycle(client, admin_token):
-    created = client.post(
-        "/api/v1/nominations",
-        json={
-            "nomineeName": "Judith Kilonzo",
-            "countryCode": "KE",
-            "profession": "Chief Financial Officer",
-            "nominatorName": "Naliaka Wafula",
-            "nominatorEmail": "naliaka@example.com",
-            "category": "Women to Watch",
-        },
-    )
-    assert created.status_code == 201
-    nomination_id = created.get_json()["data"]["id"]
-
-    updated = client.patch(
-        f"/api/v1/nominations/{nomination_id}/status",
-        json={"status": "reviewing"},
-        headers=auth_headers(admin_token),
-    )
-    assert updated.status_code == 200
-    assert updated.get_json()["data"]["status"] == "reviewing"
-
-
 def test_partnership_inquiry_sponsor_and_audience_stats(client, admin_token):
     inquiry = client.post(
         "/api/v1/partnerships/inquiries",

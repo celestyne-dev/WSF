@@ -38,6 +38,7 @@ ROLE_PERMISSIONS = {
         "people.manage",
         "media.manage",
         "submissions.manage",
+        "nominations.manage",
     ],
     "author": ["articles.create", "articles.edit_own", "media.upload"],
     # Moderator already reviews public submissions/nominations — community
@@ -61,6 +62,7 @@ ROLE_PERMISSIONS = {
     "community_manager": ["community.manage", "community.export"],
     "mentorship_manager": ["mentorship.manage"],
     "submissions_manager": ["submissions.manage"],
+    "nominations_manager": ["nominations.manage"],
     "analyst": ["analytics.view"],
     "member": ["profile.manage"],
     "employer": ["jobs.create_own"],

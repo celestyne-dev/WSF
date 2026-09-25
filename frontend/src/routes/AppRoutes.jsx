@@ -84,6 +84,8 @@ const AdminMentorshipMatches = lazy(() => import('../pages/admin/AdminMentorship
 const AdminMentorshipMatchDetail = lazy(() => import('../pages/admin/AdminMentorshipMatchDetail'))
 const AdminStorySubmissions = lazy(() => import('../pages/admin/AdminStorySubmissions'))
 const AdminStorySubmissionDetail = lazy(() => import('../pages/admin/AdminStorySubmissionDetail'))
+const AdminNominations = lazy(() => import('../pages/admin/AdminNominations'))
+const AdminNominationDetail = lazy(() => import('../pages/admin/AdminNominationDetail'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
@@ -212,7 +214,8 @@ export default function AppRoutes() {
           <Route path="mentorship/matches/:id" element={<AdminMentorshipMatchDetail />} />
           <Route path="submissions" element={<AdminStorySubmissions />} />
           <Route path="submissions/:id" element={<AdminStorySubmissionDetail />} />
-          <Route path="nominations" element={<AdminGenericList section="nominations" />} />
+          <Route path="nominations" element={<AdminNominations />} />
+          <Route path="nominations/:id" element={<AdminNominationDetail />} />
           <Route path="partnerships" element={<AdminPartnerships />} />
           <Route path="partnerships/:id" element={<AdminPartnershipDetail />} />
           <Route path="sponsors" element={<AdminSponsors />} />
