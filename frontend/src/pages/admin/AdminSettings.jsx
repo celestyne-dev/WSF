@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
@@ -110,7 +111,15 @@ export default function AdminSettings() {
           </p>
         )}
 
-        {tab === 'Footer' && <p className="text-sm text-charcoal-600">Footer link groups, social links, and the newsletter CTA copy are configured here.</p>}
+        {tab === 'Footer' && (
+          <p className="text-sm text-charcoal-600">
+            Footer branding, link groups, social links, the newsletter CTA copy, contact info, and copyright are managed on the dedicated{' '}
+            <Link to="/admin/footer" className="font-semibold text-burgundy-600 hover:underline">
+              Footer
+            </Link>{' '}
+            page.
+          </p>
+        )}
 
         {tab === 'Newsletter' && <p className="text-sm text-charcoal-600">Default sender name, reply-to address, and double opt-in settings for WSF Weekly.</p>}
 

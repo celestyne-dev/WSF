@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models.article import Article
-from app.models.cms import HomepageModule, Menu, MenuItem, SiteSetting
+from app.models.cms import HomepageModule, Menu, MenuItem, SiteSetting, SocialLink
 from app.models.opportunity import Event, EventSpeaker, EventSponsor, Job, Opportunity
 from app.models.page import Page
 from app.models.people import Author, Organization, Person
@@ -39,6 +39,27 @@ def _seed_menu_if_empty(key, heading, items_data):
     if menu is not None and MenuItem.query.filter_by(menu_id=menu.id).first() is not None:
         return
     replace_menu(key, heading, items_data)
+
+
+def _seed_social_links_if_empty(links_data):
+    """replace_social_links() is a deliberate full-replace for an admin
+    save; seeding must never wipe social links an admin has already
+    configured through AdminFooter, so this skips entirely if any row
+    already exists — same create-only convention as _seed_menu_if_empty.
+    """
+    if SocialLink.query.first() is not None:
+        return
+    replace_social_links(links_data)
+
+
+def _seed_setting_if_absent(key, value):
+    """Like _seed_menu_if_empty: seeding a SiteSetting key must never
+    overwrite a value an admin has already saved (e.g. via AdminFooter's
+    branding/newsletter CTA/contact/copyright fields).
+    """
+    if db.session.get(SiteSetting, key) is not None:
+        return
+    upsert_site_settings({key: value})
 
 
 def _get_or_create_topic(slug, name, description):
@@ -1209,9 +1230,24 @@ def seed_demo_content():
         "description": "A free guide with real conversation starters for professional networking.",
     }
 
-    # Navigation + social links — create-only (see _seed_menu_if_empty): an
-    # admin's saved navigation must never be overwritten by a reseed.
+    # Pages must exist before Navigation/Footer link to them below (About,
+    # and Footer's Legal group) — moved ahead of that block so a fresh
+    # database has real Page rows to link on the very first seed run,
+    # rather than only after a second `flask seed-demo`.
+    _seed_pages()
+
+    # Navigation + Footer + social links — create-only (see
+    # _seed_menu_if_empty/_seed_social_links_if_empty/_seed_setting_if_absent):
+    # an admin's saved navigation/footer must never be overwritten by a reseed.
     about_page = Page.query.filter_by(key="about").first()
+    contact_page = Page.query.filter_by(key="contact").first()
+    privacy_page = Page.query.filter_by(key="privacy").first()
+    terms_page = Page.query.filter_by(key="terms").first()
+    cookies_page = Page.query.filter_by(key="cookies").first()
+    editorial_policy_page = Page.query.filter_by(key="editorial-policy").first()
+
+    def _page_child(label, page):
+        return {"label": label, "item_type": "page", "page_id": page.id}
 
     def _topic_child(slug, label):
         return {"label": label, "item_type": "topic", "topic_id": topics[slug].id}
@@ -1263,20 +1299,70 @@ def seed_demo_content():
     _seed_menu_if_empty(
         "footer_explore",
         "Explore",
-        [{"label": "Stories", "url": "/topics"}, {"label": "People", "url": "/people"}],
+        [
+            {"label": "Stories", "url": "/topics"},
+            {"label": "Resources", "url": "/resources"},
+            {"label": "Events", "url": "/events"},
+        ],
     )
     _seed_menu_if_empty(
         "footer_opportunity",
-        "Opportunity",
-        [{"label": "Jobs", "url": "/jobs"}, {"label": "Opportunities", "url": "/opportunities"}],
+        "Opportunities",
+        [
+            {"label": "Jobs", "url": "/jobs"},
+            {"label": "Opportunities", "url": "/opportunities"},
+            {"label": "Community", "url": "/community"},
+            {"label": "Mentorship", "url": "/mentorship"},
+        ],
     )
-    _seed_menu_if_empty("footer_wsf", "WSF", [{"label": "About", "url": "/about"}, {"label": "Partnerships", "url": "/partnerships"}])
-    _seed_menu_if_empty("footer_legal", "Legal", [{"label": "Privacy Policy", "url": "/privacy"}, {"label": "Terms of Use", "url": "/terms"}])
-    replace_social_links(
+    # About links to the real Pages-CMS rows (item_type="page") rather than
+    # hard-coded "/about"/"/contact" strings — a future slug change there
+    # needs no matching Footer edit. Omitted entirely if a page hasn't been
+    # seeded yet (shouldn't happen now _seed_pages() runs first, but this
+    # keeps the seed from crashing if that ever changes).
+    about_items = []
+    if about_page is not None:
+        about_items.append(_page_child("About", about_page))
+    if contact_page is not None:
+        about_items.append(_page_child("Contact", contact_page))
+    about_items += [{"label": "Partner With Us", "url": "/partnerships"}, {"label": "Advertise", "url": "/advertise"}]
+    _seed_menu_if_empty("footer_wsf", "About", about_items)
+
+    # Legal links always resolve through the real Page row (see spec: "do
+    # not hardcode raw routes for legal links; reuse Pages CMS") — never a
+    # bare "/privacy" string, so a legal page can be safely relabeled
+    # without ever touching its route.
+    legal_items = [
+        _page_child(label, page)
+        for label, page in (
+            ("Privacy", privacy_page),
+            ("Terms", terms_page),
+            ("Cookies", cookies_page),
+            ("Editorial Policy", editorial_policy_page),
+        )
+        if page is not None
+    ]
+    _seed_menu_if_empty("footer_legal", "Legal", legal_items)
+
+    _seed_social_links_if_empty(
         [
             {"platform": "linkedin", "url": "https://linkedin.com/company/womenshapingfutures", "handle": "Women Shaping Futures"},
             {"platform": "instagram", "url": "https://instagram.com/womenshapingfutures", "handle": "@womenshapingfutures"},
         ]
+    )
+    _seed_setting_if_absent(
+        "footer",
+        {
+            "brandDescription": (
+                "A global media, opportunity, and community platform amplifying women's stories and "
+                "connecting women to jobs, mentors, and capital."
+            ),
+            "newsletterHeading": "WSF Weekly",
+            "newsletterDescription": "Stories, jobs, and opportunities — every Thursday.",
+            "newsletterVisible": True,
+            "contactEmail": "hello@womenshapingfutures.org",
+            "copyrightText": "Women Shaping Futures. All rights reserved.",
+        },
     )
 
     # Homepage modules — create-only, like _seed_pages() below: if an
@@ -1456,7 +1542,5 @@ def seed_demo_content():
             "newsletter_stats": {"openRate": 0.47, "weeklySends": 1},
         }
     )
-
-    _seed_pages()
 
     db.session.commit()

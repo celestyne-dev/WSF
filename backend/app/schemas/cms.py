@@ -9,6 +9,7 @@ from app.models.cms import (
     HOMEPAGE_SPONSOR_PLACEMENT_KEYS,
     MENU_ITEM_STYLES,
     MENU_ITEM_TYPES,
+    SOCIAL_PLATFORMS,
     AdvertiseMetric,
     AdvertiseOffering,
     AdvertisePage,
@@ -17,8 +18,14 @@ from app.models.cms import (
     SocialLink,
 )
 from app.schemas.media import MediaSchema
+from app.services.footer import reject_html, validate_group_label
 from app.services.homepage import validate_cta_url, validate_item_count
-from app.services.navigation import compute_item_warnings, validate_depth, validate_item_type_requirements
+from app.services.navigation import (
+    compute_item_warnings,
+    validate_depth,
+    validate_external_url,
+    validate_item_type_requirements,
+)
 
 
 class HomepageModuleSchema(ma.SQLAlchemyAutoSchema):
@@ -177,6 +184,116 @@ class NavigationInputSchema(ma.Schema):
 
 class SiteSettingsInputSchema(ma.Schema):
     settings = fields.Dict(required=True)
+
+
+# ---------------------------------------------------------------------------
+# Footer CMS
+# ---------------------------------------------------------------------------
+#
+# Footer link groups reuse Menu/MenuItem (any key prefixed "footer_" — see
+# app/services/footer.py) and MenuItemSchema/MenuItemInputSchema exactly as
+# Navigation CMS built them: a footer link is a MenuItem, with the same
+# controlled item types, entity-aware URLs, and safety validation. Only
+# what's genuinely Footer-specific (group-level visible/sort_order, the
+# social-link list, and the small settings blob for branding/newsletter
+# CTA/contact/copyright) gets new schemas here.
+
+
+class FooterGroupSchema(MenuSchema):
+    """Admin dump for one footer group — everything MenuSchema already
+    dumps (key/heading/items), plus the two fields only footer groups
+    use for now (visible/sort_order; see Menu's docstring).
+    """
+
+    visible = fields.Boolean()
+    sort_order = fields.Integer(data_key="sortOrder")
+
+
+class FooterGroupInputSchema(ma.Schema):
+    # Blank/omitted `key` means "create a new group" — the PUT handler
+    # assigns a fresh footer_* key server-side (see footer_menu_key()) so
+    # admins never see or type one, matching how a brand-new Topic/Series
+    # never asks an editor to invent its own primary key either.
+    key = fields.String(required=False, allow_none=True, validate=validate.Length(max=50))
+    heading = fields.String(required=True, validate=validate.Length(min=1, max=40))
+    visible = fields.Boolean(required=False, load_default=True)
+    items = fields.List(fields.Nested(MenuItemInputSchema), required=False, load_default=list)
+
+    @validates_schema
+    def validate_group(self, data, **kwargs):
+        validate_group_label(data.get("heading"))
+        validate_depth(data.get("items") or [])
+
+
+class SocialLinkInputSchema(ma.Schema):
+    platform = fields.String(required=True, validate=validate.OneOf(SOCIAL_PLATFORMS))
+    url = fields.String(required=True, validate=validate.Length(max=300))
+    handle = fields.String(required=False, allow_none=True, validate=validate.Length(max=100))
+    label = fields.String(required=False, allow_none=True, validate=validate.Length(max=150))
+    visible = fields.Boolean(required=False, load_default=True)
+
+    @validates_schema
+    def validate_social_link(self, data, **kwargs):
+        validate_external_url(data.get("url"))
+        reject_html(data.get("handle"), "handle", 100)
+        reject_html(data.get("label"), "label", 150)
+
+
+class FooterSettingsInputSchema(ma.Schema):
+    """The small, plain-text-only settings blob stored under the
+    `SiteSetting` key "footer" (see upsert_site_settings) — branding copy,
+    the newsletter CTA's presentation, public contact info, and the
+    copyright line. Never raw JSON exposed to the admin UI; this schema
+    is what actually gets validated before it's saved under that key.
+    """
+
+    brand_description = fields.String(
+        required=False, allow_none=True, load_default="", data_key="brandDescription"
+    )
+    newsletter_heading = fields.String(
+        required=False, allow_none=True, load_default="", data_key="newsletterHeading"
+    )
+    newsletter_description = fields.String(
+        required=False, allow_none=True, load_default="", data_key="newsletterDescription"
+    )
+    newsletter_visible = fields.Boolean(required=False, load_default=True, data_key="newsletterVisible")
+    contact_email = fields.String(required=False, allow_none=True, load_default="", data_key="contactEmail")
+    copyright_text = fields.String(
+        required=False,
+        allow_none=True,
+        load_default="Women Shaping Futures. All rights reserved.",
+        data_key="copyrightText",
+    )
+
+    @validates_schema
+    def validate_settings(self, data, **kwargs):
+        reject_html(data.get("brand_description"), "brandDescription", 280)
+        reject_html(data.get("newsletter_heading"), "newsletterHeading", 150)
+        reject_html(data.get("newsletter_description"), "newsletterDescription", 300)
+        reject_html(data.get("copyright_text"), "copyrightText", 200)
+        email = data.get("contact_email")
+        if email:
+            validate.Email()(email)
+
+
+class FooterInputSchema(ma.Schema):
+    """The whole Footer CMS save payload — groups, social links, and
+    settings all validate and commit together in one request (spec:
+    "avoid leaving Footer partially broken during multi-item updates"),
+    unlike Navigation's per-menu-key partial save, since Footer's admin
+    UI always edits its own dedicated page/save action as one unit.
+    """
+
+    groups = fields.List(fields.Nested(FooterGroupInputSchema), required=False, load_default=list)
+    social_links = fields.List(fields.Nested(SocialLinkInputSchema), required=False, load_default=list, data_key="socialLinks")
+    settings = fields.Nested(FooterSettingsInputSchema, required=False, load_default=dict)
+
+    @validates_schema
+    def validate_footer(self, data, **kwargs):
+        from app.services.footer import FOOTER_MAX_GROUPS
+
+        if len(data.get("groups") or []) > FOOTER_MAX_GROUPS:
+            raise ValidationError(f"Footer supports at most {FOOTER_MAX_GROUPS} groups.", field_name="groups")
 
 
 # ---------------------------------------------------------------------------

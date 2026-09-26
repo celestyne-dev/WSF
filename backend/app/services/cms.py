@@ -65,11 +65,55 @@ def replace_menu(key, heading, items_data):
     return menu
 
 
+def replace_footer_groups(groups_data):
+    """Full-replace, like replace_menu: the payload is the complete
+    desired set of footer_* groups. A group whose key isn't present in
+    `groups_data` is deleted — this only removes the Menu/MenuItem rows
+    themselves (menu_items.menu_id cascades), never the Topic/Series/Page
+    those items might link to (their FKs are ondelete="SET NULL"), so
+    deleting a footer link or an entire group can never delete real
+    content. A blank/absent `key` creates a fresh group.
+    """
+    from app.services.footer import FOOTER_MENU_KEY_PREFIX, footer_menu_key
+
+    existing = {m.key: m for m in Menu.query.filter(Menu.key.like(f"{FOOTER_MENU_KEY_PREFIX}%")).all()}
+    existing_keys = set(existing.keys())
+    kept_keys = set()
+
+    for index, group_data in enumerate(groups_data):
+        key = group_data.get("key")
+        if not key or key not in existing:
+            key = footer_menu_key(existing_keys)
+            existing_keys.add(key)
+        kept_keys.add(key)
+        menu = existing.get(key)
+        if menu is None:
+            menu = Menu(key=key)
+            db.session.add(menu)
+            db.session.flush()
+        menu.heading = group_data.get("heading")
+        menu.visible = group_data.get("visible", True)
+        menu.sort_order = index
+        MenuItem.query.filter_by(menu_id=menu.id).delete()
+        _create_menu_items(menu.id, group_data.get("items") or [])
+
+    for key, menu in existing.items():
+        if key not in kept_keys:
+            db.session.delete(menu)
+
+
 def replace_social_links(links_data):
     SocialLink.query.delete()
     for index, data in enumerate(links_data):
         db.session.add(
-            SocialLink(platform=data["platform"], url=data["url"], handle=data.get("handle"), sort_order=index)
+            SocialLink(
+                platform=data["platform"],
+                url=data["url"],
+                handle=data.get("handle"),
+                label=data.get("label"),
+                visible=data.get("visible", True),
+                sort_order=index,
+            )
         )
 
 

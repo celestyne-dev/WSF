@@ -96,7 +96,16 @@ class HomepageModule(db.Model):
 
 class Menu(db.Model):
     """A named navigation slot: primary, secondary, or one of the footer
-    columns (footer_explore, footer_opportunity, footer_wsf, footer_legal).
+    columns (any key prefixed "footer_" — see FOOTER_MENU_KEY_PREFIX in
+    services/footer.py; Footer CMS admins can create additional footer_*
+    groups beyond the seeded four, so this is a prefix convention, not a
+    fixed enum).
+
+    `visible`/`sort_order` only have real meaning for footer groups today
+    (primary/secondary are single unordered lists, not a set of orderable,
+    hideable groups) — added here rather than a Footer-only table since a
+    footer group *is* a Menu row, and duplicating Menu/MenuItem for Footer
+    CMS would violate "don't build a second system" (see final report).
     """
 
     __tablename__ = "menus"
@@ -104,6 +113,8 @@ class Menu(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(50), unique=True, nullable=False)
     heading = db.Column(db.String(100))
+    visible = db.Column(db.Boolean, nullable=False, default=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
 
     def top_level_items(self):
         return MenuItem.query.filter_by(menu_id=self.id, parent_id=None).order_by(MenuItem.sort_order).all()
@@ -213,13 +224,40 @@ class SiteSetting(db.Model):
     )
 
 
+# Controlled platform keys, mirrored by the frontend's SocialIcon map — an
+# admin picks one of these from a <select>, never types a component name
+# or uploads an arbitrary icon (spec: "do not allow admins to type
+# arbitrary component names... do not upload social icons as random
+# images"). "twitter" is kept alongside the platforms the spec names since
+# WSF already has a twitter/X icon and a seeded handle for it.
+SOCIAL_PLATFORMS = (
+    "linkedin",
+    "instagram",
+    "facebook",
+    "tiktok",
+    "threads",
+    "pinterest",
+    "youtube",
+    "whatsapp",
+    "twitter",
+)
+_SOCIAL_LINK_PLATFORM_CHECK_SQL = "platform IN (" + ", ".join(f"'{p}'" for p in SOCIAL_PLATFORMS) + ")"
+
+
 class SocialLink(db.Model):
     __tablename__ = "social_links"
+    __table_args__ = (db.CheckConstraint(_SOCIAL_LINK_PLATFORM_CHECK_SQL, name="ck_social_links_platform"),)
 
     id = db.Column(db.Integer, primary_key=True)
     platform = db.Column(db.String(30), nullable=False)
     url = db.Column(db.String(300), nullable=False)
     handle = db.Column(db.String(100))
+    # Accessible-name override (spec: "Women Shaping Futures on LinkedIn"
+    # rather than icon-only ambiguity) — falls back to a computed default
+    # from `platform` when blank; see build_public_footer() in
+    # services/footer.py.
+    label = db.Column(db.String(150))
+    visible = db.Column(db.Boolean, nullable=False, default=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
 

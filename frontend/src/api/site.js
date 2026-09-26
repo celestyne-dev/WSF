@@ -40,23 +40,15 @@ function mapNavItem(item) {
   }
 }
 
-function mapFooterGroup(menus, key) {
-  const menu = menus[key]
-  if (!menu) return { heading: '', links: [] }
-  return { heading: menu.heading, links: (menu.items || []).map((i) => ({ label: i.label, url: i.url })) }
-}
-
+// Footer's own groups/social/branding come from api/footer.js:fetchFooter()
+// (GET /public/footer) instead — this only covers primary/secondary
+// (header) navigation, plus `social` for MobileNav's social row, which
+// reads this same socialLinks list (already visible-filtered server-side).
 function mapNavigation(data) {
   const menus = data.menus || {}
   return {
     primary: (menus.primary?.items || []).map(mapNavItem),
     secondary: (menus.secondary?.items || []).map(mapNavItem),
-    footer: {
-      explore: mapFooterGroup(menus, 'footer_explore'),
-      opportunity: mapFooterGroup(menus, 'footer_opportunity'),
-      wsf: mapFooterGroup(menus, 'footer_wsf'),
-      legal: mapFooterGroup(menus, 'footer_legal'),
-    },
     social: (data.socialLinks || []).map((s) => ({ platform: s.platform, url: s.url, handle: s.handle })),
   }
 }

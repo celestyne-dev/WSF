@@ -9,7 +9,7 @@ from app.auth.decorators import permission_required
 from app.extensions import db
 from app.models.analytics import AnalyticsEvent
 from app.models.article import Article
-from app.models.cms import HomepageModule, Menu, SiteSetting
+from app.models.cms import HomepageModule, Menu, SiteSetting, SocialLink
 from app.models.newsletter import NewsletterSubscriber
 from app.models.commerce import Sponsor
 from app.models.nominations import Nomination
@@ -18,16 +18,26 @@ from app.models.submissions import StorySubmission
 from app.models.user import Role, User
 from app.schemas.article import article_summary_schema
 from app.schemas.cms import (
+    FooterGroupSchema,
+    FooterInputSchema,
     HomepageInputSchema,
     HomepageModuleSchema,
     MenuSchema,
     NavigationInputSchema,
     SiteSettingsInputSchema,
+    SocialLinkSchema,
 )
 from app.schemas.commerce import SponsorSchema
 from app.schemas.user import RoleSchema, UserSchema
 from app.services.audit import log_action
-from app.services.cms import replace_homepage_modules, replace_menu, replace_social_links, upsert_site_settings
+from app.services.cms import (
+    replace_footer_groups,
+    replace_homepage_modules,
+    replace_menu,
+    replace_social_links,
+    upsert_site_settings,
+)
+from app.services.footer import FOOTER_SETTINGS_KEY, get_footer_menus, get_footer_settings
 from app.services.homepage import modules_with_warnings
 from app.services.navigation import find_duplicate_top_level_destinations
 from app.utils.filtering import apply_search
@@ -41,6 +51,8 @@ user_schema = UserSchema()
 role_schema = RoleSchema()
 homepage_module_schema = HomepageModuleSchema()
 menu_schema = MenuSchema()
+footer_group_schema = FooterGroupSchema()
+social_link_schema = SocialLinkSchema()
 
 
 def _require_article_admin_access():
@@ -239,6 +251,73 @@ class AdminNavigationResource(Resource):
         return success_response(_dump_menus_with_duplicate_warnings())
 
 
+def _dump_footer_groups_with_warnings():
+    menus = get_footer_menus()
+    dumped = footer_group_schema.dump(menus, many=True)
+    for menu, menu_data in zip(menus, dumped):
+        duplicates = find_duplicate_top_level_destinations(menu.top_level_items())
+        for item_data in menu_data["items"]:
+            item_data["warnings"] = list(item_data.get("warnings") or []) + duplicates.get(item_data["id"], [])
+    return dumped
+
+
+def _dump_footer():
+    social_links = SocialLink.query.order_by(SocialLink.sort_order).all()
+    return {
+        "groups": _dump_footer_groups_with_warnings(),
+        "socialLinks": social_link_schema.dump(social_links, many=True),
+        "settings": get_footer_settings(),
+    }
+
+
+class AdminFooterResource(Resource):
+    """Footer CMS's own dedicated endpoint — gated by footer.manage/
+    footer.publish (not settings.manage, which global Site Settings keeps
+    using unchanged, or navigation.manage, even though footer groups are
+    Menu/MenuItem rows under the hood — see Menu's docstring). GET/PUT
+    cover groups + social links + the small branding/newsletter/contact/
+    copyright settings blob as one atomic save (see FooterInputSchema's
+    docstring for why this differs from Navigation's per-menu-key partial
+    save): the whole footer is one page with one "Save & publish" action,
+    so there's no partial-key ambiguity to preserve.
+    """
+
+    @permission_required("footer.manage")
+    def get(self):
+        return success_response(_dump_footer())
+
+    @permission_required("footer.publish", "footer.manage")
+    def put(self):
+        data = FooterInputSchema().load(request.get_json(silent=True) or {})
+        replace_footer_groups(data["groups"])
+        replace_social_links(data["social_links"])
+        # FooterSettingsInputSchema.load() returns snake_case keys (its
+        # Python attribute names) — re-keyed to camelCase before storage
+        # so the "footer" SiteSetting blob matches get_footer_settings()'s
+        # DEFAULT_FOOTER_SETTINGS and every consumer's expected shape
+        # (same camelCase convention every other SiteSetting blob, e.g.
+        # "site_identity"/"audience_stats", already uses).
+        settings_data = data["settings"]
+        footer_settings = {
+            "brandDescription": settings_data.get("brand_description", ""),
+            "newsletterHeading": settings_data.get("newsletter_heading", ""),
+            "newsletterDescription": settings_data.get("newsletter_description", ""),
+            "newsletterVisible": settings_data.get("newsletter_visible", True),
+            "contactEmail": settings_data.get("contact_email", ""),
+            "copyrightText": settings_data.get("copyright_text", ""),
+        }
+        upsert_site_settings({FOOTER_SETTINGS_KEY: footer_settings})
+        log_action(
+            current_user,
+            "footer.publish",
+            "Menu",
+            changes={"group_count": len(data["groups"]), "social_link_count": len(data["social_links"])},
+        )
+        db.session.commit()
+
+        return success_response(_dump_footer())
+
+
 class AdminSettingsResource(Resource):
     @permission_required("settings.manage")
     def get(self):
@@ -272,6 +351,7 @@ api.add_resource(AdminUserListResource, "/users")
 api.add_resource(AdminRoleListResource, "/roles")
 api.add_resource(AdminHomepageResource, "/homepage")
 api.add_resource(AdminNavigationResource, "/navigation")
+api.add_resource(AdminFooterResource, "/footer")
 api.add_resource(AdminSettingsResource, "/settings")
 api.add_resource(AdminArticleListResource, "/articles")
 api.add_resource(AdminDashboardResource, "/dashboard")

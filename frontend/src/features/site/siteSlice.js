@@ -1,11 +1,13 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import { fetchNavigation, fetchHomepageModules, fetchSiteSettings } from '../../api/site'
+import { fetchFooter } from '../../api/footer'
 import { fetchCountries } from '../../api/geography'
 
 export const loadNavigation = createAsyncThunk('site/loadNavigation', async () => fetchNavigation())
 export const loadHomepageModules = createAsyncThunk('site/loadHomepageModules', async () => fetchHomepageModules())
 export const loadCountries = createAsyncThunk('site/loadCountries', async () => fetchCountries())
 export const loadSiteSettings = createAsyncThunk('site/loadSiteSettings', async () => fetchSiteSettings())
+export const loadFooter = createAsyncThunk('site/loadFooter', async () => fetchFooter())
 
 const siteSlice = createSlice({
   name: 'site',
@@ -14,10 +16,12 @@ const siteSlice = createSlice({
     homepageModules: [],
     countries: [],
     settings: {},
+    footer: null,
     navigationStatus: 'idle',
     homepageStatus: 'idle',
     countriesStatus: 'idle',
     settingsStatus: 'idle',
+    footerStatus: 'idle',
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -49,6 +53,16 @@ const siteSlice = createSlice({
       .addCase(loadSiteSettings.fulfilled, (state, action) => {
         state.settingsStatus = 'succeeded'
         state.settings = action.payload
+      })
+      .addCase(loadFooter.pending, (state) => {
+        state.footerStatus = 'loading'
+      })
+      .addCase(loadFooter.fulfilled, (state, action) => {
+        state.footerStatus = 'succeeded'
+        state.footer = action.payload
+      })
+      .addCase(loadFooter.rejected, (state) => {
+        state.footerStatus = 'failed'
       })
   },
 })

@@ -5,6 +5,7 @@ from app.models.cms import HomepageModule, Menu, SiteSetting, SocialLink
 from app.models.geography import Country
 from app.schemas.cms import HomepageModuleSchema, SiteSettingSchema, SocialLinkSchema
 from app.schemas.geography import CountrySchema
+from app.services.footer import build_public_footer
 from app.services.navigation import serialize_public_menu
 from app.utils.responses import success_response
 
@@ -41,7 +42,12 @@ class HomepageResource(Resource):
 class NavigationResource(Resource):
     def get(self):
         menus = {menu.key: serialize_public_menu(menu) for menu in Menu.query.all()}
-        social_links = SocialLink.query.order_by(SocialLink.sort_order).all()
+        # `visible` was added to SocialLink for Footer CMS (the only public
+        # consumer of a *hidden* social link's non-existence, until now) —
+        # filtered here too since MobileNav also reads this endpoint's
+        # socialLinks for its own social row and must honor the same
+        # visibility toggle Footer CMS's admin UI controls.
+        social_links = SocialLink.query.filter_by(visible=True).order_by(SocialLink.sort_order).all()
         return success_response({"menus": menus, "socialLinks": social_link_schema.dump(social_links, many=True)})
 
 
@@ -51,7 +57,22 @@ class SiteSettingsResource(Resource):
         return success_response({setting.key: setting.value for setting in settings})
 
 
+class FooterResource(Resource):
+    """A dedicated, lightweight footer payload — separate from
+    NavigationResource even though footer groups are Menu/MenuItem rows
+    under the hood (see app/services/footer.py), so the footer's shape
+    (settings + groups + socialLinks) doesn't get tangled up with
+    Navigation's own primary/secondary/menus dict. One request, no
+    admin metadata, no hidden/invalid items or unpublished settings —
+    build_public_footer() already filters all of that out.
+    """
+
+    def get(self):
+        return success_response(build_public_footer())
+
+
 api.add_resource(CountriesResource, "/countries")
 api.add_resource(HomepageResource, "/homepage")
 api.add_resource(NavigationResource, "/navigation")
+api.add_resource(FooterResource, "/footer")
 api.add_resource(SiteSettingsResource, "/settings")

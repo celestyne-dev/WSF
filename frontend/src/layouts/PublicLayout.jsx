@@ -5,7 +5,7 @@ import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
 import MobileNav from '../components/layout/MobileNav'
 import SearchOverlay from '../components/layout/SearchOverlay'
-import { loadNavigation, loadCountries, loadSiteSettings } from '../features/site/siteSlice'
+import { loadNavigation, loadCountries, loadSiteSettings, loadFooter } from '../features/site/siteSlice'
 import { closeOverlays } from '../features/navigation/uiSlice'
 import { captureAcquisitionContext } from '../utils/analytics'
 
@@ -14,13 +14,15 @@ export default function PublicLayout() {
   const navigationStatus = useSelector((s) => s.site.navigationStatus)
   const countriesStatus = useSelector((s) => s.site.countriesStatus)
   const settingsStatus = useSelector((s) => s.site.settingsStatus)
+  const footerStatus = useSelector((s) => s.site.footerStatus)
   const location = useLocation()
 
   useEffect(() => {
     if (navigationStatus === 'idle') dispatch(loadNavigation())
     if (countriesStatus === 'idle') dispatch(loadCountries())
     if (settingsStatus === 'idle') dispatch(loadSiteSettings())
-  }, [navigationStatus, countriesStatus, settingsStatus, dispatch])
+    if (footerStatus === 'idle') dispatch(loadFooter())
+  }, [navigationStatus, countriesStatus, settingsStatus, footerStatus, dispatch])
 
   useEffect(() => {
     dispatch(closeOverlays())
