@@ -50,18 +50,47 @@ $$;
 """
 
 
+def _teardown_db():
+    # Each test gets its own create_app("testing") call, which gives
+    # Flask-SQLAlchemy a brand-new Engine (flask_sqlalchemy.extension keys
+    # engines by Flask app instance). Removing the scoped session only
+    # returns its connection to that engine's own pool — it does not close
+    # the pool's connections or guarantee the Engine itself is disposed in
+    # any bounded time, since that depends on the app object being garbage
+    # collected. Across hundreds of function-scoped fixtures that lag is
+    # enough to exhaust Postgres max_connections before GC catches up, so
+    # dispose() is called explicitly here to close the pool deterministically.
+    _db.session.remove()
+    try:
+        _db.drop_all()
+    finally:
+        _db.engine.dispose()
+
+
 @pytest.fixture()
 def app():
     application = create_app("testing")
     with application.app_context():
-        _db.create_all()
-        _db.session.execute(text(_SEARCH_FUNCTIONS_SQL))
-        _db.session.commit()
-        seed_roles_and_permissions()
-        seed_countries()
-        yield application
-        _db.session.remove()
-        _db.drop_all()
+        try:
+            _db.create_all()
+            _db.session.execute(text(_SEARCH_FUNCTIONS_SQL))
+            _db.session.commit()
+            seed_roles_and_permissions()
+            seed_countries()
+        except Exception:
+            # Setup itself failed (e.g. mid-seed) — clean up whatever
+            # create_all()/execute() already created before propagating,
+            # rather than leaking the engine's connections on a fixture
+            # that never reaches yield.
+            _teardown_db()
+            raise
+
+        try:
+            yield application
+        finally:
+            # Always runs, including when the test body raises, so a
+            # failing test never skips connection cleanup.
+            _teardown_db()
 
 
 @pytest.fixture()

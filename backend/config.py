@@ -1,6 +1,8 @@
 import os
 from datetime import timedelta
 
+from sqlalchemy.pool import NullPool
+
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 
@@ -69,6 +71,16 @@ class TestingConfig(Config):
         "TEST_DATABASE_URL", "postgresql://wsf:wsf_dev_pw@localhost:5432/wsf_test"
     )
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
+    # Each test gets its own create_app("testing") call, and Flask-SQLAlchemy
+    # keeps a separate Engine per Flask app instance. A pooled engine (the
+    # default QueuePool) leaves idle connections open until the pool is
+    # explicitly disposed or the Engine is garbage-collected — neither of
+    # which is deterministic across hundreds of function-scoped app
+    # fixtures — so the test suite can exhaust Postgres max_connections
+    # well before that. NullPool opens a connection per checkout and closes
+    # it immediately on checkin, so no idle connections accumulate between
+    # tests even if disposal is ever missed.
+    SQLALCHEMY_ENGINE_OPTIONS = {**Config.SQLALCHEMY_ENGINE_OPTIONS, "poolclass": NullPool}
 
 
 class ProductionConfig(Config):
