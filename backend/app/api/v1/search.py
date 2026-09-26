@@ -1,149 +1,87 @@
 from flask import Blueprint, request
 from flask_restful import Api, Resource
+from marshmallow import EXCLUDE, Schema, fields, validate
 
-from app.models.article import Article
-from app.models.opportunity import Event, Job, Opportunity
-from app.models.people import Organization, Person
-from app.models.resource import Resource as ResourceModel
-from app.utils.responses import success_response
+from app.services.search import (
+    DEFAULT_PER_PAGE,
+    MAX_PER_PAGE,
+    SEARCHABLE_TYPES,
+    SearchValidationError,
+    normalize_query,
+    search,
+    validate_query,
+)
+from app.utils.responses import ApiError, success_response
 
 search_bp = Blueprint("search", __name__)
 api = Api(search_bp)
 
-RESULT_LIMIT = 20
 
+class SearchQuerySchema(Schema):
+    """GET /api/v1/search?q=&type=&page=&per_page=&topic=&country=&region=&remote=
+    `type` is validated against the controlled type vocabulary (a typo
+    here is a real mistake worth a clear error, unlike `country`/`topic`,
+    which are open, data-driven values that just naturally match nothing
+    when wrong).
+    """
 
-def _media_url(media):
-    return media.public_url if media else None
+    type = fields.String(required=False, load_default="all", validate=validate.OneOf(("all",) + SEARCHABLE_TYPES))
+    page = fields.Integer(required=False, load_default=1, validate=validate.Range(min=1))
+    per_page = fields.Integer(
+        required=False, load_default=DEFAULT_PER_PAGE, validate=validate.Range(min=1, max=MAX_PER_PAGE)
+    )
+    topic = fields.String(required=False, allow_none=True)
+    country = fields.String(required=False, allow_none=True)
+    region = fields.String(required=False, allow_none=True)
+    remote = fields.Boolean(required=False, allow_none=True)
+
+    class Meta:
+        unknown = EXCLUDE
 
 
 class SearchResource(Resource):
-    """A single cross-content search — see frontend/src/api/search.js
-    (globalSearch) for the exact result shape this mirrors:
-    {"query": ..., "results": [{"resultType", "title", "excerpt", "url", "image"}]}.
+    """The single public search endpoint — see app/services/search.py for
+    every eligibility/relevance/field decision. This route only validates
+    input and shapes the response envelope.
     """
 
     def get(self):
-        query = (request.args.get("q") or "").strip()
-        result_type = request.args.get("type", "all")
+        params = SearchQuerySchema().load(request.args.to_dict())
+        query = normalize_query(request.args.get("q"))
 
-        if not query:
-            return success_response({"query": query, "results": []})
+        try:
+            validate_query(query)
+        except SearchValidationError as exc:
+            raise ApiError(exc.message, 422, code=exc.code) from exc
 
-        term = f"%{query}%"
-        results = []
+        filters = {
+            "topic": params.get("topic"),
+            "country": params.get("country"),
+            "region": params.get("region"),
+            "remote": params.get("remote"),
+        }
+        result = search(
+            query, result_type=params["type"], filters=filters, page=params["page"], per_page=params["per_page"]
+        )
 
-        if result_type in ("all", "articles"):
-            articles = (
-                Article.query.filter(Article.status == "published")
-                .filter((Article.title.ilike(term)) | (Article.excerpt.ilike(term)))
-                .limit(RESULT_LIMIT)
-            )
-            for a in articles:
-                results.append(
-                    {
-                        "resultType": "Article",
-                        "title": a.title,
-                        "excerpt": a.excerpt,
-                        "url": f"/{a.slug}",
-                        "image": _media_url(a.hero_media),
-                    }
-                )
-
-        if result_type in ("all", "people"):
-            people = Person.query.filter(
-                (Person.name.ilike(term)) | (Person.industry.ilike(term))
-            ).limit(RESULT_LIMIT)
-            for p in people:
-                results.append(
-                    {
-                        "resultType": "Person",
-                        "title": p.name,
-                        "excerpt": p.short_bio,
-                        "url": f"/people/{p.slug}",
-                        "image": _media_url(p.photo),
-                    }
-                )
-
-        if result_type in ("all", "jobs"):
-            jobs = (
-                Job.query.filter(Job.status == "published")
-                .filter((Job.title.ilike(term)) | (Job.company_name.ilike(term)))
-                .limit(RESULT_LIMIT)
-            )
-            for j in jobs:
-                excerpt = " — ".join(filter(None, [j.company_name, j.location]))
-                results.append(
-                    {
-                        "resultType": "Job",
-                        "title": j.title,
-                        "excerpt": excerpt,
-                        "url": f"/jobs/{j.slug}",
-                        "image": _media_url(j.logo),
-                    }
-                )
-
-        if result_type in ("all", "opportunities"):
-            opportunities = (
-                Opportunity.query.filter(Opportunity.status == "published")
-                .filter((Opportunity.title.ilike(term)) | (Opportunity.organization_name.ilike(term)))
-                .limit(RESULT_LIMIT)
-            )
-            for o in opportunities:
-                results.append(
-                    {
-                        "resultType": "Opportunity",
-                        "title": o.title,
-                        "excerpt": o.organization_name,
-                        "url": f"/opportunities/{o.slug}",
-                        "image": _media_url(o.logo),
-                    }
-                )
-
-        if result_type in ("all", "events"):
-            events = Event.query.filter(Event.title.ilike(term)).limit(RESULT_LIMIT)
-            for e in events:
-                results.append(
-                    {
-                        "resultType": "Event",
-                        "title": e.title,
-                        "excerpt": e.location,
-                        "url": f"/events/{e.slug}",
-                        "image": _media_url(e.cover_media),
-                    }
-                )
-
-        if result_type in ("all", "resources"):
-            resources = (
-                ResourceModel.query.filter(ResourceModel.status == "published")
-                .filter(ResourceModel.name.ilike(term))
-                .limit(RESULT_LIMIT)
-            )
-            for r in resources:
-                results.append(
-                    {
-                        "resultType": "Resource",
-                        "title": r.name,
-                        "excerpt": r.description,
-                        "url": f"/resources/{r.slug}",
-                        "image": _media_url(r.cover_media),
-                    }
-                )
-
-        if result_type in ("all", "organizations"):
-            organizations = Organization.query.filter(Organization.name.ilike(term)).limit(RESULT_LIMIT)
-            for org in organizations:
-                results.append(
-                    {
-                        "resultType": "Organization",
-                        "title": org.name,
-                        "excerpt": org.description,
-                        "url": f"/organizations/{org.slug}",
-                        "image": _media_url(org.logo),
-                    }
-                )
-
-        return success_response({"query": query, "results": results})
+        # Pagination is nested inside `data` (not passed as the top-level
+        # `meta` kwarg) deliberately: the shared axios response interceptor
+        # (frontend/src/api/client.js) only preserves `meta` when `data` is
+        # an array — for an object response like this one, a top-level
+        # `meta` block would be silently dropped.
+        return success_response(
+            {
+                "query": query,
+                "type": params["type"],
+                "results": result["results"],
+                "pagination": {
+                    "page": result["page"],
+                    "perPage": result["per_page"],
+                    "total": result["total"],
+                    "totalPages": result["total_pages"],
+                },
+            }
+        )
 
 
 api.add_resource(SearchResource, "")

@@ -86,12 +86,19 @@ def test_search_finds_articles_and_people_by_type(client, admin_token):
         },
         headers=auth_headers(admin_token),
     )
-    client.post("/api/v1/people", json={"name": "Naliaka Wafula"}, headers=auth_headers(admin_token))
+    # Search only ever indexes published People (see app/services/search.py
+    # eligibility rules) — explicitly published here (with the short bio
+    # publish-validation requires), not left at Person's own "draft" default.
+    client.post(
+        "/api/v1/people",
+        json={"name": "Naliaka Wafula", "shortBio": "A leader in fintech.", "status": "published"},
+        headers=auth_headers(admin_token),
+    )
 
     everything = client.get("/api/v1/search?q=leadership")
     assert everything.status_code == 200
     types = {r["resultType"] for r in everything.get_json()["data"]["results"]}
-    assert "Article" in types
+    assert "Story" in types  # TYPE_LABELS["articles"] — see app/services/search.py
 
     people_only = client.get("/api/v1/search?q=Naliaka&type=people")
     assert people_only.status_code == 200
