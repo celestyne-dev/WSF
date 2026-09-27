@@ -21,6 +21,22 @@ class Config:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     JWT_TOKEN_LOCATION = ["headers"]
     JWT_ERROR_MESSAGE_KEY = "message"
+    # PyJWT's `iat`/`nbf`/`exp` checks (flask_jwt_extended.config.Config.leeway
+    # -> JWT_DECODE_LEEWAY, passed straight through to jwt.decode()'s `leeway`)
+    # default to zero tolerance: a token is rejected as "not yet valid (iat)"
+    # if its issued-at second is even fractionally ahead of the decoding
+    # process's own clock read. A brand-new token, verified on the very next
+    # request, can trip that with nothing wrong — ordinary sub-second
+    # scheduling/clock jitter between the encode and decode calls (most
+    # visible under sustained load, e.g. a large test suite) is enough to
+    # flip which side of a whole-second boundary each integer timestamp
+    # truncates to. Real deployments hit the same class of skew (VM/container
+    # clocks, NTP correction), so this is set centrally rather than only for
+    # tests. Two seconds is the conservative end of the standard clock-skew
+    # tolerance range and does not touch signature, revocation, or the
+    # exp/iat checks themselves — it only widens their comparison by a couple
+    # of seconds.
+    JWT_DECODE_LEEWAY = 2
 
     # Media is stored on the Hostinger VPS filesystem, outside the app's
     # source tree, and served in production by Nginx directly from
