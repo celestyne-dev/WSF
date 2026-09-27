@@ -28,6 +28,7 @@ def create_app(config_name="development"):
     register_cli(app)
 
     from app.api.v1.admin import admin_bp
+    from app.api.v1.admin_audit import admin_audit_bp
     from app.api.v1.admin_taxonomy import admin_taxonomy_bp
     from app.api.v1.admin_users import admin_users_bp
     from app.api.v1.analytics import analytics_bp
@@ -60,6 +61,7 @@ def create_app(config_name="development"):
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(admin_users_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(admin_audit_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(media_bp, url_prefix="/api/v1/media")
     app.register_blueprint(public_bp, url_prefix="/api/v1/public")
     app.register_blueprint(articles_bp, url_prefix="/api/v1/articles")

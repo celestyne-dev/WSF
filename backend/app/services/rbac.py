@@ -20,6 +20,7 @@ ROLE_PERMISSIONS = {
         "users.view",
         "users.manage",
         "roles.manage",
+        "audit.view",
         "articles.manage",
         "articles.publish",
         "pages.manage",

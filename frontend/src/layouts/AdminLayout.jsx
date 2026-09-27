@@ -38,6 +38,7 @@ import {
   FileText,
   Compass,
   PanelBottom,
+  History,
   ShieldCheck,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
@@ -123,6 +124,7 @@ const NAV_GROUPS = [
       { to: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
       { to: '/admin/users', icon: Users, label: 'Users', permission: ['users.view', 'users.manage'] },
       { to: '/admin/roles', icon: ShieldCheck, label: 'Roles & Permissions', permission: ['users.view', 'users.manage', 'roles.manage'] },
+      { to: '/admin/audit', icon: History, label: 'Audit Log', permission: ['audit.view'] },
       { to: '/admin/settings', icon: Settings, label: 'Settings' },
     ],
   },
