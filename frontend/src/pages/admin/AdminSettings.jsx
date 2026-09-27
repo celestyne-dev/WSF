@@ -3,10 +3,21 @@ import { Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
+import MediaPicker from '../../components/cms/MediaPicker'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
+import { mapMediaRef } from '../../utils/media'
 
 const TABS = ['Site Identity', 'Navigation', 'Footer', 'Newsletter', 'Media Kit', 'Integrations']
+
+const DEFAULT_IDENTITY = {
+  siteName: 'Women Shaping Futures',
+  shortName: '',
+  tagline: '',
+  contactEmail: '',
+  seoDefaultTitle: '',
+  seoDefaultDescription: '',
+}
 
 const DEFAULT_AUDIENCE = {
   linkedinFollowers: 0,
@@ -21,12 +32,13 @@ const DEFAULT_AUDIENCE = {
 
 export default function AdminSettings() {
   const [tab, setTab] = useState(TABS[0])
-  const [siteName, setSiteName] = useState('Women Shaping Futures')
-  const [tagline, setTagline] = useState('Stories, Opportunity & Growth for Women Worldwide')
-  const [contactEmail, setContactEmail] = useState('hello@womenshapingfutures.org')
+  const [identity, setIdentity] = useState(DEFAULT_IDENTITY)
+  const [logoMedia, setLogoMedia] = useState(null)
+  const [ogImageMedia, setOgImageMedia] = useState(null)
   const [audience, setAudience] = useState(undefined)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [savingIdentity, setSavingIdentity] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -34,9 +46,17 @@ export default function AdminSettings() {
       .then((data) => {
         if (!active) return
         setAudience({ ...DEFAULT_AUDIENCE, ...(data.audience_stats || {}) })
-        if (data.site_identity?.siteName) setSiteName(data.site_identity.siteName)
-        if (data.site_identity?.tagline) setTagline(data.site_identity.tagline)
-        if (data.site_identity?.contactEmail) setContactEmail(data.site_identity.contactEmail)
+        const savedIdentity = data.site_identity || {}
+        setIdentity({
+          siteName: savedIdentity.siteName || DEFAULT_IDENTITY.siteName,
+          shortName: savedIdentity.shortName || '',
+          tagline: savedIdentity.tagline || '',
+          contactEmail: savedIdentity.contactEmail || '',
+          seoDefaultTitle: savedIdentity.seoDefaultTitle || '',
+          seoDefaultDescription: savedIdentity.seoDefaultDescription || '',
+        })
+        setLogoMedia(mapMediaRef(savedIdentity.logo))
+        setOgImageMedia(mapMediaRef(savedIdentity.ogImage))
       })
       .catch(() => active && setError('Something went wrong loading settings. Please try again.'))
     return () => {
@@ -48,18 +68,49 @@ export default function AdminSettings() {
     setAudience((prev) => ({ ...prev, [field]: value }))
   }
 
+  function updateIdentity(field, value) {
+    setIdentity((prev) => ({ ...prev, [field]: value }))
+  }
+
   async function handleSave() {
     setSaving(true)
     try {
-      await saveAdminSettings({
-        audience_stats: audience,
-        site_identity: { siteName, tagline, contactEmail },
-      })
+      await saveAdminSettings({ audience_stats: audience })
       toast.success('Settings saved.')
     } catch {
       toast.error('Something went wrong saving settings. Please try again.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleSaveIdentity() {
+    setSavingIdentity(true)
+    try {
+      const saved = await saveAdminSettings({
+        site_identity: {
+          ...identity,
+          logoMediaId: logoMedia?.id ?? null,
+          ogImageMediaId: ogImageMedia?.id ?? null,
+        },
+      })
+      const savedIdentity = saved.site_identity || {}
+      setIdentity({
+        siteName: savedIdentity.siteName || DEFAULT_IDENTITY.siteName,
+        shortName: savedIdentity.shortName || '',
+        tagline: savedIdentity.tagline || '',
+        contactEmail: savedIdentity.contactEmail || '',
+        seoDefaultTitle: savedIdentity.seoDefaultTitle || '',
+        seoDefaultDescription: savedIdentity.seoDefaultDescription || '',
+      })
+      setLogoMedia(mapMediaRef(savedIdentity.logo))
+      setOgImageMedia(mapMediaRef(savedIdentity.ogImage))
+      toast.success('Site identity saved.')
+    } catch (err) {
+      const message = err?.response?.data?.error?.message
+      toast.error(message || 'Something went wrong saving site identity. Please try again.')
+    } finally {
+      setSavingIdentity(false)
     }
   }
 
@@ -85,23 +136,133 @@ export default function AdminSettings() {
 
       <div className="max-w-xl py-6">
         {tab === 'Site Identity' && (
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Site name</label>
-              <input value={siteName} onChange={(e) => setSiteName(e.target.value)} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-500">Site identity</p>
+              <div>
+                <label htmlFor="settings-site-name" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                  Site name
+                </label>
+                <input
+                  id="settings-site-name"
+                  value={identity.siteName}
+                  onChange={(e) => updateIdentity('siteName', e.target.value)}
+                  maxLength={80}
+                  required
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-charcoal-500">
+                  The public name of the site — used in the header, footer copyright, and page titles.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="settings-short-name" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                  Short name (optional)
+                </label>
+                <input
+                  id="settings-short-name"
+                  value={identity.shortName}
+                  onChange={(e) => updateIdentity('shortName', e.target.value)}
+                  maxLength={40}
+                  placeholder="WSF"
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="settings-tagline" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                  Tagline (optional)
+                </label>
+                <input
+                  id="settings-tagline"
+                  value={identity.tagline}
+                  onChange={(e) => updateIdentity('tagline', e.target.value)}
+                  maxLength={160}
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Public site URL</p>
+                <p className="mt-1.5 text-sm text-charcoal-600">
+                  Configured via the server's <code className="bg-taupe-100 px-1">FRONTEND_URL</code> environment
+                  variable, not editable here — an incorrect domain would break routing and CORS, so this stays
+                  environment-controlled.
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Tagline</label>
-              <input value={tagline} onChange={(e) => setTagline(e.target.value)} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+
+            <div className="space-y-4 border-t border-taupe-200 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-500">Branding</p>
+              <MediaPicker label="Logo" aspect={3 / 1} value={logoMedia} onChange={setLogoMedia} />
+              <MediaPicker label="Default social-sharing image" aspect={1.91 / 1} value={ogImageMedia} onChange={setOgImageMedia} />
             </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Contact email</label>
-              <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+
+            <div className="space-y-4 border-t border-taupe-200 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-500">Public contact</p>
+              <div>
+                <label htmlFor="settings-contact-email" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                  Contact email (optional)
+                </label>
+                <input
+                  id="settings-contact-email"
+                  type="email"
+                  value={identity.contactEmail}
+                  onChange={(e) => updateIdentity('contactEmail', e.target.value)}
+                  placeholder="hello@womenshapingfutures.org"
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-charcoal-500">
+                  A genuinely public address only — never a personal or internal staff email.
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Logo</label>
-              <div className="mt-1.5 flex h-20 w-40 items-center justify-center border border-dashed border-taupe-300 text-xs text-charcoal-600">Upload logo</div>
+
+            <div className="space-y-4 border-t border-taupe-200 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-500">Social profiles</p>
+              <p className="text-sm text-charcoal-600">
+                Real LinkedIn/Instagram/etc. profile URLs are managed on the dedicated{' '}
+                <Link to="/admin/footer" className="font-semibold text-burgundy-600 hover:underline">
+                  Footer
+                </Link>{' '}
+                page (one editable URL per platform) — Site Settings and the public site both read that same list,
+                so there's never a second, conflicting copy of a profile URL.
+              </p>
             </div>
+
+            <div className="space-y-4 border-t border-taupe-200 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-500">SEO defaults</p>
+              <div>
+                <label htmlFor="settings-seo-title" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                  Default page title (optional)
+                </label>
+                <input
+                  id="settings-seo-title"
+                  value={identity.seoDefaultTitle}
+                  onChange={(e) => updateIdentity('seoDefaultTitle', e.target.value)}
+                  maxLength={70}
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-charcoal-500">
+                  Fallback only — a page or article's own SEO title always takes priority over this.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="settings-seo-description" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                  Default meta description (optional)
+                </label>
+                <textarea
+                  id="settings-seo-description"
+                  value={identity.seoDefaultDescription}
+                  onChange={(e) => updateIdentity('seoDefaultDescription', e.target.value)}
+                  maxLength={300}
+                  rows={3}
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <button type="button" onClick={handleSaveIdentity} disabled={savingIdentity} className="btn-primary disabled:opacity-60">
+              {savingIdentity ? 'Saving…' : 'Save site identity'}
+            </button>
           </div>
         )}
 
@@ -197,9 +358,11 @@ export default function AdminSettings() {
           </div>
         )}
 
-        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary mt-6 disabled:opacity-60">
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
+        {tab === 'Media Kit' && (
+          <button type="button" onClick={handleSave} disabled={saving} className="btn-primary mt-6 disabled:opacity-60">
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        )}
       </div>
     </div>
   )

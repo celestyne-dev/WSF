@@ -14,6 +14,7 @@ from app.models.people import Author, Organization, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Category, Series, Tag, Topic
 from app.services.cms import replace_menu, replace_social_links, upsert_site_settings
+from app.services.site_settings import SITE_IDENTITY_KEY
 
 TOPICS = [
     ("leadership", "Leadership", "Leadership journeys, communication, and managing teams."),
@@ -1362,6 +1363,25 @@ def seed_demo_content():
             "newsletterVisible": True,
             "contactEmail": "hello@womenshapingfutures.org",
             "copyrightText": "Women Shaping Futures. All rights reserved.",
+        },
+    )
+    # Real WSF positioning already used elsewhere (index.html's static
+    # meta description, Footer's own contactEmail above) — not fabricated
+    # marketing copy. See app/services/site_settings.py's docstring for
+    # why this is its own key rather than reusing Footer's blob.
+    _seed_setting_if_absent(
+        SITE_IDENTITY_KEY,
+        {
+            "site_name": "Women Shaping Futures",
+            "short_name": "WSF",
+            "tagline": "A global media, opportunity, and growth platform for women.",
+            "contact_email": "hello@womenshapingfutures.org",
+            "logo_media_id": None,
+            "og_image_media_id": None,
+            "seo_default_title": "Women Shaping Futures",
+            "seo_default_description": (
+                "Women Shaping Futures — a global media, opportunity, and growth platform for women."
+            ),
         },
     )
 

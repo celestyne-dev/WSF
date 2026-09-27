@@ -31,8 +31,11 @@ export default function AboutPage() {
   }, [])
 
   useSeo({
-    title: page?.seo?.title || 'About Women Shaping Futures',
-    description: page?.seo?.description || 'Women Shaping Futures is a global media, opportunity, and community platform for ambitious women.',
+    // No hardcoded literal fallback here — useSeo() itself falls back to
+    // the global Site Settings SEO defaults when this page has none of its
+    // own configured (see hooks/useSeo.js).
+    title: page?.seo?.title,
+    description: page?.seo?.description,
     canonical: 'https://womenshapingfutures.org/about',
   })
 

@@ -77,13 +77,40 @@ export async function fetchNavigation() {
   return delay({ primary: primaryNavigation, secondary: secondaryNavigation, footer: footerNavigation, social: socialLinks })
 }
 
-// GET /api/v1/public/settings — a flexible key/value store (site name,
-// tagline, contact email, maintenance mode, ...). No mock equivalent
-// exists since nothing was previously CMS-editable here; mock mode
-// returns {} so consumers fall back to their current static copy.
+// GET /api/v1/public/settings — the one authoritative global site
+// identity/branding/contact/social/SEO-defaults payload (see backend
+// app/services/site_settings.py). Real-mode failure/empty-state must
+// still leave the site usable, so every consumer of `state.site.settings`
+// reads through optional chaining rather than assuming this shape is
+// present — never a second hard-coded copy of these values that could
+// silently drift from what an admin saves.
+function mapSiteSettings(data) {
+  return {
+    site: {
+      name: data.site?.name || null,
+      shortName: data.site?.shortName || null,
+      tagline: data.site?.tagline || null,
+      url: data.site?.url || null,
+    },
+    branding: { logo: mapMediaRef(data.branding?.logo) },
+    contact: { email: data.contact?.email || null },
+    social: (data.social || []).map((s) => ({ platform: s.platform, url: s.url, handle: s.handle })),
+    seo: {
+      defaultTitle: data.seo?.defaultTitle || null,
+      defaultDescription: data.seo?.defaultDescription || null,
+      defaultOgImage: mapMediaRef(data.seo?.defaultOgImage),
+    },
+  }
+}
+
+// No mock equivalent for the underlying admin form — mock mode only
+// needs a stable, real-looking shape for the handful of public
+// consumers (Logo, Footer copyright fallback, useSeo, JSON-LD) to read;
+// see mock/siteSettings.js.
 export async function fetchSiteSettings() {
-  if (!USE_MOCK) return (await apiClient.get('/public/settings')).data
-  return delay({})
+  if (!USE_MOCK) return mapSiteSettings((await apiClient.get('/public/settings')).data)
+  const { siteSettings } = await import('../mock/siteSettings')
+  return delay(siteSettings)
 }
 
 export async function fetchHomepageModules() {

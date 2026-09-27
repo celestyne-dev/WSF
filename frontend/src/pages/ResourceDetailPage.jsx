@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Download, Lock, Mail, ExternalLink, X } from 'lucide-react'
@@ -20,6 +21,7 @@ import NotFoundPage from './NotFoundPage'
 // Valid schema.org structured data for a downloadable resource — built
 // only from fields this record actually carries.
 function useResourceStructuredData(resource, canonicalUrl) {
+  const siteName = useSelector((s) => s.site.settings?.site?.name) || 'Women Shaping Futures'
   useEffect(() => {
     if (!resource) return
     const data = {
@@ -34,7 +36,7 @@ function useResourceStructuredData(resource, canonicalUrl) {
         : resource.authorName
           ? { author: { '@type': 'Organization', name: resource.authorName } }
           : {}),
-      publisher: { '@type': 'Organization', name: 'Women Shaping Futures' },
+      publisher: { '@type': 'Organization', name: siteName },
       offers: {
         '@type': 'Offer',
         price: resource.isFree ? 0 : resource.price,
@@ -51,7 +53,7 @@ function useResourceStructuredData(resource, canonicalUrl) {
     }
     el.textContent = JSON.stringify(data)
     return () => el?.remove()
-  }, [resource, canonicalUrl])
+  }, [resource, canonicalUrl, siteName])
 }
 
 function EmailGateModal({ resource, onClose, onSuccess }) {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { useParams, Link } from 'react-router-dom'
 import { Calendar, MapPin, Clock, Ticket, Globe2, AlertCircle, CalendarPlus, PauseCircle } from 'lucide-react'
 import { fetchEventBySlug, fetchEvents } from '../api/events'
@@ -34,6 +35,7 @@ const EVENT_STATUS_SCHEMA = {
 // data publicly regardless of on-page visibility. Performers are only the
 // speakers WSF actually lists for this event — never invented.
 function useEventStructuredData(event, canonicalUrl) {
+  const siteName = useSelector((s) => s.site.settings?.site?.name) || 'Women Shaping Futures'
   useEffect(() => {
     if (!event) return
     const startDateTime = event.startTime ? `${event.date}T${event.startTime}` : event.date
@@ -50,7 +52,7 @@ function useEventStructuredData(event, canonicalUrl) {
       ...(event.format ? { eventAttendanceMode: ATTENDANCE_MODE[event.format] } : {}),
       ...(event.organizer
         ? { organizer: { '@type': 'Organization', name: event.organizer } }
-        : { organizer: { '@type': 'Organization', name: 'Women Shaping Futures' } }),
+        : { organizer: { '@type': 'Organization', name: siteName } }),
       location:
         event.format === 'virtual'
           ? { '@type': 'VirtualLocation', url: canonicalUrl }
@@ -88,7 +90,7 @@ function useEventStructuredData(event, canonicalUrl) {
     }
     el.textContent = JSON.stringify(data)
     return () => el?.remove()
-  }, [event, canonicalUrl])
+  }, [event, canonicalUrl, siteName])
 }
 
 function pad2(n) {

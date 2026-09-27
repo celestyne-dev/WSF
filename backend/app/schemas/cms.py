@@ -1,6 +1,6 @@
-from marshmallow import fields, validate, validates_schema, ValidationError
+from marshmallow import RAISE, fields, validate, validates_schema, ValidationError
 
-from app.extensions import ma
+from app.extensions import db, ma
 from app.models.cms import (
     ADVERTISE_OFFERING_STATUSES,
     ADVERTISE_PAGE_STATUSES,
@@ -17,6 +17,7 @@ from app.models.cms import (
     SiteSetting,
     SocialLink,
 )
+from app.models.media import Media
 from app.schemas.media import MediaSchema
 from app.services.footer import reject_html, validate_group_label
 from app.services.homepage import validate_cta_url, validate_item_count
@@ -102,6 +103,66 @@ class SocialLinkSchema(ma.SQLAlchemyAutoSchema):
         load_instance = False
 
 
+# ---------------------------------------------------------------------------
+# Site Settings / Global Configuration
+# ---------------------------------------------------------------------------
+#
+# See app/services/site_settings.py for why this is one small, named-field
+# schema (never a raw dict) stored under a single controlled SiteSetting
+# key ("site_identity"), and why social profile URLs are deliberately not
+# part of it (Footer CMS already owns those rows).
+
+
+class SiteIdentitySchema(ma.Schema):
+    """Admin + public dump — safe for both: nothing here is more
+    sensitive in one context than the other, so (unlike Page/Article)
+    no separate PublicSchema is needed.
+    """
+
+    site_name = fields.String(data_key="siteName")
+    short_name = fields.String(data_key="shortName", allow_none=True)
+    tagline = fields.String(allow_none=True)
+    contact_email = fields.String(data_key="contactEmail", allow_none=True)
+    seo_default_title = fields.String(data_key="seoDefaultTitle", allow_none=True)
+    seo_default_description = fields.String(data_key="seoDefaultDescription", allow_none=True)
+    logo = fields.Nested(MediaSchema, allow_none=True)
+    og_image = fields.Nested(MediaSchema, data_key="ogImage", allow_none=True)
+
+
+class SiteIdentityInputSchema(ma.Schema):
+    site_name = fields.String(required=True, data_key="siteName", validate=validate.Length(min=1, max=80))
+    short_name = fields.String(required=False, allow_none=True, data_key="shortName", validate=validate.Length(max=40))
+    tagline = fields.String(required=False, allow_none=True, validate=validate.Length(max=160))
+    contact_email = fields.Email(required=False, allow_none=True, data_key="contactEmail")
+    logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
+    og_image_media_id = fields.Integer(required=False, allow_none=True, data_key="ogImageMediaId")
+    seo_default_title = fields.String(
+        required=False, allow_none=True, data_key="seoDefaultTitle", validate=validate.Length(max=70)
+    )
+    seo_default_description = fields.String(
+        required=False, allow_none=True, data_key="seoDefaultDescription", validate=validate.Length(max=300)
+    )
+
+    class Meta:
+        # Unknown top-level fields (a typo, or a field that belongs to a
+        # different module) are rejected outright rather than silently
+        # ignored — see the module docstring on why arbitrary keys must
+        # never be accepted here.
+        unknown = RAISE
+
+    @validates_schema
+    def validate_site_identity(self, data, **kwargs):
+        reject_html(data.get("site_name"), "siteName", 80)
+        reject_html(data.get("short_name"), "shortName", 40)
+        reject_html(data.get("tagline"), "tagline", 160)
+        reject_html(data.get("seo_default_title"), "seoDefaultTitle", 70)
+        reject_html(data.get("seo_default_description"), "seoDefaultDescription", 300)
+        for field_name, data_key in (("logo_media_id", "logoMediaId"), ("og_image_media_id", "ogImageMediaId")):
+            media_id = data.get(field_name)
+            if media_id is not None and db.session.get(Media, media_id) is None:
+                raise ValidationError("Referenced media does not exist.", field_name=data_key)
+
+
 class HomepageModuleInputSchema(ma.Schema):
     """Every homepage module goes through this schema, whatever its
     `type` — the controlled fields (media/CTA) are shared columns rather
@@ -180,10 +241,6 @@ class MenuInputSchema(ma.Schema):
 class NavigationInputSchema(ma.Schema):
     menus = fields.List(fields.Nested(MenuInputSchema), required=True)
     social_links = fields.List(fields.Dict(), required=False, load_default=list, data_key="socialLinks")
-
-
-class SiteSettingsInputSchema(ma.Schema):
-    settings = fields.Dict(required=True)
 
 
 # ---------------------------------------------------------------------------

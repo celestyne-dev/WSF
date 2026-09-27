@@ -218,17 +218,24 @@ def test_navigation_builder_with_nested_children_and_social_links(client, admin_
 
 
 def test_settings_round_trip(client, admin_token):
+    # site_identity is the one controlled key AdminSettingsResource
+    # validates by name (see app/services/site_settings.py) — replaces
+    # this test's old arbitrary "site_name"/"maintenance_mode" top-level
+    # keys, which the raw fields.Dict() passthrough used to accept
+    # unchecked. That old behavior is exactly what this task's Site
+    # Settings rewrite removes; see test_site_settings.py for the
+    # dedicated coverage of the new controlled-key contract.
     saved = client.put(
         "/api/v1/admin/settings",
-        json={"settings": {"site_name": "Women Shaping Futures", "maintenance_mode": False}},
+        json={"settings": {"site_identity": {"siteName": "Women Shaping Futures"}}},
         headers=auth_headers(admin_token),
     )
     assert saved.status_code == 200
-    assert saved.get_json()["data"]["site_name"] == "Women Shaping Futures"
+    assert saved.get_json()["data"]["site_identity"]["siteName"] == "Women Shaping Futures"
 
     public = client.get("/api/v1/public/settings")
     assert public.status_code == 200
-    assert public.get_json()["data"]["maintenance_mode"] is False
+    assert public.get_json()["data"]["site"]["name"] == "Women Shaping Futures"
 
 
 def test_media_endpoints_require_permission(client):

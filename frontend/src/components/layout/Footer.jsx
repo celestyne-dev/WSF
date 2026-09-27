@@ -37,6 +37,10 @@ export default function Footer() {
   const footer = useSelector((s) => s.site.footer) || {}
   const groups = footer.groups || []
   const social = footer.social || []
+  // Footer CMS owns copyrightText itself (see AdminFooterResource) — this
+  // only backs the ultimate fallback when no admin has set one, sourced from
+  // the same global Site Settings name instead of a second hardcoded literal.
+  const siteName = useSelector((s) => s.site.settings?.site?.name) || 'Women Shaping Futures'
 
   return (
     <footer className="bg-charcoal-800 text-ivory">
@@ -86,7 +90,7 @@ export default function Footer() {
         </div>
         <div className="flex flex-col items-center gap-1 text-center sm:items-end sm:text-right">
           <p className="text-xs text-ivory/50">
-            &copy; {new Date().getFullYear()} {footer.copyrightText || 'Women Shaping Futures. All rights reserved.'}
+            &copy; {new Date().getFullYear()} {footer.copyrightText || `${siteName}. All rights reserved.`}
           </p>
           {footer.contactEmail && (
             <a href={`mailto:${footer.contactEmail}`} className="text-xs text-ivory/50 hover:text-ivory">

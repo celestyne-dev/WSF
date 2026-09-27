@@ -24,7 +24,8 @@ from app.schemas.cms import (
     HomepageModuleSchema,
     MenuSchema,
     NavigationInputSchema,
-    SiteSettingsInputSchema,
+    SiteIdentityInputSchema,
+    SiteIdentitySchema,
     SocialLinkSchema,
 )
 from app.schemas.commerce import SponsorSchema
@@ -40,6 +41,7 @@ from app.services.cms import (
 from app.services.footer import FOOTER_SETTINGS_KEY, get_footer_menus, get_footer_settings
 from app.services.homepage import modules_with_warnings
 from app.services.navigation import find_duplicate_top_level_destinations
+from app.services.site_settings import SITE_IDENTITY_KEY, get_site_identity_resolved, save_site_identity
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -53,6 +55,7 @@ homepage_module_schema = HomepageModuleSchema()
 menu_schema = MenuSchema()
 footer_group_schema = FooterGroupSchema()
 social_link_schema = SocialLinkSchema()
+site_identity_schema = SiteIdentitySchema()
 
 
 def _require_article_admin_access():
@@ -105,7 +108,14 @@ class AdminDashboardResource(Resource):
         subscribers = NewsletterSubscriber.query.filter_by(status="active").count()
         active_jobs = Job.query.filter_by(status="published").count()
         active_opportunities = Opportunity.query.filter_by(status="published").count()
-        upcoming_events = Event.query.filter_by(status="upcoming").count()
+        # "upcoming" is never a stored Event.status (see EVENT_STATUSES) —
+        # it's computed from date, exactly like EventSchema.get_is_upcoming.
+        # Filtering by status="upcoming" here always matched zero rows.
+        today = now.date()
+        upcoming_events = Event.query.filter(
+            Event.status == "published",
+            db.func.coalesce(Event.end_date, Event.date) >= today,
+        ).count()
         pending_submissions = StorySubmission.query.filter_by(status="submitted").count()
         pending_nominations = Nomination.query.filter_by(status="submitted").count()
 
@@ -318,20 +328,68 @@ class AdminFooterResource(Resource):
         return success_response(_dump_footer())
 
 
+ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY}
+
+
 class AdminSettingsResource(Resource):
+    """Site Settings / Global Configuration — see
+    app/services/site_settings.py for what this does and does not own.
+
+    Only two controlled SiteSetting keys are ever read/written here:
+    "site_identity" (this module — validated against SiteIdentityInputSchema,
+    never a raw dict) and the pre-existing "audience_stats" (Partnerships'
+    media-kit numbers; passed through unvalidated exactly as before this
+    module existed — that shape belongs to Partnerships, not here). Any
+    other key is rejected outright: the old fields.Dict(required=True)
+    passthrough this replaces let any string become a permanent, unused
+    row from a single typo (e.g. "site_nmae").
+    """
+
     @permission_required("settings.manage")
     def get(self):
-        settings = SiteSetting.query.all()
-        return success_response({setting.key: setting.value for setting in settings})
+        return success_response(self._dump())
 
     @permission_required("settings.manage")
     def put(self):
-        data = SiteSettingsInputSchema().load(request.get_json(silent=True) or {})
-        upsert_site_settings(data["settings"])
-        db.session.commit()
+        payload = request.get_json(silent=True) or {}
+        settings_data = payload.get("settings")
+        if not isinstance(settings_data, dict):
+            raise ApiError("settings must be an object.", 422, code="validation_error")
 
-        settings = SiteSetting.query.all()
-        return success_response({setting.key: setting.value for setting in settings})
+        unknown_keys = set(settings_data) - ADMIN_SETTINGS_KEYS
+        if unknown_keys:
+            raise ApiError(
+                f"Unknown settings key(s): {', '.join(sorted(unknown_keys))}.",
+                422,
+                code="validation_error",
+            )
+
+        if SITE_IDENTITY_KEY in settings_data:
+            identity_data = SiteIdentityInputSchema().load(settings_data[SITE_IDENTITY_KEY])
+            save_site_identity(identity_data)
+            log_action(
+                current_user,
+                "settings.update",
+                "SiteSetting",
+                entity_id=SITE_IDENTITY_KEY,
+                changes={"site_name": identity_data["site_name"]},
+            )
+
+        if "audience_stats" in settings_data:
+            audience_value = settings_data["audience_stats"]
+            if not isinstance(audience_value, dict):
+                raise ApiError("audience_stats must be an object.", 422, code="validation_error")
+            upsert_site_settings({"audience_stats": audience_value})
+
+        db.session.commit()
+        return success_response(self._dump())
+
+    def _dump(self):
+        audience_setting = db.session.get(SiteSetting, "audience_stats")
+        return {
+            "audience_stats": audience_setting.value if audience_setting else None,
+            SITE_IDENTITY_KEY: site_identity_schema.dump(get_site_identity_resolved()),
+        }
 
 
 class AdminSponsorListResource(Resource):

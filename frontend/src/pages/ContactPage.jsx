@@ -20,8 +20,11 @@ export default function ContactPage() {
   }, [])
 
   useSeo({
-    title: page?.seo?.title || 'Contact | Women Shaping Futures',
-    description: page?.seo?.description || 'Get in touch with the Women Shaping Futures editorial, partnerships, and support teams.',
+    // No hardcoded literal fallback here — useSeo() itself falls back to
+    // the global Site Settings SEO defaults when this page has none of its
+    // own configured (see hooks/useSeo.js).
+    title: page?.seo?.title,
+    description: page?.seo?.description,
     canonical: 'https://womenshapingfutures.org/contact',
   })
 

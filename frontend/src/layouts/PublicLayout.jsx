@@ -8,6 +8,7 @@ import SearchOverlay from '../components/layout/SearchOverlay'
 import { loadNavigation, loadCountries, loadSiteSettings, loadFooter } from '../features/site/siteSlice'
 import { closeOverlays } from '../features/navigation/uiSlice'
 import { captureAcquisitionContext } from '../utils/analytics'
+import useSiteStructuredData from '../hooks/useSiteStructuredData'
 
 export default function PublicLayout() {
   const dispatch = useDispatch()
@@ -16,6 +17,8 @@ export default function PublicLayout() {
   const settingsStatus = useSelector((s) => s.site.settingsStatus)
   const footerStatus = useSelector((s) => s.site.footerStatus)
   const location = useLocation()
+
+  useSiteStructuredData()
 
   useEffect(() => {
     if (navigationStatus === 'idle') dispatch(loadNavigation())
