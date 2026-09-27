@@ -38,9 +38,11 @@ import {
   FileText,
   Compass,
   PanelBottom,
+  ShieldCheck,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
+import { hasPermission } from '../utils/permissions'
 
 const NAV_GROUPS = [
   {
@@ -119,7 +121,8 @@ const NAV_GROUPS = [
       { to: '/admin/media', icon: Image, label: 'Media Library' },
       { to: '/admin/seo', icon: Search, label: 'SEO' },
       { to: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
-      { to: '/admin/users', icon: Users, label: 'Users & Roles' },
+      { to: '/admin/users', icon: Users, label: 'Users', permission: ['users.view', 'users.manage'] },
+      { to: '/admin/roles', icon: ShieldCheck, label: 'Roles & Permissions', permission: ['users.view', 'users.manage', 'roles.manage'] },
       { to: '/admin/settings', icon: Settings, label: 'Settings' },
     ],
   },
@@ -144,29 +147,39 @@ export default function AdminLayout() {
           <span className="font-serif text-lg font-semibold">WSF Studio</span>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.heading} className="mb-5">
-              <p className="px-3 text-[10px] font-semibold uppercase tracking-widest2 text-ivory/40">{group.heading}</p>
-              <ul className="mt-1.5 space-y-0.5">
-                {group.items.map((item) => (
-                  <li key={item.to}>
-                    <NavLink
-                      to={item.to}
-                      end={item.end}
-                      className={({ isActive }) =>
-                        `flex items-center gap-2.5 px-3 py-2 text-sm font-medium transition-colors ${
-                          isActive ? 'bg-burgundy-500/20 text-ivory' : 'text-ivory/70 hover:bg-ivory/5 hover:text-ivory'
-                        }`
-                      }
-                    >
-                      <item.icon size={16} />
-                      {item.label}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {NAV_GROUPS.map((group) => {
+            // Every item here is unguarded except the two Users/Roles/
+            // Access entries above — a nonfunctional (403-on-open) admin
+            // menu item is worse than no item, so those two are hidden
+            // unless the account actually holds the permission the page
+            // itself requires. This is UX only: the backend permission
+            // decorators are what actually enforce access either way.
+            const visibleItems = group.items.filter((item) => !item.permission || hasPermission(user, ...item.permission))
+            if (visibleItems.length === 0) return null
+            return (
+              <div key={group.heading} className="mb-5">
+                <p className="px-3 text-[10px] font-semibold uppercase tracking-widest2 text-ivory/40">{group.heading}</p>
+                <ul className="mt-1.5 space-y-0.5">
+                  {visibleItems.map((item) => (
+                    <li key={item.to}>
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        className={({ isActive }) =>
+                          `flex items-center gap-2.5 px-3 py-2 text-sm font-medium transition-colors ${
+                            isActive ? 'bg-burgundy-500/20 text-ivory' : 'text-ivory/70 hover:bg-ivory/5 hover:text-ivory'
+                          }`
+                        }
+                      >
+                        <item.icon size={16} />
+                        {item.label}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
         </nav>
         <div className="border-t border-ivory/10 p-4">
           <a href="/" target="_blank" rel="noreferrer" className="flex items-center gap-2 px-2 py-1.5 text-xs text-ivory/60 hover:text-ivory">

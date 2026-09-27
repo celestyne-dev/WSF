@@ -29,6 +29,7 @@ def create_app(config_name="development"):
 
     from app.api.v1.admin import admin_bp
     from app.api.v1.admin_taxonomy import admin_taxonomy_bp
+    from app.api.v1.admin_users import admin_users_bp
     from app.api.v1.analytics import analytics_bp
     from app.api.v1.articles import articles_bp
     from app.api.v1.authors import authors_bp
@@ -58,6 +59,7 @@ def create_app(config_name="development"):
 
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(admin_users_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(media_bp, url_prefix="/api/v1/media")
     app.register_blueprint(public_bp, url_prefix="/api/v1/public")
     app.register_blueprint(articles_bp, url_prefix="/api/v1/articles")

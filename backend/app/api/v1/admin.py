@@ -15,7 +15,6 @@ from app.models.commerce import Sponsor
 from app.models.nominations import Nomination
 from app.models.opportunity import Event, Job, Opportunity
 from app.models.submissions import StorySubmission
-from app.models.user import Role, User
 from app.schemas.article import article_summary_schema
 from app.schemas.cms import (
     FooterGroupSchema,
@@ -29,7 +28,6 @@ from app.schemas.cms import (
     SocialLinkSchema,
 )
 from app.schemas.commerce import SponsorSchema
-from app.schemas.user import RoleSchema, UserSchema
 from app.services.audit import log_action
 from app.services.cms import (
     replace_footer_groups,
@@ -49,8 +47,6 @@ from app.utils.responses import ApiError, success_response
 admin_bp = Blueprint("admin", __name__)
 api = Api(admin_bp)
 
-user_schema = UserSchema()
-role_schema = RoleSchema()
 homepage_module_schema = HomepageModuleSchema()
 menu_schema = MenuSchema()
 footer_group_schema = FooterGroupSchema()
@@ -164,22 +160,6 @@ class AdminDashboardResource(Resource):
                 "topArticlesThisMonth": top_articles_this_month,
             }
         )
-
-
-class AdminUserListResource(Resource):
-    @permission_required("users.manage")
-    def get(self):
-        query = User.query.order_by(User.created_at.desc())
-        query = apply_search(query, User, request.args, ["email", "first_name", "last_name"])
-        result = paginate(query, user_schema)
-        return success_response(result["items"], meta=result["meta"])
-
-
-class AdminRoleListResource(Resource):
-    @permission_required("users.manage")
-    def get(self):
-        roles = Role.query.order_by(Role.name).all()
-        return success_response(role_schema.dump(roles, many=True))
 
 
 class AdminHomepageResource(Resource):
@@ -405,8 +385,6 @@ class AdminSponsorListResource(Resource):
         return success_response(SponsorSchema(many=True).dump(sponsors))
 
 
-api.add_resource(AdminUserListResource, "/users")
-api.add_resource(AdminRoleListResource, "/roles")
 api.add_resource(AdminHomepageResource, "/homepage")
 api.add_resource(AdminNavigationResource, "/navigation")
 api.add_resource(AdminFooterResource, "/footer")

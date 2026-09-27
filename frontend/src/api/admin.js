@@ -56,35 +56,147 @@ export async function fetchAdminArticles(params = {}) {
   return delay(paginate(results, params))
 }
 
-export async function fetchAdminUsers() {
+// Internal CMS staff directory only — never Community Members, public
+// People/Authors, Newsletter subscribers, or Mentorship/Submission/
+// Nomination applicants (see backend app/services/user_admin.py's own
+// docstring for the same boundary). `is_active`/`role`/`q` map straight
+// through to GET /admin/users' query filters; `page`/`pageSize` through
+// the shared pagination convention (see api/client.js's param translator).
+function mapAdminUser(u) {
+  return {
+    id: u.id,
+    firstName: u.first_name,
+    lastName: u.last_name,
+    name: u.full_name,
+    email: u.email,
+    roles: (u.roles || []).map((r) => r.name),
+    isActive: u.is_active,
+    lastLogin: u.last_login_at,
+    createdAt: u.created_at,
+    updatedAt: u.updated_at,
+  }
+}
+
+export async function fetchAdminUsers(params = {}) {
   if (!USE_MOCK) {
-    const { data } = await apiClient.get('/admin/users', { params: { pageSize: 100 } })
-    return data.items.map((u) => ({
-      id: u.id,
-      name: u.full_name,
-      email: u.email,
-      roles: (u.roles || []).map((r) => r.name),
-      status: u.is_active ? 'active' : 'inactive',
-      lastLogin: u.last_login_at,
-    }))
+    const { data } = await apiClient.get('/admin/users', {
+      params: { q: params.query, role: params.role, isActive: params.isActive, page: params.page, pageSize: params.pageSize || 20 },
+    })
+    return { items: data.items.map(mapAdminUser), pagination: data.pagination }
   }
   const { adminUsers } = await loadMockAdmin()
-  return delay(adminUsers)
+  let rows = adminUsers.map((u) => ({
+    id: u.id,
+    firstName: u.name.split(' ')[0],
+    lastName: u.name.split(' ').slice(1).join(' '),
+    name: u.name,
+    email: u.email,
+    roles: u.roles || [u.role],
+    isActive: u.status !== 'inactive',
+    lastLogin: u.lastLogin,
+    createdAt: u.lastLogin,
+    updatedAt: u.lastLogin,
+  }))
+  if (params.query) {
+    const q = params.query.toLowerCase()
+    rows = rows.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+  }
+  if (params.role) rows = rows.filter((u) => u.roles.includes(params.role))
+  if (params.isActive !== undefined && params.isActive !== '') {
+    const wantActive = params.isActive === true || params.isActive === 'true'
+    rows = rows.filter((u) => u.isActive === wantActive)
+  }
+  return delay(paginate(rows, params))
+}
+
+// Mock mode has no mutable staff-account store (see community.js's own
+// write functions for the same established limitation) — creation, edits,
+// activation/deactivation, role assignment, and password resets always
+// call the real backend even under VITE_USE_MOCK=true. The manual
+// verification for this module is run with VITE_USE_MOCK=false for
+// exactly this reason.
+export async function fetchAdminUser(id) {
+  const { data } = await apiClient.get(`/admin/users/${id}`)
+  return mapAdminUser(data)
+}
+
+export async function createAdminUser({ email, firstName, lastName, roleNames, isActive }) {
+  const { data } = await apiClient.post('/admin/users', {
+    email,
+    first_name: firstName,
+    last_name: lastName,
+    role_names: roleNames,
+    is_active: isActive,
+  })
+  return { user: mapAdminUser(data), temporaryPassword: data.temporary_password }
+}
+
+export async function updateAdminUser(id, { firstName, lastName, email, countryCode }) {
+  const { data } = await apiClient.patch(`/admin/users/${id}`, {
+    first_name: firstName,
+    last_name: lastName,
+    email,
+    country_code: countryCode,
+  })
+  return mapAdminUser(data)
+}
+
+export async function setAdminUserStatus(id, isActive) {
+  const { data } = await apiClient.patch(`/admin/users/${id}/status`, { is_active: isActive })
+  return mapAdminUser(data)
+}
+
+export async function assignAdminUserRoles(id, roleNames) {
+  const { data } = await apiClient.put(`/admin/users/${id}/roles`, { role_names: roleNames })
+  return mapAdminUser(data)
+}
+
+export async function resetAdminUserPassword(id) {
+  const { data } = await apiClient.post(`/admin/users/${id}/reset-password`)
+  return data.temporary_password
 }
 
 // The backend only knows role names, not display labels/descriptions —
 // merge the real role list with the static ROLE_DEFINITIONS labels so the
 // UI shows "Partnerships Manager" instead of "partnerships_manager", while
-// which roles actually exist still comes from the backend.
+// which roles/permissions actually exist, and how many users hold each
+// one, still comes from the backend.
+function mapAdminRole(r) {
+  const known = ROLE_DEFINITIONS.find((d) => d.key === r.name)
+  return {
+    id: r.id,
+    key: r.name,
+    label: known?.label || r.name,
+    description: known?.description || r.description || null,
+    userCount: r.user_count ?? 0,
+    permissions: (r.permissions || []).map((p) => p.name),
+  }
+}
+
 export async function fetchAdminRoles() {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/admin/roles')
-    return data.map((r) => {
-      const known = ROLE_DEFINITIONS.find((d) => d.key === r.name)
-      return { key: r.name, label: known?.label || r.name, description: known?.description || null }
-    })
+    return data.map(mapAdminRole)
   }
-  return delay(ROLE_DEFINITIONS)
+  return delay(ROLE_DEFINITIONS.map((r) => ({ ...r, id: r.key, userCount: 0, permissions: [] })))
+}
+
+// `id` is the numeric Role.id GET /admin/roles/<id> expects — not the
+// role name/key (see mapAdminRole).
+export async function fetchAdminRole(id) {
+  const { data } = await apiClient.get(`/admin/roles/${id}`)
+  return mapAdminRole(data)
+}
+
+// Read-only reference list for the Roles/Permission-matrix screen —
+// permissions themselves are code-defined (see backend
+// app/services/rbac.py), never admin-creatable.
+export async function fetchAdminPermissions() {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get('/admin/permissions')
+    return data.map((p) => ({ name: p.name, description: p.description }))
+  }
+  return delay([])
 }
 
 function mapHomepageModuleAdmin(m) {

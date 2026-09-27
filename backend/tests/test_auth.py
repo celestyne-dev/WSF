@@ -81,6 +81,23 @@ def test_admin_endpoint_requires_permission(client):
     assert resp.status_code == 403
 
 
+def test_deactivated_user_cannot_call_me(client, app):
+    from app.extensions import db
+    from app.models.user import User
+
+    client.post("/api/v1/auth/register", json=REGISTER_PAYLOAD)
+    login = client.post("/api/v1/auth/login", json={"email": REGISTER_PAYLOAD["email"], "password": REGISTER_PAYLOAD["password"]})
+    token = login.get_json()["data"]["access_token"]
+
+    with app.app_context():
+        user = User.query.filter_by(email=REGISTER_PAYLOAD["email"]).first()
+        user.is_active = False
+        db.session.commit()
+
+    resp = client.get("/api/v1/auth/me", headers=auth_headers(token))
+    assert resp.status_code == 403
+
+
 def test_admin_endpoint_allows_super_admin(client, app):
     from app.extensions import db
     from app.models.user import Role, User

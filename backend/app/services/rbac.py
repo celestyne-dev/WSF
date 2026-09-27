@@ -5,10 +5,21 @@ from app.models.user import Permission, Role
 # app/models/user.py. "*" grants every known permission (super_admin).
 # Extend this as later phases add resource-specific permissions (e.g.
 # "opportunities.manage" already covers Phase 5's Opportunity/Job models).
+#
+# This map is the SOLE source of truth for which permissions a role
+# carries — seed_roles_and_permissions() below reassigns role.permissions
+# from it on every run (idempotent create-or-reuse, not additive), so a
+# role's permission SET is code-defined, not admin-editable. The Admin
+# Users/Roles UI (app/api/v1/admin_users.py) only ever lets an authorized
+# admin change which roles a USER holds — never what a role itself grants.
+# Deliberately no unrestricted custom-role/permission builder: adding a new
+# capability means adding it here, reviewed like any other code change.
 ROLE_PERMISSIONS = {
     "super_admin": ["*"],
     "admin": [
+        "users.view",
         "users.manage",
+        "roles.manage",
         "articles.manage",
         "articles.publish",
         "pages.manage",
@@ -33,6 +44,8 @@ ROLE_PERMISSIONS = {
         "newsletter.manage",
         "newsletter.export",
         "analytics.view",
+        "analytics.commercial",
+        "analytics.export",
         "orders.manage",
         "products.manage",
         "community.manage",
@@ -55,6 +68,10 @@ ROLE_PERMISSIONS = {
         "media.manage",
         "submissions.manage",
         "nominations.manage",
+        # Editorial analytics (Content/Search performance) is useful to an
+        # Editor's own day-to-day work; commercial/Sponsor analytics stays
+        # restricted to analytics.commercial below, which Editor never gets.
+        "analytics.view",
     ],
     "author": ["articles.create", "articles.edit_own", "media.upload"],
     # Moderator already reviews public submissions/nominations — community
@@ -64,7 +81,12 @@ ROLE_PERMISSIONS = {
     # is withheld from newsletter_manager: bulk personal-data export is
     # gated more strictly than day-to-day member administration.
     "moderator": ["submissions.manage", "nominations.manage", "community.manage", "mentorship.manage"],
-    "partnerships_manager": ["partnerships.manage"],
+    # Commercial analytics (Sponsor CTR, Advertise inquiries, Partnership
+    # pipeline, Orders/revenue) is the one Analytics section a
+    # Partnerships Manager is specifically authorized to see, per spec —
+    # general analytics.view is deliberately withheld (this role has no
+    # reason to see Content/Search/Newsletter performance).
+    "partnerships_manager": ["partnerships.manage", "analytics.commercial"],
     "opportunities_manager": ["opportunities.manage", "jobs.manage"],
     "events_manager": ["events.manage"],
     "products_manager": ["products.manage"],
@@ -84,7 +106,11 @@ ROLE_PERMISSIONS = {
     "homepage_manager": ["homepage.manage", "homepage.publish"],
     "navigation_manager": ["navigation.manage", "navigation.publish"],
     "footer_manager": ["footer.manage", "footer.publish"],
-    "analyst": ["analytics.view"],
+    # Deliberately excludes "analytics.commercial" — commercial/Sponsor
+    # data stays restricted to admin/super_admin/partnerships_manager even
+    # for the dedicated Analyst role (see spec: "commercial analytics must
+    # remain restricted").
+    "analyst": ["analytics.view", "analytics.export"],
     "member": ["profile.manage"],
     "employer": ["jobs.create_own"],
 }

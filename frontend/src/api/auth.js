@@ -9,9 +9,24 @@ async function loadMockAdmin() {
   return _mockAdmin
 }
 
+// `role` (singular) stays for the header's own display and existing
+// callers — the FIRST role only, same as before. `roles`/`permissions`
+// are the full sets, needed for the permission-gated Users/Roles nav
+// items (see utils/permissions.js) — a staff member can legitimately
+// hold more than one role (e.g. editor + partnerships_manager), and a
+// UI check must see all of them, not just the first.
 function mapUser(u) {
   if (!u) return null
-  return { id: u.id, name: u.full_name || `${u.first_name} ${u.last_name}`.trim(), email: u.email, role: u.roles?.[0]?.name || 'member' }
+  const roles = (u.roles || []).map((r) => r.name)
+  const permissions = [...new Set((u.roles || []).flatMap((r) => (r.permissions || []).map((p) => p.name)))]
+  return {
+    id: u.id,
+    name: u.full_name || `${u.first_name} ${u.last_name}`.trim(),
+    email: u.email,
+    role: roles[0] || 'member',
+    roles,
+    permissions,
+  }
 }
 
 // POST /api/v1/auth/login — Flask-JWT-Extended returns { access_token, refresh_token, user }.
@@ -38,10 +53,27 @@ export async function login({ email, password }) {
       success: true,
       accessToken: `mock-jwt-${user.id}`,
       refreshToken: null,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: mapMockUser(user),
     },
     400,
   )
+}
+
+// Mock mode has no per-role permission list (that's backend-seeded data —
+// see app/services/rbac.py) — `super_admin` is treated the same
+// always-allowed way the real backend's "*" grant works, so the
+// permission-gated Users/Roles nav item still demos correctly; every
+// other mock role simply won't see it, same as a real account without
+// users.view/users.manage/roles.manage.
+function mapMockUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    roles: [user.role],
+    permissions: user.role === 'super_admin' ? ['*'] : [],
+  }
 }
 
 export async function fetchCurrentUser(token) {
@@ -56,5 +88,5 @@ export async function fetchCurrentUser(token) {
   const { adminUsers } = await loadMockAdmin()
   const userId = token?.replace('mock-jwt-', '')
   const user = adminUsers.find((u) => u.id === userId)
-  return delay(user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null)
+  return delay(user ? mapMockUser(user) : null)
 }

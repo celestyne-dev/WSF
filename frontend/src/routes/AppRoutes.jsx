@@ -100,6 +100,8 @@ const AdminFooter = lazy(() => import('../pages/admin/AdminFooter'))
 const AdminGenericList = lazy(() => import('../pages/admin/AdminGenericList'))
 const AdminMediaLibrary = lazy(() => import('../pages/admin/AdminMediaLibrary'))
 const AdminUsers = lazy(() => import('../pages/admin/AdminUsers'))
+const AdminUserDetail = lazy(() => import('../pages/admin/AdminUserDetail'))
+const AdminRoles = lazy(() => import('../pages/admin/AdminRoles'))
 const AdminSettings = lazy(() => import('../pages/admin/AdminSettings'))
 const AdminAnalytics = lazy(() => import('../pages/admin/AdminAnalytics'))
 
@@ -249,6 +251,9 @@ export default function AppRoutes() {
           <Route path="seo" element={<AdminGenericList section="seo" />} />
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="users" element={<AdminUsers />} />
+          <Route path="users/new" element={<AdminUserDetail />} />
+          <Route path="users/:id" element={<AdminUserDetail />} />
+          <Route path="roles" element={<AdminRoles />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
       </Routes>

@@ -37,7 +37,7 @@ export const adminUsers = [
   { id: 'u5', name: 'Temi Adeyemi', email: 'temi@womenshapingfutures.org', role: 'author', status: 'active', lastLogin: '2026-09-10T14:30:00Z' },
   { id: 'u6', name: 'Faith Njeri', email: 'faith@womenshapingfutures.org', role: 'moderator', status: 'active', lastLogin: '2026-09-12T08:00:00Z' },
   { id: 'u7', name: 'Diana Kioko', email: 'diana@womenshapingfutures.org', role: 'partnerships_manager', status: 'active', lastLogin: '2026-09-11T10:15:00Z' },
-  { id: 'u8', name: 'Sarah Wekesa', email: 'sarah@womenshapingfutures.org', role: 'opportunities_manager', status: 'invited', lastLogin: null },
+  { id: 'u8', name: 'Sarah Wekesa', email: 'sarah@womenshapingfutures.org', role: 'opportunities_manager', status: 'inactive', lastLogin: null },
 ]
 
 // Role display labels/descriptions live in ../constants/roles.js — they're

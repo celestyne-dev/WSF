@@ -85,6 +85,11 @@ class LoginResource(Resource):
 class RefreshResource(Resource):
     @jwt_required(refresh=True)
     def post(self):
+        # Mirrors LoginResource's is_active check: a deactivated account
+        # must not be able to keep minting fresh access tokens off a
+        # refresh token that predates the deactivation.
+        if not current_user or not current_user.is_active:
+            return error_response("This account has been deactivated.", 403, code="account_inactive")
         return success_response({"access_token": create_access_token(identity=current_user)})
 
 
@@ -107,6 +112,8 @@ class LogoutResource(Resource):
 class MeResource(Resource):
     @jwt_required()
     def get(self):
+        if not current_user or not current_user.is_active:
+            return error_response("Account is inactive or no longer exists.", 403, code="forbidden")
         return success_response(user_schema.dump(current_user))
 
 
