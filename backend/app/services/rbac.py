@@ -42,6 +42,7 @@ ROLE_PERMISSIONS = {
         "partnerships.manage",
         "submissions.manage",
         "nominations.manage",
+        "contact.manage",
         "newsletter.manage",
         "newsletter.export",
         "analytics.view",
@@ -81,7 +82,7 @@ ROLE_PERMISSIONS = {
     # only (see "community_manager" below), matching how newsletter.export
     # is withheld from newsletter_manager: bulk personal-data export is
     # gated more strictly than day-to-day member administration.
-    "moderator": ["submissions.manage", "nominations.manage", "community.manage", "mentorship.manage"],
+    "moderator": ["submissions.manage", "nominations.manage", "contact.manage", "community.manage", "mentorship.manage"],
     # Commercial analytics (Sponsor CTR, Advertise inquiries, Partnership
     # pipeline, Orders/revenue) is the one Analytics section a
     # Partnerships Manager is specifically authorized to see, per spec —

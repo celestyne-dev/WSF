@@ -94,6 +94,8 @@ const AdminStorySubmissions = lazy(() => import('../pages/admin/AdminStorySubmis
 const AdminStorySubmissionDetail = lazy(() => import('../pages/admin/AdminStorySubmissionDetail'))
 const AdminNominations = lazy(() => import('../pages/admin/AdminNominations'))
 const AdminNominationDetail = lazy(() => import('../pages/admin/AdminNominationDetail'))
+const AdminContactInquiries = lazy(() => import('../pages/admin/AdminContactInquiries'))
+const AdminContactInquiryDetail = lazy(() => import('../pages/admin/AdminContactInquiryDetail'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminNavigation = lazy(() => import('../pages/admin/AdminNavigation'))
 const AdminFooter = lazy(() => import('../pages/admin/AdminFooter'))
@@ -242,6 +244,8 @@ export default function AppRoutes() {
           <Route path="submissions/:id" element={<AdminStorySubmissionDetail />} />
           <Route path="nominations" element={<AdminNominations />} />
           <Route path="nominations/:id" element={<AdminNominationDetail />} />
+          <Route path="contact" element={<AdminContactInquiries />} />
+          <Route path="contact/:id" element={<AdminContactInquiryDetail />} />
           <Route path="partnerships" element={<AdminPartnerships />} />
           <Route path="partnerships/:id" element={<AdminPartnershipDetail />} />
           <Route path="sponsors" element={<AdminSponsors />} />

@@ -40,6 +40,7 @@ import {
   PanelBottom,
   History,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -95,6 +96,7 @@ const NAV_GROUPS = [
       { to: '/admin/newsletter/subscribers', icon: Users2, label: 'Subscribers' },
       { to: '/admin/submissions', icon: Inbox, label: 'Story Submissions' },
       { to: '/admin/nominations', icon: Star, label: 'Nominations' },
+      { to: '/admin/contact', icon: MessageSquare, label: 'Contact Inquiries', permission: ['contact.manage'] },
     ],
   },
   {
