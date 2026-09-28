@@ -40,6 +40,7 @@ const NominatePage = lazy(() => import('../pages/NominatePage'))
 const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
 const CommunityPage = lazy(() => import('../pages/CommunityPage'))
 const LearningPage = lazy(() => import('../pages/LearningPage'))
+const LearningProgramDetailPage = lazy(() => import('../pages/LearningProgramDetailPage'))
 const ShopPage = lazy(() => import('../pages/ShopPage'))
 const ProductDetailPage = lazy(() => import('../pages/ProductDetailPage'))
 const ContactPage = lazy(() => import('../pages/ContactPage'))
@@ -62,6 +63,8 @@ const AdminOpportunities = lazy(() => import('../pages/admin/AdminOpportunities'
 const AdminOpportunityEditor = lazy(() => import('../pages/admin/AdminOpportunityEditor'))
 const AdminEvents = lazy(() => import('../pages/admin/AdminEvents'))
 const AdminEventEditor = lazy(() => import('../pages/admin/AdminEventEditor'))
+const AdminLearningPrograms = lazy(() => import('../pages/admin/AdminLearningPrograms'))
+const AdminLearningProgramEditor = lazy(() => import('../pages/admin/AdminLearningProgramEditor'))
 const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
 const AdminResources = lazy(() => import('../pages/admin/AdminResources'))
@@ -174,6 +177,7 @@ export default function AppRoutes() {
           <Route path="/mentorship" element={<MentorshipPage />} />
           <Route path="/community" element={<CommunityPage />} />
           <Route path="/learning" element={<LearningPage />} />
+          <Route path="/learning/:slug" element={<LearningProgramDetailPage />} />
           <Route path="/shop" element={<ShopPage />} />
           <Route path="/shop/:slug" element={<ProductDetailPage />} />
 
@@ -218,6 +222,9 @@ export default function AppRoutes() {
           <Route path="events" element={<AdminEvents />} />
           <Route path="events/new" element={<AdminEventEditor />} />
           <Route path="events/:id" element={<AdminEventEditor />} />
+          <Route path="learning" element={<AdminLearningPrograms />} />
+          <Route path="learning/new" element={<AdminLearningProgramEditor />} />
+          <Route path="learning/:id" element={<AdminLearningProgramEditor />} />
           <Route path="products" element={<AdminProducts />} />
           <Route path="products/new" element={<AdminProductEditor />} />
           <Route path="products/:id" element={<AdminProductEditor />} />

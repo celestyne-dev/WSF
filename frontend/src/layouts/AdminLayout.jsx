@@ -41,6 +41,7 @@ import {
   History,
   ShieldCheck,
   MessageSquare,
+  Library,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
@@ -94,6 +95,10 @@ const NAV_GROUPS = [
   {
     heading: 'Shop',
     items: [{ to: '/admin/products', icon: ShoppingBag, label: 'Products' }],
+  },
+  {
+    heading: 'Learning',
+    items: [{ to: '/admin/learning', icon: Library, label: 'Programs', permission: ['learning.manage'] }],
   },
   {
     heading: 'Community',

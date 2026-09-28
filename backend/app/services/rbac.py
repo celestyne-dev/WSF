@@ -54,6 +54,7 @@ ROLE_PERMISSIONS = {
         "community.export",
         "mentorship.manage",
         "directory.manage",
+        "learning.manage",
     ],
     "editor": [
         "articles.manage",
@@ -72,6 +73,7 @@ ROLE_PERMISSIONS = {
         "submissions.manage",
         "nominations.manage",
         "directory.manage",
+        "learning.manage",
         # Editorial analytics (Content/Search performance) is useful to an
         # Editor's own day-to-day work; commercial/Sponsor analytics stays
         # restricted to analytics.commercial below, which Editor never gets.
@@ -100,6 +102,7 @@ ROLE_PERMISSIONS = {
     "products_manager": ["products.manage"],
     "orders_manager": ["orders.manage"],
     "resources_manager": ["resources.manage"],
+    "learning_manager": ["learning.manage"],
     # Deliberately excludes "newsletter.export" — subscriber export is
     # gated more strictly than day-to-day CMS management (see
     # NewsletterSubscriberExportResource), so this role covers issues and

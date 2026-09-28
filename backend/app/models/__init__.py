@@ -47,6 +47,13 @@ from app.models.directory import (  # noqa: F401
     DirectorySubmission,
     DirectorySubmissionNote,
 )
+from app.models.learning import (  # noqa: F401
+    LearningLesson,
+    LearningModule,
+    LearningProgram,
+    LearningProgramEvent,
+    LearningProgramRelatedArticle,
+)
 
 __all__ = [
     "Country",
@@ -106,4 +113,9 @@ __all__ = [
     "DirectoryListing",
     "DirectorySubmission",
     "DirectorySubmissionNote",
+    "LearningProgram",
+    "LearningModule",
+    "LearningLesson",
+    "LearningProgramRelatedArticle",
+    "LearningProgramEvent",
 ]

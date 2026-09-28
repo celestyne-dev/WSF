@@ -29,6 +29,7 @@ from sqlalchemy import or_
 from app.extensions import db
 from app.models.article import Article
 from app.models.commerce import Product, ProductCategory
+from app.models.learning import LearningProgram
 from app.models.opportunity import Event, Job, Opportunity
 from app.models.page import Page
 from app.models.people import Author, Organization, Person
@@ -73,6 +74,7 @@ TYPE_LABELS = {
     "resources": "Resource",
     "products": "Product",
     "pages": "Page",
+    "learning": "Learning",
 }
 SEARCHABLE_TYPES = tuple(TYPE_LABELS.keys())
 
@@ -523,6 +525,45 @@ def _search_products(term, filters):
     ]
 
 
+def _search_learning(term, filters):
+    like = f"%{term}%"
+    # Mirrors api/v1/learning.py's public-visibility filter exactly — a
+    # Program appears once, itself, even when one of its lessons happens
+    # to reference a matching Article/Resource (spec: "avoid duplicate
+    # results ... the LearningProgram itself may appear once"), since this
+    # only ever searches the Program's own fields below, never lesson
+    # content or module titles from other content types' own search hits.
+    query = LearningProgram.query.filter(LearningProgram.status == "published")
+    if filters.get("topic"):
+        query = query.filter(LearningProgram.topics.any(slug=filters["topic"]))
+    query = query.filter(
+        or_(
+            LearningProgram.title.ilike(like),
+            LearningProgram.subtitle.ilike(like),
+            LearningProgram.short_description.ilike(like),
+            LearningProgram.primary_instructor.has(Author.name.ilike(like)),
+            LearningProgram.topics.any(Topic.name.ilike(like)),
+        )
+    )
+    rows = query.order_by(LearningProgram.featured.desc()).limit(CANDIDATE_POOL_PER_TYPE).all()
+
+    results = []
+    for p in rows:
+        instructor_name = p.primary_instructor.name if p.primary_instructor else None
+        results.append(
+            _result(
+                "learning",
+                p.title,
+                p.subtitle or _truncate(p.short_description),
+                f"/learning/{p.slug}",
+                _media_url(p.hero_media),
+                _tier(term, p.title, p.subtitle, instructor_name, p.short_description),
+                {"programType": p.program_type, "instructor": instructor_name},
+            )
+        )
+    return results
+
+
 def _search_pages(term, filters):
     like = f"%{term}%"
     query = Page.query.filter(
@@ -560,6 +601,7 @@ _SEARCH_FUNCS = {
     "resources": _search_resources,
     "products": _search_products,
     "pages": _search_pages,
+    "learning": _search_learning,
 }
 
 
