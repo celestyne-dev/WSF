@@ -41,6 +41,12 @@ from app.models.submissions import StorySubmission, SubmissionMedia, SubmissionN
 from app.models.nominations import Nomination, NominationNote  # noqa: F401
 from app.models.analytics import AnalyticsEvent  # noqa: F401
 from app.models.page import Page, PageRevision  # noqa: F401
+from app.models.directory import (  # noqa: F401
+    DirectoryCategory,
+    DirectoryListing,
+    DirectorySubmission,
+    DirectorySubmissionNote,
+)
 
 __all__ = [
     "Country",
@@ -96,4 +102,8 @@ __all__ = [
     "MentorshipMatchNote",
     "MentorshipSession",
     "AnalyticsEvent",
+    "DirectoryCategory",
+    "DirectoryListing",
+    "DirectorySubmission",
+    "DirectorySubmissionNote",
 ]

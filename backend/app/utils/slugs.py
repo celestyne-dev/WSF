@@ -10,6 +10,7 @@ RESERVED_SLUGS = frozenset(
         "jobs", "organizations", "newsletter", "mentorship", "community", "learning",
         "shop", "partnerships", "advertise", "about", "contact", "privacy", "terms",
         "cookies", "submit", "nominate", "account", "dashboard", "articles", "editorial-policy",
+        "directory",
     }
 )
 

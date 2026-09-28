@@ -1,0 +1,108 @@
+// A small, obviously-fictional dataset for VITE_USE_MOCK=true — never real
+// businesses (see backend task spec's explicit prohibition on seeding real
+// company data). Shaped to match api/directory.js's mapped public-listing
+// output directly, the same convention mock/homepageModules.js uses.
+
+export const directoryCategories = [
+  { id: 1, slug: 'consulting', name: 'Consulting & Advisory' },
+  { id: 2, slug: 'creative-design', name: 'Creative & Design' },
+  { id: 3, slug: 'food-beverage', name: 'Food & Beverage' },
+  { id: 4, slug: 'technology', name: 'Technology' },
+]
+
+export const directoryListings = [
+  {
+    id: 1,
+    organization: {
+      id: 101,
+      slug: 'fictional-baraza-consulting',
+      name: 'Baraza Consulting Collective (Fictional Demo)',
+      logo: null,
+      industry: 'Management consulting',
+      location: 'Nairobi',
+      foundedYear: 2019,
+      orgType: 'company',
+      shortDescription: 'A fictional demo consulting collective for strategy and operations.',
+      website: 'https://example.com/baraza-consulting',
+      social: { linkedin: 'baraza-consulting-demo' },
+      country: { code: 'KE', name: 'Kenya', region: 'Africa' },
+    },
+    listingType: 'professional_service',
+    ownershipClassification: 'women_led',
+    classificationProvenance: 'self_attested',
+    verificationStatus: 'reviewed',
+    serviceSummary: 'Strategy, operations, and growth advisory for early-stage organizations (fictional demo listing).',
+    keyServices: ['Strategic planning', 'Operations audits', 'Growth advisory'],
+    serviceModes: ['remote', 'international'],
+    publicContactEmail: null,
+    publicContactPhone: null,
+    categories: [{ id: 1, slug: 'consulting', name: 'Consulting & Advisory' }],
+    isCurrentlyFeatured: true,
+    publishedAt: '2026-01-15T00:00:00Z',
+    seo: null,
+  },
+  {
+    id: 2,
+    organization: {
+      id: 102,
+      slug: 'fictional-lumen-studio',
+      name: 'Lumen Creative Studio (Fictional Demo)',
+      logo: null,
+      industry: 'Design & branding',
+      location: 'Lagos',
+      foundedYear: 2021,
+      orgType: 'company',
+      shortDescription: 'A fictional demo brand and design studio.',
+      website: 'https://example.com/lumen-studio',
+      social: { instagram: 'lumenstudio.demo' },
+      country: { code: 'NG', name: 'Nigeria', region: 'Africa' },
+    },
+    listingType: 'business',
+    ownershipClassification: 'women_owned',
+    classificationProvenance: 'self_attested',
+    verificationStatus: 'unverified',
+    serviceSummary: 'Brand identity and design services for small businesses (fictional demo listing).',
+    keyServices: ['Brand identity', 'Web design', 'Packaging design'],
+    serviceModes: ['remote', 'online'],
+    publicContactEmail: 'hello@example.com',
+    publicContactPhone: null,
+    categories: [{ id: 2, slug: 'creative-design', name: 'Creative & Design' }],
+    isCurrentlyFeatured: false,
+    publishedAt: '2026-02-01T00:00:00Z',
+    seo: null,
+  },
+  {
+    id: 3,
+    organization: {
+      id: 103,
+      slug: 'fictional-sunrise-bakery',
+      name: 'Sunrise Fictional Bakery',
+      logo: null,
+      industry: 'Food & beverage',
+      location: 'Accra',
+      foundedYear: 2017,
+      orgType: 'company',
+      shortDescription: 'A fictional demo bakery and wholesale bread supplier.',
+      website: null,
+      social: {},
+      country: { code: 'GH', name: 'Ghana', region: 'Africa' },
+    },
+    listingType: 'business',
+    ownershipClassification: 'women_founded',
+    classificationProvenance: 'staff_reviewed',
+    verificationStatus: 'verified',
+    serviceSummary: 'Custom cakes and wholesale bread for local retailers (fictional demo listing).',
+    keyServices: ['Custom cakes', 'Wholesale bread'],
+    serviceModes: ['local', 'in_person'],
+    publicContactEmail: null,
+    publicContactPhone: null,
+    categories: [{ id: 3, slug: 'food-beverage', name: 'Food & Beverage' }],
+    isCurrentlyFeatured: false,
+    publishedAt: '2025-11-20T00:00:00Z',
+    seo: null,
+  },
+]
+
+export function getDirectoryListingBySlug(slug) {
+  return directoryListings.find((l) => l.organization.slug === slug) || null
+}

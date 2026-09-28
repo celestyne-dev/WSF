@@ -43,6 +43,7 @@ def create_app(config_name="development"):
     from app.api.v1.advertise import advertise_bp
     from app.api.v1.community import community_bp
     from app.api.v1.contact import contact_bp
+    from app.api.v1.directory import directory_bp
     from app.api.v1.mentorship import mentorship_bp
     from app.api.v1.opportunities import opportunities_bp
     from app.api.v1.orders import orders_bp
@@ -89,6 +90,7 @@ def create_app(config_name="development"):
     app.register_blueprint(advertise_bp, url_prefix="/api/v1/advertise")
     app.register_blueprint(community_bp, url_prefix="/api/v1/community")
     app.register_blueprint(contact_bp, url_prefix="/api/v1/contact")
+    app.register_blueprint(directory_bp, url_prefix="/api/v1/directory")
     app.register_blueprint(mentorship_bp, url_prefix="/api/v1/mentorship")
     app.register_blueprint(admin_taxonomy_bp, url_prefix="/api/v1/admin/taxonomy")
     app.register_blueprint(pages_bp, url_prefix="/api/v1/pages")

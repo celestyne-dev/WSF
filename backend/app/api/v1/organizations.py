@@ -6,6 +6,7 @@ from sqlalchemy import or_
 from app.auth.decorators import permission_required
 from app.extensions import db
 from app.models.article import Article
+from app.models.directory import DirectoryListing
 from app.models.opportunity import Job, Opportunity
 from app.models.people import Organization, Person
 from app.models.taxonomy import Series
@@ -90,6 +91,7 @@ def _is_referenced(organization):
         Opportunity.query.filter_by(organization_id=organization.id).first(),
         Series.query.filter_by(sponsor_organization_id=organization.id).first(),
         Article.query.filter(Article.related_organizations.any(id=organization.id)).first(),
+        DirectoryListing.query.filter_by(organization_id=organization.id).first(),
     )
     return any(checks)
 
@@ -160,8 +162,9 @@ class OrganizationDetailResource(Resource):
 
         if _is_referenced(organization):
             raise ApiError(
-                "This organization is referenced by people, jobs, opportunities, articles, or series "
-                "and can't be deleted. Remove those relationships first, or archive this organization instead.",
+                "This organization is referenced by people, jobs, opportunities, articles, series, or a "
+                "directory listing and can't be deleted. Remove those relationships first, or archive this "
+                "organization instead.",
                 409,
                 code="reference_conflict",
             )

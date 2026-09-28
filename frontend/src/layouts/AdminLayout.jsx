@@ -65,6 +65,14 @@ const NAV_GROUPS = [
     ],
   },
   {
+    heading: 'Directory',
+    items: [
+      { to: '/admin/directory/listings', icon: Building2, label: 'Listings', permission: ['directory.manage'] },
+      { to: '/admin/directory/submissions', icon: Inbox, label: 'Submissions', permission: ['directory.manage'] },
+      { to: '/admin/directory/categories', icon: Folder, label: 'Categories', permission: ['taxonomy.manage'] },
+    ],
+  },
+  {
     heading: 'Taxonomy',
     items: [
       { to: '/admin/taxonomy/topics', icon: Hash, label: 'Topics' },

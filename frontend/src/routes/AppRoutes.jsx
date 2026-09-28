@@ -24,6 +24,9 @@ const ResourcesPage = lazy(() => import('../pages/ResourcesPage'))
 const ResourceDetailPage = lazy(() => import('../pages/ResourceDetailPage'))
 const OrganizationsIndexPage = lazy(() => import('../pages/OrganizationsIndexPage'))
 const OrganizationDetailPage = lazy(() => import('../pages/OrganizationDetailPage'))
+const DirectoryIndexPage = lazy(() => import('../pages/DirectoryIndexPage'))
+const DirectoryProfilePage = lazy(() => import('../pages/DirectoryProfilePage'))
+const DirectorySubmitPage = lazy(() => import('../pages/DirectorySubmitPage'))
 const NewsletterPage = lazy(() => import('../pages/NewsletterPage'))
 const NewsletterIssuePage = lazy(() => import('../pages/NewsletterIssuePage'))
 const NewsletterUnsubscribePage = lazy(() => import('../pages/NewsletterUnsubscribePage'))
@@ -96,6 +99,11 @@ const AdminNominations = lazy(() => import('../pages/admin/AdminNominations'))
 const AdminNominationDetail = lazy(() => import('../pages/admin/AdminNominationDetail'))
 const AdminContactInquiries = lazy(() => import('../pages/admin/AdminContactInquiries'))
 const AdminContactInquiryDetail = lazy(() => import('../pages/admin/AdminContactInquiryDetail'))
+const AdminDirectoryListings = lazy(() => import('../pages/admin/AdminDirectoryListings'))
+const AdminDirectoryListingDetail = lazy(() => import('../pages/admin/AdminDirectoryListingDetail'))
+const AdminDirectorySubmissions = lazy(() => import('../pages/admin/AdminDirectorySubmissions'))
+const AdminDirectorySubmissionDetail = lazy(() => import('../pages/admin/AdminDirectorySubmissionDetail'))
+const AdminDirectoryCategories = lazy(() => import('../pages/admin/AdminDirectoryCategories'))
 const AdminHomepageBuilder = lazy(() => import('../pages/admin/AdminHomepageBuilder'))
 const AdminNavigation = lazy(() => import('../pages/admin/AdminNavigation'))
 const AdminFooter = lazy(() => import('../pages/admin/AdminFooter'))
@@ -146,6 +154,10 @@ export default function AppRoutes() {
 
           <Route path="/organizations" element={<OrganizationsIndexPage />} />
           <Route path="/organizations/:slug" element={<OrganizationDetailPage />} />
+
+          <Route path="/directory" element={<DirectoryIndexPage />} />
+          <Route path="/directory/submit" element={<DirectorySubmitPage />} />
+          <Route path="/directory/:slug" element={<DirectoryProfilePage />} />
 
           <Route path="/newsletter" element={<NewsletterPage />} />
           <Route path="/newsletter/unsubscribe/:token" element={<NewsletterUnsubscribePage />} />
@@ -246,6 +258,11 @@ export default function AppRoutes() {
           <Route path="nominations/:id" element={<AdminNominationDetail />} />
           <Route path="contact" element={<AdminContactInquiries />} />
           <Route path="contact/:id" element={<AdminContactInquiryDetail />} />
+          <Route path="directory/listings" element={<AdminDirectoryListings />} />
+          <Route path="directory/listings/:id" element={<AdminDirectoryListingDetail />} />
+          <Route path="directory/submissions" element={<AdminDirectorySubmissions />} />
+          <Route path="directory/submissions/:id" element={<AdminDirectorySubmissionDetail />} />
+          <Route path="directory/categories" element={<AdminDirectoryCategories />} />
           <Route path="partnerships" element={<AdminPartnerships />} />
           <Route path="partnerships/:id" element={<AdminPartnershipDetail />} />
           <Route path="sponsors" element={<AdminSponsors />} />

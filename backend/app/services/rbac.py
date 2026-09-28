@@ -53,6 +53,7 @@ ROLE_PERMISSIONS = {
         "community.manage",
         "community.export",
         "mentorship.manage",
+        "directory.manage",
     ],
     "editor": [
         "articles.manage",
@@ -70,6 +71,7 @@ ROLE_PERMISSIONS = {
         "media.manage",
         "submissions.manage",
         "nominations.manage",
+        "directory.manage",
         # Editorial analytics (Content/Search performance) is useful to an
         # Editor's own day-to-day work; commercial/Sponsor analytics stays
         # restricted to analytics.commercial below, which Editor never gets.
@@ -88,7 +90,11 @@ ROLE_PERMISSIONS = {
     # Partnerships Manager is specifically authorized to see, per spec —
     # general analytics.view is deliberately withheld (this role has no
     # reason to see Content/Search/Newsletter performance).
-    "partnerships_manager": ["partnerships.manage", "analytics.commercial"],
+    # Directory listings carry the only commercial surface this module has
+    # (featured placement — see app/models/directory.py's module docstring)
+    # — spec explicitly names Partnership Manager as a possible holder of
+    # this module's commercial/placement metadata, alongside Admin/Editor.
+    "partnerships_manager": ["partnerships.manage", "analytics.commercial", "directory.manage"],
     "opportunities_manager": ["opportunities.manage", "jobs.manage"],
     "events_manager": ["events.manage"],
     "products_manager": ["products.manage"],
@@ -103,6 +109,7 @@ ROLE_PERMISSIONS = {
     "mentorship_manager": ["mentorship.manage"],
     "submissions_manager": ["submissions.manage"],
     "nominations_manager": ["nominations.manage"],
+    "directory_manager": ["directory.manage"],
     "taxonomy_manager": ["taxonomy.manage"],
     "pages_manager": ["pages.manage", "pages.publish"],
     "homepage_manager": ["homepage.manage", "homepage.publish"],
