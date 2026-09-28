@@ -39,6 +39,7 @@ from app.schemas.media import MediaSchema
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.newsletter import upsert_subscriber
+from app.services.notifications import notify_mentorship_application_received
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -292,6 +293,7 @@ class ApplicationListResource(Resource):
         application.topics = _resolve_topics(topic_slugs)
         db.session.add(application)
         db.session.commit()
+        notify_mentorship_application_received(application)
         if application.newsletter_opt_in:
             _subscribe_to_newsletter(application, data)
         return success_response(

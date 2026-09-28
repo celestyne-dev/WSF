@@ -19,6 +19,7 @@ from app.schemas.article import (
 )
 from app.services import articles_workflow
 from app.services.audit import log_action
+from app.services.notifications import notify_article_approved, notify_article_review_requested
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.slugs import create_redirect_for_slug_change, generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_search
@@ -121,6 +122,16 @@ def _perform_transition(article, to_status, user, action_name, audit_changes=Non
     if audit_changes:
         changes.update(audit_changes)
     log_action(user, action_name, "Article", article.id, changes)
+
+    # Notification hooks — see app/services/notifications.py. Placed after
+    # the transition's own commit so a notification issue can never lose
+    # the actual workflow change (see that module's own docstring on
+    # failure handling).
+    if to_status == "in_review":
+        notify_article_review_requested(article, requested_by=user)
+    elif to_status == "approved":
+        notify_article_approved(article, approved_by=user)
+
     return success_response(article_schema.dump(article))
 
 
@@ -308,6 +319,12 @@ class ArticleListResource(Resource):
 class ArticleDetailResource(Resource):
     def get(self, slug):
         article = Article.query.filter_by(slug=slug).first()
+        if article is None and slug.isdigit():
+            # Admin Notifications addresses articles by numeric id (see
+            # app/services/notifications.py), not slug — this fallback lets
+            # the notification's click-through route resolve without
+            # requiring the frontend to know the article's slug up front.
+            article = db.session.get(Article, int(slug))
         if article is not None:
             # An editor with permission to edit THIS article sees the full
             # schema (including ai_editorial_notes, needed to pre-fill the

@@ -28,6 +28,7 @@ from app.schemas.contact import (
 )
 from app.services.audit import log_action
 from app.services.contact import generate_contact_reference, is_valid_contact_status_transition
+from app.services.notifications import notify_contact_received
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -118,6 +119,7 @@ class ContactInquiryListResource(Resource):
         db.session.flush()
         inquiry.reference = generate_contact_reference(inquiry)
         db.session.commit()
+        notify_contact_received(inquiry)
 
         log_action(None, "contact.received", "ContactInquiry", inquiry.id, {"reference": inquiry.reference})
         return success_response(_build_confirmation(inquiry), status=201)

@@ -3,6 +3,26 @@ export function formatDate(dateStr, options = { month: 'long', day: 'numeric', y
   return new Date(dateStr).toLocaleDateString('en-US', options)
 }
 
+// Coarse "how long ago" for the Admin Notifications inbox/bell — every
+// backend timestamp is UTC (see the model's `server_default=db.func.now()`
+// columns) and `Date` parses that + renders relative deltas without
+// assuming any particular viewer timezone, so no Kenya-specific offset is
+// hardcoded here. Falls back to formatDate for anything a week or older,
+// where a relative label stops being useful at a glance.
+export function formatRelativeTime(dateStr) {
+  if (!dateStr) return ''
+  const then = new Date(dateStr)
+  const diffSeconds = Math.round((Date.now() - then.getTime()) / 1000)
+  if (diffSeconds < 60) return 'Just now'
+  const diffMinutes = Math.round(diffSeconds / 60)
+  if (diffMinutes < 60) return `${diffMinutes}m ago`
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.round(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+  return formatDate(dateStr)
+}
+
 export function formatShortDate(dateStr) {
   return formatDate(dateStr, { month: 'short', day: 'numeric' })
 }

@@ -119,6 +119,7 @@ const AdminRoles = lazy(() => import('../pages/admin/AdminRoles'))
 const AdminSettings = lazy(() => import('../pages/admin/AdminSettings'))
 const AdminAnalytics = lazy(() => import('../pages/admin/AdminAnalytics'))
 const AdminAuditLog = lazy(() => import('../pages/admin/AdminAuditLog'))
+const AdminNotifications = lazy(() => import('../pages/admin/AdminNotifications'))
 
 function ArticleLegacyRedirect() {
   const { slug } = useParams()
@@ -286,6 +287,7 @@ export default function AppRoutes() {
           <Route path="users/:id" element={<AdminUserDetail />} />
           <Route path="roles" element={<AdminRoles />} />
           <Route path="audit" element={<AdminAuditLog />} />
+          <Route path="notifications" element={<AdminNotifications />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
       </Routes>

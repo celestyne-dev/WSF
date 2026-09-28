@@ -54,6 +54,7 @@ from app.models.learning import (  # noqa: F401
     LearningProgramEvent,
     LearningProgramRelatedArticle,
 )
+from app.models.notification import Notification  # noqa: F401
 
 __all__ = [
     "Country",
@@ -118,4 +119,5 @@ __all__ = [
     "LearningLesson",
     "LearningProgramRelatedArticle",
     "LearningProgramEvent",
+    "Notification",
 ]

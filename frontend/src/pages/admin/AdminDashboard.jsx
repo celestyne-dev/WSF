@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { FileText, Users, Briefcase, Award, CalendarDays, Inbox, Star } from 'lucide-react'
+import { FileText, Users, Briefcase, Award, CalendarDays, Inbox, Star, Bell } from 'lucide-react'
 import { fetchAdminDashboard } from '../../api/admin'
+import { fetchUnreadCount } from '../../api/notifications'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatCard from '../../components/cms/StatCard'
 import PageLoader from '../../components/ui/PageLoader'
@@ -11,12 +12,19 @@ import EmptyState from '../../components/ui/EmptyState'
 export default function AdminDashboard() {
   const [stats, setStats] = useState(undefined)
   const [error, setError] = useState(null)
+  const [unreadNotifications, setUnreadNotifications] = useState(null)
 
   useEffect(() => {
     let active = true
     fetchAdminDashboard()
       .then((data) => active && setStats(data))
       .catch(() => active && setError('Something went wrong loading the dashboard. Please try again.'))
+    // A separate, independent fetch — the Notifications inbox stays its
+    // own module (see api/notifications.js); this dashboard only ever
+    // reads its unread count, never any notification content.
+    fetchUnreadCount()
+      .then((count) => active && setUnreadNotifications(count))
+      .catch(() => {})
     return () => {
       active = false
     }
@@ -28,6 +36,19 @@ export default function AdminDashboard() {
   return (
     <div>
       <AdminPageHeader title="Dashboard" description="An overview of Women Shaping Futures — content, audience, and pipeline." />
+
+      {!!unreadNotifications && (
+        <Link
+          to="/admin/notifications"
+          className="mb-4 flex items-center justify-between border border-taupe-200 bg-white px-5 py-3 hover:border-burgundy-500/40"
+        >
+          <span className="flex items-center gap-2 text-sm text-charcoal-600">
+            <Bell size={15} className="text-burgundy-600" />
+            Needs attention: {unreadNotifications} unread notification{unreadNotifications === 1 ? '' : 's'}
+          </span>
+          <span className="text-sm font-semibold text-burgundy-600">View notifications</span>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Published articles" value={stats.publishedArticles} icon={FileText} hint={`${stats.drafts} drafts, ${stats.scheduled} scheduled`} />

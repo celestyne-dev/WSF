@@ -28,6 +28,7 @@ from app.schemas.nominations import (
 )
 from app.services.audit import log_action
 from app.services.newsletter import upsert_subscriber
+from app.services.notifications import notify_nomination_received
 from app.services.slugs import generate_unique_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -170,6 +171,7 @@ class NominationListResource(Resource):
 
         nomination.reference = f"WSF-NOM-{nomination.submitted_at.year}-{nomination.id:05d}"
         db.session.commit()
+        notify_nomination_received(nomination)
 
         if newsletter_opt_in:
             upsert_subscriber(

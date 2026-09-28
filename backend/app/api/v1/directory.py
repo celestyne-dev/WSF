@@ -47,6 +47,7 @@ from app.schemas.directory import (
     DirectorySubmissionStatusInputSchema,
 )
 from app.services.audit import log_action
+from app.services.notifications import notify_directory_submission_received
 from app.services.directory import (
     find_duplicate_organization,
     find_duplicate_submission,
@@ -270,6 +271,7 @@ class DirectorySubmissionCreateResource(Resource):
         db.session.flush()
         submission.reference = generate_submission_reference(submission)
         db.session.commit()
+        notify_directory_submission_received(submission)
 
         log_action(None, "directory.submission_received", "DirectorySubmission", submission.id, {"reference": submission.reference})
         return success_response({"reference": submission.reference, "status": "received"}, status=201)

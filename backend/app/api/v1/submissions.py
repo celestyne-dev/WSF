@@ -33,6 +33,7 @@ from app.schemas.media import MediaSchema
 from app.services.audit import log_action
 from app.services.newsletter import upsert_subscriber
 from app.services.media import MediaService
+from app.services.notifications import notify_story_submission_received
 from app.services.slugs import generate_unique_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -148,6 +149,7 @@ class SubmissionListResource(Resource):
             )
 
         db.session.commit()
+        notify_story_submission_received(submission)
 
         if newsletter_opt_in:
             upsert_subscriber(

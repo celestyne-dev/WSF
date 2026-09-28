@@ -24,6 +24,7 @@ from app.schemas.commerce import (
     PartnershipStatusInputSchema,
 )
 from app.services.audit import log_action
+from app.services.notifications import notify_partnership_received
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -98,6 +99,7 @@ class PartnershipInquiryListResource(Resource):
         inquiry = PartnershipInquiry(**data)
         db.session.add(inquiry)
         db.session.commit()
+        notify_partnership_received(inquiry)
         return success_response(confirmation_schema.dump(inquiry), status=201)
 
 

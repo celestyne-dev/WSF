@@ -42,15 +42,24 @@ import {
   ShieldCheck,
   MessageSquare,
   Library,
+  Bell,
 } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import { hasPermission } from '../utils/permissions'
+import NotificationBell from '../components/cms/NotificationBell'
 
 const NAV_GROUPS = [
   {
     heading: 'Overview',
-    items: [{ to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true }],
+    items: [
+      { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+      // Available to every authenticated CMS user, unlike most other nav
+      // items — this is a personal inbox, not a feature gated by a
+      // specific permission (see backend api/v1/notifications.py's own
+      // docstring on the same point).
+      { to: '/admin/notifications', icon: Bell, label: 'Notifications' },
+    ],
   },
   {
     heading: 'Content',
@@ -211,6 +220,7 @@ export default function AdminLayout() {
           <p className="font-serif text-lg font-semibold text-charcoal lg:hidden">WSF Studio</p>
           <div className="hidden text-sm text-charcoal-600 lg:block">Content Management System</div>
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <div className="text-right text-sm">
               <p className="font-semibold text-charcoal">{user?.name || 'Loading…'}</p>
               <p className="text-xs text-charcoal-600">{roleLabel}</p>
