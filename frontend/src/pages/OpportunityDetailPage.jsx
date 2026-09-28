@@ -101,7 +101,6 @@ export default function OpportunityDetailPage() {
         if (!active) return
         setOpportunity(data)
         if (!data) return
-        trackEvent('opportunity_view', { opportunitySlug: data.slug })
         fetchOpportunities({ type: data.type, pageSize: 4 })
           .then((res) => active && setMore(res.items.filter((o) => o.slug !== slug).slice(0, 3)))
           .catch(() => {})
