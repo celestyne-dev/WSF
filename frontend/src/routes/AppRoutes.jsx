@@ -49,6 +49,7 @@ const NotFoundPage = lazy(() => import('../pages/NotFoundPage'))
 const AdminDashboard = lazy(() => import('../pages/admin/AdminDashboard'))
 const AdminArticles = lazy(() => import('../pages/admin/AdminArticles'))
 const AdminArticleEditor = lazy(() => import('../pages/admin/AdminArticleEditor'))
+const AdminEditorialCalendar = lazy(() => import('../pages/admin/AdminEditorialCalendar'))
 const AdminPeople = lazy(() => import('../pages/admin/AdminPeople'))
 const AdminPersonEditor = lazy(() => import('../pages/admin/AdminPersonEditor'))
 const AdminAuthors = lazy(() => import('../pages/admin/AdminAuthors'))
@@ -195,6 +196,7 @@ export default function AppRoutes() {
           <Route path="articles" element={<AdminArticles />} />
           <Route path="articles/new" element={<AdminArticleEditor />} />
           <Route path="articles/:id" element={<AdminArticleEditor />} />
+          <Route path="editorial-calendar" element={<AdminEditorialCalendar />} />
           <Route path="homepage" element={<AdminHomepageBuilder />} />
           <Route path="navigation" element={<AdminNavigation />} />
           <Route path="footer" element={<AdminFooter />} />

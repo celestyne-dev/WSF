@@ -100,6 +100,27 @@ class Article(db.Model):
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     content = db.Column(db.JSON, nullable=False, default=list)  # ordered block list
 
+    # Editorial workflow / scheduled publishing (see app/services/
+    # articles_workflow.py). scheduled_at is the planned UTC publication
+    # timestamp, set only while status == "scheduled" and always in the
+    # future at the time it's set; publish_date (above, pre-existing)
+    # remains the actual/effective publication timestamp — set once, when
+    # status actually becomes "published" (manually or by the
+    # `flask publish-due-content` scheduler), never a future value.
+    # scheduled_at is deliberately left in place after publication as a
+    # historical record of what was originally planned.
+    scheduled_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+
+    # Editorial approval metadata — who/when moved this article from
+    # in_review to approved. Deliberately minimal: the full transition
+    # history (submitted for review, returned, approved, scheduled,
+    # published, archived) already lives in the Audit Log, so this only
+    # keeps the one pair of facts worth showing directly on the article
+    # itself without a join. Editing an approved/scheduled article does
+    # NOT clear these — see the workflow service's own docstring for why.
+    approved_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
     # Generative-AI editorial transparency/governance (see AI_INVOLVEMENT_VALUES
     # above). ai_editorial_notes is internal-only — excluded from the public
     # article schema (see schemas/article.py) and never dumped to anyone but
@@ -138,6 +159,7 @@ class Article(db.Model):
         "Nomination", foreign_keys=[source_nomination_id], backref=db.backref("resulting_article", uselist=False)
     )
     author = db.relationship("Author", foreign_keys=[author_id])
+    approved_by = db.relationship("User", foreign_keys=[approved_by_user_id])
     sponsor_record = db.relationship("Sponsor", foreign_keys=[sponsor_id])
     category = db.relationship("Category")
     series = db.relationship("Series", backref="articles")

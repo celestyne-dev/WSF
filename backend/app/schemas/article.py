@@ -6,6 +6,18 @@ from app.schemas.commerce import SponsorSchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema, PersonSchema
 from app.schemas.taxonomy import CategorySchema, SeriesSchema, TagSchema, TopicSchema
+from app.schemas.user import UserSchema
+
+_STAFF_ONLY = UserSchema(only=("id", "full_name", "email"))
+
+# Workflow/approval metadata is internal-only — never part of any public
+# Article payload (list, detail, or related-article nesting). See
+# app/services/articles_workflow.py for the transition rules that produce
+# these fields. approved_by_user_id itself isn't listed here — like other
+# FK columns backing a declared relationship (see PersonSchema's own note
+# on organization_id), marshmallow-sqlalchemy's auto schema never
+# generates it as a separate field once approved_by is declared below.
+_WORKFLOW_FIELDS = ("scheduled_at", "approved_at", "approved_by")
 
 
 class ArticleRelatedSchema(ma.Schema):
@@ -43,6 +55,10 @@ class ArticleSchema(ma.SQLAlchemyAutoSchema):
         SponsorSchema, dump_only=True, data_key="sponsorRecord",
         only=("id", "campaign_name", "resolved_public_name", "logo", "disclosure_label", "organization"),
     )
+    # Editorial workflow metadata — staff-only (excluded from
+    # public_article_schema()/article_summary_schema() below), but useful
+    # on the authenticated editor-detail view and the admin list/calendar.
+    approved_by = fields.Nested(_STAFF_ONLY, dump_only=True)
 
     class Meta:
         model = Article
@@ -59,12 +75,34 @@ class ArticleSchema(ma.SQLAlchemyAutoSchema):
 # requester is not an editor with permission to edit the article — see
 # ArticleDetailResource.get() in api/v1/articles.py.
 def public_article_schema(many=False):
-    return ArticleSchema(many=many, exclude=("ai_editorial_notes",))
+    return ArticleSchema(many=many, exclude=("ai_editorial_notes",) + _WORKFLOW_FIELDS)
 
 
 def article_summary_schema(many=False):
-    """A lighter shape for list endpoints — no content blocks, no full
-    nested relations, just enough for an ArticleCard.
+    """A lighter shape for PUBLIC list endpoints — no content blocks, no
+    full nested relations, just enough for an ArticleCard, and no
+    workflow/approval metadata (see admin_article_summary_schema() below
+    for the staff-only equivalent used by the admin list and calendar).
+    """
+    return ArticleSchema(
+        many=many,
+        exclude=(
+            "content",
+            "related_people",
+            "related_organizations",
+            "related_articles",
+            "co_authors",
+            "ai_editorial_notes",
+        )
+        + _WORKFLOW_FIELDS,
+    )
+
+
+def admin_article_summary_schema(many=False):
+    """Same lightweight row shape as article_summary_schema(), but for the
+    admin article list / editorial calendar — includes scheduled_at/
+    approved_at/approved_by so those views can show real workflow state
+    without an extra per-row fetch. Never used for a public response.
     """
     return ArticleSchema(
         many=many,
@@ -138,3 +176,24 @@ class ArticleInputSchema(ma.Schema):
     ai_disclosure_required = fields.Boolean(required=False, load_default=False, data_key="aiDisclosureRequired")
     ai_disclosure_text = fields.String(required=False, allow_none=True, data_key="aiDisclosureText")
     ai_editorial_notes = fields.String(required=False, allow_none=True, data_key="aiEditorialNotes")
+
+
+# ---------------------------------------------------------------------------
+# Editorial workflow actions — see app/services/articles_workflow.py and
+# app/api/v1/articles.py's dedicated action resources. Kept separate from
+# ArticleInputSchema since these are narrow, single-purpose payloads, not
+# a general article edit.
+# ---------------------------------------------------------------------------
+
+
+class ArticleScheduleInputSchema(ma.Schema):
+    scheduled_at = fields.DateTime(required=True, data_key="scheduledAt")
+
+
+class ArticleRejectInputSchema(ma.Schema):
+    """Optional short note for a "request changes" action — recorded only
+    in the Audit Log entry for this transition (see app/api/v1/articles.py),
+    which is this project's existing history mechanism; no new Article
+    column or threaded-comments system is added for it."""
+
+    note = fields.String(required=False, allow_none=True, validate=validate.Length(max=2000))

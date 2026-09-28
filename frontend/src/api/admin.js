@@ -26,13 +26,22 @@ function mapAdminArticle(a) {
     slug: a.slug,
     title: a.title,
     authorName: a.author?.name || null,
+    authorSlug: a.author?.slug || null,
+    topicSlugs: (a.topics || []).map((t) => t.slug),
     status: a.status,
     date: a.updated_at || a.publish_date,
+    // Editorial workflow metadata — see admin_article_summary_schema on
+    // the backend; undefined in mock mode (see below), which is fine
+    // since the pipeline list only shows a Scheduled column when present.
+    scheduledAt: a.scheduled_at || null,
+    publishedAt: a.publish_date || null,
   }
 }
 
 // GET /api/v1/admin/articles — every status, not just published (the
-// public article list only ever returns published articles).
+// public article list only ever returns published articles). author/topic
+// filters are passed straight through as query params (see
+// AdminArticleListResource.get() on the backend for the matching slugs).
 export async function fetchAdminArticles(params = {}) {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/admin/articles', { params })
@@ -46,12 +55,17 @@ export async function fetchAdminArticles(params = {}) {
       title: a.title,
       authorName: null,
       authorSlug: a.authorSlug,
+      topicSlugs: a.topicSlugs || (a.topicSlug ? [a.topicSlug] : []),
       status: a.status,
       date: a.updatedAt,
+      scheduledAt: a.scheduledAt || null,
+      publishedAt: a.publishedAt || null,
     })),
   ]
   let results = rows
   if (params.status) results = results.filter((r) => r.status === params.status)
+  if (params.author) results = results.filter((r) => r.authorSlug === params.author)
+  if (params.topic) results = results.filter((r) => r.topicSlugs.includes(params.topic))
   if (params.query) results = results.filter((r) => r.title.toLowerCase().includes(params.query.toLowerCase()))
   return delay(paginate(results, params))
 }

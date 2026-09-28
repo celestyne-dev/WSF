@@ -14,8 +14,9 @@ from app.models.newsletter import NewsletterSubscriber
 from app.models.commerce import Sponsor
 from app.models.nominations import Nomination
 from app.models.opportunity import Event, Job, Opportunity
+from app.models.people import Author
 from app.models.submissions import StorySubmission
-from app.schemas.article import article_summary_schema
+from app.schemas.article import admin_article_summary_schema
 from app.schemas.cms import (
     FooterGroupSchema,
     FooterInputSchema,
@@ -80,10 +81,18 @@ class AdminArticleListResource(Resource):
             )
         if request.args.get("status"):
             query = query.filter(Article.status == request.args["status"])
+        if request.args.get("author"):
+            query = query.join(Author).filter(Author.slug == request.args["author"])
+        if request.args.get("topic"):
+            query = query.filter(Article.topics.any(slug=request.args["topic"]))
         query = apply_search(query, Article, request.args, ["title", "excerpt"], param="query")
         query = query.order_by(Article.updated_at.desc())
         result = paginate(query, None)
-        items = article_summary_schema(many=True).dump(result["items"])
+        # admin_article_summary_schema (not the public article_summary_schema)
+        # — this pipeline view needs scheduled_at/approved_at/approved_by
+        # visible so the list can show real workflow state (see that
+        # schema's own docstring in app/schemas/article.py).
+        items = admin_article_summary_schema(many=True).dump(result["items"])
         return success_response(items, meta=result["meta"])
 
 

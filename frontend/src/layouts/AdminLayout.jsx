@@ -55,6 +55,7 @@ const NAV_GROUPS = [
     heading: 'Content',
     items: [
       { to: '/admin/articles', icon: Newspaper, label: 'Articles' },
+      { to: '/admin/editorial-calendar', icon: CalendarDays, label: 'Editorial Calendar' },
       { to: '/admin/homepage', icon: LayoutTemplate, label: 'Homepage' },
       { to: '/admin/navigation', icon: Compass, label: 'Navigation' },
       { to: '/admin/footer', icon: PanelBottom, label: 'Footer' },

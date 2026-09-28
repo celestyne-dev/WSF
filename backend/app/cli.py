@@ -2,6 +2,7 @@ import click
 
 from app.extensions import db
 from app.models.user import Role, User
+from app.services.articles_workflow import publish_due_articles
 from app.services.demo_seed import seed_demo_content
 from app.services.geography import seed_countries
 from app.services.rbac import seed_roles_and_permissions
@@ -29,6 +30,28 @@ def register_cli(app):
         """
         seed_demo_content()
         click.echo("Demo content seeded.")
+
+    @app.cli.command("publish-due-content")
+    def publish_due_content_command():
+        """Publish every scheduled Article whose scheduled_at is now due.
+        Meant to run on a schedule (cron/systemd timer) — see
+        app/services/articles_workflow.py:publish_due_articles for the
+        concurrency-safety/idempotency guarantees. Safe to run with zero
+        due articles, and safe to re-run immediately after (already-
+        published rows are re-checked and skipped, not re-published).
+        Production invocation (Hostinger VPS, no Celery/Redis):
+            cd /var/www/womenshapingfutures/backend && \\
+              source .venv/bin/activate && flask publish-due-content
+        via a cron entry or systemd timer — this command does not modify
+        any system-level scheduler itself.
+        """
+        result = publish_due_articles()
+        click.echo(
+            f"Published {len(result['published'])}, skipped {len(result['skipped'])}, "
+            f"failed {len(result['failed'])}."
+        )
+        for failure in result["failed"]:
+            click.echo(f"  FAILED article_id={failure['article_id']}: {failure['error']}")
 
     @app.cli.command("create-superadmin")
     @click.option("--email", required=True)

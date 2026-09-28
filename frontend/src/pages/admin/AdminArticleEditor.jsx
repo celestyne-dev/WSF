@@ -2,7 +2,20 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Save, Eye, AlertTriangle, X } from 'lucide-react'
-import { fetchArticleBySlug, createArticle, updateArticle } from '../../api/articles'
+import {
+  fetchArticleBySlug,
+  createArticle,
+  updateArticle,
+  submitArticleForReview,
+  requestArticleChanges,
+  moveArticleToDraft,
+  approveArticle,
+  scheduleArticle,
+  rescheduleArticle,
+  unscheduleArticle,
+  publishArticleNow,
+  archiveArticle,
+} from '../../api/articles'
 import { fetchAuthors, fetchTopics, fetchCategories, fetchSeries } from '../../api/taxonomies'
 import { fetchPeople } from '../../api/people'
 import { fetchSponsors } from '../../api/admin'
@@ -11,6 +24,7 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import ArticleWorkflowPanel from '../../components/cms/ArticleWorkflowPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -22,8 +36,6 @@ function slugify(text) {
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
 }
-
-const STATUSES = ['draft', 'in_review', 'changes_requested', 'approved', 'scheduled', 'published', 'archived']
 
 const AI_INVOLVEMENT_OPTIONS = [
   { value: 'none', label: 'None — no AI involvement' },
@@ -106,6 +118,9 @@ function toForm(article) {
     aiDisclosureRequired: !!article.aiDisclosureRequired,
     aiDisclosureText: article.aiDisclosureText || '',
     aiEditorialNotes: article.aiEditorialNotes || '',
+    scheduledAt: article.scheduledAt || null,
+    approvedAt: article.approvedAt || null,
+    approvedByName: article.approvedBy?.fullName || null,
   }
 }
 
@@ -257,22 +272,19 @@ export default function AdminArticleEditor() {
   const needsAiReviewConfirmation = form && form.aiInvolvement !== 'none' && !form.humanReviewed
   const hasNoContent = form && form.content.length === 0
 
-  async function handleSave(nextStatus) {
+  // Ordinary Save never changes status — a new article is always created
+  // as "draft" (every other initial status is rejected server-side; see
+  // ArticleListResource.post()'s _CREATABLE_STATUSES), and an existing
+  // article's save echoes its current status back unchanged (the backend
+  // rejects any other value with a 409 — see ArticleDetailResource.put()).
+  // All real status changes go through the ArticleWorkflowPanel actions
+  // below instead.
+  async function handleSave() {
     const slugError = validateSlug(form.slug)
     if (slugError) {
       setErrors({ slug: slugError })
       toast.error(slugError)
       return
-    }
-    if (nextStatus === 'published') {
-      if (hasNoContent) {
-        toast.error('Article body is required before publishing. Add at least one block in the Content section.')
-        return
-      }
-      if (needsAiReviewConfirmation) {
-        toast.error('This article is marked AI-assisted/AI-generated and must be confirmed as human-reviewed before it can be published.')
-        return
-      }
     }
     setErrors({})
     setSaving(true)
@@ -291,7 +303,7 @@ export default function AdminArticleEditor() {
       seriesSlug: form.seriesSlug || null,
       tagSlugs: form.tagSlugs,
       relatedPersonSlugs: form.relatedPersonSlugs,
-      status: nextStatus,
+      status: isNew ? 'draft' : form.status,
       featured: form.featured,
       promoted: form.promoted,
       isSponsored: form.isSponsored,
@@ -314,7 +326,7 @@ export default function AdminArticleEditor() {
 
     try {
       const saved = isNew ? await createArticle(payload) : await updateArticle(id, payload)
-      toast.success(`Article ${nextStatus === 'published' ? 'published' : 'saved'} as ${nextStatus.replace('_', ' ')}.`)
+      toast.success(isNew ? 'Article saved as draft.' : 'Article saved.')
       if (isNew) navigate(`/admin/articles/${saved.slug}`)
       else setForm(toForm(saved))
     } catch (err) {
@@ -323,6 +335,39 @@ export default function AdminArticleEditor() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Every workflow action round-trips through the real backend endpoint
+  // and, on success, refreshes the whole form from the response — status,
+  // scheduledAt/approvedAt, and anything else the transition touched — so
+  // the editor never needs a manual page reload to reflect the new state.
+  function workflowAction(apiCall) {
+    return async (...args) => {
+      const saved = await apiCall(id, ...args)
+      setForm(toForm(saved))
+      toast.success(`Article is now "${saved.status.replace(/_/g, ' ')}".`)
+    }
+  }
+
+  const handleSubmitReview = workflowAction(submitArticleForReview)
+  const handleRequestChanges = workflowAction(requestArticleChanges)
+  const handleMoveToDraft = workflowAction(moveArticleToDraft)
+  const handleApprove = workflowAction(approveArticle)
+  const handleSchedule = workflowAction(scheduleArticle)
+  const handleReschedule = workflowAction(rescheduleArticle)
+  const handleUnschedule = workflowAction(unscheduleArticle)
+  const handleArchive = workflowAction(archiveArticle)
+
+  async function handlePublishNow() {
+    if (hasNoContent) {
+      toast.error('Article body is required before publishing. Add at least one block in the Content section.')
+      return
+    }
+    if (needsAiReviewConfirmation) {
+      toast.error('This article is marked AI-assisted/AI-generated and must be confirmed as human-reviewed before it can be published.')
+      return
+    }
+    await workflowAction(publishArticleNow)()
   }
 
   if (loadError) return <EmptyState title="Couldn't load the article editor" description={loadError} />
@@ -483,24 +528,29 @@ export default function AdminArticleEditor() {
         </div>
 
         <div className="space-y-4">
+          {!isNew && (
+            <ArticleWorkflowPanel
+              status={form.status}
+              scheduledAt={form.scheduledAt}
+              publishedAt={form.publishDate ? new Date(form.publishDate).toISOString() : null}
+              approvedAt={form.approvedAt}
+              approvedByName={form.approvedByName}
+              onSubmitReview={handleSubmitReview}
+              onRequestChanges={handleRequestChanges}
+              onMoveToDraft={handleMoveToDraft}
+              onApprove={handleApprove}
+              onSchedule={handleSchedule}
+              onReschedule={handleReschedule}
+              onUnschedule={handleUnschedule}
+              onPublishNow={handlePublishNow}
+              onArchive={handleArchive}
+              onError={(message) => toast.error(message)}
+            />
+          )}
+
           <div className="border border-taupe-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Status</p>
-            <select value={form.status} onChange={(e) => updateField('status', e.target.value)} className="mt-2 w-full border border-taupe-300 px-3 py-2 text-sm">
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s.replace('_', ' ')}
-                </option>
-              ))}
-            </select>
-            <Field label="Scheduled / publish date" hint="optional">
-              <input
-                type="datetime-local"
-                value={form.publishDate}
-                onChange={(e) => updateField('publishDate', e.target.value)}
-                className="w-full border border-taupe-300 px-3 py-2 text-sm"
-              />
-            </Field>
-            <div className="mt-3 space-y-2 border-t border-taupe-200 pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Details</p>
+            <div className="mt-3 space-y-2">
               <label className="flex items-center gap-2 text-sm text-charcoal-600">
                 <input type="checkbox" checked={form.featured} onChange={(e) => updateField('featured', e.target.checked)} />
                 Featured
@@ -556,12 +606,9 @@ export default function AdminArticleEditor() {
               </div>
             )}
 
-            <div className="mt-4 space-y-2">
-              <button type="button" onClick={() => handleSave('draft')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
-                <Save size={13} /> {saving ? 'Saving…' : 'Save draft'}
-              </button>
-              <button type="button" onClick={() => handleSave('published')} disabled={saving} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
-                Publish
+            <div className="mt-4">
+              <button type="button" onClick={handleSave} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
+                <Save size={13} /> {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

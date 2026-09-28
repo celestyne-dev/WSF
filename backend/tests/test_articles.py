@@ -82,6 +82,18 @@ def test_article_create_publish_and_slug_change_redirects(client, editor_token, 
     preview = client.get(f"/api/v1/articles/{article['slug']}", headers=auth_headers(editor_token))
     assert preview.status_code == 200
 
+    # Publishing now goes through the editorial workflow — a draft can no
+    # longer jump straight to published via the /publish action (see
+    # app/services/articles_workflow.py's WORKFLOW_TRANSITIONS); it must be
+    # submitted for review and approved first.
+    submit = client.post(f"/api/v1/articles/{article['slug']}/submit-review", headers=auth_headers(editor_token))
+    assert submit.status_code == 200
+    assert submit.get_json()["data"]["status"] == "in_review"
+
+    approve = client.post(f"/api/v1/articles/{article['slug']}/approve", headers=auth_headers(editor_token))
+    assert approve.status_code == 200
+    assert approve.get_json()["data"]["status"] == "approved"
+
     publish = client.post(f"/api/v1/articles/{article['slug']}/publish", headers=auth_headers(editor_token))
     assert publish.status_code == 200
     assert publish.get_json()["data"]["status"] == "published"
@@ -113,7 +125,8 @@ def test_article_create_publish_and_slug_change_redirects(client, editor_token, 
 
     revisions = client.get(f"/api/v1/articles/redefining-leadership-updated/revisions", headers=auth_headers(editor_token))
     assert revisions.status_code == 200
-    assert len(revisions.get_json()["data"]) == 3  # created, published, updated
+    # created, submit-review, approve, published, updated
+    assert len(revisions.get_json()["data"]) == 5
 
 
 def test_article_listing_filters_by_topic(client, editor_token, author_slug):
@@ -334,16 +347,27 @@ def test_publish_requires_content(client, editor_token, author_slug):
     assert create.status_code == 201
     slug = create.get_json()["data"]["slug"]
 
+    # Content isn't required to move through review/approval — only to
+    # actually publish (see _validate_for_publish's own docstring: "a
+    # draft may stay incomplete indefinitely").
+    client.post(f"/api/v1/articles/{slug}/submit-review", headers=auth_headers(editor_token))
+    client.post(f"/api/v1/articles/{slug}/approve", headers=auth_headers(editor_token))
+
     publish = client.post(f"/api/v1/articles/{slug}/publish", headers=auth_headers(editor_token))
     assert publish.status_code == 422
     assert publish.get_json()["error"]["code"] == "publish_validation_failed"
 
+    # A direct PUT can no longer change status at all (see
+    # ArticleDetailResource.put()'s hardened status check) — attempting to
+    # flip to "published" via an ordinary save is now itself rejected,
+    # regardless of content.
     direct_publish = client.put(
         f"/api/v1/articles/{slug}",
         json={"title": "Empty Body Should Not Publish", "authorSlug": author_slug, "status": "published", "content": []},
         headers=auth_headers(editor_token),
     )
-    assert direct_publish.status_code == 422
+    assert direct_publish.status_code == 409
+    assert direct_publish.get_json()["error"]["code"] == "invalid_transition"
 
 
 def test_publish_requires_human_review_when_ai_involved(client, editor_token, author_slug):
@@ -361,11 +385,16 @@ def test_publish_requires_human_review_when_ai_involved(client, editor_token, au
     assert create.status_code == 201
     slug = create.get_json()["data"]["slug"]
 
+    client.post(f"/api/v1/articles/{slug}/submit-review", headers=auth_headers(editor_token))
+    client.post(f"/api/v1/articles/{slug}/approve", headers=auth_headers(editor_token))
+
     publish = client.post(f"/api/v1/articles/{slug}/publish", headers=auth_headers(editor_token))
     assert publish.status_code == 422
     assert "human-reviewed" in publish.get_json()["error"]["message"]
 
-    # Confirming human review unblocks publication.
+    # Confirming human review unblocks publication. The article is now
+    # "approved" — an ordinary save must echo that same status back
+    # (see ArticleDetailResource.put()'s no-op-only status rule).
     client.put(
         f"/api/v1/articles/{slug}",
         json={
@@ -374,6 +403,7 @@ def test_publish_requires_human_review_when_ai_involved(client, editor_token, au
             "content": [{"type": "paragraph", "text": "Body."}],
             "aiInvolvement": "ai_generated_reviewed",
             "humanReviewed": True,
+            "status": "approved",
         },
         headers=auth_headers(editor_token),
     )

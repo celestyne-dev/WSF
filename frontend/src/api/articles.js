@@ -99,6 +99,13 @@ function mapArticle(a) {
         }
       : null,
     status: a.status,
+    // Editorial workflow metadata — only ever present on an authenticated
+    // admin/editor read (see admin_article_summary_schema/ArticleSchema's
+    // own docstring in the backend: never part of a public payload), so
+    // these are simply undefined on a public article/list read.
+    scheduledAt: a.scheduled_at || null,
+    approvedAt: a.approved_at || null,
+    approvedBy: a.approved_by ? { id: a.approved_by.id, fullName: a.approved_by.full_name, email: a.approved_by.email } : null,
     seo: a.seo,
     content: a.content,
     // Generative-AI editorial transparency (see backend Article model's
@@ -189,4 +196,68 @@ export async function updateArticle(slug, payload) {
     return mapArticle(data)
   }
   return delay({ ...payload, slug: payload.slug || slug })
+}
+
+// ---------------------------------------------------------------------------
+// Editorial workflow actions (Draft -> Review -> Approve -> Schedule ->
+// Publish -> Archive) and the Editorial Calendar feed — admin-only, and
+// deliberately real-backend-only with no mock branch (same convention as
+// the Directory CMS admin actions in api/directory.js): production must
+// never depend on mock scheduling, and there's nothing meaningful for a
+// static mock dataset to simulate for a scheduler-driven transition.
+// ---------------------------------------------------------------------------
+
+export async function submitArticleForReview(slug) {
+  const { data } = await apiClient.post(`/articles/${slug}/submit-review`)
+  return mapArticle(data)
+}
+
+export async function requestArticleChanges(slug, note) {
+  const { data } = await apiClient.post(`/articles/${slug}/request-changes`, note ? { note } : {})
+  return mapArticle(data)
+}
+
+export async function moveArticleToDraft(slug) {
+  const { data } = await apiClient.post(`/articles/${slug}/move-to-draft`)
+  return mapArticle(data)
+}
+
+export async function approveArticle(slug) {
+  const { data } = await apiClient.post(`/articles/${slug}/approve`)
+  return mapArticle(data)
+}
+
+export async function scheduleArticle(slug, scheduledAtIso) {
+  const { data } = await apiClient.post(`/articles/${slug}/schedule`, { scheduledAt: scheduledAtIso })
+  return mapArticle(data)
+}
+
+export async function rescheduleArticle(slug, scheduledAtIso) {
+  const { data } = await apiClient.post(`/articles/${slug}/reschedule`, { scheduledAt: scheduledAtIso })
+  return mapArticle(data)
+}
+
+export async function unscheduleArticle(slug) {
+  const { data } = await apiClient.post(`/articles/${slug}/unschedule`)
+  return mapArticle(data)
+}
+
+export async function publishArticleNow(slug) {
+  const { data } = await apiClient.post(`/articles/${slug}/publish`)
+  return mapArticle(data)
+}
+
+export async function archiveArticle(slug) {
+  const { data } = await apiClient.post(`/articles/${slug}/archive`)
+  return mapArticle(data)
+}
+
+// GET /api/v1/articles/calendar?start=&end=&status=&author=&topic=&series=
+// Always date-range-bounded — never fetches every article. `start`/`end`
+// are ISO datetime strings (UTC).
+export async function fetchEditorialCalendar({ start, end, status, author, topic, series } = {}) {
+  const { data } = await apiClient.get('/articles/calendar', {
+    params: { start, end, status, author, topic, series },
+  })
+  return data.map(mapArticle)
 }

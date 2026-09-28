@@ -8,13 +8,22 @@ from app.extensions import db
 from app.models.article import Article, ArticleRevision, Redirect
 from app.models.people import Author, Organization, Person
 from app.models.taxonomy import Category, Series, Tag, Topic
-from app.schemas.article import ArticleInputSchema, ArticleSchema, article_summary_schema, public_article_schema
+from app.schemas.article import (
+    ArticleInputSchema,
+    ArticleRejectInputSchema,
+    ArticleScheduleInputSchema,
+    ArticleSchema,
+    admin_article_summary_schema,
+    article_summary_schema,
+    public_article_schema,
+)
+from app.services import articles_workflow
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.slugs import create_redirect_for_slug_change, generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
-from app.utils.responses import ApiError, error_response, success_response
+from app.utils.responses import ApiError, success_response
 from app.utils.slugs import slugify
 
 articles_bp = Blueprint("articles", __name__)
@@ -22,6 +31,14 @@ api = Api(articles_bp)
 
 article_schema = ArticleSchema()
 public_article_schema_instance = public_article_schema()
+
+# An article may only be *created* as a draft, or (for a user with publish
+# authority) created already published — every other status in
+# ARTICLE_STATUSES is reachable only by walking the workflow afterwards via
+# the dedicated action endpoints below (submit-review, approve, schedule,
+# ...). This keeps "create" simple while still letting an existing
+# integration/superadmin publish something immediately.
+_CREATABLE_STATUSES = ("draft", "published")
 
 
 def _require_active_user():
@@ -51,6 +68,60 @@ def _can_edit(article):
         if owns_by_creator or owns_by_byline:
             return user
     raise ApiError("You do not have permission to edit this article.", 403, code="forbidden")
+
+
+def _require_manage_or_publish():
+    """The stronger permission tier for editorial authority actions
+    (approve, schedule/reschedule/unschedule, publish, archive, request
+    changes) — see PUBLISH_GATED_TRANSITIONS in
+    app/services/articles_workflow.py. Deliberately not satisfied by
+    articles.edit_own alone: an author who owns a draft can submit it for
+    review, but reviewing/approving/publishing is an editor/admin action.
+    """
+    user = _require_active_user()
+    if not user.has_permission("articles.manage", "articles.publish"):
+        raise ApiError("You do not have permission to perform this action.", 403, code="forbidden")
+    return user
+
+
+def _get_article_or_404(slug):
+    article = Article.query.filter_by(slug=slug).first()
+    if article is None:
+        raise ApiError("Article not found.", 404, code="not_found")
+    return article
+
+
+def _perform_transition(article, to_status, user, action_name, audit_changes=None, note=None):
+    """Shared body for every workflow action endpoint below: validates the
+    transition against app/services/articles_workflow.py's rules, saves a
+    revision snapshot (existing mechanism — see _snapshot above), and
+    writes one Audit Log entry with safe, small metadata (never a full
+    Article body — see app/services/audit.py's own redaction note, which
+    this doesn't need to rely on since nothing sensitive is ever passed).
+    A no-op call (to_status == article.status) is allowed by
+    is_valid_transition() but produces no revision/audit entry — nothing
+    actually changed.
+    """
+    from_status = article.status
+    if not articles_workflow.is_valid_transition(from_status, to_status):
+        raise ApiError(
+            f'Cannot move this article from "{from_status}" to "{to_status}".',
+            409,
+            code="invalid_transition",
+        )
+    if from_status == to_status:
+        return success_response(article_schema.dump(article))
+
+    article.status = to_status
+    db.session.flush()
+    articles_workflow.snapshot(article, user, note=note)
+    db.session.commit()
+
+    changes = {"from_status": from_status, "to_status": to_status}
+    if audit_changes:
+        changes.update(audit_changes)
+    log_action(user, action_name, "Article", article.id, changes)
+    return success_response(article_schema.dump(article))
 
 
 def _resolve_relations(data):
@@ -133,7 +204,10 @@ def _apply_fields(article, data, relations):
     article.promoted = data.get("promoted", False)
     article.is_sponsored = data.get("is_sponsored", False)
     article.sponsor = data.get("sponsor")
-    article.status = data.get("status", "draft")
+    # status is deliberately NOT set here — see ArticleListResource.post()
+    # (initial status, gated) and ArticleDetailResource.put() (status is
+    # immutable via ordinary save; see the dedicated workflow action
+    # endpoints below for every real transition).
     article.seo = data.get("seo")
     article.content = sanitize_content_blocks(data.get("content", []))
     article.ai_involvement = data.get("ai_involvement", "none")
@@ -207,7 +281,19 @@ class ArticleListResource(Resource):
         else:
             article.slug = generate_unique_slug(Article, data["title"])
 
+        requested_status = data.get("status", "draft")
+        if requested_status not in _CREATABLE_STATUSES:
+            raise ApiError(
+                f'A new article must be created as "draft" or "published" — use the workflow action endpoints '
+                f'to move it to "{requested_status}" afterwards.',
+                422,
+                code="invalid_status",
+            )
+        if requested_status == "published" and not user.has_permission("articles.manage", "articles.publish"):
+            raise ApiError("You do not have permission to publish articles.", 403, code="forbidden")
+
         _apply_fields(article, data, relations)
+        article.status = requested_status
         if article.status == "published":
             _validate_for_publish(article)
         db.session.add(article)
@@ -259,6 +345,16 @@ class ArticleDetailResource(Resource):
         data = ArticleInputSchema().load(request.get_json(silent=True) or {})
         relations = _resolve_relations(data)
 
+        requested_status = data.get("status", "draft")
+        if requested_status != article.status:
+            raise ApiError(
+                f'Cannot change status via an ordinary save (attempted "{article.status}" -> '
+                f'"{requested_status}"). Use the dedicated workflow action endpoints '
+                f"(submit-review, approve, schedule, publish, archive, ...) instead.",
+                409,
+                code="invalid_transition",
+            )
+
         old_slug = article.slug
         if data.get("slug") and data["slug"] != old_slug:
             article.slug = validate_explicit_slug(Article, data["slug"], current_id=article.id)
@@ -277,26 +373,268 @@ class ArticleDetailResource(Resource):
         return success_response(article_schema.dump(article))
 
 
-class ArticlePublishResource(Resource):
+class ArticleSubmitReviewResource(Resource):
+    """draft|changes_requested -> in_review. Never publishes anything — the
+    author/owner-editor moving their own work into the review queue, so
+    this uses the weaker _can_edit() check (see PUBLISH_GATED_TRANSITIONS,
+    which deliberately excludes this transition).
+    """
+
     def post(self, slug):
-        article = Article.query.filter_by(slug=slug).first()
-        if article is None:
-            raise ApiError("Article not found.", 404, code="not_found")
+        article = _get_article_or_404(slug)
+        user = _can_edit(article)
+        return _perform_transition(article, "in_review", user, "article.submit_review")
 
-        user = _require_active_user()
-        if not user.has_permission("articles.publish", "articles.manage"):
-            return error_response("You do not have permission to publish articles.", 403, code="forbidden")
 
-        article.status = "published"
+class ArticleRequestChangesResource(Resource):
+    """in_review -> changes_requested. A reviewer/editor action, not the
+    author's — gated by the stronger manage/publish tier. The optional
+    note is recorded only in the Audit Log entry (see
+    ArticleRejectInputSchema's own docstring for why no new column/
+    comment-thread system was added for this).
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _require_manage_or_publish()
+        data = ArticleRejectInputSchema().load(request.get_json(silent=True) or {})
+        return _perform_transition(
+            article,
+            "changes_requested",
+            user,
+            "article.request_changes",
+            audit_changes={"note": data.get("note")} if data.get("note") else None,
+        )
+
+
+class ArticleMoveToDraftResource(Resource):
+    """changes_requested -> draft — the literal "return to draft" step the
+    spec asks for (see WORKFLOW_TRANSITIONS's own comment on why this is a
+    second hop rather than a direct in_review -> draft transition). Owner-
+    level access is enough, same reasoning as submit-review.
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _can_edit(article)
+        return _perform_transition(article, "draft", user, "article.move_to_draft")
+
+
+class ArticleApproveResource(Resource):
+    """in_review -> approved. Records approved_at/approved_by_user_id.
+    Approval does NOT make the article public — see Article model's own
+    comment on approved_at/approved_by, and articles_workflow.py's
+    docstring on why editing an approved article afterwards doesn't clear
+    these or force re-approval.
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _require_manage_or_publish()
+        if not articles_workflow.is_valid_transition(article.status, "approved"):
+            raise ApiError(
+                f'Cannot approve an article from "{article.status}".', 409, code="invalid_transition"
+            )
+        article.approved_at = datetime.now(timezone.utc)
+        article.approved_by_user_id = user.id
+        return _perform_transition(article, "approved", user, "article.approve")
+
+
+class ArticleScheduleResource(Resource):
+    """approved -> scheduled. Stores scheduled_at as the future UTC
+    publication timestamp; validated by articles_workflow.
+    validate_schedule_datetime (timezone-aware, strictly in the future —
+    see that function's own docstring for why naive datetimes are
+    rejected rather than guessed at).
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _require_manage_or_publish()
+        # Deliberately requires "approved" exactly, rather than letting
+        # is_valid_transition's same-status short-circuit treat
+        # scheduled -> scheduled as a free no-op here — that would skip
+        # _perform_transition's commit and silently drop the new
+        # scheduled_at. Re-scheduling an already-scheduled article goes
+        # through ArticleRescheduleResource below instead.
+        if article.status != "approved":
+            raise ApiError(
+                f'Cannot schedule an article from "{article.status}". It must be "approved" first.',
+                409,
+                code="invalid_transition",
+            )
+        data = ArticleScheduleInputSchema().load(request.get_json(silent=True) or {})
+        try:
+            scheduled_at = articles_workflow.validate_schedule_datetime(data["scheduled_at"])
+        except ValueError as exc:
+            raise ApiError(str(exc), 422, code="invalid_schedule")
+        article.scheduled_at = scheduled_at
+        return _perform_transition(
+            article, "scheduled", user, "article.schedule", audit_changes={"scheduled_at": scheduled_at.isoformat()}
+        )
+
+
+class ArticleRescheduleResource(Resource):
+    """scheduled -> scheduled, with a new scheduled_at. A distinct endpoint
+    from Schedule (which only accepts approved -> scheduled) for a clearer
+    audit trail/action name. Implemented directly rather than via
+    _perform_transition, since that helper's no-op short-circuit
+    (from_status == to_status) would skip the commit entirely here — and
+    a reschedule always has a real field change worth persisting/logging.
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _require_manage_or_publish()
+        if article.status != "scheduled":
+            raise ApiError('Only a "scheduled" article can be rescheduled.', 409, code="invalid_transition")
+        data = ArticleScheduleInputSchema().load(request.get_json(silent=True) or {})
+        try:
+            scheduled_at = articles_workflow.validate_schedule_datetime(data["scheduled_at"])
+        except ValueError as exc:
+            raise ApiError(str(exc), 422, code="invalid_schedule")
+
+        previous = article.scheduled_at
+        article.scheduled_at = scheduled_at
+        db.session.flush()
+        articles_workflow.snapshot(article, user, note="Rescheduled")
+        db.session.commit()
+        log_action(
+            user,
+            "article.reschedule",
+            "Article",
+            article.id,
+            {
+                "from_status": "scheduled",
+                "to_status": "scheduled",
+                "previous_scheduled_at": previous.isoformat() if previous else None,
+                "scheduled_at": scheduled_at.isoformat(),
+            },
+        )
+        return success_response(article_schema.dump(article))
+
+
+class ArticleUnscheduleResource(Resource):
+    """scheduled -> approved. Clears scheduled_at so no stale scheduling
+    metadata is left controlling publication eligibility (see
+    publish_due_articles()'s own re-check under lock, which would already
+    catch this, but clearing it here keeps the row itself unambiguous).
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _require_manage_or_publish()
+        if not articles_workflow.is_valid_transition(article.status, "approved"):
+            raise ApiError(
+                f'Cannot unschedule an article from "{article.status}".', 409, code="invalid_transition"
+            )
+        article.scheduled_at = None
+        return _perform_transition(article, "approved", user, "article.unschedule")
+
+
+class ArticlePublishResource(Resource):
+    """approved|scheduled -> published ("Publish now"). Idempotent: calling
+    this on an already-published article is a no-op success (see spec:
+    "publishing already-published -> no duplicate transition"), never a
+    409 — a client retrying a slow request shouldn't see an error for a
+    publish that already succeeded. publish_date is always set to *now*
+    here (manual publish) — the scheduler (publish_due_articles) is the
+    only path that back-dates it to the original scheduled_at; see that
+    function's own docstring for that split.
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _require_manage_or_publish()
+
+        if article.status == "published":
+            return success_response(article_schema.dump(article))
+
+        if not articles_workflow.is_valid_transition(article.status, "published"):
+            raise ApiError(
+                f'Cannot publish an article from "{article.status}". It must be "approved" or "scheduled" first.',
+                409,
+                code="invalid_transition",
+            )
+
+        from_status = article.status
         _validate_for_publish(article)
-        if article.publish_date is None:
-            article.publish_date = datetime.now(timezone.utc)
+        article.status = "published"
+        article.publish_date = datetime.now(timezone.utc)
         db.session.flush()
         _snapshot(article, user, note="Published")
         db.session.commit()
 
-        log_action(user, "article.publish", "Article", article.id)
+        log_action(user, "article.publish", "Article", article.id, {"from_status": from_status, "to_status": "published"})
         return success_response(article_schema.dump(article))
+
+
+class ArticleArchiveResource(Resource):
+    """published -> archived. Removes the article from public eligibility
+    (every public query already filters on status == "published" — see
+    the audit in app/services/search.py, api/v1/taxonomy.py, api/v1/
+    authors.py, and ArticleRelatedResource below) without deleting the DB
+    record, its revisions, or its Audit Log history. Terminal in this
+    task — no restore/republish action; see the final report for why.
+    """
+
+    def post(self, slug):
+        article = _get_article_or_404(slug)
+        user = _require_manage_or_publish()
+        return _perform_transition(article, "archived", user, "article.archive")
+
+
+class ArticleCalendarResource(Resource):
+    """Bounded date-range feed for the Editorial Calendar — GET
+    /articles/calendar?start=ISO&end=ISO. Never loads every article: start
+    and end are required, and results are capped. An article appears if
+    its scheduled_at OR publish_date falls in [start, end). Same own-vs-
+    all visibility split as AdminArticleListResource in api/v1/admin.py —
+    a user with only articles.edit_own sees just their own work.
+    """
+
+    def get(self):
+        user = _require_active_user()
+        if not user.has_permission("articles.create", "articles.edit_own", "articles.manage", "articles.publish"):
+            raise ApiError("You do not have permission to view the editorial calendar.", 403, code="forbidden")
+
+        start_raw = request.args.get("start")
+        end_raw = request.args.get("end")
+        if not start_raw or not end_raw:
+            raise ApiError("start and end query parameters are required.", 422, code="validation_error")
+        try:
+            start = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+        except ValueError:
+            raise ApiError("start and end must be ISO-8601 dates.", 422, code="validation_error")
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        if end <= start:
+            raise ApiError("end must be after start.", 422, code="validation_error")
+
+        query = Article.query.filter(
+            db.or_(
+                db.and_(Article.scheduled_at.isnot(None), Article.scheduled_at >= start, Article.scheduled_at < end),
+                db.and_(Article.publish_date.isnot(None), Article.publish_date >= start, Article.publish_date < end),
+            )
+        )
+        if not user.has_permission("articles.manage"):
+            query = query.filter(
+                db.or_(Article.created_by_id == user.id, Article.author.has(user_id=user.id))
+            )
+        if request.args.get("status"):
+            query = query.filter(Article.status == request.args["status"])
+        if request.args.get("author"):
+            query = query.join(Author).filter(Author.slug == request.args["author"])
+        if request.args.get("topic"):
+            query = query.filter(Article.topics.any(slug=request.args["topic"]))
+        if request.args.get("series"):
+            query = query.join(Series).filter(Series.slug == request.args["series"])
+        query = query.order_by(db.func.coalesce(Article.scheduled_at, Article.publish_date)).limit(500)
+
+        return success_response(admin_article_summary_schema(many=True).dump(query.all()))
 
 
 class ArticleRevisionsResource(Resource):
@@ -339,6 +677,15 @@ class ArticleRelatedResource(Resource):
 
 api.add_resource(ArticleListResource, "")
 api.add_resource(ArticleRelatedResource, "/related")
+api.add_resource(ArticleCalendarResource, "/calendar")
 api.add_resource(ArticleDetailResource, "/<string:slug>")
 api.add_resource(ArticlePublishResource, "/<string:slug>/publish")
 api.add_resource(ArticleRevisionsResource, "/<string:slug>/revisions")
+api.add_resource(ArticleSubmitReviewResource, "/<string:slug>/submit-review")
+api.add_resource(ArticleRequestChangesResource, "/<string:slug>/request-changes")
+api.add_resource(ArticleMoveToDraftResource, "/<string:slug>/move-to-draft")
+api.add_resource(ArticleApproveResource, "/<string:slug>/approve")
+api.add_resource(ArticleScheduleResource, "/<string:slug>/schedule")
+api.add_resource(ArticleRescheduleResource, "/<string:slug>/reschedule")
+api.add_resource(ArticleUnscheduleResource, "/<string:slug>/unschedule")
+api.add_resource(ArticleArchiveResource, "/<string:slug>/archive")

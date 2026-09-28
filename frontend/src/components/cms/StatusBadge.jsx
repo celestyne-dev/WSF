@@ -1,3 +1,5 @@
+import { Clock, Eye, AlertCircle, CheckCircle2 } from 'lucide-react'
+
 const STYLES = {
   published: 'bg-emerald-100 text-emerald-700',
   active: 'bg-emerald-100 text-emerald-700',
@@ -11,6 +13,8 @@ const STYLES = {
   scheduled: 'bg-blush-200 text-burgundy-700',
   reviewing: 'bg-blush-200 text-burgundy-700',
   under_review: 'bg-blush-200 text-burgundy-700',
+  in_review: 'bg-blush-200 text-burgundy-700',
+  changes_requested: 'bg-amber-100 text-amber-700',
   approved: 'bg-blush-200 text-burgundy-700',
   matched: 'bg-blush-200 text-burgundy-700',
   converted: 'bg-emerald-100 text-emerald-700',
@@ -34,7 +38,24 @@ const STYLES = {
   declined: 'bg-rose-100 text-rose-600',
 }
 
+// Editorial workflow states must not be distinguished by color alone (see
+// AdminArticleEditor/AdminArticles/AdminEditorialCalendar) — a small icon
+// is added only for this curated set so every other module's StatusBadge
+// usage renders exactly as before.
+const ICONS = {
+  in_review: Eye,
+  changes_requested: AlertCircle,
+  approved: CheckCircle2,
+  scheduled: Clock,
+}
+
 export default function StatusBadge({ status }) {
   const style = STYLES[status] || 'bg-taupe-200 text-charcoal-600'
-  return <span className={`inline-flex items-center px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${style}`}>{status?.replace(/_/g, ' ')}</span>
+  const Icon = ICONS[status]
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${style}`}>
+      {Icon && <Icon size={11} aria-hidden="true" />}
+      {status?.replace(/_/g, ' ')}
+    </span>
+  )
 }
