@@ -121,6 +121,7 @@ export default function JobDetailPage() {
         if (!active) return
         setJob(data)
         if (!data) return
+        trackEvent('job_view', { jobSlug: data.slug, company: data.company })
         fetchJobs({ industry: data.industry, pageSize: 4 })
           .then((res) => active && setMoreJobs(res.items.filter((j) => j.slug !== slug).slice(0, 3)))
           .catch(() => {})
