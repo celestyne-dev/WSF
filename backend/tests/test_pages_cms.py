@@ -307,19 +307,133 @@ class TestAuditAndSeedIdempotency:
     def test_seed_pages_is_idempotent_and_never_overwrites(self, app):
         from app.extensions import db
         from app.models.page import Page
-        from app.services.demo_seed import _seed_pages
+        from app.services.pages import seed_system_pages
 
         with app.app_context():
-            _seed_pages()
-            db.session.commit()
+            seed_system_pages()
             first_count = Page.query.count()
 
             about = Page.query.filter_by(key="about").first()
             about.title = "Admin Edited About"
             db.session.commit()
 
-            _seed_pages()
-            db.session.commit()
+            seed_system_pages()
 
             assert Page.query.count() == first_count
             assert Page.query.filter_by(key="about").first().title == "Admin Edited About"
+
+
+class TestSeedSystemPages:
+    """flask seed-pages / app.services.pages.seed_system_pages() — the
+    dedicated, production-safe bootstrap for the six required system
+    pages, separate from `flask seed-demo`. See
+    app/services/pages.py:seed_system_pages for the create-only contract.
+    """
+
+    def test_empty_db_creates_all_six_system_pages(self, app):
+        from app.models.page import SYSTEM_PAGE_KEYS, Page
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            assert Page.query.count() == 0
+
+            created = seed_system_pages()
+
+            assert sorted(created) == sorted(SYSTEM_PAGE_KEYS)
+            assert Page.query.count() == len(SYSTEM_PAGE_KEYS)
+            for key in SYSTEM_PAGE_KEYS:
+                assert Page.query.filter_by(key=key).first() is not None
+
+    def test_created_pages_have_correct_system_shape(self, app):
+        from app.models.page import Page
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+
+            for page in Page.query.all():
+                assert page.page_type == "system"
+                assert page.status == "published"
+                assert page.slug == page.key
+                assert page.published_at is not None
+                assert page.content
+
+    def test_rerunning_is_idempotent(self, app):
+        from app.models.page import Page
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            first = seed_system_pages()
+            assert len(first) == 6
+
+            second = seed_system_pages()
+
+            assert second == []
+            assert Page.query.count() == 6
+
+    def test_administrator_edited_content_is_not_overwritten(self, app):
+        from app.extensions import db
+        from app.models.page import Page
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+
+            privacy = Page.query.filter_by(key="privacy").first()
+            privacy.title = "Our Custom Privacy Title"
+            privacy.subtitle = "Admin-written subtitle"
+            privacy.content = [{"type": "paragraph", "text": "Admin-written body."}]
+            privacy.seo = {"title": "Custom SEO title"}
+            db.session.commit()
+
+            seed_system_pages()
+
+            reloaded = Page.query.filter_by(key="privacy").first()
+            assert reloaded.title == "Our Custom Privacy Title"
+            assert reloaded.subtitle == "Admin-written subtitle"
+            assert reloaded.content == [{"type": "paragraph", "text": "Admin-written body."}]
+            assert reloaded.seo == {"title": "Custom SEO title"}
+
+    def test_existing_draft_system_page_remains_draft(self, app):
+        from app.extensions import db
+        from app.models.page import Page
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+
+            terms = Page.query.filter_by(key="terms").first()
+            terms.status = "draft"
+            db.session.commit()
+
+            seed_system_pages()
+
+            assert Page.query.filter_by(key="terms").first().status == "draft"
+
+    def test_missing_pages_still_created_when_some_already_exist(self, app):
+        from app.extensions import db
+        from app.models.page import Page
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            db.session.add(
+                Page(
+                    key="about",
+                    slug="about",
+                    page_type="system",
+                    title="Pre-existing About",
+                    content=[{"type": "paragraph", "text": "Already here."}],
+                    status="published",
+                )
+            )
+            db.session.commit()
+            assert Page.query.count() == 1
+
+            created = seed_system_pages()
+
+            assert "about" not in created
+            assert sorted(created) == sorted(
+                k for k in ("contact", "privacy", "terms", "cookies", "editorial-policy")
+            )
+            assert Page.query.count() == 6
+            assert Page.query.filter_by(key="about").first().title == "Pre-existing About"

@@ -9,6 +9,7 @@ from app.services.articles_workflow import publish_due_articles
 from app.services.demo_seed import seed_demo_content
 from app.services.geography import seed_countries
 from app.services.navigation import seed_default_navigation
+from app.services.pages import seed_system_pages
 from app.services.rbac import seed_roles_and_permissions
 
 
@@ -24,6 +25,23 @@ def register_cli(app):
         """Load/refresh the Country reference table."""
         seed_countries()
         click.echo("Countries seeded.")
+
+    @app.cli.command("seed-pages")
+    def seed_pages_command():
+        """Bootstrap the six required system Pages (About/Contact/Privacy/
+        Terms/Cookies/Editorial Policy) that GET /pages/public/<key> and
+        the header/footer navigation depend on. Create-only: an existing
+        system Page (seeded before, or since edited by an admin) is never
+        modified — see app/services/pages.py:seed_system_pages for why a
+        plain reseed must not touch it. Safe to run repeatedly and safe on
+        a real production database — same category as seed-roles/
+        seed-geography/seed-navigation, never seed-demo.
+        """
+        created = seed_system_pages()
+        if created:
+            click.echo(f"Created {len(created)} missing system page(s): {', '.join(created)}.")
+        else:
+            click.echo("Created 0 missing system pages — all required system pages already exist.")
 
     @app.cli.command("seed-navigation")
     def seed_navigation_command():

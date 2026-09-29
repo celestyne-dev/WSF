@@ -128,8 +128,18 @@ flask db current   # confirms what's actually applied right now
 ```bash
 flask seed-roles       # roles/permissions — safe, idempotent
 flask seed-geography   # country reference table — safe, idempotent
+flask seed-pages       # required system Pages (About/Contact/Privacy/Terms/Cookies/Editorial Policy) — safe, idempotent
 flask seed-navigation  # header "primary"/"secondary" menus — safe, idempotent
 ```
+
+`seed-pages` runs before `seed-navigation` because the header's "About"
+link and the footer's Legal group both link to the real Page rows it
+creates. It only ever creates a system page's row the first time it's
+missing (by `key`) — an existing system page, whether seeded before or
+since edited by an admin, is never modified. Without it, `GET
+/api/v1/pages/public/<key>` 404s for every system page on a fresh
+database, since the pages table starts empty and (unlike `seed-demo`)
+nothing else in this app's normal boot path creates these rows.
 
 `seed-navigation` bootstraps the public header's core sections (Stories,
 Topics, People, Opportunities, Resources, Events, Community, Shop, and the
