@@ -7,6 +7,7 @@ from app.extensions import db
 from app.models.user import Role, User
 from app.services.articles_workflow import publish_due_articles
 from app.services.demo_seed import seed_demo_content
+from app.services.footer import heal_footer_defaults
 from app.services.geography import seed_countries
 from app.services.navigation import seed_default_navigation
 from app.services.pages import seed_system_pages
@@ -58,6 +59,37 @@ def register_cli(app):
         """
         seed_default_navigation()
         click.echo("Default navigation seeded/healed.")
+
+    @app.cli.command("seed-footer")
+    def seed_footer_command():
+        """Bootstrap/heal the four canonical footer groups (Explore/
+        Opportunities/About/Legal, at their existing footer_explore/
+        footer_opportunity/footer_wsf/footer_legal keys): adds any
+        canonical destination (Resources/Events/Community/Mentorship/
+        Contact/Advertise/Cookies/Editorial Policy, etc.) missing from an
+        already-existing group, without touching anything an admin has
+        already configured, relabeled, or moved — including a legacy
+        route link (e.g. url="/privacy") that already satisfies a
+        canonical Page-backed destination, which is never duplicated. See
+        app/services/footer.py:heal_footer_defaults for the full
+        create-only-plus-heal contract. A required system Page that
+        doesn't exist yet (run `flask seed-pages` first) is handled
+        safely: that one destination is simply skipped until the page
+        exists, nothing crashes. Safe to run repeatedly and safe on a
+        real production database — same category as seed-roles/
+        seed-geography/seed-pages/seed-navigation, never seed-demo. Does
+        not touch footer settings or social links — see this command's
+        own docstring in DEPLOYMENT.md for why that's out of scope here.
+        """
+        result = heal_footer_defaults()
+        created, added = result["created_groups"], result["added_items"]
+        if not created and not added:
+            click.echo("Footer already has every canonical destination — nothing to heal.")
+            return
+        if created:
+            click.echo(f"Created {len(created)} missing footer group(s): {', '.join(created)}.")
+        if added:
+            click.echo(f"Added {len(added)} missing footer link(s): " + ", ".join(f"{key}:{label}" for key, label in added) + ".")
 
     @app.cli.command("seed-demo")
     def seed_demo_command():

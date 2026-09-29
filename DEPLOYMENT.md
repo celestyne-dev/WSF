@@ -130,6 +130,7 @@ flask seed-roles       # roles/permissions — safe, idempotent
 flask seed-geography   # country reference table — safe, idempotent
 flask seed-pages       # required system Pages (About/Contact/Privacy/Terms/Cookies/Editorial Policy) — safe, idempotent
 flask seed-navigation  # header "primary"/"secondary" menus — safe, idempotent
+flask seed-footer      # footer's four canonical groups (Explore/Opportunities/About/Legal) — safe, idempotent
 ```
 
 `seed-pages` runs before `seed-navigation` because the header's "About"
@@ -148,6 +149,24 @@ seed guard — heals a menu that already exists but is missing one of
 those sections (e.g. after a later release added a new top-level page)
 without ever renaming, reordering, or removing anything already saved
 through AdminNavigation. Safe to re-run after every deploy.
+
+`seed-footer` runs after `seed-pages` (its Legal/About items link to real
+Page rows) and heals the footer the same way `seed-navigation` heals the
+header: it adds any canonical destination (Resources/Events/Community/
+Mentorship/Contact/Advertise/Cookies/Editorial Policy, etc.) missing from
+an already-existing footer_explore/footer_opportunity/footer_wsf/
+footer_legal group, without touching anything an admin has configured,
+relabeled, or moved — including recognizing a legacy route link (e.g.
+`url="/privacy"` from before Legal links were Page-backed) as already
+satisfying its canonical destination, so it's never duplicated. It does
+**not** seed footer settings (brand description, newsletter copy, contact
+email, copyright text) or social links — `get_footer_settings()` already
+has a safe blank-ish presentational fallback with no row required, and
+this command's scope is limited to the canonical group/link structure
+described in its own docstring (`app/services/footer.py:
+heal_footer_defaults`); fabricating a specific social-media handle or
+contact email as a "default" belongs to a deliberate admin decision
+through AdminFooter, not an automated bootstrap.
 
 **Never run `flask seed-demo` in production.** It loads fictional
 articles/jobs/opportunities/events for local development and manual

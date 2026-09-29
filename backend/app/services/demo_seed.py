@@ -7,13 +7,13 @@ from datetime import date, datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models.article import Article
-from app.models.cms import HomepageModule, Menu, MenuItem, SiteSetting, SocialLink
+from app.models.cms import HomepageModule, SiteSetting, SocialLink
 from app.models.opportunity import Event, EventSpeaker, EventSponsor, Job, Opportunity
-from app.models.page import Page
 from app.models.people import Author, Organization, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Category, Series, Tag, Topic
-from app.services.cms import replace_menu, replace_social_links, upsert_site_settings
+from app.services.cms import replace_social_links, upsert_site_settings
+from app.services.footer import heal_footer_defaults
 from app.services.navigation import seed_default_navigation
 from app.services.pages import seed_system_pages
 from app.services.site_settings import SITE_IDENTITY_KEY
@@ -31,24 +31,12 @@ TOPICS = [
 ]
 
 
-def _seed_menu_if_empty(key, heading, items_data):
-    """Unlike replace_menu() (used for a deliberate admin save, where
-    fully replacing a menu's items is exactly what's wanted), seeding must
-    never overwrite a menu an admin has already configured — this checks
-    for any existing items under `key` first and skips entirely if found,
-    matching the create-only convention used for Homepage/Pages seeding.
-    """
-    menu = Menu.query.filter_by(key=key).first()
-    if menu is not None and MenuItem.query.filter_by(menu_id=menu.id).first() is not None:
-        return
-    replace_menu(key, heading, items_data)
-
-
 def _seed_social_links_if_empty(links_data):
     """replace_social_links() is a deliberate full-replace for an admin
     save; seeding must never wipe social links an admin has already
     configured through AdminFooter, so this skips entirely if any row
-    already exists — same create-only convention as _seed_menu_if_empty.
+    already exists — same create-only convention as _seed_setting_if_absent
+    below.
     """
     if SocialLink.query.first() is not None:
         return
@@ -56,7 +44,7 @@ def _seed_social_links_if_empty(links_data):
 
 
 def _seed_setting_if_absent(key, value):
-    """Like _seed_menu_if_empty: seeding a SiteSetting key must never
+    """Like _seed_social_links_if_empty: seeding a SiteSetting key must never
     overwrite a value an admin has already saved (e.g. via AdminFooter's
     branding/newsletter CTA/contact/copyright fields).
     """
@@ -1057,75 +1045,19 @@ def seed_demo_content():
 
     # Navigation + Footer + social links.
     #
-    # "primary"/"secondary" (the header nav) are handled by
-    # seed_default_navigation() rather than the create-only
-    # _seed_menu_if_empty() used below for the footer_* groups — a plain
-    # create-only guard silently freezes a menu at whatever sections
-    # existed the first time it was ever seeded (this is exactly what
-    # caused Events/Community/Shop/Partner-With-Us to go missing from
-    # already-seeded databases once those sections were added later).
-    # seed_default_navigation() heals a menu that already exists but is
-    # missing one of the site's current top-level sections, while never
-    # touching an item that's already there — see its own docstring.
+    # Both "primary"/"secondary" (the header nav) and the footer_* groups
+    # are healed in place, never a plain create-only guard — a create-only
+    # guard silently freezes a menu at whatever sections existed the first
+    # time it was ever seeded (this is exactly what caused Events/
+    # Community/Shop/Partner-With-Us to go missing from the header, and
+    # Resources/Events/Community/Mentorship/Contact/Advertise/Cookies/
+    # Editorial Policy to go missing from the footer, on already-seeded
+    # databases once those destinations were added later). Both heal
+    # functions add only what's missing and never touch an item that's
+    # already there — see their own docstrings
+    # (seed_default_navigation()/heal_footer_defaults()).
     seed_default_navigation()
-
-    about_page = Page.query.filter_by(key="about").first()
-    contact_page = Page.query.filter_by(key="contact").first()
-    privacy_page = Page.query.filter_by(key="privacy").first()
-    terms_page = Page.query.filter_by(key="terms").first()
-    cookies_page = Page.query.filter_by(key="cookies").first()
-    editorial_policy_page = Page.query.filter_by(key="editorial-policy").first()
-
-    def _page_child(label, page):
-        return {"label": label, "item_type": "page", "page_id": page.id}
-
-    _seed_menu_if_empty(
-        "footer_explore",
-        "Explore",
-        [
-            {"label": "Stories", "url": "/topics"},
-            {"label": "Resources", "url": "/resources"},
-            {"label": "Events", "url": "/events"},
-        ],
-    )
-    _seed_menu_if_empty(
-        "footer_opportunity",
-        "Opportunities",
-        [
-            {"label": "Jobs", "url": "/jobs"},
-            {"label": "Opportunities", "url": "/opportunities"},
-            {"label": "Community", "url": "/community"},
-            {"label": "Mentorship", "url": "/mentorship"},
-        ],
-    )
-    # About links to the real Pages-CMS rows (item_type="page") rather than
-    # hard-coded "/about"/"/contact" strings — a future slug change there
-    # needs no matching Footer edit. Omitted entirely if a page hasn't been
-    # seeded yet (shouldn't happen now seed_system_pages() runs first, but
-    # this keeps the seed from crashing if that ever changes).
-    about_items = []
-    if about_page is not None:
-        about_items.append(_page_child("About", about_page))
-    if contact_page is not None:
-        about_items.append(_page_child("Contact", contact_page))
-    about_items += [{"label": "Partner With Us", "url": "/partnerships"}, {"label": "Advertise", "url": "/advertise"}]
-    _seed_menu_if_empty("footer_wsf", "About", about_items)
-
-    # Legal links always resolve through the real Page row (see spec: "do
-    # not hardcode raw routes for legal links; reuse Pages CMS") — never a
-    # bare "/privacy" string, so a legal page can be safely relabeled
-    # without ever touching its route.
-    legal_items = [
-        _page_child(label, page)
-        for label, page in (
-            ("Privacy", privacy_page),
-            ("Terms", terms_page),
-            ("Cookies", cookies_page),
-            ("Editorial Policy", editorial_policy_page),
-        )
-        if page is not None
-    ]
-    _seed_menu_if_empty("footer_legal", "Legal", legal_items)
+    heal_footer_defaults()
 
     _seed_social_links_if_empty(
         [

@@ -505,3 +505,315 @@ class TestSeedIdempotency:
         admin = client.get("/api/v1/admin/footer", headers=auth_headers(admin_token)).get_json()["data"]
         assert any(g["heading"] == "Admin Edited" for g in admin["groups"])
         assert admin["settings"]["brandDescription"] == "Admin wrote this."
+
+
+def _make_footer_group(app, key, heading, items):
+    """items: list of (label, url) route-item tuples, matching the legacy
+    shape a pre-Pages-CMS footer group would actually have on disk.
+    """
+    from app.extensions import db
+    from app.models.cms import Menu, MenuItem
+
+    with app.app_context():
+        menu = Menu(key=key, heading=heading)
+        db.session.add(menu)
+        db.session.flush()
+        for index, (label, url) in enumerate(items):
+            db.session.add(MenuItem(menu_id=menu.id, label=label, item_type="route", url=url, sort_order=index))
+        db.session.commit()
+
+
+def _all_footer_destinations(app):
+    from app.services.footer import get_footer_menus
+
+    with app.app_context():
+        return [
+            item.effective_url()
+            for menu in get_footer_menus()
+            for item in menu.top_level_items()
+            if item.effective_url()
+        ]
+
+
+REQUIRED_DESTINATIONS = [
+    "/topics", "/resources", "/events",
+    "/jobs", "/opportunities", "/community", "/mentorship",
+    "/about", "/contact", "/partnerships", "/advertise",
+    "/privacy", "/terms", "/cookies", "/editorial-policy",
+]
+
+
+class TestHealFooterDefaults:
+    """flask seed-footer / app.services.footer.heal_footer_defaults() — the
+    dedicated, production-safe bootstrap/healing for the four canonical
+    footer groups, separate from `flask seed-demo`. See
+    app/services/footer.py:heal_footer_defaults for the create-only-plus-
+    heal contract this exercises.
+    """
+
+    def test_empty_footer_creates_canonical_groups_and_items(self, app):
+        from app.models.cms import Menu
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+            assert Menu.query.filter(Menu.key.like("footer_%")).count() == 0
+
+            result = heal_footer_defaults()
+
+            assert sorted(result["created_groups"]) == ["footer_explore", "footer_legal", "footer_opportunity", "footer_wsf"]
+
+        dests = _all_footer_destinations(app)
+        for required in REQUIRED_DESTINATIONS:
+            assert required in dests, f"missing {required}"
+        assert len(dests) == len(set(dests)), "duplicate destinations on a fresh footer"
+
+    def test_stale_footer_gains_missing_canonical_items(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+
+        _make_footer_group(app, "footer_explore", "Explore", [("Stories", "/topics"), ("People", "/people")])
+        _make_footer_group(app, "footer_legal", "Legal", [("Privacy Policy", "/privacy"), ("Terms of Use", "/terms")])
+        _make_footer_group(app, "footer_opportunity", "Opportunity", [("Jobs", "/jobs"), ("Opportunities", "/opportunities")])
+        _make_footer_group(app, "footer_wsf", "WSF", [("About", "/about"), ("Partnerships", "/partnerships")])
+
+        with app.app_context():
+            result = heal_footer_defaults()
+
+        assert result["created_groups"] == []  # all four groups already existed — healed in place, not recreated
+        dests = _all_footer_destinations(app)
+        for required in REQUIRED_DESTINATIONS:
+            assert required in dests, f"missing {required}"
+        assert len(dests) == len(set(dests))
+
+    def test_existing_custom_links_survive(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_explore", "Explore", [("Stories", "/topics"), ("People", "/people")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        dests = _all_footer_destinations(app)
+        assert "/people" in dests
+
+    def test_existing_custom_group_headings_survive(self, app):
+        from app.models.cms import Menu
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_opportunity", "Opportunity", [("Jobs", "/jobs")])
+        _make_footer_group(app, "footer_wsf", "WSF", [("About", "/about")])
+
+        with app.app_context():
+            heal_footer_defaults()
+            assert Menu.query.filter_by(key="footer_opportunity").first().heading == "Opportunity"
+            assert Menu.query.filter_by(key="footer_wsf").first().heading == "WSF"
+            # A new canonical group's heading is only ever set on first creation.
+            assert Menu.query.filter_by(key="footer_explore").first().heading == "Explore"
+
+    def test_existing_item_labels_survive(self, app):
+        from app.models.cms import Menu
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_legal", "Legal", [("Privacy Policy", "/privacy"), ("Terms of Use", "/terms")])
+
+        with app.app_context():
+            heal_footer_defaults()
+            menu = Menu.query.filter_by(key="footer_legal").first()
+            labels = {i.label for i in menu.top_level_items()}
+            assert "Privacy Policy" in labels
+            assert "Terms of Use" in labels
+
+    def test_old_route_privacy_prevents_duplicate_page_backed_privacy(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_legal", "Legal", [("Privacy Policy", "/privacy")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        dests = _all_footer_destinations(app)
+        assert dests.count("/privacy") == 1
+
+    def test_old_route_terms_prevents_duplicate_page_backed_terms(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_legal", "Legal", [("Terms of Use", "/terms")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        dests = _all_footer_destinations(app)
+        assert dests.count("/terms") == 1
+
+    def test_old_route_about_prevents_duplicate_page_backed_about(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_wsf", "WSF", [("About", "/about")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        dests = _all_footer_destinations(app)
+        assert dests.count("/about") == 1
+
+    def test_cookies_added_when_missing(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_legal", "Legal", [("Privacy Policy", "/privacy")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        assert "/cookies" in _all_footer_destinations(app)
+
+    def test_editorial_policy_added_when_missing(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_legal", "Legal", [("Privacy Policy", "/privacy")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        assert "/editorial-policy" in _all_footer_destinations(app)
+
+    def test_contact_added_when_missing(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_wsf", "WSF", [("About", "/about")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        assert "/contact" in _all_footer_destinations(app)
+
+    def test_advertise_added_when_missing(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_wsf", "WSF", [("About", "/about")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        assert "/advertise" in _all_footer_destinations(app)
+
+    def test_resources_events_community_mentorship_added_when_missing(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_explore", "Explore", [("Stories", "/topics")])
+        _make_footer_group(app, "footer_opportunity", "Opportunity", [("Jobs", "/jobs")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        dests = _all_footer_destinations(app)
+        for required in ("/resources", "/events", "/community", "/mentorship"):
+            assert required in dests
+
+    def test_rerun_is_idempotent(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_explore", "Explore", [("Stories", "/topics"), ("People", "/people")])
+
+        with app.app_context():
+            first = heal_footer_defaults()
+            assert first["added_items"] or first["created_groups"]
+
+            second = heal_footer_defaults()
+
+            assert second == {"created_groups": [], "added_items": []}
+
+        dests_after_first = _all_footer_destinations(app)
+        assert len(dests_after_first) == len(set(dests_after_first))
+
+    def test_no_duplicate_effective_destinations(self, app):
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_explore", "Explore", [("Stories", "/topics"), ("People", "/people")])
+        _make_footer_group(app, "footer_legal", "Legal", [("Privacy Policy", "/privacy"), ("Terms of Use", "/terms")])
+        _make_footer_group(app, "footer_opportunity", "Opportunity", [("Jobs", "/jobs"), ("Opportunities", "/opportunities")])
+        _make_footer_group(app, "footer_wsf", "WSF", [("About", "/about"), ("Partnerships", "/partnerships")])
+
+        with app.app_context():
+            heal_footer_defaults()
+
+        dests = _all_footer_destinations(app)
+        assert len(dests) == len(set(dests)), f"duplicates found: {[d for d in dests if dests.count(d) > 1]}"
+
+    def test_admin_created_footer_group_is_untouched(self, app):
+        from app.models.cms import Menu
+        from app.services.footer import heal_footer_defaults
+        from app.services.pages import seed_system_pages
+
+        with app.app_context():
+            seed_system_pages()
+        _make_footer_group(app, "footer_custom_1", "Follow Us", [("Blog", "/blog")])
+
+        with app.app_context():
+            heal_footer_defaults()
+            custom = Menu.query.filter_by(key="footer_custom_1").first()
+            assert custom is not None
+            assert custom.heading == "Follow Us"
+            items = custom.top_level_items()
+            assert len(items) == 1
+            assert items[0].label == "Blog"
+            assert items[0].url == "/blog"
+
+    def test_page_backed_item_skipped_safely_when_required_page_missing(self, app):
+        """`flask seed-pages` hasn't run yet — a page-backed canonical item
+        (Privacy/Terms/About/Contact/Cookies/Editorial Policy) with no
+        matching Page row is simply skipped, not a crash, and picked up on
+        a later heal once the page exists (see _build_footer_item).
+        """
+        from app.services.footer import heal_footer_defaults
+
+        with app.app_context():
+            result = heal_footer_defaults()
+
+        assert isinstance(result["added_items"], list)  # no exception raised
+        dests = _all_footer_destinations(app)
+        assert "/privacy" not in dests
+        assert "/topics" in dests  # route-typed canonical items are unaffected
