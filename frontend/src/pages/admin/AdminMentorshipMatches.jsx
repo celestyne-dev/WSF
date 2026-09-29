@@ -71,8 +71,8 @@ export default function AdminMentorshipMatches() {
 
   function openCreate() {
     setShowCreate(true)
-    fetchApplications({ role: 'mentor', status: 'approved', pageSize: 200 }).then((res) => setMentors(res.items))
-    fetchApplications({ role: 'mentee', status: 'approved', pageSize: 200 }).then((res) => setMentees(res.items))
+    fetchApplications({ role: 'mentor', status: 'approved', pageSize: 200 }).then((res) => setMentors(res.items)).catch(() => {})
+    fetchApplications({ role: 'mentee', status: 'approved', pageSize: 200 }).then((res) => setMentees(res.items)).catch(() => {})
   }
 
   const selectedMentor = mentors.find((m) => String(m.id) === mentorId)
