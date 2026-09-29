@@ -101,10 +101,19 @@ def test_require_production_settings_reports_every_problem_at_once():
 
 
 def test_create_app_production_boots_when_config_is_valid(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "a-real-random-production-secret")
-    monkeypatch.setenv("JWT_SECRET_KEY", "a-different-real-random-jwt-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://wsf:x@db-host:5432/womenshapingfutures")
-    monkeypatch.setenv("CORS_ORIGINS", "https://womenshapingfutures.org")
+    # config.py's class attributes are computed once, at module import
+    # time, from os.environ — by the time this test runs, config has
+    # already been imported (e.g. via conftest.py), so monkeypatching env
+    # vars here would have no effect on the already-defined ProductionConfig
+    # attributes. Patching the class attributes directly exercises the same
+    # create_app("production") code path against the values it will
+    # actually see.
+    from config import ProductionConfig
+
+    monkeypatch.setattr(ProductionConfig, "SECRET_KEY", "a-real-random-production-secret")
+    monkeypatch.setattr(ProductionConfig, "JWT_SECRET_KEY", "a-different-real-random-jwt-secret")
+    monkeypatch.setattr(ProductionConfig, "SQLALCHEMY_DATABASE_URI", "postgresql://wsf:x@db-host:5432/womenshapingfutures")
+    monkeypatch.setattr(ProductionConfig, "CORS_ORIGINS", ["https://womenshapingfutures.org"])
 
     from app import create_app
 
@@ -114,10 +123,12 @@ def test_create_app_production_boots_when_config_is_valid(monkeypatch):
 
 
 def test_create_app_production_refuses_to_boot_with_dev_secret(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "dev-secret-change-me")
-    monkeypatch.setenv("JWT_SECRET_KEY", "a-different-real-random-jwt-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://wsf:x@db-host:5432/womenshapingfutures")
-    monkeypatch.setenv("CORS_ORIGINS", "https://womenshapingfutures.org")
+    from config import ProductionConfig
+
+    monkeypatch.setattr(ProductionConfig, "SECRET_KEY", "dev-secret-change-me")
+    monkeypatch.setattr(ProductionConfig, "JWT_SECRET_KEY", "a-different-real-random-jwt-secret")
+    monkeypatch.setattr(ProductionConfig, "SQLALCHEMY_DATABASE_URI", "postgresql://wsf:x@db-host:5432/womenshapingfutures")
+    monkeypatch.setattr(ProductionConfig, "CORS_ORIGINS", ["https://womenshapingfutures.org"])
 
     from app import create_app
 
