@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import date, datetime, timezone
 
-from flask import Blueprint, Response, request
+from flask import Blueprint, Response, current_app, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 
@@ -99,7 +99,16 @@ class PartnershipInquiryListResource(Resource):
         inquiry = PartnershipInquiry(**data)
         db.session.add(inquiry)
         db.session.commit()
-        notify_partnership_received(inquiry)
+        try:
+            notify_partnership_received(inquiry)
+        except Exception:
+            # The inquiry itself is already safely committed above — a
+            # notification-layer failure (recipient lookup, a transient DB
+            # hiccup on the fan-out insert, etc.) must never turn an
+            # already-successful public submission into an error response
+            # for the visitor. Logged so it's still visible to operators
+            # rather than silently lost.
+            current_app.logger.exception("notify_partnership_received failed for inquiry %s", inquiry.id)
         return success_response(confirmation_schema.dump(inquiry), status=201)
 
 
