@@ -128,7 +128,16 @@ flask db current   # confirms what's actually applied right now
 ```bash
 flask seed-roles       # roles/permissions — safe, idempotent
 flask seed-geography   # country reference table — safe, idempotent
+flask seed-navigation  # header "primary"/"secondary" menus — safe, idempotent
 ```
+
+`seed-navigation` bootstraps the public header's core sections (Stories,
+Topics, People, Opportunities, Resources, Events, Community, Shop, and the
+utility bar) the first time it runs, and — unlike a plain create-only
+seed guard — heals a menu that already exists but is missing one of
+those sections (e.g. after a later release added a new top-level page)
+without ever renaming, reordering, or removing anything already saved
+through AdminNavigation. Safe to re-run after every deploy.
 
 **Never run `flask seed-demo` in production.** It loads fictional
 articles/jobs/opportunities/events for local development and manual

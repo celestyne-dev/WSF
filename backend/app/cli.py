@@ -8,6 +8,7 @@ from app.models.user import Role, User
 from app.services.articles_workflow import publish_due_articles
 from app.services.demo_seed import seed_demo_content
 from app.services.geography import seed_countries
+from app.services.navigation import seed_default_navigation
 from app.services.rbac import seed_roles_and_permissions
 
 
@@ -23,6 +24,22 @@ def register_cli(app):
         """Load/refresh the Country reference table."""
         seed_countries()
         click.echo("Countries seeded.")
+
+    @app.cli.command("seed-navigation")
+    def seed_navigation_command():
+        """Bootstrap/heal the "primary" and "secondary" header menus: adds
+        any of the site's core top-level sections (Stories/Topics/People/
+        Opportunities/Resources/Events/Community/Shop, and the utility bar's
+        WSF Weekly Newsletter/Partner With Us/About) that are missing from
+        an already-existing menu, without touching anything an admin has
+        already configured or relabeled. Safe to run repeatedly and safe
+        on a real production database — same category as seed-roles/
+        seed-geography, never seed-demo. See
+        app/services/navigation.py:seed_default_navigation for why a
+        create-only seed guard isn't enough here.
+        """
+        seed_default_navigation()
+        click.echo("Default navigation seeded/healed.")
 
     @app.cli.command("seed-demo")
     def seed_demo_command():

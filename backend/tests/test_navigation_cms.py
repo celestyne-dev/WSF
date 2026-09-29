@@ -472,3 +472,191 @@ class TestSeedIdempotency:
             reloaded = db.session.get(MenuItem, top_item.id)
             assert reloaded.label == "Admin Edited This Label"
             assert MenuItem.query.filter_by(menu_id=primary.id).count() == first_count
+
+
+class TestDefaultNavigationHealing:
+    """Regression coverage for the public-header bug where "primary"/
+    "secondary" were seeded once, early, and permanently missed every
+    top-level section added afterwards (Topics/Events/Community/Shop/
+    Partner With Us) because the old create-only seed guard
+    (_seed_menu_if_empty) never adds anything to a menu that already has
+    at least one item. seed_default_navigation() must heal that in place.
+    """
+
+    def test_heals_a_menu_stuck_at_an_old_partial_snapshot(self, app):
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        about_page_id = _make_page(app, key="about")
+
+        with app.app_context():
+            # Reproduce the exact reported regression: a "primary"/
+            # "secondary" that only has the sections that existed at the
+            # time it was first (and only) ever seeded.
+            primary = Menu(key="primary")
+            secondary = Menu(key="secondary")
+            db.session.add_all([primary, secondary])
+            db.session.flush()
+            for index, (label, url) in enumerate([("Stories", "/topics"), ("People", "/people"), ("Opportunities", "/opportunities"), ("Resources", "/resources")]):
+                db.session.add(MenuItem(menu_id=primary.id, label=label, item_type="route", url=url, sort_order=index))
+            db.session.add(MenuItem(menu_id=secondary.id, label="Newsletter", item_type="route", url="/newsletter", sort_order=0))
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="page", page_id=about_page_id, sort_order=1))
+            db.session.commit()
+
+            seed_default_navigation()
+
+            primary_labels = [
+                it.label
+                for it in MenuItem.query.filter_by(menu_id=primary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+            ]
+            secondary_labels = [
+                it.label
+                for it in MenuItem.query.filter_by(menu_id=secondary.id, parent_id=None)
+                .order_by(MenuItem.sort_order)
+                .all()
+            ]
+
+        assert primary_labels == [
+            "Stories",
+            "Topics",
+            "People",
+            "Opportunities",
+            "Resources",
+            "Events",
+            "Community",
+            "Shop",
+        ]
+        # "Newsletter" (not "WSF Weekly Newsletter") is exactly the stale
+        # label this regression produces — healing adds the missing
+        # "Partner With Us" destination without renaming the item that's
+        # already there (see the "never touches an existing match" test
+        # below for why that label is never silently corrected here).
+        assert secondary_labels == ["Newsletter", "Partner With Us", "About"]
+
+    def test_never_touches_an_item_that_already_points_at_a_canonical_destination(self, app):
+        """A relabel is indistinguishable, from stored data alone, between
+        "this came from an old/incomplete seed" and "an admin deliberately
+        renamed it" — so healing must never overwrite a label on a match,
+        only add what's genuinely missing (see AdminNavigation for how an
+        administrator corrects a stale label instead).
+        """
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="Our Newsletter", item_type="route", url="/newsletter", sort_order=0))
+            db.session.commit()
+
+            seed_default_navigation()
+
+            items = MenuItem.query.filter_by(menu_id=secondary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+
+        assert [it.label for it in items] == ["Our Newsletter", "Partner With Us", "About"]
+
+    def test_idempotent_second_run_is_a_no_op(self, app):
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            primary = Menu.query.filter_by(key="primary").first()
+            first_ids = [
+                it.id for it in MenuItem.query.filter_by(menu_id=primary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+            ]
+
+            seed_default_navigation()
+
+            second_ids = [
+                it.id for it in MenuItem.query.filter_by(menu_id=primary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+            ]
+
+        assert first_ids == second_ids
+
+    def test_safe_on_a_completely_empty_database(self, app):
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            assert Menu.query.filter_by(key="primary").first() is None
+            seed_default_navigation()
+            primary = Menu.query.filter_by(key="primary").first()
+            labels = [
+                it.label for it in MenuItem.query.filter_by(menu_id=primary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+            ]
+
+        assert labels == [
+            "Stories",
+            "Topics",
+            "People",
+            "Opportunities",
+            "Resources",
+            "Events",
+            "Community",
+            "Shop",
+        ]
+
+    def test_topics_group_reflects_real_published_topics_not_hardcoded_demo_slugs(self, app):
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.models.taxonomy import Topic
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            topic = Topic(slug="new-topic", name="Brand New Topic", status="published")
+            db.session.add(topic)
+            db.session.commit()
+
+            seed_default_navigation()
+
+            primary = Menu.query.filter_by(key="primary").first()
+            topics_group = MenuItem.query.filter_by(menu_id=primary.id, item_type="group", label="Topics").first()
+            child_labels = [c.label for c in topics_group.children]
+
+        assert child_labels == ["Brand New Topic"]
+
+    def test_public_navigation_endpoint_reflects_the_healed_full_header(self, client, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+
+        resp = client.get("/api/v1/public/navigation")
+        menus = resp.get_json()["data"]["menus"]
+        primary_labels = [i["label"] for i in menus["primary"]["items"]]
+        secondary_labels = [i["label"] for i in menus["secondary"]["items"]]
+
+        # "Topics" is dropped entirely from the public response (per
+        # serialize_public_menu_item) since no Topic has been published in
+        # this test's otherwise-empty database — every other section still
+        # renders regardless of that.
+        assert primary_labels == ["Stories", "People", "Opportunities", "Resources", "Events", "Community", "Shop"]
+        assert secondary_labels == ["WSF Weekly Newsletter", "Partner With Us"]
+
+    def test_seed_navigation_cli_command_heals_and_persists(self, app):
+        with app.app_context():
+            from app.extensions import db
+            from app.models.cms import Menu, MenuItem
+
+            primary = Menu(key="primary")
+            db.session.add(primary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=primary.id, label="Stories", item_type="route", url="/topics", sort_order=0))
+            db.session.commit()
+
+            runner = app.test_cli_runner()
+            result = runner.invoke(args=["seed-navigation"])
+            assert result.exit_code == 0
+
+            labels = [
+                it.label for it in MenuItem.query.filter_by(menu_id=primary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+            ]
+
+        assert "Shop" in labels
+        assert "Community" in labels

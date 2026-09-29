@@ -14,6 +14,7 @@ from app.models.people import Author, Organization, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Category, Series, Tag, Topic
 from app.services.cms import replace_menu, replace_social_links, upsert_site_settings
+from app.services.navigation import seed_default_navigation
 from app.services.site_settings import SITE_IDENTITY_KEY
 
 TOPICS = [
@@ -1237,9 +1238,20 @@ def seed_demo_content():
     # rather than only after a second `flask seed-demo`.
     _seed_pages()
 
-    # Navigation + Footer + social links — create-only (see
-    # _seed_menu_if_empty/_seed_social_links_if_empty/_seed_setting_if_absent):
-    # an admin's saved navigation/footer must never be overwritten by a reseed.
+    # Navigation + Footer + social links.
+    #
+    # "primary"/"secondary" (the header nav) are handled by
+    # seed_default_navigation() rather than the create-only
+    # _seed_menu_if_empty() used below for the footer_* groups — a plain
+    # create-only guard silently freezes a menu at whatever sections
+    # existed the first time it was ever seeded (this is exactly what
+    # caused Events/Community/Shop/Partner-With-Us to go missing from
+    # already-seeded databases once those sections were added later).
+    # seed_default_navigation() heals a menu that already exists but is
+    # missing one of the site's current top-level sections, while never
+    # touching an item that's already there — see its own docstring.
+    seed_default_navigation()
+
     about_page = Page.query.filter_by(key="about").first()
     contact_page = Page.query.filter_by(key="contact").first()
     privacy_page = Page.query.filter_by(key="privacy").first()
@@ -1250,53 +1262,6 @@ def seed_demo_content():
     def _page_child(label, page):
         return {"label": label, "item_type": "page", "page_id": page.id}
 
-    def _topic_child(slug, label):
-        return {"label": label, "item_type": "topic", "topic_id": topics[slug].id}
-
-    _seed_menu_if_empty(
-        "primary",
-        None,
-        [
-            {"label": "Stories", "url": "/topics"},
-            {
-                "label": "Topics",
-                "item_type": "group",
-                "children": [
-                    _topic_child("leadership", "Leadership"),
-                    _topic_child("careers", "Career"),
-                    _topic_child("business", "Business"),
-                    _topic_child("entrepreneurship", "Entrepreneurship"),
-                    _topic_child("workplace", "Workplace"),
-                    _topic_child("women-impact", "Women & Impact"),
-                ],
-            },
-            {
-                "label": "People",
-                "url": "/people",
-                "children": [
-                    {"label": "People Directory", "url": "/people"},
-                    {"label": "Authors", "url": "/authors"},
-                    {"label": "Series", "url": "/series"},
-                ],
-            },
-            {"label": "Opportunities", "url": "/opportunities"},
-            {"label": "Resources", "url": "/resources"},
-            {"label": "Events", "url": "/events"},
-            {"label": "Community", "url": "/community"},
-            {"label": "Shop", "url": "/shop"},
-        ],
-    )
-    # The header's dark utility bar reads this "secondary" menu — About
-    # links to the real Pages-CMS row (item_type="page") rather than a
-    # hard-coded "/about" string, so a future slug change there needs no
-    # matching Navigation edit.
-    secondary_items = [
-        {"label": "WSF Weekly Newsletter", "url": "/newsletter"},
-        {"label": "Partner With Us", "url": "/partnerships"},
-    ]
-    if about_page is not None:
-        secondary_items.append({"label": "About", "item_type": "page", "page_id": about_page.id})
-    _seed_menu_if_empty("secondary", None, secondary_items)
     _seed_menu_if_empty(
         "footer_explore",
         "Explore",

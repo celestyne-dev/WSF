@@ -2,7 +2,8 @@ import re
 
 from marshmallow import ValidationError
 
-from app.models.cms import MENU_MAX_DEPTH
+from app.extensions import db
+from app.models.cms import MENU_MAX_DEPTH, Menu, MenuItem
 from app.models.page import Page
 from app.models.taxonomy import Series, Topic
 
@@ -160,3 +161,187 @@ def find_duplicate_top_level_destinations(items):
         else:
             seen[dest] = item.label
     return warnings
+
+
+# ---------------------------------------------------------------------------
+# Default-navigation bootstrap. Idempotent and safe to run against a real
+# production database — the same category as seed_roles_and_permissions()/
+# seed_countries(), never seed_demo_content() (which must never run in
+# production). See seed_default_navigation()'s own docstring below for why
+# this exists: an already-seeded "primary"/"secondary" menu must be healed
+# in place (missing sections added) rather than left permanently stuck at
+# whatever subset of sections existed the first time it was ever seeded.
+# ---------------------------------------------------------------------------
+
+
+def _canonical_item_key(data):
+    """The destination identity a canonical default item and an existing
+    MenuItem are compared by — deliberately never the label, so an admin's
+    own relabeling of an existing item (e.g. shortening "WSF Weekly
+    Newsletter" back to "Newsletter") is never treated as "missing" and
+    never overwritten on a later heal run.
+    """
+    item_type = data.get("item_type", "route")
+    if item_type in ("route", "external"):
+        return (item_type, data.get("url"))
+    if item_type == "group":
+        return (item_type, data.get("label"))
+    if item_type == "page":
+        return (item_type, data.get("page_id"))
+    if item_type == "topic":
+        return (item_type, data.get("topic_id"))
+    if item_type == "series":
+        return (item_type, data.get("series_id"))
+    return (item_type, data.get("label"))
+
+
+def _existing_item_key(item):
+    if item.item_type in ("route", "external"):
+        return (item.item_type, item.url)
+    if item.item_type == "group":
+        return (item.item_type, item.label)
+    if item.item_type == "page":
+        return (item.item_type, item.page_id)
+    if item.item_type == "topic":
+        return (item.item_type, item.topic_id)
+    if item.item_type == "series":
+        return (item.item_type, item.series_id)
+    return (item.item_type, item.label)
+
+
+def _build_menu_item(menu_id, data, parent_id=None):
+    item = MenuItem(
+        menu_id=menu_id,
+        parent_id=parent_id,
+        label=data["label"],
+        item_type=data.get("item_type", "route"),
+        url=data.get("url"),
+        topic_id=data.get("topic_id"),
+        series_id=data.get("series_id"),
+        page_id=data.get("page_id"),
+        open_new_tab=data.get("open_new_tab", False),
+        style=data.get("style", "standard"),
+        sort_order=0,
+        visible=True,
+    )
+    db.session.add(item)
+    db.session.flush()  # assign item.id before recursing into children
+    for index, child_data in enumerate(data.get("children") or []):
+        child = _build_menu_item(menu_id, child_data, parent_id=item.id)
+        child.sort_order = index
+    return item
+
+
+def heal_menu_defaults(key, canonical_items):
+    """Ensure every canonical top-level destination in `canonical_items`
+    is present somewhere in the `key` menu, adding only what's missing —
+    never renaming, reordering, or removing anything that already exists,
+    whether that item was seeded earlier or hand-added/edited by an admin
+    through AdminNavigation. Idempotent: once every canonical destination
+    is present, a further call is a no-op.
+
+    This is the fix for a real regression class: "primary"/"secondary"
+    were seeded once (see seed_default_navigation()) back when the site
+    had fewer top-level sections (e.g. before Events/Community/Shop/
+    Partnerships existed), and the old create-only seed guard
+    (`_seed_menu_if_empty`, still used for the footer_* menus) never adds
+    anything to a menu that already has at least one item — so a database
+    seeded early is permanently stuck missing every section added since,
+    with no automated way to catch back up. This heals that in place
+    without touching what's already there, and is called from both
+    `flask seed-navigation` (safe on a real production database) and
+    `flask seed-demo` (so a fresh dev database still gets the full menu on
+    the very first run, same as before).
+    """
+    menu = Menu.query.filter_by(key=key).first()
+    if menu is None:
+        menu = Menu(key=key)
+        db.session.add(menu)
+        db.session.flush()
+
+    existing_items = MenuItem.query.filter_by(menu_id=menu.id, parent_id=None).order_by(MenuItem.sort_order).all()
+    existing_keys = {_existing_item_key(it) for it in existing_items}
+
+    canonical_keys = [_canonical_item_key(c) for c in canonical_items]
+    rank_by_key = {k: idx for idx, k in enumerate(canonical_keys)}
+
+    missing = [(idx, c) for idx, c in enumerate(canonical_items) if canonical_keys[idx] not in existing_keys]
+    if not missing:
+        return  # every canonical destination already exists — nothing to heal
+
+    merged = list(existing_items)
+    for rank, canonical in missing:
+        new_item = _build_menu_item(menu.id, canonical)
+        # Insert right before the first still-existing item that comes
+        # after this one in canonical order, wherever that sibling
+        # currently sits — an admin-added custom item (no canonical rank
+        # at all) never blocks or repositions this insertion.
+        insert_at = len(merged)
+        for pos, existing in enumerate(merged):
+            existing_rank = rank_by_key.get(_existing_item_key(existing))
+            if existing_rank is not None and existing_rank > rank:
+                insert_at = pos
+                break
+        merged.insert(insert_at, new_item)
+
+    for index, item in enumerate(merged):
+        item.sort_order = index
+        db.session.add(item)
+
+
+def seed_default_navigation():
+    """Idempotent, production-safe default-navigation bootstrap for the
+    two structural header menus. Safe to run on a completely empty
+    database (creates "primary"/"secondary" from scratch, same as a first
+    `seed-demo` run always has) and equally safe to run repeatedly against
+    a real production database that has never run — and must never run —
+    `seed-demo` (see heal_menu_defaults()'s docstring for why this is not
+    a create-only guard). The "Topics" dropdown is built from whatever
+    Topic rows actually exist and are published at the time this runs,
+    never a hardcoded demo slug list, so it stays correct as real topics
+    are added later — an empty "Topics" group (no topics published yet)
+    is expected and simply won't render publicly until the CMS has
+    published at least one Topic (see serialize_public_menu_item).
+    """
+    about_page = Page.query.filter_by(key="about").first()
+    topics = Topic.query.filter_by(status="published").order_by(Topic.sort_order, Topic.id).all()
+
+    primary_items = [
+        {"label": "Stories", "item_type": "route", "url": "/topics"},
+        {
+            "label": "Topics",
+            "item_type": "group",
+            "children": [{"label": t.name, "item_type": "topic", "topic_id": t.id} for t in topics],
+        },
+        {
+            "label": "People",
+            "item_type": "route",
+            "url": "/people",
+            "children": [
+                {"label": "People Directory", "item_type": "route", "url": "/people"},
+                {"label": "Authors", "item_type": "route", "url": "/authors"},
+                {"label": "Series", "item_type": "route", "url": "/series"},
+            ],
+        },
+        {"label": "Opportunities", "item_type": "route", "url": "/opportunities"},
+        {"label": "Resources", "item_type": "route", "url": "/resources"},
+        {"label": "Events", "item_type": "route", "url": "/events"},
+        {"label": "Community", "item_type": "route", "url": "/community"},
+        {"label": "Shop", "item_type": "route", "url": "/shop"},
+    ]
+    secondary_items = [
+        {"label": "WSF Weekly Newsletter", "item_type": "route", "url": "/newsletter"},
+        {"label": "Partner With Us", "item_type": "route", "url": "/partnerships"},
+    ]
+    if about_page is not None:
+        secondary_items.append({"label": "About", "item_type": "page", "page_id": about_page.id})
+
+    heal_menu_defaults("primary", primary_items)
+    heal_menu_defaults("secondary", secondary_items)
+    # Self-contained commit — same convention as seed_roles_and_permissions()/
+    # seed_countries(), since `flask seed-navigation` calls this directly
+    # with no other commit in the request/command lifecycle. Calling this
+    # from inside seed_demo_content() (which commits again at its own end)
+    # is still safe: this only flushes work that function has already
+    # finished building by the time it gets here.
+    db.session.commit()
