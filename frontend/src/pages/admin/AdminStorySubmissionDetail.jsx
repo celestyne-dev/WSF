@@ -110,7 +110,10 @@ export default function AdminStorySubmissionDetail() {
         setSeries(seriesList)
         setPeople(peopleRes.items)
         setOrganizations(orgsRes.items)
-        setEditors(editorList)
+        // fetchAdminUsers() returns {items, pagination}, same as
+        // fetchPeople()/fetchOrganizations()/fetchAuthors() above — not a
+        // bare array.
+        setEditors(editorList.items)
         setAuthors(authorsRes.items)
         setHistory(historyEntries)
       })

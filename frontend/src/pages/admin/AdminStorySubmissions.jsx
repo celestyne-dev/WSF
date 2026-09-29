@@ -32,7 +32,11 @@ export default function AdminStorySubmissions() {
     fetchCountries().then(setCountries).catch(() => {})
     fetchTopics().then(setTopics).catch(() => {})
     fetchSeries().then(setSeries).catch(() => {})
-    fetchAdminUsers().then(setEditors).catch(() => {})
+    // fetchAdminUsers() returns the same {items, pagination} paginated-list
+    // shape as fetchSubmissions()/fetchPeople()/fetchOrganizations() below —
+    // never a bare array — so the editor options need the same `.items`
+    // unwrap `rows` already gets from `res.items` in the effect below.
+    fetchAdminUsers().then((res) => setEditors(res.items)).catch(() => {})
   }, [])
 
   useEffect(() => {
