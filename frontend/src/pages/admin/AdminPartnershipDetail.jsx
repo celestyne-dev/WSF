@@ -96,7 +96,9 @@ export default function AdminPartnershipDetail() {
         setStatusValue(p.status)
         setAssigneeId(p.assignedToId ? String(p.assignedToId) : '')
         setOrgSlug(p.organizationSlug || '')
-        setUsers(userList)
+        // fetchAdminUsers() returns {items, pagination}, same as
+        // fetchOrganizations() below — not a bare array.
+        setUsers(userList.items)
         setOrganizations(orgRes.items)
         setCountries([...countryList].sort((a, b) => a.name.localeCompare(b.name)))
         setHistory(historyEntries)

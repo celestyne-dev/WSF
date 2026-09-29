@@ -22,7 +22,10 @@ export default function AdminPartnerships() {
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
-    fetchAdminUsers().then(setUsers).catch(() => {})
+    // fetchAdminUsers() returns the same {items, pagination} paginated-list
+    // shape as fetchPartnerships() below, never a bare array — see the same
+    // fix already applied to AdminStorySubmissions.jsx.
+    fetchAdminUsers().then((res) => setUsers(res.items)).catch(() => {})
   }, [])
 
   useEffect(() => {
