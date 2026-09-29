@@ -7,7 +7,7 @@ from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 
 from app.auth.decorators import permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.article import Article
 from app.models.cms import SiteSetting
 from app.models.media import Media
@@ -115,6 +115,9 @@ def _validate_issue_readiness(issue):
 
 
 class SubscribeResource(Resource):
+    # Public, unauthenticated write endpoint — see task spec's RATE
+    # LIMITING section.
+    @limiter.limit("5 per minute")
     def post(self):
         data = SubscribeInputSchema().load(request.get_json(silent=True) or {})
         subscriber, created, reactivated = upsert_subscriber(

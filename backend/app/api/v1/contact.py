@@ -15,7 +15,7 @@ from flask_jwt_extended import current_user
 from flask_restful import Api, Resource
 
 from app.auth.decorators import permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.contact import ContactInquiry, ContactNote
 from app.models.user import User
 from app.schemas.contact import (
@@ -89,6 +89,11 @@ class ContactInquiryListResource(Resource):
         result = paginate(query, inquiry_list_schema)
         return success_response(result["items"], meta=result["meta"])
 
+    # Public, unauthenticated write endpoint — see task spec's RATE
+    # LIMITING section. Conservative per-IP limit against scripted spam;
+    # the honeypot/timing check below already catches obvious bots, this
+    # is a backstop against a burst of genuinely form-shaped requests.
+    @limiter.limit("5 per minute")
     def post(self):
         """The public submission endpoint — write-only besides a small
         {reference, status} confirmation. Never returns the inquiry's id,

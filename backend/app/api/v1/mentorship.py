@@ -5,7 +5,7 @@ from flask_jwt_extended import current_user
 from flask_restful import Api, Resource
 
 from app.auth.decorators import permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.audit import AuditLog
 from app.models.mentorship import (
     MATCH_ACTIVE_STATUSES,
@@ -268,6 +268,9 @@ class ApplicationListResource(Resource):
         result = paginate(_build_application_query(), application_schema)
         return success_response(result["items"], meta=result["meta"])
 
+    # Public, unauthenticated write endpoint — see task spec's RATE
+    # LIMITING section.
+    @limiter.limit("5 per minute")
     def post(self):
         data = MentorshipApplicationSubmitInputSchema().load(request.get_json(silent=True) or {})
         program = _get_program_or_404(data["program_id"])

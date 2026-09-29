@@ -73,7 +73,19 @@ def register_error_handlers(app):
 
     @app.errorhandler(Exception)
     def handle_unexpected_error(exc):
-        app.logger.exception("Unhandled exception")
+        from flask import g
+
+        # Mirror the IntegrityError handler above: an unexpected exception
+        # may have left the session mid-transaction, and this request's
+        # own teardown already discards the session regardless — but
+        # rolling back explicitly here (rather than leaving a dangling
+        # transaction until teardown) means any code that still runs
+        # before teardown in this same request (e.g. another
+        # after_request hook touching the DB) sees a clean session rather
+        # than inheriting a failed one.
+        db.session.rollback()
+        request_id = getattr(g, "request_id", None)
+        app.logger.exception("Unhandled exception (request_id=%s)", request_id)
         return error_response(
             "An unexpected error occurred.", 500, code="internal_error"
         )

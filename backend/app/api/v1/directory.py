@@ -18,7 +18,7 @@ from sqlalchemy import cast
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.auth.decorators import permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.directory import (
     DirectoryCategory,
     DirectoryListing,
@@ -227,6 +227,9 @@ class DirectoryListingPublicDetailResource(Resource):
 
 
 class DirectorySubmissionCreateResource(Resource):
+    # Public, unauthenticated write endpoint — see task spec's RATE
+    # LIMITING section.
+    @limiter.limit("5 per minute")
     def post(self):
         payload = request.get_json(silent=True) or {}
         data = DirectorySubmissionInputSchema().load(payload)

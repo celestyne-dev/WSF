@@ -7,7 +7,7 @@ from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 
 from app.auth.decorators import permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.audit import AuditLog
 from app.models.cms import SiteSetting
 from app.models.commerce import PartnershipInquiry, PartnershipNote
@@ -94,6 +94,9 @@ class PartnershipInquiryListResource(Resource):
         result = paginate(_build_query(), inquiry_schema)
         return success_response(result["items"], meta=result["meta"])
 
+    # Public, unauthenticated write endpoint — see task spec's RATE
+    # LIMITING section.
+    @limiter.limit("5 per minute")
     def post(self):
         data = PartnershipInquiryInputSchema().load(request.get_json(silent=True) or {})
         inquiry = PartnershipInquiry(**data)

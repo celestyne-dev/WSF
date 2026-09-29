@@ -10,7 +10,7 @@ from flask_jwt_extended import (
 )
 from flask_restful import Api, Resource
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import Role, User
 from app.schemas.user import LoginSchema, RegisterSchema, UserSchema
@@ -60,6 +60,14 @@ class RegisterResource(Resource):
 
 
 class LoginResource(Resource):
+    # Login brute-force protection (see task spec's RATE LIMITING/LOGIN
+    # BRUTE FORCE sections): conservative enough to not bother a real user
+    # mistyping a password a few times, tight enough to make scripted
+    # credential-stuffing slow. Per-IP, in-memory (see app/extensions.py's
+    # limiter setup for the multi-worker-process caveat) — this is not
+    # account lockout (no account-level state is written), so it can't be
+    # used to lock a legitimate user out by repeatedly failing their login.
+    @limiter.limit("10 per minute")
     def post(self):
         data = login_schema.load(request.get_json(silent=True) or {})
         user = User.query.filter_by(email=data["email"].lower()).first()

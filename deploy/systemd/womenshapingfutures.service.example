@@ -1,0 +1,42 @@
+# EXAMPLE systemd unit for the Gunicorn/Flask backend — Hostinger VPS.
+#
+# NOT installed automatically. To use: copy to
+# /etc/systemd/system/womenshapingfutures.service on the real server, fill
+# in the real paths/user, then (as a manual, separate operation):
+#   systemctl daemon-reload
+#   systemctl enable --now womenshapingfutures
+#
+# Secrets live in EnvironmentFile, never inline in this unit file — that
+# file (e.g. /var/www/womenshapingfutures/backend/.env, permissions 600,
+# owned by the service user) is exactly backend/.env.example filled in
+# with real production values. This unit file itself carries no secret.
+
+[Unit]
+Description=Women Shaping Futures — Gunicorn/Flask API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+# Type=simple (the default) — Gunicorn does not speak systemd's sd_notify
+# protocol, so Type=notify would leave systemd waiting indefinitely for a
+# readiness signal that never arrives.
+Type=simple
+# Replace with the real deploy path and a dedicated non-root service user
+# (never run application code as root).
+User=womenshapingfutures
+Group=womenshapingfutures
+WorkingDirectory=/var/www/womenshapingfutures/backend
+EnvironmentFile=/var/www/womenshapingfutures/backend/.env
+Environment=FLASK_CONFIG=production
+ExecStart=/var/www/womenshapingfutures/backend/.venv/bin/gunicorn -c gunicorn.conf.py "run:app"
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# A conservative sandboxing baseline — tighten further once the exact
+# media/log paths this process needs are confirmed on the real VPS.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

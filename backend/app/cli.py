@@ -1,4 +1,7 @@
+import os
+
 import click
+from flask import current_app
 
 from app.extensions import db
 from app.models.user import Role, User
@@ -75,3 +78,52 @@ def register_cli(app):
 
         db.session.commit()
         click.echo(f"Super admin ready: {email}")
+
+    @app.cli.command("production-check")
+    def production_check_command():
+        """Read-only pre-flight check for a production deployment. Verifies
+        presence/shape of critical configuration WITHOUT printing any
+        secret value, and never touches the database (no migration, no
+        seed, no write) — safe to run repeatedly, including against a live
+        deployment, as a deploy-script sanity gate (see DEPLOYMENT.md).
+        Exits non-zero on any failure so it can gate a deploy script.
+        """
+        from config import require_production_settings
+
+        problems = []
+        warnings = []
+
+        try:
+            require_production_settings(current_app)
+        except RuntimeError as exc:
+            # require_production_settings' own message is already
+            # secret-free (it names which variable is missing/placeholder,
+            # never its value) — safe to echo directly.
+            problems.append(str(exc))
+
+        if current_app.config.get("ENV") != "production":
+            warnings.append(f"FLASK_CONFIG is '{current_app.config.get('ENV')}', not 'production'.")
+        if current_app.debug:
+            problems.append("DEBUG is True — must be False in production.")
+        if current_app.config.get("TRUSTED_PROXY_COUNT", 0) < 1:
+            warnings.append("TRUSTED_PROXY_COUNT is 0 — expected >=1 behind Nginx.")
+
+        media_root = current_app.config.get("MEDIA_ROOT")
+        if not media_root:
+            problems.append("MEDIA_ROOT is not set.")
+        elif not os.path.isdir(media_root):
+            warnings.append(f"MEDIA_ROOT does not exist yet: {media_root} (create it before first upload).")
+        elif not os.access(media_root, os.W_OK):
+            problems.append(f"MEDIA_ROOT is not writable by this process: {media_root}")
+
+        if problems:
+            click.echo("PRODUCTION CHECK FAILED:")
+            for p in problems:
+                click.echo(f"  ✗ {p}")
+            for w in warnings:
+                click.echo(f"  ! {w}")
+            raise SystemExit(1)
+
+        click.echo("PRODUCTION CHECK PASSED.")
+        for w in warnings:
+            click.echo(f"  ! {w}")

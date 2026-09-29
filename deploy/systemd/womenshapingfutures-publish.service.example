@@ -1,0 +1,20 @@
+# EXAMPLE systemd service — runs `flask publish-due-content` once, then
+# exits. Triggered on a schedule by the paired
+# womenshapingfutures-publish.timer.example (see that file). NOT installed
+# automatically. See app/cli.py:publish_due_content_command's own
+# docstring for the command's concurrency-safety/idempotency guarantees —
+# this unit adds no logic of its own, it only invokes that existing,
+# already-safe command.
+
+[Unit]
+Description=Women Shaping Futures — publish due scheduled content
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=womenshapingfutures
+Group=womenshapingfutures
+WorkingDirectory=/var/www/womenshapingfutures/backend
+EnvironmentFile=/var/www/womenshapingfutures/backend/.env
+Environment=FLASK_CONFIG=production
+ExecStart=/var/www/womenshapingfutures/backend/.venv/bin/flask publish-due-content

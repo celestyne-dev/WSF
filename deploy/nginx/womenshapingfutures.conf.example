@@ -1,0 +1,123 @@
+# EXAMPLE Nginx site config for Women Shaping Futures — Hostinger VPS.
+#
+# This file is NOT installed automatically by anything in this repository.
+# It is a starting point: copy it to /etc/nginx/sites-available/ on the
+# real server, adjust paths/domain, symlink into sites-enabled, test with
+# `nginx -t`, then reload — all of that is a manual VPS operation, done
+# outside of and after this repository's own work (see DEPLOYMENT.md).
+#
+# Architecture this encodes:
+#   https://womenshapingfutures.org/            -> React/Vite static build
+#   https://womenshapingfutures.org/api/...      -> Gunicorn (Flask) on 127.0.0.1:8000
+#   https://womenshapingfutures.org/media/...    -> media files on disk (Nginx serves directly, Flask never in this path)
+#   everything else under a client-side route    -> index.html (SPA fallback)
+
+# ---------------------------------------------------------------------
+# HTTP -> HTTPS redirect. Only add this server block once a real TLS
+# certificate is provisioned (see DEPLOYMENT.md's TLS section) — until
+# then, serve directly over HTTP-only from the HTTPS block below with
+# `listen 80;` instead, so the site isn't dead in the meantime.
+# ---------------------------------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name womenshapingfutures.org www.womenshapingfutures.org;
+    return 301 https://womenshapingfutures.org$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name womenshapingfutures.org;
+
+    # Certificate paths — filled in by certbot/Let's Encrypt or Hostinger's
+    # own TLS tooling when TLS is actually provisioned; not part of this
+    # repository's scope (see task: "Do not issue certificates").
+    ssl_certificate     /etc/letsencrypt/live/womenshapingfutures.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/womenshapingfutures.org/privkey.pem;
+
+    # Only add this once HTTPS is confirmed working end-to-end — an HSTS
+    # header sent before TLS is solid can lock out visitors' browsers from
+    # ever falling back to plain HTTP for the max-age duration. See
+    # DEPLOYMENT.md's HSTS note.
+    # add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+
+    # www -> apex canonical redirect, matching this app's existing
+    # canonical-domain convention (see PUBLIC_SITE_URL in backend/.env.example
+    # and frontend useSeo.js) — never invent a new canonical strategy here.
+    if ($host = www.womenshapingfutures.org) {
+        return 301 https://womenshapingfutures.org$request_uri;
+    }
+
+    client_max_body_size 12m;  # a little above MAX_UPLOAD_SIZE (10MB default) so Nginx's
+                                # own limit isn't what a legitimate near-the-limit upload hits first —
+                                # Flask's own MAX_CONTENT_LENGTH still enforces the real limit and
+                                # returns a clean 413 (see app/utils/responses.py's HTTPException handler).
+
+    # --- React/Vite static build -----------------------------------
+    root /var/www/womenshapingfutures/frontend/dist;
+    index index.html;
+
+    # Hashed build assets (Vite's default output naming) — safe to cache
+    # for a very long time since the filename itself changes on any
+    # content change.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # index.html must always be revalidated — it's what references the
+    # current hashed asset filenames, so caching it would pin visitors to
+    # a stale deploy.
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    # --- API: proxy to Gunicorn --------------------------------------
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Matches app/__init__.py's TRUSTED_PROXY_COUNT=1 and
+        # gunicorn.conf.py's forwarded_allow_ips — exactly one hop.
+    }
+
+    # --- Media: served directly by Nginx, never proxied to Flask -----
+    # MEDIA_ROOT/MEDIA_URL must match backend/.env's values exactly.
+    location /media/ {
+        alias /var/www/womenshapingfutures/media/;
+        add_header Cache-Control "public, max-age=604800";
+        # Never execute anything here as a script — this directory holds
+        # user-uploaded images only (validated/re-encoded to WebP by
+        # app/services/media.py), and Nginx's default `location` block
+        # never invokes PHP/CGI/etc. handlers for it. Do not add a
+        # fastcgi_pass or similar directive to this block.
+    }
+
+    # --- SPA fallback: every other path resolves client-side ---------
+    # This is what makes direct navigation to e.g. /learning/some-program
+    # or /admin/articles work instead of a raw Nginx 404 — Vite Router
+    # takes over once index.html loads. This must come after /api/ and
+    # /media/ above so those two prefixes are never swallowed by it.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # --- Never serve source/config/version-control files -------------
+    location ~ /\.(?!well-known) {
+        deny all;
+    }
+    location ~* \.(env|git|pyc|db|sqlite3|log)$ {
+        deny all;
+    }
+
+    # --- Basic gzip for text assets -----------------------------------
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 1024;
+    # Images are already delivered as WebP by app/services/media.py —
+    # do not add image recompression here.
+}

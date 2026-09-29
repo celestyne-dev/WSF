@@ -1,0 +1,8 @@
+# Women Shaping Futures — public site is crawlable; the admin CMS is a
+# client-side-only route (no server-rendered content to index) and is
+# excluded here as a courtesy signal, not as access control — the real
+# protection is the backend's own authentication (see DEPLOYMENT.md's
+# security checklist).
+User-agent: *
+Disallow: /admin/
+

@@ -5,7 +5,7 @@ from flask_jwt_extended import current_user
 from flask_restful import Api, Resource
 
 from app.auth.decorators import permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.article import Article
 from app.models.audit import AuditLog
 from app.models.geography import Country
@@ -104,6 +104,9 @@ class SubmissionListResource(Resource):
         result = paginate(query, submission_list_schema)
         return success_response(result["items"], meta=result["meta"])
 
+    # Public, unauthenticated write endpoint — see task spec's RATE
+    # LIMITING section.
+    @limiter.limit("5 per minute")
     def post(self):
         """The public submission endpoint — write-only besides a small
         confirmation. Never returns the submission's id or any stored

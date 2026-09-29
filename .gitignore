@@ -25,3 +25,11 @@ backend/.pytest_cache/
 .vscode/
 .idea/
 frontend/.scratch/
+
+# Database/media backups (see DEPLOYMENT.md's backup section) — these are
+# an operator's local/off-server artifacts, never committed to the repo.
+*.sql
+*.sql.gz
+*.dump
+backup-*.tar.gz
+media-backup-*.tar.gz

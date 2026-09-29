@@ -1,0 +1,17 @@
+# EXAMPLE systemd timer — fires womenshapingfutures-publish.service.example
+# every 5 minutes. NOT installed automatically; a cron entry running the
+# same command on the same cadence works identically if cron is preferred
+# over systemd timers on the target VPS — see DEPLOYMENT.md for both
+# forms. Either way, this only ever invokes the existing
+# `flask publish-due-content` CLI command — nothing here builds a new
+# scheduler.
+
+[Unit]
+Description=Run Women Shaping Futures scheduled-publish check every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+
+[Install]
+WantedBy=timers.target

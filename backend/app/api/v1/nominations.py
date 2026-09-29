@@ -6,7 +6,7 @@ from flask_restful import Api, Resource
 from sqlalchemy import func
 
 from app.auth.decorators import permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.article import Article
 from app.models.audit import AuditLog
 from app.models.geography import Country
@@ -137,6 +137,9 @@ class NominationListResource(Resource):
         result = paginate(query, nomination_list_schema)
         return success_response(result["items"], meta=result["meta"])
 
+    # Public, unauthenticated write endpoint — see task spec's RATE
+    # LIMITING section.
+    @limiter.limit("5 per minute")
     def post(self):
         """The public nomination endpoint — write-only besides a small
         confirmation. Never returns the nomination's id or any stored
