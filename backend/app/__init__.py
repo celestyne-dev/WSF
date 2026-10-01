@@ -12,6 +12,25 @@ def create_app(config_name="development"):
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
 
+    # Flask-RESTful's Api intercepts every exception raised inside one of
+    # its own Resource methods before Flask's own error handlers ever see
+    # it (see its error_router()/handle_error() in flask_restful/__init__.py).
+    # For anything that isn't a werkzeug HTTPException — which includes our
+    # ApiError, MarshmallowValidationError, and IntegrityError, all handled
+    # below by register_error_handlers() — it builds its own bare
+    # {"message": "Internal Server Error"} 500 response instead, UNLESS
+    # Flask's PROPAGATE_EXCEPTIONS resolves true, in which case it re-raises
+    # and lets our handlers run as designed. That resolves true by default
+    # under pytest (TestingConfig.TESTING=True) — which is why the test
+    # suite never caught this — but resolves false for `flask run` without
+    # FLASK_DEBUG=1 and for a real Gunicorn deployment (ProductionConfig.
+    # DEBUG=False), so a real request hitting any ApiError (403/404/409/422)
+    # was silently downgraded to an opaque 500 with no envelope. Setting
+    # this explicitly makes that propagation unconditional, independent of
+    # debug/testing flags, matching how the suite already (accidentally)
+    # verified it.
+    app.config["PROPAGATE_EXCEPTIONS"] = True
+
     if config_name == "production":
         # Fail fast rather than silently serving with a guessable secret,
         # a missing database, or a wide-open CORS policy — see

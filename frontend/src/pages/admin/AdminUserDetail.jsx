@@ -81,6 +81,16 @@ export default function AdminUserDetail() {
   useEffect(() => {
     if (isNew) return
     let active = true
+    // Reset loading/error state for this id — this effect also fires when
+    // the route transitions straight from /admin/users/new (where `user`
+    // was seeded to `null`, not `undefined`) to /admin/users/<id> on the
+    // same mounted component, and when navigating between two different
+    // existing ids. Without this, a stale `null`/previous user or a stale
+    // notFound/loadError flag from the prior id could render before this
+    // fetch resolves.
+    setUser(undefined)
+    setNotFound(false)
+    setLoadError(null)
     fetchAdminUser(id)
       .then((u) => {
         if (!active) return
@@ -181,7 +191,14 @@ export default function AdminUserDetail() {
 
   if (loadError) return <EmptyState title="Couldn't load this user" description={loadError} />
   if (notFound) return <EmptyState title="User not found" description="This account may have been removed or the URL is incorrect." />
-  if (!isNew && user === undefined) return <PageLoader />
+  // `!user` (not `user === undefined`) deliberately catches both states:
+  // `undefined` is the normal "fetch in flight" value, but `user` is also
+  // seeded to `null` for the isNew case — when the route transitions from
+  // /admin/users/new to /admin/users/<id> on the same mounted component,
+  // the very next render sees isNew=false with that stale `null` still in
+  // state, before the effect above has a chance to reset it. 404/403/error
+  // are handled above this and always win, so this never masks them.
+  if (!isNew && !user) return <PageLoader />
 
   return (
     <div>
