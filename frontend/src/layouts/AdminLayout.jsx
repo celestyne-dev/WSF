@@ -1,169 +1,48 @@
 import { useEffect } from 'react'
-import { NavLink, Outlet, Navigate } from 'react-router-dom'
+import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import {
-  LayoutDashboard,
-  Newspaper,
-  Users,
-  Briefcase,
-  Award,
-  CalendarDays,
-  BookOpen,
-  Mail,
-  Inbox,
-  Star,
-  Handshake,
-  Gem,
-  Megaphone,
-  Image,
-  Search,
-  BarChart3,
-  Settings,
-  LogOut,
-  ExternalLink,
-  LayoutTemplate,
-  PenSquare,
-  Building2,
-  ShoppingBag,
-  Send,
-  Users2,
-  GraduationCap,
-  UserCheck,
-  UserPlus,
-  Link2,
-  Hash,
-  Folder,
-  Layers,
-  Tag,
-  FileText,
-  Compass,
-  PanelBottom,
-  History,
-  ShieldCheck,
-  MessageSquare,
-  Library,
-  Bell,
-} from 'lucide-react'
+import { LogOut, ExternalLink } from 'lucide-react'
 import { restoreSession, logout } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
-import { hasPermission } from '../utils/permissions'
+import { NAV_GROUPS } from '../constants/adminNav'
+import { hasPermission, hasCmsAccess, getDefaultCmsRoute } from '../utils/permissions'
+import { canAccessAdminRoute } from '../utils/routeAccess'
 import NotificationBell from '../components/cms/NotificationBell'
-
-const NAV_GROUPS = [
-  {
-    heading: 'Overview',
-    items: [
-      { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
-      // Available to every authenticated CMS user, unlike most other nav
-      // items — this is a personal inbox, not a feature gated by a
-      // specific permission (see backend api/v1/notifications.py's own
-      // docstring on the same point).
-      { to: '/admin/notifications', icon: Bell, label: 'Notifications' },
-    ],
-  },
-  {
-    heading: 'Content',
-    items: [
-      { to: '/admin/articles', icon: Newspaper, label: 'Articles' },
-      { to: '/admin/editorial-calendar', icon: CalendarDays, label: 'Editorial Calendar' },
-      { to: '/admin/homepage', icon: LayoutTemplate, label: 'Homepage' },
-      { to: '/admin/navigation', icon: Compass, label: 'Navigation' },
-      { to: '/admin/footer', icon: PanelBottom, label: 'Footer' },
-      { to: '/admin/people', icon: Users, label: 'People' },
-      { to: '/admin/authors', icon: PenSquare, label: 'Authors' },
-      { to: '/admin/organizations', icon: Building2, label: 'Organizations' },
-      { to: '/admin/pages', icon: FileText, label: 'Pages' },
-    ],
-  },
-  {
-    heading: 'Directory',
-    items: [
-      { to: '/admin/directory/listings', icon: Building2, label: 'Listings', permission: ['directory.manage'] },
-      { to: '/admin/directory/submissions', icon: Inbox, label: 'Submissions', permission: ['directory.manage'] },
-      { to: '/admin/directory/categories', icon: Folder, label: 'Categories', permission: ['taxonomy.manage'] },
-    ],
-  },
-  {
-    heading: 'Taxonomy',
-    items: [
-      { to: '/admin/taxonomy/topics', icon: Hash, label: 'Topics' },
-      { to: '/admin/taxonomy/categories', icon: Folder, label: 'Categories' },
-      { to: '/admin/taxonomy/series', icon: Layers, label: 'Series' },
-      { to: '/admin/taxonomy/tags', icon: Tag, label: 'Tags' },
-    ],
-  },
-  {
-    heading: 'Opportunity',
-    items: [
-      { to: '/admin/jobs', icon: Briefcase, label: 'Jobs' },
-      { to: '/admin/opportunities', icon: Award, label: 'Opportunities' },
-      { to: '/admin/events', icon: CalendarDays, label: 'Events' },
-      { to: '/admin/resources', icon: BookOpen, label: 'Resources' },
-    ],
-  },
-  {
-    heading: 'Shop',
-    items: [{ to: '/admin/products', icon: ShoppingBag, label: 'Products' }],
-  },
-  {
-    heading: 'Learning',
-    items: [{ to: '/admin/learning', icon: Library, label: 'Programs', permission: ['learning.manage'] }],
-  },
-  {
-    heading: 'Community',
-    items: [
-      { to: '/admin/members', icon: Users2, label: 'Members' },
-      { to: '/admin/community-page', icon: LayoutTemplate, label: 'Community Page' },
-      { to: '/admin/newsletter', icon: Mail, label: 'Newsletter', end: true },
-      { to: '/admin/newsletter/issues', icon: Send, label: 'Newsletter Issues' },
-      { to: '/admin/newsletter/subscribers', icon: Users2, label: 'Subscribers' },
-      { to: '/admin/submissions', icon: Inbox, label: 'Story Submissions' },
-      { to: '/admin/nominations', icon: Star, label: 'Nominations' },
-      { to: '/admin/contact', icon: MessageSquare, label: 'Contact Inquiries', permission: ['contact.manage'] },
-    ],
-  },
-  {
-    heading: 'Mentorship',
-    items: [
-      { to: '/admin/mentorship', icon: GraduationCap, label: 'Overview', end: true },
-      { to: '/admin/mentorship/programs', icon: CalendarDays, label: 'Programs' },
-      { to: '/admin/mentorship/applications', icon: Inbox, label: 'Applications' },
-      { to: '/admin/mentorship/mentors', icon: UserCheck, label: 'Mentors' },
-      { to: '/admin/mentorship/mentees', icon: UserPlus, label: 'Mentees' },
-      { to: '/admin/mentorship/matches', icon: Link2, label: 'Matches' },
-    ],
-  },
-  {
-    heading: 'Revenue',
-    items: [
-      { to: '/admin/partnerships', icon: Handshake, label: 'Partnerships' },
-      { to: '/admin/sponsors', icon: Gem, label: 'Sponsors' },
-      { to: '/admin/advertising', icon: Megaphone, label: 'Advertising' },
-    ],
-  },
-  {
-    heading: 'System',
-    items: [
-      { to: '/admin/media', icon: Image, label: 'Media Library' },
-      { to: '/admin/seo', icon: Search, label: 'SEO' },
-      { to: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
-      { to: '/admin/users', icon: Users, label: 'Users', permission: ['users.view', 'users.manage'] },
-      { to: '/admin/roles', icon: ShieldCheck, label: 'Roles & Permissions', permission: ['users.view', 'users.manage', 'roles.manage'] },
-      { to: '/admin/audit', icon: History, label: 'Audit Log', permission: ['audit.view'] },
-      { to: '/admin/settings', icon: Settings, label: 'Settings' },
-    ],
-  },
-]
 
 export default function AdminLayout() {
   const dispatch = useDispatch()
   const { user, accessToken } = useSelector((s) => s.auth)
+  const location = useLocation()
 
   useEffect(() => {
     if (accessToken && !user) dispatch(restoreSession())
   }, [accessToken, user, dispatch])
 
   if (!accessToken) return <Navigate to="/login" replace />
+
+  // A token exists but the user hasn't loaded yet (restoreSession in
+  // flight) — render a loader instead of judging CMS access against a
+  // still-empty user, which would incorrectly bounce a real CMS staff
+  // member to "/" before their permissions arrive.
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-taupe-100">
+        <p className="text-sm text-charcoal-600">Loading…</p>
+      </div>
+    )
+  }
+
+  // A real member/employer account authenticated successfully but holds no
+  // CMS permission — public accounts are not CMS staff no matter how they
+  // got a valid token (see utils/permissions.js:hasCmsAccess).
+  if (!hasCmsAccess(user)) return <Navigate to="/" replace />
+
+  // Sidebar hiding only keeps unauthorized links out of view; someone can
+  // still type /admin/users directly. Redirect to their own allowed area
+  // instead of rendering a page whose API will just 403 the data calls.
+  if (!canAccessAdminRoute(user, location.pathname)) {
+    return <Navigate to={getDefaultCmsRoute(user)} replace />
+  }
 
   const roleLabel = user?.role ? getRoleLabel(user.role) : null
 
@@ -175,12 +54,11 @@ export default function AdminLayout() {
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {NAV_GROUPS.map((group) => {
-            // Every item here is unguarded except the two Users/Roles/
-            // Access entries above — a nonfunctional (403-on-open) admin
-            // menu item is worse than no item, so those two are hidden
-            // unless the account actually holds the permission the page
-            // itself requires. This is UX only: the backend permission
-            // decorators are what actually enforce access either way.
+            // A nonfunctional (403-on-open) admin menu item is worse than
+            // no item, so every item whose page requires a permission is
+            // hidden unless the account actually holds it. This is UX
+            // only: the backend permission decorators are what actually
+            // enforce access either way (see NAV_GROUPS's own comment).
             const visibleItems = group.items.filter((item) => !item.permission || hasPermission(user, ...item.permission))
             if (visibleItems.length === 0) return null
             return (

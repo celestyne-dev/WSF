@@ -4,8 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { loginUser } from '../features/auth/authSlice'
 import useSeo from '../hooks/useSeo'
-
-const ADMIN_ROLES = ['super_admin', 'admin', 'editor', 'author', 'moderator', 'partnerships_manager', 'opportunities_manager', 'events_manager', 'analyst']
+import { getDefaultCmsRoute } from '../utils/permissions'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -21,7 +20,7 @@ export default function LoginPage() {
     const result = await dispatch(loginUser({ email, password }))
     if (result.meta.requestStatus === 'fulfilled') {
       toast.success(`Welcome back, ${result.payload.user.name.split(' ')[0]}.`)
-      navigate(ADMIN_ROLES.includes(result.payload.user.role) ? '/admin' : '/')
+      navigate(getDefaultCmsRoute(result.payload.user))
     } else {
       toast.error(result.payload || 'Login failed')
     }
@@ -49,9 +48,7 @@ export default function LoginPage() {
             {status === 'loading' ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <p className="mt-6 border border-dashed border-taupe-300 bg-cream p-4 text-xs leading-relaxed text-charcoal-600">
-          Prototype demo: sign in as <strong>wanjiru@womenshapingfutures.org</strong> (Editor-in-Chief, super_admin) with any password of 4+ characters to view the CMS.
-        </p>
+        <p className="mt-6 text-center text-xs text-charcoal-600">Use your WSF account credentials to sign in.</p>
       </div>
     </div>
   )
