@@ -174,18 +174,59 @@ def find_duplicate_top_level_destinations(items):
 # ---------------------------------------------------------------------------
 
 
+def _canonical_effective_url(data):
+    """The real destination a canonical item definition resolves to,
+    computed the same way MenuItem.effective_url() resolves a real row —
+    used so a destination-typed canonical item and an existing item are
+    compared by where they actually point, not by which representation
+    (route vs. entity-linked) happens to store that destination. Returns
+    None for a "group" item (no destination of its own) or for an
+    entity-typed item whose target doesn't exist/resolve.
+    """
+    item_type = data.get("item_type", "route")
+    if item_type == "page":
+        page = Page.query.get(data.get("page_id"))
+        return f"/{page.slug}" if page else None
+    if item_type == "topic":
+        topic = Topic.query.get(data.get("topic_id"))
+        return f"/topics/{topic.slug}" if topic else None
+    if item_type == "series":
+        series = Series.query.get(data.get("series_id"))
+        return f"/series/{series.slug}" if series else None
+    if item_type in ("route", "external"):
+        return data.get("url")
+    return None
+
+
 def _canonical_item_key(data):
     """The destination identity a canonical default item and an existing
     MenuItem are compared by — deliberately never the label, so an admin's
     own relabeling of an existing item (e.g. shortening "WSF Weekly
     Newsletter" back to "Newsletter") is never treated as "missing" and
     never overwritten on a later heal run.
+
+    Destination-typed items (route/external/page/topic/series) are
+    identified by their EFFECTIVE public destination rather than their
+    raw stored field, so an existing legacy route item (url="/about") and
+    a newer canonical Page-backed item (page_id=<the About page>) that
+    both resolve to "/about" compare equal — healing must never add a
+    second About item merely because the underlying representation
+    changed (see the identical rule already used by
+    app/services/footer.py:heal_footer_defaults for the footer's Legal/
+    About links). "group" items (e.g. the primary menu's "Topics"
+    dropdown) have no public destination of their own, so they keep a
+    separate, stable (item_type, label) identity — two different empty
+    dropdowns must never be treated as "the same thing" just because
+    neither has a URL. An entity-typed item whose target doesn't exist
+    yet falls back to a type+raw-field identity so it isn't silently
+    treated as satisfying nothing.
     """
     item_type = data.get("item_type", "route")
-    if item_type in ("route", "external"):
-        return (item_type, data.get("url"))
     if item_type == "group":
-        return (item_type, data.get("label"))
+        return ("group", data.get("label"))
+    dest = _canonical_effective_url(data)
+    if dest is not None:
+        return ("dest", dest)
     if item_type == "page":
         return (item_type, data.get("page_id"))
     if item_type == "topic":
@@ -196,10 +237,14 @@ def _canonical_item_key(data):
 
 
 def _existing_item_key(item):
-    if item.item_type in ("route", "external"):
-        return (item.item_type, item.url)
+    """Mirrors _canonical_item_key() exactly, using the real row's
+    effective_url() instead of recomputing it from raw fields.
+    """
     if item.item_type == "group":
-        return (item.item_type, item.label)
+        return ("group", item.label)
+    dest = item.effective_url()
+    if dest is not None:
+        return ("dest", dest)
     if item.item_type == "page":
         return (item.item_type, item.page_id)
     if item.item_type == "topic":
@@ -207,6 +252,44 @@ def _existing_item_key(item):
     if item.item_type == "series":
         return (item.item_type, item.series_id)
     return (item.item_type, item.label)
+
+
+def _dedupe_canonical_destinations(existing_items, canonical_dest_keys):
+    """Repairs the specific regression an older version of this healer
+    could create: because identity used to be (item_type, raw field)
+    rather than effective destination, re-running `flask seed-navigation`
+    against a database with a legacy route item (e.g. url="/about")
+    added a SECOND, Page-backed item for the same canonical destination
+    instead of recognizing the legacy one as already satisfying it (see
+    _canonical_item_key()'s docstring).
+
+    Deliberately narrow: only collapses a destination that is part of
+    THIS menu's own canonical set (`canonical_dest_keys`, the "dest"-
+    tagged keys this call's canonical_items actually define) — an
+    unrelated admin-created duplicate (two custom links that happen to
+    share a destination this function never seeded) is never touched,
+    since that is not this regression. Among items sharing a canonical
+    destination, the one with the lowest id (the one that existed first)
+    is kept; every later duplicate is deleted. A destination with only
+    one occurrence is left completely alone. Returns the set of deleted
+    item ids so the caller can drop them from its own in-memory list.
+    """
+    by_dest = {}
+    for item in existing_items:
+        key = _existing_item_key(item)
+        if key[0] != "dest" or key not in canonical_dest_keys:
+            continue
+        by_dest.setdefault(key, []).append(item)
+
+    removed_ids = set()
+    for items in by_dest.values():
+        if len(items) < 2:
+            continue
+        items = sorted(items, key=lambda it: it.id)
+        for duplicate in items[1:]:
+            db.session.delete(duplicate)
+            removed_ids.add(duplicate.id)
+    return removed_ids
 
 
 def _build_menu_item(menu_id, data, parent_id=None):
@@ -252,6 +335,15 @@ def heal_menu_defaults(key, canonical_items):
     `flask seed-navigation` (safe on a real production database) and
     `flask seed-demo` (so a fresh dev database still gets the full menu on
     the very first run, same as before).
+
+    Also repairs the one duplicate this healer could previously create
+    itself, before destination identity accounted for route-vs-entity
+    representations of the same URL (see _dedupe_canonical_destinations()):
+    a database that already has both a legacy route item and a newer
+    Page-backed item for the same canonical destination (e.g. two "About"
+    entries, one url="/about" and one page_id=<About page>) is collapsed
+    back down to one on the next heal, keeping the item that existed
+    first and touching nothing else.
     """
     menu = Menu.query.filter_by(key=key).first()
     if menu is None:
@@ -260,9 +352,15 @@ def heal_menu_defaults(key, canonical_items):
         db.session.flush()
 
     existing_items = MenuItem.query.filter_by(menu_id=menu.id, parent_id=None).order_by(MenuItem.sort_order).all()
-    existing_keys = {_existing_item_key(it) for it in existing_items}
 
     canonical_keys = [_canonical_item_key(c) for c in canonical_items]
+    canonical_dest_keys = {k for k in canonical_keys if k[0] == "dest"}
+
+    removed_ids = _dedupe_canonical_destinations(existing_items, canonical_dest_keys)
+    if removed_ids:
+        existing_items = [it for it in existing_items if it.id not in removed_ids]
+
+    existing_keys = {_existing_item_key(it) for it in existing_items}
     rank_by_key = {k: idx for idx, k in enumerate(canonical_keys)}
 
     missing = [(idx, c) for idx, c in enumerate(canonical_items) if canonical_keys[idx] not in existing_keys]

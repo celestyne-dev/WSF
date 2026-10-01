@@ -660,3 +660,241 @@ class TestDefaultNavigationHealing:
 
         assert "Shop" in labels
         assert "Community" in labels
+
+
+class TestEffectiveDestinationHealingAndAboutDuplicateRepair:
+    """Regression coverage for the duplicate-About bug: a legacy secondary
+    item (item_type="route", url="/about") and the canonical Page-backed
+    About item (item_type="page", page_id=<the About page>) both resolve
+    publicly to "/about", but the old healer compared identity by
+    (item_type, raw field) rather than effective destination, so it never
+    recognized the legacy route item as already satisfying the canonical
+    About destination and added a second one on every `flask
+    seed-navigation` run. See _canonical_item_key()/_existing_item_key()
+    (effective-destination identity) and _dedupe_canonical_destinations()
+    (the narrowly-scoped repair for a database that already has both).
+    """
+
+    def _secondary_items(self):
+        from app.models.cms import Menu, MenuItem
+
+        secondary = Menu.query.filter_by(key="secondary").first()
+        return MenuItem.query.filter_by(menu_id=secondary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+
+    def test_legacy_route_about_satisfies_canonical_page_backed_about(self, app):
+        """The exact reported sequence: a legacy route About item already
+        exists, the system About Page exists, and healing must recognize
+        the legacy item as already satisfying the canonical destination —
+        never adding a second About item.
+        """
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="route", url="/about", sort_order=0))
+            db.session.commit()
+
+            seed_default_navigation()
+
+            items = self._secondary_items()
+            about_items = [it for it in items if it.effective_url() == "/about"]
+
+        assert len(about_items) == 1
+        kept = about_items[0]
+        assert kept.label == "About"
+        assert kept.item_type == "route"
+        assert kept.url == "/about"
+
+    def test_custom_relabel_of_legacy_about_survives_healing(self, app):
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="About WSF", item_type="route", url="/about", sort_order=0))
+            db.session.commit()
+
+            seed_default_navigation()
+
+            items = self._secondary_items()
+            about_items = [it for it in items if it.effective_url() == "/about"]
+
+        assert len(about_items) == 1
+        assert about_items[0].label == "About WSF"
+        assert about_items[0].item_type == "route"
+
+    def test_missing_partner_with_us_still_added_alongside_legacy_about(self, app):
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="Newsletter", item_type="route", url="/newsletter", sort_order=0))
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="route", url="/about", sort_order=1))
+            db.session.commit()
+
+            seed_default_navigation()
+
+            items = self._secondary_items()
+            labels = [it.label for it in items]
+            dests = [it.effective_url() for it in items]
+
+        assert "Partner With Us" in labels
+        assert dests.count("/about") == 1
+        assert dests.count("/newsletter") == 1
+
+    def test_newsletter_item_remains_intact(self, app):
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="WSF Weekly Newsletter", item_type="route", url="/newsletter", sort_order=0))
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="route", url="/about", sort_order=1))
+            db.session.commit()
+
+            seed_default_navigation()
+
+            items = self._secondary_items()
+
+        newsletter_items = [it for it in items if it.effective_url() == "/newsletter"]
+        assert len(newsletter_items) == 1
+        assert newsletter_items[0].label == "WSF Weekly Newsletter"
+
+    def test_fresh_empty_database_seeds_with_no_about_duplicate(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            items = self._secondary_items()
+            dests = [it.effective_url() for it in items]
+
+        assert dests.count("/about") == 0  # no system About page seeded in this test — About is simply omitted, not duplicated
+        assert "Partner With Us" in [it.label for it in items]
+
+    def test_fresh_empty_database_with_about_page_seeds_exactly_one_about(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        _make_page(app, key="about")
+
+        with app.app_context():
+            seed_default_navigation()
+            items = self._secondary_items()
+            dests = [it.effective_url() for it in items]
+
+        assert dests.count("/about") == 1
+
+    def test_already_duplicated_legacy_route_and_page_backed_about_is_repaired(self, app):
+        """The literal already-broken database state this task reports:
+        BOTH a legacy route item and a canonical Page-backed item already
+        exist for About (e.g. from a previous buggy `flask seed-navigation`
+        run). Re-running the healer must collapse this back down to a
+        single About destination, preferring the item that existed first.
+        """
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        about_page_id = _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="Newsletter", item_type="route", url="/newsletter", sort_order=0))
+            legacy_about = MenuItem(menu_id=secondary.id, label="About", item_type="route", url="/about", sort_order=1)
+            db.session.add(legacy_about)
+            db.session.add(MenuItem(menu_id=secondary.id, label="Partner With Us", item_type="route", url="/partnerships", sort_order=2))
+            db.session.flush()
+            legacy_about_id = legacy_about.id
+            # The duplicate the old (pre-fix) healer would have produced.
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="page", page_id=about_page_id, sort_order=3))
+            db.session.commit()
+
+            assert len([it for it in self._secondary_items() if it.effective_url() == "/about"]) == 2
+
+            seed_default_navigation()
+
+            items = self._secondary_items()
+            about_items = [it for it in items if it.effective_url() == "/about"]
+
+        assert len(about_items) == 1
+        # The older item (lower id — existed first) is the one preserved.
+        assert about_items[0].id == legacy_about_id
+        assert about_items[0].item_type == "route"
+        assert about_items[0].url == "/about"
+
+    def test_repair_is_idempotent_on_rerun(self, app):
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        about_page_id = _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="route", url="/about", sort_order=0))
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="page", page_id=about_page_id, sort_order=1))
+            db.session.commit()
+
+            seed_default_navigation()
+            first_ids = sorted(it.id for it in self._secondary_items())
+
+            seed_default_navigation()
+            second_ids = sorted(it.id for it in self._secondary_items())
+
+        assert first_ids == second_ids
+
+    def test_unrelated_custom_duplicate_destination_not_deleted(self, app):
+        """Two admin-created custom links that happen to share a
+        destination the canonical set never defines (not About, not any
+        other seeded section) are not this regression and must survive
+        healing untouched — the narrow repair only ever acts on a
+        destination that is part of the menu's own canonical set.
+        """
+        from app.extensions import db
+        from app.models.cms import Menu, MenuItem
+        from app.services.navigation import seed_default_navigation
+
+        _make_page(app, key="about")
+
+        with app.app_context():
+            secondary = Menu(key="secondary")
+            db.session.add(secondary)
+            db.session.flush()
+            db.session.add(MenuItem(menu_id=secondary.id, label="About", item_type="route", url="/about", sort_order=0))
+            db.session.add(MenuItem(menu_id=secondary.id, label="Custom Link A", item_type="route", url="/custom-landing", sort_order=1))
+            db.session.add(MenuItem(menu_id=secondary.id, label="Custom Link B", item_type="route", url="/custom-landing", sort_order=2))
+            db.session.commit()
+
+            seed_default_navigation()
+
+            items = self._secondary_items()
+            custom_items = [it for it in items if it.effective_url() == "/custom-landing"]
+
+        assert len(custom_items) == 2
+        assert {it.label for it in custom_items} == {"Custom Link A", "Custom Link B"}
