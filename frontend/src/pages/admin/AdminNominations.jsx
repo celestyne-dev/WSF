@@ -33,7 +33,11 @@ export default function AdminNominations() {
     fetchCountries().then(setCountries).catch(() => {})
     fetchTopics().then(setTopics).catch(() => {})
     fetchSeries().then(setSeries).catch(() => {})
-    fetchAdminUsers().then(setReviewers).catch(() => {})
+    // fetchAdminUsers() returns { items, pagination }, never a bare array —
+    // see the same fix already applied to AdminPartnerships.jsx.
+    fetchAdminUsers({ pageSize: 100 })
+      .then((res) => setReviewers(res.items || []))
+      .catch(() => setReviewers([]))
   }, [])
 
   useEffect(() => {
