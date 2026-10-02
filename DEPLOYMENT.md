@@ -131,6 +131,7 @@ flask seed-geography   # country reference table — safe, idempotent
 flask seed-pages       # required system Pages (About/Contact/Privacy/Terms/Cookies/Editorial Policy) — safe, idempotent
 flask seed-navigation  # header "primary"/"secondary" menus — safe, idempotent
 flask seed-footer      # footer's four canonical groups (Explore/Opportunities/About/Legal) — safe, idempotent
+flask seed-advertise   # /advertise page + its eight canonical offerings — safe, idempotent
 ```
 
 `seed-pages` runs before `seed-navigation` because the header's "About"
@@ -167,6 +168,25 @@ described in its own docstring (`app/services/footer.py:
 heal_footer_defaults`); fabricating a specific social-media handle or
 contact email as a "default" belongs to a deliberate admin decision
 through AdminFooter, not an automated bootstrap.
+
+`seed-advertise` bootstraps the single-row AdvertisePage (id=1) and its
+eight canonical AdvertiseOffering rows (Sponsored Editorial, Sponsored
+Series, Newsletter Sponsorship, Social Media Campaigns, Employer
+Branding, Event Sponsorship, Sponsored Resources, Research Partnerships —
+the same eight paid formats /partnerships describes and that are
+selectable in its inquiry form). `GET /api/v1/advertise/public` 404s
+whenever that page is missing or not "published" — the migration that
+creates the row (`e7f3b2a9c1d4`) deliberately leaves it draft with no
+content, so a freshly migrated, properly bootstrapped site still 404s on
+`/advertise` without this command. It only ever acts on a genuinely
+missing row or one that is still exactly that migration's untouched
+placeholder (every field still at its migration default — see
+`app/services/advertise.py:_is_untouched_placeholder`); any other
+existing row, including one an administrator intentionally left in
+draft, is left completely alone, publication status included. Each
+offering is created only if no existing offering already has that exact
+name, so an admin's own edits are never duplicated or overwritten. Safe
+to re-run after every deploy.
 
 **Never run `flask seed-demo` in production.** It loads fictional
 articles/jobs/opportunities/events for local development and manual

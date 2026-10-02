@@ -5,6 +5,7 @@ from flask import current_app
 
 from app.extensions import db
 from app.models.user import Role, User
+from app.services.advertise import seed_advertise_page_and_offerings
 from app.services.articles_workflow import publish_due_articles
 from app.services.demo_seed import seed_demo_content
 from app.services.footer import heal_footer_defaults
@@ -90,6 +91,42 @@ def register_cli(app):
             click.echo(f"Created {len(created)} missing footer group(s): {', '.join(created)}.")
         if added:
             click.echo(f"Added {len(added)} missing footer link(s): " + ", ".join(f"{key}:{label}" for key, label in added) + ".")
+
+    @app.cli.command("seed-advertise")
+    def seed_advertise_command():
+        """Bootstrap the /advertise page (AdvertisePage id=1) and its eight
+        canonical AdvertiseOffering rows. GET /api/v1/advertise/public
+        404s whenever that page row is missing or not "published" — the
+        migration that creates it (e7f3b2a9c1d4) deliberately leaves it
+        draft with no content, so a freshly migrated, properly
+        bootstrapped site still 404s on /advertise until this runs (or
+        an admin manually publishes it through AdminAdvertise). Only
+        ever acts on a genuinely missing row or one that is still
+        exactly that migration's untouched placeholder (see
+        app/services/advertise.py:_is_untouched_placeholder for the
+        strict, testable definition) — any other existing row, including
+        one an administrator intentionally left in draft, is left
+        completely alone, publication status included. Offerings are
+        created one at a time by name, so an admin's own edit to any of
+        the eight (or any other offering they created) is never
+        duplicated or overwritten. Safe to run repeatedly and safe on a
+        real production database — same category as seed-roles/
+        seed-geography/seed-pages/seed-navigation/seed-footer, never
+        seed-demo.
+        """
+        result = seed_advertise_page_and_offerings()
+        page_action = result["page_action"]
+        if page_action == "created":
+            click.echo("Created and published the Advertise page (was missing).")
+        elif page_action == "healed":
+            click.echo("Published the Advertise page (was an untouched draft placeholder).")
+        else:
+            click.echo("Advertise page already has administrator content — left untouched.")
+        created = result["offerings_created"]
+        if created:
+            click.echo(f"Created {len(created)} missing offering(s): {', '.join(created)}.")
+        else:
+            click.echo("Created 0 missing offerings — all eight canonical offerings already exist.")
 
     @app.cli.command("seed-demo")
     def seed_demo_command():

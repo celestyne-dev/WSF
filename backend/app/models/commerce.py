@@ -2,7 +2,27 @@ import uuid as uuid_lib
 
 from app.extensions import db
 
-PARTNERSHIP_TYPES = (
+# The exact eight paid commercial formats publicly described on both
+# /advertise (AdvertiseOffering.name — see app/services/advertise.py) and
+# /partnerships ("Available Partnership Formats"). Kept as their own tuple
+# so both pages can be built from one list without drifting apart; see
+# migration 9c1d7e4b2a6f for why these were added alongside the pre-
+# existing broader PARTNERSHIP_TYPES below rather than replacing any of
+# them. "Research Partnerships" (plural) is deliberately distinct from
+# the pre-existing "Research Partnership" (singular, broader/non-paid) —
+# not a typo or a duplicate.
+PAID_PARTNERSHIP_TYPES = (
+    "Sponsored Editorial",
+    "Sponsored Series",
+    "Newsletter Sponsorship",
+    "Social Media Campaigns",
+    "Employer Branding",
+    "Event Sponsorship",
+    "Sponsored Resources",
+    "Research Partnerships",
+)
+
+PARTNERSHIP_TYPES = PAID_PARTNERSHIP_TYPES + (
     "Brand Partnership",
     "Content Partnership",
     "Employer Partnership",

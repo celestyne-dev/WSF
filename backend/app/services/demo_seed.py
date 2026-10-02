@@ -12,6 +12,7 @@ from app.models.opportunity import Event, EventSpeaker, EventSponsor, Job, Oppor
 from app.models.people import Author, Organization, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Category, Series, Tag, Topic
+from app.services.advertise import seed_advertise_page_and_offerings
 from app.services.cms import replace_social_links, upsert_site_settings
 from app.services.footer import heal_footer_defaults
 from app.services.navigation import seed_default_navigation
@@ -1058,6 +1059,12 @@ def seed_demo_content():
     # (seed_default_navigation()/heal_footer_defaults()).
     seed_default_navigation()
     heal_footer_defaults()
+
+    # Same create-or-heal-blank-placeholder-only contract as the bootstrap
+    # above — see app/services/advertise.py — so a fresh dev database has
+    # a published /advertise page with real offerings too, not just a
+    # 404 until someone opens AdminAdvertise.
+    seed_advertise_page_and_offerings()
 
     _seed_social_links_if_empty(
         [

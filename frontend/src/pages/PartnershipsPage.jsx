@@ -5,7 +5,7 @@ import { fetchAudienceStats } from '../api/site'
 import { submitPartnershipInquiry } from '../api/partnerships'
 import { fetchCountries } from '../api/geography'
 import { withAcquisitionMetadata, trackEvent } from '../utils/analytics'
-import { PARTNERSHIP_TYPES } from '../constants/partnerships'
+import { PARTNERSHIP_TYPES, PAID_PARTNERSHIP_TYPES, OTHER_PARTNERSHIP_TYPES } from '../constants/partnerships'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 
@@ -206,11 +206,20 @@ export default function PartnershipsPage() {
             <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Your inquiry</p>
             <label className="sr-only" htmlFor="pf-type">Partnership type</label>
             <select id="pf-type" value={form.partnershipType} onChange={(e) => setForm({ ...form, partnershipType: e.target.value })} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none">
-              {PARTNERSHIP_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              <optgroup label="Paid sponsorship & commercial opportunities">
+                {PAID_PARTNERSHIP_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Other partnership types">
+                {OTHER_PARTNERSHIP_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <label className="sr-only" htmlFor="pf-subject">Subject / short title</label>
             <input id="pf-subject" placeholder="Subject / short title" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />

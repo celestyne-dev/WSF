@@ -368,3 +368,149 @@ class TestAdvertisingInquiryReusesPartnerships:
         }
         resp = client.post("/api/v1/partnerships/inquiries", json=payload)
         assert resp.status_code == 422
+
+
+class TestSeedAdvertiseBootstrap:
+    """flask seed-advertise — see app/services/advertise.py."""
+
+    def test_creates_missing_page_exactly_once(self, app):
+        from app.extensions import db
+        from app.models.cms import AdvertisePage
+        from app.services.advertise import seed_advertise_page_and_offerings
+
+        with app.app_context():
+            assert db.session.get(AdvertisePage, 1) is None
+            result = seed_advertise_page_and_offerings()
+            assert result["page_action"] == "created"
+            assert AdvertisePage.query.count() == 1
+
+            # Re-running must not create a second row or re-report "created".
+            result_again = seed_advertise_page_and_offerings()
+            assert result_again["page_action"] == "left_untouched"
+            assert AdvertisePage.query.count() == 1
+
+    def test_created_baseline_page_is_published_and_public_returns_200(self, app, client):
+        from app.services.advertise import seed_advertise_page_and_offerings
+
+        with app.app_context():
+            seed_advertise_page_and_offerings()
+        resp = client.get("/api/v1/advertise/public")
+        assert resp.status_code == 200
+        data = resp.get_json()["data"]
+        assert data["page"]["hero"]["heading"]
+        assert len(data["offerings"]) == 8
+
+    def test_rerun_is_idempotent(self, app):
+        from app.extensions import db
+        from app.models.cms import AdvertiseOffering, AdvertisePage
+        from app.services.advertise import seed_advertise_page_and_offerings
+
+        with app.app_context():
+            seed_advertise_page_and_offerings()
+            seed_advertise_page_and_offerings()
+            seed_advertise_page_and_offerings()
+            assert AdvertisePage.query.count() == 1
+            assert AdvertiseOffering.query.count() == 8
+
+    def test_admin_edited_page_content_never_overwritten(self, app):
+        from app.extensions import db
+        from app.models.cms import AdvertisePage
+        from app.services.advertise import seed_advertise_page_and_offerings
+
+        with app.app_context():
+            page = AdvertisePage(
+                id=1,
+                hero_heading="Advertise With Women Shaping Futures",  # same as migration default
+                hero_description="Reach ambitious, career-driven women across media, leadership, careers, business, and community — through a trusted global editorial platform.",
+                cta_heading="Let's talk",
+                cta_description="Tell us about your goals and our team will follow up.",
+                cta_button_label="Get in touch",
+                audience_overview="A real admin wrote this audience overview.",
+                status="draft",
+            )
+            db.session.add(page)
+            db.session.commit()
+
+            result = seed_advertise_page_and_offerings()
+            assert result["page_action"] == "left_untouched"
+
+            reloaded = db.session.get(AdvertisePage, 1)
+            assert reloaded.audience_overview == "A real admin wrote this audience overview."
+            assert reloaded.status == "draft"
+
+    def test_intentionally_unpublished_edited_page_never_republished(self, app):
+        from app.extensions import db
+        from app.models.cms import AdvertisePage
+        from app.services.advertise import seed_advertise_page_and_offerings
+
+        with app.app_context():
+            # First bootstrap run publishes a genuinely blank page...
+            seed_advertise_page_and_offerings()
+            page = db.session.get(AdvertisePage, 1)
+            assert page.status == "published"
+
+            # ...then an administrator deliberately takes it back to draft.
+            page.status = "draft"
+            db.session.commit()
+
+            # A later re-run must never silently republish it.
+            result = seed_advertise_page_and_offerings()
+            assert result["page_action"] == "left_untouched"
+            reloaded = db.session.get(AdvertisePage, 1)
+            assert reloaded.status == "draft"
+
+    def test_public_404s_when_administrator_intentionally_unpublishes(self, app, client):
+        from app.extensions import db
+        from app.models.cms import AdvertisePage
+        from app.services.advertise import seed_advertise_page_and_offerings
+
+        with app.app_context():
+            seed_advertise_page_and_offerings()
+            page = db.session.get(AdvertisePage, 1)
+            page.status = "draft"
+            db.session.commit()
+
+        resp = client.get("/api/v1/advertise/public")
+        assert resp.status_code == 404
+
+    def test_canonical_offerings_created_without_duplicates(self, app):
+        from app.models.cms import AdvertiseOffering
+        from app.services.advertise import CANONICAL_OFFERINGS, seed_advertise_page_and_offerings
+
+        with app.app_context():
+            result = seed_advertise_page_and_offerings()
+            assert set(result["offerings_created"]) == {o["name"] for o in CANONICAL_OFFERINGS}
+            assert AdvertiseOffering.query.count() == 8
+
+            result_again = seed_advertise_page_and_offerings()
+            assert result_again["offerings_created"] == []
+            assert AdvertiseOffering.query.count() == 8
+
+    def test_existing_customized_offering_not_overwritten(self, app):
+        from app.extensions import db
+        from app.models.cms import AdvertiseOffering
+        from app.services.advertise import seed_advertise_page_and_offerings
+
+        with app.app_context():
+            custom = AdvertiseOffering(
+                name="Sponsored Editorial",
+                short_description="A custom admin-written description.",
+                status="hidden",
+                pricing_mode="fixed",
+                price_amount=2500,
+                currency="USD",
+            )
+            db.session.add(custom)
+            db.session.commit()
+
+            result = seed_advertise_page_and_offerings()
+            # The other seven canonical offerings are still created...
+            assert "Sponsored Editorial" not in result["offerings_created"]
+            assert len(result["offerings_created"]) == 7
+            assert AdvertiseOffering.query.filter_by(name="Sponsored Editorial").count() == 1
+
+            reloaded = AdvertiseOffering.query.filter_by(name="Sponsored Editorial").first()
+            assert reloaded.short_description == "A custom admin-written description."
+            assert reloaded.status == "hidden"
+            assert reloaded.pricing_mode == "fixed"
+            assert reloaded.price_amount == 2500

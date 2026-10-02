@@ -424,3 +424,48 @@ def test_overview_requires_permission_and_reports_real_counts(client, manager_to
     resp = client.get("/api/v1/partnerships/overview", headers=auth_headers(manager_token))
     assert resp.status_code == 200
     assert resp.get_json()["data"]["newInquiries"] == 1
+
+
+def test_all_eight_paid_partnership_types_accepted(client, app):
+    from app.extensions import limiter
+    from app.models.commerce import PAID_PARTNERSHIP_TYPES
+
+    # The public submit endpoint is rate-limited to 5/minute (see
+    # PartnershipInquiryListResource.post) — eight submissions in one test
+    # would otherwise trip that limit well before covering every paid
+    # type, regardless of how many other tests already share its
+    # in-memory counter this run. Disabling the limiter for the duration
+    # of this one test (and restoring it after) tests the controlled-type
+    # acceptance this test is actually about, not the unrelated rate limit.
+    limiter.enabled = False
+    try:
+        for partnership_type in PAID_PARTNERSHIP_TYPES:
+            resp = _submit(client, partnershipType=partnership_type)
+            assert resp.status_code == 201, f"{partnership_type!r} was rejected: {resp.get_json()}"
+    finally:
+        limiter.enabled = True
+
+
+def test_old_partnership_types_still_accepted(client):
+    resp = _submit(client, partnershipType="Brand Partnership")
+    assert resp.status_code == 201
+
+
+def test_invalid_partnership_type_still_returns_422(client):
+    resp = _submit(client, partnershipType="Definitely Not A Real Type")
+    assert resp.status_code == 422
+
+
+def test_admin_filters_by_new_paid_partnership_type(client, manager_token):
+    _submit(client, company="Paid Co", partnershipType="Sponsored Editorial")
+    _submit(client, company="Other Co", partnershipType="Brand Partnership", email="other@otherco.com")
+
+    resp = client.get(
+        "/api/v1/partnerships/inquiries?partnership_type=Sponsored Editorial",
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert len(data) == 1
+    assert data[0]["company"] == "Paid Co"
+    assert data[0]["partnership_type"] == "Sponsored Editorial"
