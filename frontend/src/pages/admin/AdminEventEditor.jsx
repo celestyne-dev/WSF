@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
-import { Save, Eye, AlertTriangle, Archive, Trash2, ChevronUp, ChevronDown, Search, Plus } from 'lucide-react'
+import { Save, Eye, AlertTriangle, Archive, Trash2, ChevronUp, ChevronDown, Search, Plus, Users } from 'lucide-react'
 import { fetchEventBySlug, createEvent, updateEvent, deleteEvent } from '../../api/events'
 import { fetchOrganizations } from '../../api/taxonomies'
 import { fetchPeople } from '../../api/people'
@@ -106,6 +106,7 @@ function blankForm() {
     agenda: [],
     registrationUrl: '',
     registrationRequired: true,
+    registrationMode: 'external',
     registrationDeadline: '',
     registrationInstructions: '',
     soldOut: false,
@@ -150,6 +151,7 @@ function toForm(event) {
     agenda: event.agenda || [],
     registrationUrl: event.registrationUrl || '',
     registrationRequired: event.registrationRequired !== false,
+    registrationMode: event.registrationMode || 'external',
     registrationDeadline: event.registrationDeadline || '',
     registrationInstructions: event.registrationInstructions || '',
     soldOut: !!event.soldOut,
@@ -490,7 +492,9 @@ export default function AdminEventEditor() {
 
   const selectedOrg = organizations.find((o) => String(o.id) === String(form?.organizerId))
   const hasNoDescription = form && form.description.length === 0
-  const hasNoRegistrationUrl = form && form.registrationRequired && !form.registrationUrl
+  const hasNoRegistrationUrl = form && form.registrationRequired && form.registrationMode === 'external' && !form.registrationUrl
+  const paidWsfRegistration =
+    form && form.registrationRequired && form.registrationMode === 'wsf' && form.ticketPrice !== '' && Number(form.ticketPrice) > 0
   const showLocation = form && (form.format === 'in-person' || form.format === 'hybrid' || !form.format)
   const showVirtual = form && (form.format === 'virtual' || form.format === 'hybrid')
   const endDateInvalid = form && form.endDate && form.date && form.endDate < form.date
@@ -538,6 +542,10 @@ export default function AdminEventEditor() {
         toast.error('Add a registration URL before publishing — WSF never shows a fake Register button.')
         return
       }
+      if (paidWsfRegistration) {
+        toast.error('Paid WSF-managed event registration is not available yet. Use external registration for paid events.')
+        return
+      }
     }
     setErrors({})
     setSaving(true)
@@ -568,6 +576,7 @@ export default function AdminEventEditor() {
       agenda: form.agenda,
       registrationUrl: form.registrationUrl || null,
       registrationRequired: form.registrationRequired,
+      registrationMode: form.registrationMode,
       registrationDeadline: form.registrationDeadline || null,
       registrationInstructions: form.registrationInstructions || null,
       soldOut: form.soldOut,
@@ -774,19 +783,46 @@ export default function AdminEventEditor() {
               <input type="checkbox" checked={form.registrationRequired} onChange={(e) => updateField('registrationRequired', e.target.checked)} />
               Registration required
             </label>
-            <Field label="Registration URL" hint="where WSF sends attendees to register">
-              <input value={form.registrationUrl} onChange={(e) => updateField('registrationUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-            </Field>
-            <Field label="Registration instructions" hint="optional — shown alongside the Register button">
-              <textarea rows={2} value={form.registrationInstructions} onChange={(e) => updateField('registrationInstructions', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-            </Field>
-            <Field label="Capacity" hint="optional">
-              <input type="number" value={form.capacity} onChange={(e) => updateField('capacity', e.target.value)} className="w-32 border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-            </Field>
-            <label className="flex items-center gap-2 text-sm text-charcoal-600">
-              <input type="checkbox" checked={form.soldOut} onChange={(e) => updateField('soldOut', e.target.checked)} />
-              Sold out / full
-            </label>
+
+            {form.registrationRequired && (
+              <>
+                <Field label="Registration method">
+                  <select value={form.registrationMode} onChange={(e) => updateField('registrationMode', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                    <option value="external">External — WSF sends attendees to a URL</option>
+                    <option value="wsf">WSF accounts — attendees register and manage it here</option>
+                  </select>
+                </Field>
+
+                {form.registrationMode === 'external' ? (
+                  <Field label="Registration URL" hint="where WSF sends attendees to register">
+                    <input value={form.registrationUrl} onChange={(e) => updateField('registrationUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                  </Field>
+                ) : (
+                  <p className="border border-taupe-200 bg-taupe-100 p-3 text-xs text-charcoal-600">
+                    Registration will be managed through WSF accounts — logged-in members register and cancel directly
+                    on the event page and in their My Events page. Free events only; a paid ticket price can't be
+                    published with this method.
+                  </p>
+                )}
+
+                <Field label="Registration instructions" hint="optional — shown alongside the Register button">
+                  <textarea rows={2} value={form.registrationInstructions} onChange={(e) => updateField('registrationInstructions', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                </Field>
+                <Field label="Capacity" hint={form.registrationMode === 'wsf' ? 'optional — enforced automatically once full' : 'optional'}>
+                  <input type="number" value={form.capacity} onChange={(e) => updateField('capacity', e.target.value)} className="w-32 border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                </Field>
+                <label className="flex items-center gap-2 text-sm text-charcoal-600">
+                  <input type="checkbox" checked={form.soldOut} onChange={(e) => updateField('soldOut', e.target.checked)} />
+                  Sold out / full
+                </label>
+              </>
+            )}
+
+            {!isNew && (
+              <Link to={`/admin/events/${form.slug}/registrations`} className="btn-secondary !px-3 !py-1.5 text-xs">
+                <Users size={13} /> View registrations
+              </Link>
+            )}
           </Section>
 
           <Section title="Pricing" description="Leave the ticket price blank for a free event.">
@@ -855,6 +891,12 @@ export default function AdminEventEditor() {
               <div className="mt-3 flex gap-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
                 <AlertTriangle size={16} className="shrink-0" />
                 <span>Add a registration URL before publishing, or mark registration as not required.</span>
+              </div>
+            )}
+            {paidWsfRegistration && (
+              <div className="mt-3 flex gap-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                <AlertTriangle size={16} className="shrink-0" />
+                <span>Paid WSF-managed event registration is not available yet. Use external registration for paid events.</span>
               </div>
             )}
 

@@ -36,6 +36,8 @@ const STYLES = {
   rejected: 'bg-rose-100 text-rose-600',
   cancelled: 'bg-rose-100 text-rose-600',
   declined: 'bg-rose-100 text-rose-600',
+  registered: 'bg-blush-200 text-burgundy-700',
+  attended: 'bg-emerald-100 text-emerald-700',
 }
 
 // Editorial workflow states must not be distinguished by color alone (see

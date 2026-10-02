@@ -80,6 +80,12 @@ export function mapEvent(e) {
     organizerLogoMedia: mapMediaRef(e.organizer?.logo),
     registrationUrl: e.registration_url,
     registrationRequired: e.registration_required ?? true,
+    registrationMode: e.registration_mode || 'external',
+    // Only present on the single-event detail fetch (never on list cards
+    // — see backend app/services/event_registrations.py's own note on
+    // why this is deliberately not part of every list item).
+    registrationFull: e.registration_full ?? null,
+    registrationAvailable: e.registration_available ?? true,
     registrationDeadline: e.registration_deadline,
     registrationInstructions: e.registration_instructions,
     soldOut: e.sold_out ?? false,
@@ -229,6 +235,7 @@ function toApiPayload(form) {
     organizerName: form.organizerName || undefined,
     registrationUrl: form.registrationUrl || undefined,
     registrationRequired: form.registrationRequired !== false,
+    registrationMode: form.registrationMode || 'external',
     registrationDeadline: form.registrationDeadline || undefined,
     registrationInstructions: form.registrationInstructions || undefined,
     soldOut: !!form.soldOut,

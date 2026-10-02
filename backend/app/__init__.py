@@ -80,6 +80,7 @@ def create_app(config_name="development"):
     from app.api.v1.authors import authors_bp
     from app.api.v1.auth import auth_bp
     from app.api.v1.events import events_bp
+    from app.api.v1.event_registrations import event_registrations_bp
     from app.api.v1.jobs import jobs_bp
     from app.api.v1.learning import learning_bp
     from app.api.v1.media import media_bp
@@ -123,6 +124,7 @@ def create_app(config_name="development"):
     app.register_blueprint(jobs_bp, url_prefix="/api/v1/jobs")
     app.register_blueprint(opportunities_bp, url_prefix="/api/v1/opportunities")
     app.register_blueprint(events_bp, url_prefix="/api/v1/events")
+    app.register_blueprint(event_registrations_bp, url_prefix="/api/v1/event-registrations")
     app.register_blueprint(resources_bp, url_prefix="/api/v1/resources")
     app.register_blueprint(newsletter_bp, url_prefix="/api/v1/newsletter")
     app.register_blueprint(submissions_bp, url_prefix="/api/v1/submissions")

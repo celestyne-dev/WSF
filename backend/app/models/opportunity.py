@@ -272,6 +272,19 @@ _EVENT_FORMAT_CHECK_SQL = "format IS NULL OR format IN (" + ", ".join(f"'{f}'" f
 EVENT_STATUSES = ("draft", "review", "scheduled", "published", "postponed", "cancelled", "archived")
 _EVENT_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in EVENT_STATUSES) + ")"
 
+# How an event that requires registration actually collects it — see
+# app/services/event_registrations.py for the full semantics. "external"
+# is the long-standing behavior (a registration_url an attendee is sent
+# to) and stays the default so every existing event keeps behaving
+# exactly as before this field existed. "wsf" is new first-party
+# WSF-account registration (app/models/event_registration.py),
+# currently free-events-only (see Event's own publish validation in
+# app/api/v1/events.py).
+EVENT_REGISTRATION_MODES = ("external", "wsf")
+_EVENT_REGISTRATION_MODE_CHECK_SQL = (
+    "registration_mode IN (" + ", ".join(f"'{m}'" for m in EVENT_REGISTRATION_MODES) + ")"
+)
+
 
 class Event(db.Model):
     __tablename__ = "events"
@@ -279,6 +292,7 @@ class Event(db.Model):
         db.CheckConstraint(_EVENT_TYPE_CHECK_SQL, name="ck_events_type"),
         db.CheckConstraint(_EVENT_FORMAT_CHECK_SQL, name="ck_events_format"),
         db.CheckConstraint(_EVENT_STATUS_CHECK_SQL, name="ck_events_status"),
+        db.CheckConstraint(_EVENT_REGISTRATION_MODE_CHECK_SQL, name="ck_events_registration_mode"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -316,6 +330,12 @@ class Event(db.Model):
 
     registration_url = db.Column(db.String(500))
     registration_required = db.Column(db.Boolean, nullable=False, default=True)
+    # See EVENT_REGISTRATION_MODES above. Server-defaulted to "external"
+    # at the database level too (set in the migration) so every row that
+    # existed before this column was added keeps its current real
+    # behavior (a registration_url attendees are sent to) rather than
+    # silently becoming a WSF-managed event it was never built for.
+    registration_mode = db.Column(db.String(20), nullable=False, default="external")
     registration_deadline = db.Column(db.Date)
     registration_instructions = db.Column(db.Text)
     sold_out = db.Column(db.Boolean, nullable=False, default=False)

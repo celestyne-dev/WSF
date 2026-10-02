@@ -1,15 +1,27 @@
+import csv
+import io
 from datetime import date
 
-from flask import Blueprint, request
+from flask import Blueprint, Response, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 from sqlalchemy import or_
 
 from app.extensions import db
+from app.models.event_registration import EVENT_REGISTRATION_STATUSES, EventRegistration
 from app.models.opportunity import Event, EventSpeaker, EventSponsor
 from app.models.people import Organization, Person
+from app.models.user import User
 from app.schemas.opportunity import EventInputSchema, EventSchema
+from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.event_registrations import (
+    admin_update_registration_status,
+    count_active_registrations,
+    is_event_publicly_visible,
+    registration_availability,
+    serialize_event_for_viewer,
+)
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_search
 from app.utils.pagination import paginate
@@ -19,6 +31,18 @@ events_bp = Blueprint("events", __name__)
 api = Api(events_bp)
 
 event_schema = EventSchema()
+
+
+def _dump_event_for_staff(event):
+    """EventSchema always excludes virtual_link (see that schema's own
+    Meta.exclude note) — every staff-authored dump (CMS create/update/
+    detail-as-editor) re-attaches the raw value here, since a caller
+    that already passed _require_manage()/the editor check is exactly
+    who the admin editor needs to be able to read/edit it.
+    """
+    data = event_schema.dump(event)
+    data["virtual_link"] = event.virtual_link
+    return data
 
 
 def _require_active_user():
@@ -135,6 +159,7 @@ def _apply_fields(event, data, organizer, speakers, sponsors):
     event.organizer_name = data.get("organizer_name") or (organizer.name if organizer else event.organizer_name)
     event.registration_url = data.get("registration_url")
     event.registration_required = data.get("registration_required", True)
+    event.registration_mode = data.get("registration_mode", "external")
     event.registration_deadline = data.get("registration_deadline")
     event.registration_instructions = data.get("registration_instructions")
     event.sold_out = data.get("sold_out", False)
@@ -157,15 +182,29 @@ def _apply_fields(event, data, organizer, speakers, sponsors):
 
 def _validate_for_publish(event):
     """A published (or scheduled-to-publish) event needs a real
-    description, and a real registration destination when it actually
-    requires registration; a draft/review event may stay incomplete
+    description, and — when it actually requires registration — a real
+    registration destination; a draft/review event may stay incomplete
     indefinitely.
+
+    registration_required=False: no destination of any kind is needed.
+    registration_mode=external: registration_url is required exactly as
+    before this module existed (so an existing external event's publish
+    behavior never silently changes). registration_mode=wsf: no URL is
+    needed (WSF itself manages registration), but a WSF-managed event
+    cannot (yet) be paid — see schemas/opportunity.py's
+    EventInputSchema.validate_pricing for the same rule enforced at
+    submit time too.
     """
     errors = []
     if not event.description:
         errors.append("Add an event description before publishing.")
-    if event.registration_required and not event.registration_url:
-        errors.append("Add a registration URL before publishing — WSF never shows a fake Register button.")
+    if event.registration_required:
+        if event.registration_mode == "external" and not event.registration_url:
+            errors.append("Add a registration URL before publishing — WSF never shows a fake Register button.")
+        elif event.registration_mode == "wsf" and event.ticket_price:
+            errors.append(
+                "Paid WSF-managed event registration is not available yet. Use external registration for paid events."
+            )
     if errors:
         raise ApiError(errors[0], 422, code="publish_validation_failed", errors=errors)
 
@@ -250,7 +289,7 @@ class EventListResource(Resource):
             _validate_for_publish(event)
         db.session.add(event)
         db.session.commit()
-        return success_response(event_schema.dump(event), status=201)
+        return success_response(_dump_event_for_staff(event), status=201)
 
 
 class EventDetailResource(Resource):
@@ -258,12 +297,20 @@ class EventDetailResource(Resource):
         event = Event.query.filter_by(slug=slug).first()
         if event is None:
             raise ApiError("Event not found.", 404, code="not_found")
-        publicly_visible = event.status in ("published", "cancelled", "postponed") or (
-            event.status == "scheduled" and event.published_date and event.published_date <= date.today()
-        )
-        if not publicly_visible and not _can_edit_or_none():
+        editor = _can_edit_or_none()
+        if not is_event_publicly_visible(event) and not editor:
             raise ApiError("Event not found.", 404, code="not_found")
-        return success_response(event_schema.dump(event))
+
+        if editor:
+            # Staff with events.manage get the raw field back (same
+            # value they can edit in the CMS) rather than the
+            # viewer-authorization logic below, which is about public
+            # attendee access, not CMS access.
+            data = _dump_event_for_staff(event)
+        else:
+            data = serialize_event_for_viewer(event, _current_user_or_none())
+        data.update(registration_availability(event))
+        return success_response(data)
 
     def put(self, slug):
         event = Event.query.filter_by(slug=slug).first()
@@ -283,7 +330,7 @@ class EventDetailResource(Resource):
         if event.status in ("published", "scheduled"):
             _validate_for_publish(event)
         db.session.commit()
-        return success_response(event_schema.dump(event))
+        return success_response(_dump_event_for_staff(event))
 
     def delete(self, slug):
         event = Event.query.filter_by(slug=slug).first()
@@ -296,5 +343,153 @@ class EventDetailResource(Resource):
         return success_response({"deleted": True})
 
 
+def _fetch_event_by_id_or_404(event_id):
+    event = db.session.get(Event, event_id)
+    if event is None:
+        raise ApiError("Event not found.", 404, code="not_found")
+    return event
+
+
+def _fetch_event_registration_or_404(event_id, registration_id):
+    """Scoped to `event_id` so a registration id that belongs to a
+    DIFFERENT event can never be read or mutated through this event's
+    own admin routes — the lookup itself fails closed (404) rather than
+    trusting registration_id alone.
+    """
+    registration = EventRegistration.query.filter_by(id=registration_id, event_id=event_id).first()
+    if registration is None:
+        raise ApiError("Registration not found.", 404, code="not_found")
+    return registration
+
+
+def _dump_admin_registration(registration):
+    user = registration.user
+    return {
+        "id": registration.id,
+        "status": registration.status,
+        "registered_at": registration.registered_at.isoformat() if registration.registered_at else None,
+        "cancelled_at": registration.cancelled_at.isoformat() if registration.cancelled_at else None,
+        "attended_at": registration.attended_at.isoformat() if registration.attended_at else None,
+        "attendee_name": user.full_name if user else None,
+        "attendee_email": user.email if user else None,
+        "attendee_country": user.country.name if user and user.country else None,
+    }
+
+
+class EventRegistrationAdminListResource(Resource):
+    def get(self, event_id):
+        _require_manage()
+        event = _fetch_event_by_id_or_404(event_id)
+
+        query = EventRegistration.query.filter_by(event_id=event.id).join(EventRegistration.user)
+
+        status_filter = request.args.get("status")
+        if status_filter:
+            query = query.filter(EventRegistration.status == status_filter)
+
+        search_term = request.args.get("q")
+        if search_term:
+            like = f"%{search_term}%"
+            query = query.filter(
+                or_(User.first_name.ilike(like), User.last_name.ilike(like), User.email.ilike(like))
+            )
+
+        query = query.order_by(EventRegistration.registered_at.desc())
+        result = paginate(query, schema=None)
+
+        active_count = count_active_registrations(event.id)
+        counts = {
+            "registered": EventRegistration.query.filter_by(event_id=event.id, status="registered").count(),
+            "attended": EventRegistration.query.filter_by(event_id=event.id, status="attended").count(),
+            "cancelled": EventRegistration.query.filter_by(event_id=event.id, status="cancelled").count(),
+        }
+        items = [_dump_admin_registration(r) for r in result["items"]]
+        # Pagination nested inside `data` (rather than passed via the
+        # `meta=` kwarg) deliberately: the frontend apiClient's response
+        # interceptor only promotes a top-level `meta` into {items,
+        # pagination} when `data` itself is a bare array (see
+        # frontend/src/api/client.js and app/api/v1/saved.py's identical
+        # note) — here `data` carries the capacity/counts aggregates
+        # alongside `items`, so nesting pagination inside it is what the
+        # frontend can actually read back out.
+        return success_response(
+            {
+                "items": items,
+                "counts": counts,
+                "active_count": active_count,
+                "capacity": event.capacity,
+                "available": None if event.capacity is None else max(0, event.capacity - active_count),
+                "pagination": result["meta"],
+            }
+        )
+
+
+class EventRegistrationAdminDetailResource(Resource):
+    def patch(self, event_id, registration_id):
+        _require_manage()
+        _fetch_event_by_id_or_404(event_id)
+        registration = _fetch_event_registration_or_404(event_id, registration_id)
+
+        data = request.get_json(silent=True) or {}
+        new_status = data.get("status")
+        if new_status not in EVENT_REGISTRATION_STATUSES:
+            raise ApiError("status must be one of: " + ", ".join(EVENT_REGISTRATION_STATUSES), 422, code="validation_error")
+
+        old_status = registration.status
+        registration, changed = admin_update_registration_status(registration, new_status)
+        if changed:
+            # Safe operational metadata only — never the attendee's name
+            # or email (see task spec's AUDIT section).
+            log_action(
+                current_user,
+                "event_registration.status_changed",
+                "EventRegistration",
+                registration.id,
+                changes={"event_id": event_id, "status_from": old_status, "status_to": new_status},
+            )
+        return success_response(_dump_admin_registration(registration))
+
+
+class EventRegistrationExportResource(Resource):
+    def get(self, event_id):
+        _require_manage()
+        event = _fetch_event_by_id_or_404(event_id)
+        registrations = (
+            EventRegistration.query.filter_by(event_id=event.id)
+            .join(EventRegistration.user)
+            .order_by(EventRegistration.registered_at.asc())
+            .all()
+        )
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["name", "email", "country", "status", "registered_at", "attended_at", "cancelled_at"])
+        for r in registrations:
+            user = r.user
+            writer.writerow(
+                [
+                    user.full_name if user else "",
+                    user.email if user else "",
+                    user.country.name if user and user.country else "",
+                    r.status,
+                    r.registered_at.isoformat() if r.registered_at else "",
+                    r.attended_at.isoformat() if r.attended_at else "",
+                    r.cancelled_at.isoformat() if r.cancelled_at else "",
+                ]
+            )
+
+        log_action(
+            current_user, "event_registration.export", "Event", event.id, changes={"count": len(registrations)}
+        )
+        response = Response(buffer.getvalue(), mimetype="text/csv")
+        response.headers["Content-Disposition"] = (
+            f"attachment; filename=wsf-event-{event.slug}-registrations-{date.today().isoformat()}.csv"
+        )
+        return response
+
+
 api.add_resource(EventListResource, "")
 api.add_resource(EventDetailResource, "/<string:slug>")
+api.add_resource(EventRegistrationAdminListResource, "/<int:event_id>/registrations")
+api.add_resource(EventRegistrationAdminDetailResource, "/<int:event_id>/registrations/<int:registration_id>")
+api.add_resource(EventRegistrationExportResource, "/<int:event_id>/registrations/export")

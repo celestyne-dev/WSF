@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { updateProfile } from '../api/auth'
 import { fetchSavedItems } from '../api/saved'
+import { fetchMyEventRegistrations } from '../api/eventRegistrations'
 import { logoutUser, setUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import useSeo from '../hooks/useSeo'
@@ -65,6 +66,39 @@ const SAVED_TYPE_LABEL = {
   resource: 'resources',
   event: 'events',
   learning_program: 'learning',
+}
+
+// Same "tiny summary, not the full collection" principle as
+// SavedSummarySection above — one count fetch (perPage: 1), only
+// `pagination.totalItems` is actually used here.
+function MyEventsSummarySection() {
+  const [upcomingCount, setUpcomingCount] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchMyEventRegistrations({ when: 'upcoming', perPage: 1 }).then((result) => {
+      if (!cancelled) setUpcomingCount(result.pagination?.totalItems ?? 0)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return (
+    <section className="mt-8 border border-taupe-200 p-6">
+      <h2 className="font-serif text-xl font-semibold text-charcoal">My Events</h2>
+      <p className="mt-2 text-sm text-charcoal-600">Events you've registered for with Women Shaping Futures.</p>
+      {upcomingCount !== null && upcomingCount > 0 && (
+        <p className="mt-3 text-sm text-charcoal-600">
+          <span className="font-semibold text-charcoal">{upcomingCount}</span> upcoming registration
+          {upcomingCount === 1 ? '' : 's'}
+        </p>
+      )}
+      <Link to="/account/events" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+        View my events
+      </Link>
+    </section>
+  )
 }
 
 function formFromUser(user) {
@@ -263,7 +297,10 @@ export default function AccountPage() {
       {/* C. Saved for later */}
       <SavedSummarySection />
 
-      {/* D. Security */}
+      {/* D. My Events */}
+      <MyEventsSummarySection />
+
+      {/* E. Security */}
       <section className="mt-8 border border-taupe-200 p-6">
         <h2 className="font-serif text-xl font-semibold text-charcoal">Security</h2>
         <p className="mt-2 text-sm text-charcoal-600">Change the password you use to sign in.</p>

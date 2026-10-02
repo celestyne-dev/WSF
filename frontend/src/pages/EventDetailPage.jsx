@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { useParams, Link } from 'react-router-dom'
-import { Calendar, MapPin, Clock, Ticket, Globe2, AlertCircle, CalendarPlus, PauseCircle } from 'lucide-react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { toast } from 'react-toastify'
+import { Calendar, MapPin, Clock, Ticket, Globe2, AlertCircle, CalendarPlus, PauseCircle, CheckCircle2 } from 'lucide-react'
 import { fetchEventBySlug, fetchEvents } from '../api/events'
+import { registerForEvent, checkEventRegistration } from '../api/eventRegistrations'
 import { formatDate, formatCurrency } from '../utils/format'
 import { resolveImage } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
@@ -205,11 +207,59 @@ function SponsorTile({ sponsor }) {
   return content
 }
 
+// WSF-managed registration CTA (registrationMode=="wsf") — external
+// registration keeps its own existing <a href={registrationUrl}> flow
+// untouched, right alongside this in the same aside.
+function WsfRegistrationCta({ event, registrationClosed, registration, pending, accessToken, onRegister, onSignIn }) {
+  if (registrationClosed || event.isPast) {
+    return (
+      <button type="button" disabled className="btn-secondary mt-5 flex w-full cursor-not-allowed justify-center opacity-60">
+        {event.isCancelled ? 'Event cancelled' : event.isPostponed ? 'New date TBD' : event.soldOut ? 'Sold out' : 'Registration closed'}
+      </button>
+    )
+  }
+  if (event.registrationFull) {
+    return (
+      <button type="button" disabled className="btn-secondary mt-5 flex w-full cursor-not-allowed justify-center opacity-60">
+        Event full
+      </button>
+    )
+  }
+  if (registration && (registration.status === 'registered' || registration.status === 'attended')) {
+    return (
+      <div className="mt-5 border border-emerald-200 bg-emerald-50 p-4 text-center">
+        <p className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-emerald-700">
+          <CheckCircle2 size={16} /> You're registered
+        </p>
+        <Link to="/account/events" className="mt-2 inline-block text-xs font-semibold text-burgundy-600 hover:underline">
+          View in My Events
+        </Link>
+      </div>
+    )
+  }
+  if (!accessToken) {
+    return (
+      <button type="button" onClick={onSignIn} className="btn-primary mt-5 flex w-full">
+        Sign in to register
+      </button>
+    )
+  }
+  return (
+    <button type="button" onClick={onRegister} disabled={pending} className="btn-primary mt-5 flex w-full disabled:opacity-60">
+      {pending ? 'Registering…' : 'Register free'}
+    </button>
+  )
+}
+
 export default function EventDetailPage() {
   const { slug } = useParams()
+  const navigate = useNavigate()
+  const accessToken = useSelector((s) => s.auth.accessToken)
   const [event, setEvent] = useState(undefined)
   const [related, setRelated] = useState([])
   const [error, setError] = useState(null)
+  const [wsfRegistration, setWsfRegistration] = useState(null)
+  const [wsfRegistering, setWsfRegistering] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -236,6 +286,32 @@ export default function EventDetailPage() {
       active = false
     }
   }, [slug])
+
+  useEffect(() => {
+    if (!event || event.registrationMode !== 'wsf' || !event.registrationRequired || !accessToken) return undefined
+    let active = true
+    checkEventRegistration(event.id).then((result) => {
+      if (active) setWsfRegistration(result.registered ? result.registration : null)
+    })
+    return () => {
+      active = false
+    }
+  }, [event, accessToken])
+
+  async function handleWsfRegister() {
+    if (wsfRegistering) return
+    setWsfRegistering(true)
+    try {
+      const result = await registerForEvent(event.id)
+      setWsfRegistration(result.registration)
+      toast.success("You're registered!")
+      trackEvent('event_registration_completed', { eventSlug: event.slug })
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || 'Something went wrong. Please try again.')
+    } finally {
+      setWsfRegistering(false)
+    }
+  }
 
   const canonicalUrl = `https://womenshapingfutures.org/events/${slug}`
 
@@ -406,7 +482,17 @@ export default function EventDetailPage() {
               )}
             </ul>
 
-            {canRegister ? (
+            {event.registrationRequired && event.registrationMode === 'wsf' ? (
+              <WsfRegistrationCta
+                event={event}
+                registrationClosed={registrationClosed}
+                registration={wsfRegistration}
+                pending={wsfRegistering}
+                accessToken={accessToken}
+                onRegister={handleWsfRegister}
+                onSignIn={() => navigate('/login')}
+              />
+            ) : canRegister ? (
               <a href={event.registrationUrl} target="_blank" rel="noreferrer" onClick={handleRegisterClick} className="btn-primary mt-5 flex w-full">
                 {event.ticketPrice ? 'Get tickets' : 'Register free'}
               </a>
@@ -415,7 +501,7 @@ export default function EventDetailPage() {
                 {event.isCancelled ? 'Event cancelled' : event.isPostponed ? 'New date TBD' : event.soldOut ? 'Sold out' : registrationClosed ? 'Registration closed' : 'Registration unavailable'}
               </button>
             )}
-            {event.registrationInstructions && !registrationClosed && (
+            {event.registrationInstructions && !registrationClosed && event.registrationMode !== 'wsf' && (
               <p className="mt-3 text-xs text-charcoal-600">{event.registrationInstructions}</p>
             )}
 

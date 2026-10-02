@@ -8,6 +8,7 @@ from app.models.opportunity import (
     CAREER_LEVELS,
     EMPLOYMENT_TYPES,
     EVENT_FORMATS,
+    EVENT_REGISTRATION_MODES,
     EVENT_STATUSES,
     EVENT_TYPES,
     FUNDING_TYPES,
@@ -149,6 +150,14 @@ class EventSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Event
         load_instance = False
+        # virtual_link is a private attendee-access URL (see
+        # app/services/event_registrations.py's authorization rules) —
+        # excluded from this schema's dump UNCONDITIONALLY, never merely
+        # hidden by the frontend, so every caller of EventSchema (public
+        # list/detail, Saved Items, search, …) is safe by construction.
+        # app/api/v1/events.py's EventDetailResource is the one place
+        # that re-attaches it, and only after checking who's asking.
+        exclude = ("virtual_link",)
 
     def get_is_past(self, obj):
         """Computed from the event's own date(s), not stored — an event
@@ -399,6 +408,13 @@ class EventInputSchema(ma.Schema):
         required=False, allow_none=True, data_key="registrationUrl", validate=validate.URL(require_tld=True)
     )
     registration_required = fields.Boolean(required=False, load_default=True, data_key="registrationRequired")
+    # external: today's existing registration_url flow. wsf: first-party
+    # WSF-account registration (see app/services/event_registrations.py).
+    # Defaults to "external" so a form that never sends this field (an
+    # older admin client, say) preserves exactly today's behavior.
+    registration_mode = fields.String(
+        required=False, load_default="external", data_key="registrationMode", validate=validate.OneOf(EVENT_REGISTRATION_MODES)
+    )
     registration_deadline = fields.Date(required=False, allow_none=True, data_key="registrationDeadline")
     registration_instructions = fields.String(required=False, allow_none=True, data_key="registrationInstructions")
     sold_out = fields.Boolean(required=False, load_default=False, data_key="soldOut")
@@ -435,3 +451,14 @@ class EventInputSchema(ma.Schema):
             raise ValidationError("Ticket price cannot be negative.", field_name="ticket_price")
         if price and not data.get("currency"):
             raise ValidationError("Paid events require a currency.", field_name="currency")
+        # WSF-managed registration is free-events-only for now (see task
+        # spec's "PAID EVENTS" section) — a paid event must keep using
+        # registration_mode=external with its own registration_url. This
+        # is checked at the schema layer (not just publish time) so a
+        # draft can still be saved either way, but the combination is
+        # rejected the moment it's actually submitted.
+        if data.get("registration_mode") == "wsf" and price:
+            raise ValidationError(
+                "Paid WSF-managed event registration is not available yet. Use external registration for paid events.",
+                field_name="registration_mode",
+            )
