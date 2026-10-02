@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchPublicPage } from '../api/pages'
+import { resolveMediaImage } from '../utils/media'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import MediaImage from '../components/ui/MediaImage'
@@ -25,12 +26,13 @@ export default function AboutPage() {
   }, [])
 
   useSeo({
-    // No hardcoded literal fallback here — useSeo() itself falls back to
-    // the global Site Settings SEO defaults when this page has none of its
-    // own configured (see hooks/useSeo.js).
-    title: page?.seo?.title,
-    description: page?.seo?.description,
+    // CMS SEO fields win; the Page's own title/subtitle are the next
+    // fallback (both are editor-controlled), and only below that does
+    // useSeo() reach for the global Site Settings SEO defaults.
+    title: page?.seo?.title || page?.title,
+    description: page?.seo?.description || page?.subtitle,
     canonical: 'https://womenshapingfutures.org/about',
+    image: page?.heroMedia ? resolveMediaImage(page.heroMedia, { variant: 'large' }).src : undefined,
   })
 
   if (page === undefined) return <PageLoader />
@@ -42,8 +44,15 @@ export default function AboutPage() {
 
       <div className="container-editorial py-14">
         {page.heroMedia && (
-          <div className="mb-14">
-            <MediaImage media={page.heroMedia} variant="large" width={1200} height={600} aspect={2} priority className="w-full object-cover" />
+          <div className="mb-14 flex justify-center bg-cream">
+            <MediaImage
+              media={page.heroMedia}
+              variant="large"
+              width={1200}
+              height={800}
+              priority
+              className="h-auto max-h-[480px] w-full object-contain"
+            />
           </div>
         )}
         <div className="mx-auto max-w-reading">

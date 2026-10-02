@@ -31,10 +31,10 @@ export default function LegalPage({ docKey }) {
   }, [docKey])
 
   useSeo({
-    // No hardcoded literal fallback here — useSeo() itself falls back to
-    // the global Site Settings SEO defaults when this page has none of its
-    // own configured (see hooks/useSeo.js).
-    title: page?.seo?.title,
+    // CMS SEO fields win; the Page's own title/subtitle are the next
+    // fallback (both are editor-controlled), and only below that does
+    // useSeo() reach for the global Site Settings SEO defaults.
+    title: page?.seo?.title || page?.title,
     description: page?.seo?.description || page?.subtitle,
     canonical: `https://womenshapingfutures.org/${docKey}`,
   })
@@ -47,8 +47,15 @@ export default function LegalPage({ docKey }) {
       <PageHeader title={page.title} description={page.subtitle} />
       <div className="container-editorial py-14">
         {page.heroMedia && (
-          <div className="mb-14">
-            <MediaImage media={page.heroMedia} variant="large" width={1200} height={600} aspect={2} priority className="w-full object-cover" />
+          <div className="mb-14 flex justify-center bg-cream">
+            <MediaImage
+              media={page.heroMedia}
+              variant="large"
+              width={1200}
+              height={800}
+              priority
+              className="h-auto max-h-[480px] w-full object-contain"
+            />
           </div>
         )}
         <div className="mx-auto max-w-reading">
