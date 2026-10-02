@@ -13,7 +13,7 @@ from flask_restful import Api, Resource
 from app.extensions import db, limiter
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import Role, User
-from app.schemas.user import LoginSchema, RegisterSchema, UserSchema
+from app.schemas.user import ChangePasswordSchema, LoginSchema, RegisterSchema, UserSchema
 from app.services.audit import log_action
 from app.utils.responses import error_response, success_response
 
@@ -23,6 +23,7 @@ api = Api(auth_bp)
 register_schema = RegisterSchema()
 login_schema = LoginSchema()
 user_schema = UserSchema()
+change_password_schema = ChangePasswordSchema()
 
 
 class RegisterResource(Resource):
@@ -117,6 +118,45 @@ class LogoutResource(Resource):
         return success_response(None, message="Logged out.")
 
 
+class ChangePasswordResource(Resource):
+    """Self-service password change — the only way must_change_password
+    ever clears (see app/auth/decorators.py's centralized enforcement,
+    which otherwise rejects every permission/role-gated request from an
+    account still carrying that flag). Deliberately plain @jwt_required()
+    rather than the RBAC decorators: a forced-change user must be able to
+    reach this endpoint precisely because she can't reach anything else.
+    """
+
+    @jwt_required()
+    def post(self):
+        if not current_user or not current_user.is_active:
+            return error_response("Account is inactive or no longer exists.", 403, code="forbidden")
+
+        data = change_password_schema.load(request.get_json(silent=True) or {})
+
+        if not current_user.check_password(data["current_password"]):
+            return error_response("Current password is incorrect.", 401, code="invalid_credentials")
+        if data["new_password"] != data["confirm_password"]:
+            return error_response(
+                "New password and confirmation do not match.", 422, code="password_mismatch"
+            )
+        if data["new_password"] == data["current_password"]:
+            return error_response(
+                "New password must be different from your current password.", 422, code="password_unchanged"
+            )
+
+        current_user.set_password(data["new_password"])
+        current_user.must_change_password = False
+        db.session.commit()
+        # No `changes` payload — nothing here is safe or useful to audit
+        # beyond the fact that it happened (log_action's own redaction in
+        # app/services/audit.py would scrub a password value anyway, but
+        # this endpoint never hands it one to begin with).
+        log_action(current_user, "user.password_change", "User", current_user.id)
+
+        return success_response(user_schema.dump(current_user))
+
+
 class MeResource(Resource):
     @jwt_required()
     def get(self):
@@ -130,3 +170,4 @@ api.add_resource(LoginResource, "/login")
 api.add_resource(RefreshResource, "/refresh")
 api.add_resource(LogoutResource, "/logout")
 api.add_resource(MeResource, "/me")
+api.add_resource(ChangePasswordResource, "/change-password")

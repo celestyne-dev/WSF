@@ -54,6 +54,11 @@ class User(db.Model):
     avatar_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     is_verified = db.Column(db.Boolean, nullable=False, default=False)
+    # True from staff creation/admin password reset (a temporary password
+    # was generated) until the user successfully completes
+    # POST /auth/change-password herself. Never cleared by logging in —
+    # see app/auth/decorators.py's centralized enforcement.
+    must_change_password = db.Column(db.Boolean, nullable=False, default=False)
     last_login_at = db.Column(db.DateTime(timezone=True))
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(

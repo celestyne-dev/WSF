@@ -73,6 +73,7 @@ def create_staff_user(*, email, first_name, last_name, role_names, is_active, ac
     user = User(email=email, first_name=first_name, last_name=last_name, is_active=is_active)
     temporary_password = generate_temporary_password()
     user.set_password(temporary_password)
+    user.must_change_password = True
     user.roles = roles
     db.session.add(user)
     db.session.commit()
@@ -113,6 +114,7 @@ def set_user_status(user, is_active, *, actor):
 def reset_user_password(user):
     temporary_password = generate_temporary_password()
     user.set_password(temporary_password)
+    user.must_change_password = True
     db.session.commit()
     return temporary_password
 

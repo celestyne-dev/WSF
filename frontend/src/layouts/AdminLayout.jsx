@@ -32,6 +32,16 @@ export default function AdminLayout() {
     )
   }
 
+  // A temporary/reset password forces this user through /change-password
+  // before any CMS screen, including on a direct URL or a post-refresh
+  // session restore — checked ahead of the CMS-access gate below so it
+  // can't be bypassed by opening /admin/<anything> directly. The backend
+  // enforces this independently (app/auth/decorators.py rejects every
+  // permission/role-gated API call with password_change_required while
+  // this is true); this redirect is the UX companion to that, not a
+  // substitute for it.
+  if (user.mustChangePassword) return <Navigate to="/change-password" replace />
+
   // A real member/employer account authenticated successfully but holds no
   // CMS permission — public accounts are not CMS staff no matter how they
   // got a valid token (see utils/permissions.js:hasCmsAccess).

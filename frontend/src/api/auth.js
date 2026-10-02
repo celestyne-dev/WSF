@@ -26,6 +26,12 @@ function mapUser(u) {
     role: roles[0] || 'member',
     roles,
     permissions,
+    // True from staff creation or an admin password reset until this user
+    // completes POST /auth/change-password herself — see backend
+    // app/auth/decorators.py, which rejects every permission/role-gated
+    // request while this is true, so the frontend redirect below is a
+    // convenience, not the enforcement.
+    mustChangePassword: !!u.must_change_password,
   }
 }
 
@@ -73,6 +79,34 @@ function mapMockUser(user) {
     role: user.role,
     roles: [user.role],
     permissions: user.role === 'super_admin' ? ['*'] : [],
+    // Mock mode has no temporary-password/admin-reset flow to simulate.
+    mustChangePassword: false,
+  }
+}
+
+// POST /api/v1/auth/change-password — resolves (never throws) with
+// { success, user? } | { success, message, code? }, same never-throw
+// convention as login() above, so the page can render a field-level or
+// toast error without a try/catch of its own. Not available in mock mode —
+// mock accounts never carry mustChangePassword and have no backend to
+// verify a current password against.
+export async function changePassword({ currentPassword, newPassword, confirmPassword }) {
+  if (USE_MOCK) {
+    return { success: false, message: 'Password changes are not available in demo mode.' }
+  }
+  try {
+    const { data } = await apiClient.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    })
+    return { success: true, user: mapUser(data) }
+  } catch (err) {
+    return {
+      success: false,
+      message: err.apiError?.message || 'Could not change your password. Please try again.',
+      code: err.apiError?.code,
+    }
   }
 }
 

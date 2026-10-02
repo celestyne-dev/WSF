@@ -38,6 +38,13 @@ const authSlice = createSlice({
       state.accessToken = null
       clearStoredAuth()
     },
+    // After a successful POST /auth/change-password — replaces the
+    // authenticated user in place (mustChangePassword now false) with no
+    // token change, so the session continues uninterrupted; no logout/login
+    // round trip needed.
+    setUser(state, action) {
+      state.user = action.payload
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -66,5 +73,5 @@ const authSlice = createSlice({
   },
 })
 
-export const { logout } = authSlice.actions
+export const { logout, setUser } = authSlice.actions
 export default authSlice.reducer

@@ -1,8 +1,8 @@
 from flask import Blueprint, request
-from flask_jwt_extended import current_user, jwt_required
+from flask_jwt_extended import current_user
 from flask_restful import Api, Resource
 
-from app.auth.decorators import permission_required
+from app.auth.decorators import active_user_required, permission_required
 from app.extensions import db
 from app.models.media import Media
 from app.schemas.media import MediaSchema, MediaUpdateSchema
@@ -46,7 +46,7 @@ class MediaListResource(Resource):
 
 
 class MediaDetailResource(Resource):
-    @jwt_required()
+    @active_user_required
     def get(self, media_id):
         media = db.session.get(Media, media_id)
         if media is None:

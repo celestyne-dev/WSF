@@ -73,3 +73,11 @@ class RegisterSchema(ma.Schema):
 class LoginSchema(ma.Schema):
     email = fields.Email(required=True)
     password = fields.String(required=True, load_only=True)
+
+
+class ChangePasswordSchema(ma.Schema):
+    # min=8 mirrors RegisterSchema's own password policy above — the one
+    # rule a self-chosen password must meet, same as public registration.
+    current_password = fields.String(required=True, load_only=True)
+    new_password = fields.String(required=True, load_only=True, validate=validate.Length(min=8))
+    confirm_password = fields.String(required=True, load_only=True)

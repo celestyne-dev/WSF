@@ -20,7 +20,11 @@ export default function LoginPage() {
     const result = await dispatch(loginUser({ email, password }))
     if (result.meta.requestStatus === 'fulfilled') {
       toast.success(`Welcome back, ${result.payload.user.name.split(' ')[0]}.`)
-      navigate(getDefaultCmsRoute(result.payload.user))
+      if (result.payload.user.mustChangePassword) {
+        navigate('/change-password')
+      } else {
+        navigate(getDefaultCmsRoute(result.payload.user))
+      }
     } else {
       toast.error(result.payload || 'Login failed')
     }
