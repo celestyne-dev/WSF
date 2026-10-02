@@ -59,6 +59,16 @@ class User(db.Model):
     # POST /auth/change-password herself. Never cleared by logging in —
     # see app/auth/decorators.py's centralized enforcement.
     must_change_password = db.Column(db.Boolean, nullable=False, default=False)
+    # Bumped by a successful password recovery (see
+    # app/services/password_reset.py) to invalidate every access/refresh
+    # JWT issued before that point — see app/auth/jwt_callbacks.py's
+    # check_if_revoked, which rejects a token whose auth_version claim
+    # doesn't match this column. A token with no auth_version claim at all
+    # (issued before this column existed) is treated as version 0, so
+    # deploying this does not retroactively log anyone out. Never bumped
+    # merely by requesting a reset email, logging in, or changing a
+    # password through the normal /auth/change-password flow.
+    auth_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     last_login_at = db.Column(db.DateTime(timezone=True))
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(

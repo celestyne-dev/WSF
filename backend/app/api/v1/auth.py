@@ -15,8 +15,17 @@ from app.extensions import db, limiter
 from app.models.geography import Country
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import Role, User
-from app.schemas.user import ChangePasswordSchema, LoginSchema, RegisterSchema, SelfProfileUpdateSchema, UserSchema
+from app.schemas.user import (
+    ChangePasswordSchema,
+    ForgotPasswordSchema,
+    LoginSchema,
+    RegisterSchema,
+    ResetPasswordSchema,
+    SelfProfileUpdateSchema,
+    UserSchema,
+)
 from app.services.audit import log_action
+from app.services.password_reset import request_password_reset, reset_password
 from app.utils.responses import ApiError, error_response, success_response
 
 auth_bp = Blueprint("auth", __name__)
@@ -27,6 +36,8 @@ login_schema = LoginSchema()
 user_schema = UserSchema()
 change_password_schema = ChangePasswordSchema()
 self_profile_update_schema = SelfProfileUpdateSchema()
+forgot_password_schema = ForgotPasswordSchema()
+reset_password_schema = ResetPasswordSchema()
 
 
 class RegisterResource(Resource):
@@ -216,9 +227,55 @@ class MeResource(Resource):
         return success_response(user_schema.dump(current_user))
 
 
+class ForgotPasswordResource(Resource):
+    """Always responds with the same generic success message — see
+    app/services/password_reset.py's request_password_reset(), which
+    never raises and never reveals whether the email matched an account.
+    """
+
+    # Conservative but not punitive: a real user mistyping/retrying a
+    # forgot-password request a couple of times in an hour is fine; a
+    # script trying to enumerate accounts or mail-bomb an address is not.
+    # Same per-IP, in-memory limiter as LoginResource above (see
+    # app/extensions.py).
+    @limiter.limit("5 per hour")
+    def post(self):
+        data = forgot_password_schema.load(request.get_json(silent=True) or {})
+        request_password_reset(data["email"])
+        return success_response(
+            None,
+            message="If an account exists for that email, we have sent password reset instructions.",
+        )
+
+
+class ResetPasswordResource(Resource):
+    """Consumes a one-time reset token (see
+    app/services/password_reset.py) and sets a new password. Does NOT
+    log the user in — no tokens are issued here; see the schema module
+    docstring/spec for why (this is a recovery action, not a session
+    start, and the user should prove the new password back at /login).
+    """
+
+    def post(self):
+        data = reset_password_schema.load(request.get_json(silent=True) or {})
+
+        if data["new_password"] != data["confirm_password"]:
+            return error_response(
+                "New password and confirmation do not match.", 422, code="password_mismatch"
+            )
+
+        reset_password(data["token"], data["new_password"])
+
+        return success_response(
+            None, message="Your password has been reset. You may now sign in with your new password."
+        )
+
+
 api.add_resource(RegisterResource, "/register")
 api.add_resource(LoginResource, "/login")
 api.add_resource(RefreshResource, "/refresh")
 api.add_resource(LogoutResource, "/logout")
 api.add_resource(MeResource, "/me")
 api.add_resource(ChangePasswordResource, "/change-password")
+api.add_resource(ForgotPasswordResource, "/forgot-password")
+api.add_resource(ResetPasswordResource, "/reset-password")

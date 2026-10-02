@@ -55,6 +55,7 @@ from app.models.learning import (  # noqa: F401
     LearningProgramRelatedArticle,
 )
 from app.models.notification import Notification  # noqa: F401
+from app.models.password_reset import PasswordResetToken  # noqa: F401
 
 __all__ = [
     "Country",
@@ -120,4 +121,5 @@ __all__ = [
     "LearningProgramRelatedArticle",
     "LearningProgramEvent",
     "Notification",
+    "PasswordResetToken",
 ]

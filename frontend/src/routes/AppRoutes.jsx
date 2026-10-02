@@ -36,6 +36,8 @@ const AboutPage = lazy(() => import('../pages/AboutPage'))
 const SearchPage = lazy(() => import('../pages/SearchPage'))
 const LoginPage = lazy(() => import('../pages/LoginPage'))
 const RegisterPage = lazy(() => import('../pages/RegisterPage'))
+const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'))
 const ChangePasswordPage = lazy(() => import('../pages/ChangePasswordPage'))
 const AccountPage = lazy(() => import('../pages/AccountPage'))
 const SubmitStoryPage = lazy(() => import('../pages/SubmitStoryPage'))
@@ -133,6 +135,13 @@ export default function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* Standalone — deliberately NOT inside PublicLayout. The raw
+            password-reset token lives in this route's URL fragment; see
+            ResetPasswordPage.jsx for why it must never pass through
+            PublicLayout's analytics/acquisition-tracking route-change
+            effect. */}
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />
 
@@ -177,6 +186,12 @@ export default function AppRoutes() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          {/* /forgot-password carries no secret, so it stays inside the
+              normal public/analytics tree. /reset-password DOES carry one
+              (the raw token, in the URL fragment) and is registered as its
+              own standalone route below, outside PublicLayout entirely —
+              see ResetPasswordPage.jsx's own comment. */}
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/submit" element={<SubmitStoryPage />} />

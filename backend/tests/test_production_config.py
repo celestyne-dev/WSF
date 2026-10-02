@@ -21,6 +21,13 @@ def _bare_app(**config_overrides):
     app.config["JWT_SECRET_KEY"] = "a-different-real-random-jwt-secret"
     app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://wsf:x@db-host:5432/womenshapingfutures"
     app.config["CORS_ORIGINS"] = ["https://womenshapingfutures.org"]
+    # See app/services/email.py / config.py's require_production_settings:
+    # the console email backend (which would log raw password-reset
+    # links) is forbidden in production, so a "valid" production config
+    # must select smtp and carry its two required fields.
+    app.config["EMAIL_BACKEND"] = "smtp"
+    app.config["SMTP_HOST"] = "smtp.example.com"
+    app.config["SMTP_FROM_EMAIL"] = "noreply@womenshapingfutures.org"
     app.config.update(config_overrides)
     return app
 
@@ -86,6 +93,24 @@ def test_require_production_settings_rejects_localhost_cors_origin(origins):
         require_production_settings(app)
 
 
+def test_require_production_settings_rejects_console_email_backend():
+    app = _bare_app(EMAIL_BACKEND="console")
+    with pytest.raises(RuntimeError, match="EMAIL_BACKEND must be 'smtp'"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_rejects_missing_smtp_host():
+    app = _bare_app(SMTP_HOST=None)
+    with pytest.raises(RuntimeError, match="SMTP_HOST is not set"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_rejects_missing_smtp_from_email():
+    app = _bare_app(SMTP_FROM_EMAIL=None)
+    with pytest.raises(RuntimeError, match="SMTP_FROM_EMAIL is not set"):
+        require_production_settings(app)
+
+
 def test_require_production_settings_reports_every_problem_at_once():
     app = Flask(__name__)
     # Nothing set at all — every check should fail together, not just the
@@ -114,6 +139,9 @@ def test_create_app_production_boots_when_config_is_valid(monkeypatch):
     monkeypatch.setattr(ProductionConfig, "JWT_SECRET_KEY", "a-different-real-random-jwt-secret")
     monkeypatch.setattr(ProductionConfig, "SQLALCHEMY_DATABASE_URI", "postgresql://wsf:x@db-host:5432/womenshapingfutures")
     monkeypatch.setattr(ProductionConfig, "CORS_ORIGINS", ["https://womenshapingfutures.org"])
+    monkeypatch.setattr(ProductionConfig, "EMAIL_BACKEND", "smtp")
+    monkeypatch.setattr(ProductionConfig, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(ProductionConfig, "SMTP_FROM_EMAIL", "noreply@womenshapingfutures.org")
 
     from app import create_app
 

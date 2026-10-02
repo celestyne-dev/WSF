@@ -89,6 +89,19 @@ class ChangePasswordSchema(ma.Schema):
     confirm_password = fields.String(required=True, load_only=True)
 
 
+class ForgotPasswordSchema(ma.Schema):
+    email = fields.Email(required=True)
+
+
+class ResetPasswordSchema(ma.Schema):
+    token = fields.String(required=True, validate=validate.Length(min=1))
+    # min=8 mirrors RegisterSchema/ChangePasswordSchema's own password
+    # policy — the one rule a password chosen through recovery must meet
+    # too, same as everywhere else a user picks her own password.
+    new_password = fields.String(required=True, load_only=True, validate=validate.Length(min=8))
+    confirm_password = fields.String(required=True, load_only=True)
+
+
 class SelfProfileUpdateSchema(ma.Schema):
     """PATCH /api/v1/auth/me — deliberately narrow: only the fields a
     public/staff account may edit about herself. No email, roles,

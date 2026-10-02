@@ -72,6 +72,50 @@ ones that matter most for going to production safely:
 | `MEDIA_ROOT` | Absolute path outside both source trees, e.g. `/var/www/womenshapingfutures/media`. |
 | `TRUSTED_PROXY_COUNT` | `1` (exactly one Nginx hop in front of Gunicorn). |
 | `LOG_LEVEL` | `INFO` (or `WARNING` once things are stable). |
+| `EMAIL_BACKEND` | Must be `smtp`. The app refuses to start in production with the `console` backend (see §4a) — it would log raw password-reset links. |
+| `SMTP_HOST`, `SMTP_FROM_EMAIL` | Required when `EMAIL_BACKEND=smtp`. |
+| `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `SMTP_FROM_NAME` | Fill in per whatever SMTP relay/provider you use — see §4a. |
+
+### 4a. Outbound email (password recovery)
+
+The forgot/reset-password flow (see `app/services/password_reset.py`)
+sends a reset-link email through `app/services/email.py`, a small
+provider-neutral service with two backends, selected by `EMAIL_BACKEND`:
+
+- `console` — logs the email instead of sending it. **Local development
+  only.** `config.py:require_production_settings` (run automatically by
+  `create_app("production")`, and by `flask production-check`, §13)
+  refuses to start if this is selected in production, because it would
+  write a raw, usable password-reset link to the application log.
+- `smtp` — sends via Python's standard library (`smtplib`/`email`), not
+  a vendor SDK, so WSF isn't locked into one provider. Point it at
+  whatever SMTP relay you have: the VPS's own mail transfer agent, or a
+  transactional-email provider's SMTP endpoint (e.g. Postmark, SES,
+  SendGrid, Mailgun — any of them work as plain SMTP, no provider-specific
+  code is required).
+
+Required when `EMAIL_BACKEND=smtp`:
+
+| Variable | Notes |
+|---|---|
+| `SMTP_HOST` | Required. |
+| `SMTP_PORT` | Default `587` (STARTTLS). |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | Required by most providers; some internal relays allow unauthenticated local delivery and can leave these blank. |
+| `SMTP_USE_TLS` | `true`/`false`, default `true`. |
+| `SMTP_FROM_EMAIL` | Required. The reply-to/from address recipients see. |
+| `SMTP_FROM_NAME` | Display name, default `Women Shaping Futures`. |
+
+**Never** put any of these in a frontend `.env`/`VITE_*` variable — they
+belong to the backend only, and the frontend never needs them.
+
+The reset link itself is built from `FRONTEND_URL` (already set above) —
+make sure that's the real `https://` production URL before anyone can
+request a reset; an email with an `http://` or `localhost` link in
+production means `FRONTEND_URL` is still wrong.
+
+Changing any of these env vars requires a Gunicorn restart to take
+effect — see §18's `systemctl restart` step; nothing picks up a changed
+`.env` file without one.
 
 Run `flask production-check` (see §13) after filling this in — it verifies
 all of the above without touching the database and without ever printing
@@ -313,8 +357,9 @@ FLASK_CONFIG=production flask production-check
 ```
 
 It verifies `SECRET_KEY`/`JWT_SECRET_KEY`/`DATABASE_URL`/`CORS_ORIGINS`/
-`MEDIA_ROOT` are present and sane, **without printing any secret value**
-and **without touching the database** (no migration, no seed, no write —
+`MEDIA_ROOT`/`EMAIL_BACKEND` (and its required `SMTP_*` variables, see
+§4a) are present and sane, **without printing any secret value** and
+**without touching the database** (no migration, no seed, no write —
 safe to run repeatedly, including against a live deployment).
 
 ## 14. Database connection pooling

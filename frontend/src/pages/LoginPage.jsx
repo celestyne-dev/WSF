@@ -39,9 +39,14 @@ export default function LoginPage() {
             <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1.5 w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
           </div>
           <div>
-            <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-              Password
-            </label>
+            <div className="flex items-baseline justify-between">
+              <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                Password
+              </label>
+              <Link to="/forgot-password" className="text-xs font-semibold text-burgundy-600 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1.5 w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
           </div>
           <button type="submit" disabled={status === 'loading'} className="btn-primary w-full disabled:opacity-60">

@@ -129,6 +129,24 @@ class Config:
     DEFAULT_PAGE_SIZE = 20
     MAX_PAGE_SIZE = 100
 
+    # Provider-neutral outbound email (see app/services/email.py) — used
+    # today only by password recovery (app/services/password_reset.py).
+    # "console" (the shared default, overridden to require "smtp" in
+    # ProductionConfig below) logs the email instead of sending it, so a
+    # fresh local checkout can exercise the full forgot/reset-password
+    # flow with zero mail setup. "smtp" sends via Python's stdlib
+    # smtplib/email — no vendor SDK, so WSF isn't locked into one
+    # provider; any standard SMTP relay (a VPS's own Postfix, a
+    # transactional-email provider's SMTP endpoint, etc.) works.
+    EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "console")
+    SMTP_HOST = os.environ.get("SMTP_HOST")
+    SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+    SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+    SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").strip().lower() not in ("false", "0", "no")
+    SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL")
+    SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "Women Shaping Futures")
+
 
 class DevelopmentConfig(Config):
     ENV = "development"
@@ -220,6 +238,24 @@ def require_production_settings(app):
         problems.append("CORS_ORIGINS (or FRONTEND_URL) is not set.")
     elif any("localhost" in origin or "127.0.0.1" in origin for origin in app.config["CORS_ORIGINS"]):
         problems.append("CORS_ORIGINS includes a localhost/127.0.0.1 origin in production.")
+
+    # The "console" email backend logs full email content — including a
+    # raw password-reset link — to the application log. That must be
+    # structurally impossible in production, not just discouraged, so
+    # this is enforced here (which create_app() calls unconditionally for
+    # config_name == "production") rather than left to a reviewer
+    # noticing an EMAIL_BACKEND=console line in some .env file.
+    email_backend = app.config.get("EMAIL_BACKEND")
+    if email_backend != "smtp":
+        problems.append(
+            f"EMAIL_BACKEND must be 'smtp' in production (got {email_backend!r}) — "
+            "the console backend would log raw password-reset links."
+        )
+    else:
+        if not app.config.get("SMTP_HOST"):
+            problems.append("SMTP_HOST is not set (required when EMAIL_BACKEND=smtp).")
+        if not app.config.get("SMTP_FROM_EMAIL"):
+            problems.append("SMTP_FROM_EMAIL is not set (required when EMAIL_BACKEND=smtp).")
 
     if problems:
         raise RuntimeError(

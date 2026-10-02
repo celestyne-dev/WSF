@@ -205,6 +205,53 @@ export async function logout() {
   }
 }
 
+// POST /api/v1/auth/forgot-password — always resolves { success: true,
+// message } for any well-formed email, whether or not an account exists
+// for it (see backend app/services/password_reset.py: account
+// enumeration protection is the whole point of this endpoint). Never
+// throws on a 429 (rate limited) either — that's still just "try again
+// later", not something to surface as a distinct error state that could
+// itself hint at account existence.
+export async function forgotPassword({ email }) {
+  if (USE_MOCK) {
+    return { success: true, message: 'If an account exists for that email, we have sent password reset instructions.' }
+  }
+  try {
+    const { data } = await apiClient.post('/auth/forgot-password', { email })
+    return { success: true, message: data?.message }
+  } catch (err) {
+    // Even a network/validation failure here must not read as "this
+    // email doesn't exist" — the caller (ForgotPasswordPage) shows the
+    // same neutral confirmation regardless, per spec.
+    return { success: true, message: err.apiError?.message }
+  }
+}
+
+// POST /api/v1/auth/reset-password — resolves (never throws) with
+// { success, message? } | { success: false, message, code? }. Deliberately
+// takes the raw token as a plain argument, never persisted by this
+// module or any caller — see ResetPasswordPage.jsx, which keeps it only
+// in its own component state for the duration of this call.
+export async function resetPassword({ token, newPassword, confirmPassword }) {
+  if (USE_MOCK) {
+    return { success: false, message: 'Password reset is not available in demo mode.' }
+  }
+  try {
+    const { data } = await apiClient.post('/auth/reset-password', {
+      token,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    })
+    return { success: true, message: data?.message }
+  } catch (err) {
+    return {
+      success: false,
+      message: err.apiError?.message || 'Could not reset your password. Please try again.',
+      code: err.apiError?.code,
+    }
+  }
+}
+
 export async function fetchCurrentUser(token) {
   if (!USE_MOCK) {
     try {
