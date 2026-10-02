@@ -62,6 +62,7 @@ function NavTrigger({ item, isOpen, onToggle }) {
 export default function Header() {
   const navigation = useSelector((s) => s.site.navigation)
   const user = useSelector((s) => s.auth.user)
+  const accessToken = useSelector((s) => s.auth.accessToken)
   const dispatch = useDispatch()
   const [openDropdown, setOpenDropdown] = useState(null)
   const navRef = useRef(null)
@@ -69,9 +70,14 @@ export default function Header() {
   // Logged out -> /login (which itself links to /register — see
   // LoginPage). Logged in, any account type (public or CMS staff) -> her
   // own /account; staff keep their normal sidebar access regardless, since
-  // this icon never branches on CMS permissions, only on "is there a user".
-  const accountHref = user ? '/account' : '/login'
-  const accountLabel = user ? 'My account' : 'Sign in'
+  // this icon never branches on CMS permissions, only on "is there a
+  // session". A stored accessToken with `user` still null means
+  // PublicLayout's restoreSession() is in flight (e.g. right after a
+  // refresh) — treated as authenticated here too, so the header doesn't
+  // flash a "Sign in" state for a session that's actually still there.
+  const isAuthenticated = Boolean(user || accessToken)
+  const accountHref = isAuthenticated ? '/account' : '/login'
+  const accountLabel = isAuthenticated ? 'My account' : 'Sign in'
 
   const primary = navigation?.primary || []
   const secondary = navigation?.secondary || []

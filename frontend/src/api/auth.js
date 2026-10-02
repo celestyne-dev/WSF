@@ -1,4 +1,4 @@
-import { apiClient, USE_MOCK } from './client'
+import { apiClient, ACCESS_TOKEN_KEY, USE_MOCK } from './client'
 import { delay } from './mockUtils'
 
 // The mock admin users list is only needed when VITE_USE_MOCK=true —
@@ -183,11 +183,23 @@ export async function updateProfile({ firstName, lastName, displayName, bio, cou
 // server-side. Deliberately swallows any failure (expired/offline/etc):
 // an explicit sign-out must always clear the LOCAL session regardless of
 // whether the backend call succeeds — see authSlice.js's logoutUser thunk,
-// which calls this then clears tokens unconditionally.
+// which dispatches the local logout reducer immediately (not after
+// awaiting this) so a slow/offline backend can never leave the browser
+// looking authenticated.
+//
+// The access token is read and attached to the Authorization header
+// explicitly, synchronously, before this function does anything async.
+// That's deliberate: the caller clears localStorage right after starting
+// this request (see logoutUser below), and apiClient's own request
+// interceptor (api/client.js) would otherwise find no token left to
+// attach by the time it runs — this request needs to carry ITS OWN
+// token regardless of what's in storage by the time it's actually sent.
 export async function logout() {
   if (USE_MOCK) return
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+  if (!token) return
   try {
-    await apiClient.post('/auth/logout')
+    await apiClient.post('/auth/logout', null, { headers: { Authorization: `Bearer ${token}` } })
   } catch {
     // Local tokens are cleared by the caller either way.
   }

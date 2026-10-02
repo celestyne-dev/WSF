@@ -23,13 +23,19 @@ export const registerUser = createAsyncThunk('auth/register', async (payload, { 
   return res
 })
 
-// Shared by the CMS header's logout button and /account's sign-out action.
-// Always clears the local session (via the `logout` reducer below) even if
-// the backend blocklist call fails — logoutApi() itself never throws (see
-// api/auth.js), so this thunk can't leave a half-signed-out state.
+// Shared by the CMS header's logout button and /account's/MobileNav's
+// sign-out actions. Starts the backend blocklist request, then clears the
+// local session IMMEDIATELY — not after awaiting that request — so a
+// slow or offline backend can never leave the browser looking
+// authenticated after the user pressed Sign out. logoutApi() captures the
+// access token itself before this reads; the local `logout` reducer below
+// clears it from storage. logoutApi() never throws (see api/auth.js), so
+// the trailing await is just to let the best-effort request finish before
+// this thunk settles — it can't undo the local sign-out either way.
 export const logoutUser = createAsyncThunk('auth/logout', async (_, { dispatch }) => {
-  await logoutApi()
+  const backendLogout = logoutApi()
   dispatch(logout())
+  await backendLogout
 })
 
 export const restoreSession = createAsyncThunk('auth/restore', async (_, { rejectWithValue }) => {

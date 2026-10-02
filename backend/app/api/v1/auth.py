@@ -37,11 +37,19 @@ class RegisterResource(Resource):
         if User.query.filter_by(email=email).first():
             return error_response("An account with this email already exists.", 409, code="email_taken")
 
+        # A browser always sends a code CountrySelect offers, but a direct
+        # API request must not be trusted to — same validation MeResource.patch
+        # below applies to self-profile edits, so a malformed code 422s here
+        # rather than reaching the country_code FK and risking a 500.
+        country_code = (data.get("country_code") or "").strip().upper() or None
+        if country_code and not db.session.get(Country, country_code):
+            raise ApiError("Unknown country code.", 422, code="invalid_country")
+
         user = User(
             email=email,
             first_name=data["first_name"],
             last_name=data["last_name"],
-            country_code=data.get("country_code"),
+            country_code=country_code,
         )
         user.set_password(data["password"])
 
@@ -194,10 +202,16 @@ class MeResource(Resource):
         for field, value in data.items():
             setattr(current_user, field, value)
         db.session.commit()
-        # Profile fields only — none of them are sensitive, so no redaction
-        # concern (contrast with ChangePasswordResource above, which logs
-        # no `changes` at all because its fields ARE sensitive).
-        log_action(current_user, "user.profile_update", "User", current_user.id, changes=data)
+        # Audit WHICH fields changed, never the submitted values — bio/name
+        # content has no business living in audit metadata even though
+        # it isn't on _SENSITIVE_KEYS's denylist (see app/services/audit.py).
+        log_action(
+            current_user,
+            "user.profile_update",
+            "User",
+            current_user.id,
+            changes={"fields": sorted(data.keys())},
+        )
 
         return success_response(user_schema.dump(current_user))
 

@@ -35,6 +35,12 @@ export default function MobileNav() {
   const open = useSelector((s) => s.ui.mobileNavOpen)
   const navigation = useSelector((s) => s.site.navigation)
   const user = useSelector((s) => s.auth.user)
+  const accessToken = useSelector((s) => s.auth.accessToken)
+  // A stored accessToken with `user` still null means PublicLayout's
+  // restoreSession() is in flight — treated as authenticated here too so
+  // this menu doesn't flash "Sign in"/"Create account" for a session
+  // that's actually still there (same reasoning as Header.jsx).
+  const isAuthenticated = Boolean(user || accessToken)
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState(null)
@@ -103,7 +109,7 @@ export default function MobileNav() {
               <NavItemLink item={item} onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600" />
             </li>
           ))}
-          {user ? (
+          {isAuthenticated ? (
             <>
               <li>
                 <Link to="/account" onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600">

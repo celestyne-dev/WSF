@@ -52,6 +52,17 @@ class TestPublicRegistration:
         assert resp.status_code == 409
         assert resp.get_json()["error"]["code"] == "email_taken"
 
+    def test_registration_rejects_invalid_country(self, client, app):
+        """A direct API request isn't bound by CountrySelect's browser-side
+        option list — the server must validate country_code itself rather
+        than trusting it straight into the country_code FK.
+        """
+        resp = _register(client, email="badcountry@example.com", country_code="ZZ999")
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "invalid_country"
+        with app.app_context():
+            assert User.query.filter_by(email="badcountry@example.com").first() is None
+
     def test_registration_does_not_create_a_community_member(self, app, client):
         """Core separation requirement: creating a User(email=x) must never
         create a Member(email=x) — joining /community stays its own
@@ -205,9 +216,18 @@ class TestProfileUpdate:
     def test_profile_update_is_audited(self, client, app):
         token = _register_and_login(client, email="audited_profile@example.com")
         client.patch(
-            "/api/v1/auth/me", json={"first_name": "Renamed"}, headers=auth_headers(token)
+            "/api/v1/auth/me",
+            json={"first_name": "Renamed", "bio": "A very distinctive bio value."},
+            headers=auth_headers(token),
         )
         with app.app_context():
             entry = AuditLog.query.filter_by(action="user.profile_update").first()
             assert entry is not None
-            assert "Renamed" in str(entry.changes)
+            # The audit entry records WHICH fields changed, never the
+            # submitted values — a distinctive profile value must not leak
+            # into audit metadata (bio/name content isn't on
+            # app/services/audit.py's sensitive-key denylist, so this has
+            # to be enforced at the call site, not the redactor).
+            assert entry.changes == {"fields": ["bio", "first_name"]}
+            assert "Renamed" not in str(entry.changes)
+            assert "distinctive bio" not in str(entry.changes)
