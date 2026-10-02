@@ -10,12 +10,14 @@ from flask_jwt_extended import (
 )
 from flask_restful import Api, Resource
 
+from app.auth.decorators import active_user_required
 from app.extensions import db, limiter
+from app.models.geography import Country
 from app.models.token_blocklist import TokenBlocklist
 from app.models.user import Role, User
-from app.schemas.user import ChangePasswordSchema, LoginSchema, RegisterSchema, UserSchema
+from app.schemas.user import ChangePasswordSchema, LoginSchema, RegisterSchema, SelfProfileUpdateSchema, UserSchema
 from app.services.audit import log_action
-from app.utils.responses import error_response, success_response
+from app.utils.responses import ApiError, error_response, success_response
 
 auth_bp = Blueprint("auth", __name__)
 api = Api(auth_bp)
@@ -24,6 +26,7 @@ register_schema = RegisterSchema()
 login_schema = LoginSchema()
 user_schema = UserSchema()
 change_password_schema = ChangePasswordSchema()
+self_profile_update_schema = SelfProfileUpdateSchema()
 
 
 class RegisterResource(Resource):
@@ -162,6 +165,40 @@ class MeResource(Resource):
     def get(self):
         if not current_user or not current_user.is_active:
             return error_response("Account is inactive or no longer exists.", 403, code="forbidden")
+        return success_response(user_schema.dump(current_user))
+
+    # @active_user_required (not @jwt_required()) deliberately: self-profile
+    # editing is a normal protected action, not a session/auth operation, so
+    # it goes through the same centralized guard as every CMS endpoint —
+    # including the must_change_password block. A forced-change account
+    # must finish POST /auth/change-password before she can touch her
+    # profile, same as she's blocked from everything else.
+    @active_user_required
+    def patch(self):
+        data = self_profile_update_schema.load(request.get_json(silent=True) or {}, partial=True)
+
+        for field in ("first_name", "last_name", "display_name", "bio"):
+            if field in data and isinstance(data[field], str):
+                data[field] = data[field].strip()
+        if data.get("first_name") == "":
+            raise ApiError("First name cannot be blank.", 422, code="validation_error")
+        if data.get("last_name") == "":
+            raise ApiError("Last name cannot be blank.", 422, code="validation_error")
+
+        if "country_code" in data:
+            code = (data["country_code"] or "").strip().upper() or None
+            if code and not db.session.get(Country, code):
+                raise ApiError("Unknown country code.", 422, code="invalid_country")
+            data["country_code"] = code
+
+        for field, value in data.items():
+            setattr(current_user, field, value)
+        db.session.commit()
+        # Profile fields only — none of them are sensitive, so no redaction
+        # concern (contrast with ChangePasswordResource above, which logs
+        # no `changes` at all because its fields ARE sensitive).
+        log_action(current_user, "user.profile_update", "User", current_user.id, changes=data)
+
         return success_response(user_schema.dump(current_user))
 
 

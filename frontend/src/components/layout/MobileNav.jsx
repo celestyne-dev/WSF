@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { X, ChevronDown } from 'lucide-react'
 import { toggleMobileNav } from '../../features/navigation/uiSlice'
+import { logoutUser } from '../../features/auth/authSlice'
 
 function isExternal(url) {
   return !!url && /^https?:\/\//i.test(url)
@@ -33,7 +34,9 @@ function NavItemLink({ item, onClick, className }) {
 export default function MobileNav() {
   const open = useSelector((s) => s.ui.mobileNavOpen)
   const navigation = useSelector((s) => s.site.navigation)
+  const user = useSelector((s) => s.auth.user)
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const [expanded, setExpanded] = useState(null)
 
   if (!open) return null
@@ -43,6 +46,12 @@ export default function MobileNav() {
 
   function close() {
     dispatch(toggleMobileNav(false))
+  }
+
+  function signOut() {
+    dispatch(logoutUser())
+    close()
+    navigate('/')
   }
 
   return (
@@ -94,11 +103,33 @@ export default function MobileNav() {
               <NavItemLink item={item} onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600" />
             </li>
           ))}
-          <li>
-            <Link to="/login" onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600">
-              Login
-            </Link>
-          </li>
+          {user ? (
+            <>
+              <li>
+                <Link to="/account" onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600">
+                  My account
+                </Link>
+              </li>
+              <li>
+                <button type="button" onClick={signOut} className="block w-full py-2 text-left text-sm font-medium text-charcoal-600 hover:text-burgundy-600">
+                  Sign out
+                </button>
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                <Link to="/login" onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600">
+                  Sign in
+                </Link>
+              </li>
+              <li>
+                <Link to="/register" onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600">
+                  Create account
+                </Link>
+              </li>
+            </>
+          )}
         </ul>
       </nav>
       <div className="flex gap-4 border-t border-taupe-200 px-4 py-4">

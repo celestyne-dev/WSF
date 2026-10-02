@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { changePassword } from '../api/auth'
 import { restoreSession, setUser } from '../features/auth/authSlice'
-import { getDefaultCmsRoute } from '../utils/permissions'
+import { getPostLoginRoute } from '../utils/permissions'
 import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
 
@@ -71,7 +71,7 @@ export default function ChangePasswordPage() {
 
     dispatch(setUser(result.user))
     toast.success('Your password has been updated.')
-    navigate(getDefaultCmsRoute(result.user))
+    navigate(getPostLoginRoute(result.user))
   }
 
   return (
@@ -83,8 +83,8 @@ export default function ChangePasswordPage() {
         </h1>
         <p className="mt-3 text-center text-sm text-charcoal-600">
           {forced
-            ? 'For security, you must set your own password before continuing to the WSF Studio.'
-            : 'Update the password you use to sign in to the WSF Studio.'}
+            ? 'For security, you must set your own password before continuing.'
+            : 'Update the password you use to sign in to your WSF account.'}
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">

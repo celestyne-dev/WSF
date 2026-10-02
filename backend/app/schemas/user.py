@@ -55,6 +55,12 @@ class RoleAssignmentSchema(ma.Schema):
 class UserSchema(ma.SQLAlchemyAutoSchema):
     roles = ma.Nested(RoleSchema, many=True, dump_only=True)
     full_name = fields.String(dump_only=True)
+    # SQLAlchemyAutoSchema's default include_fk=False silently drops every
+    # FK column (country_code, avatar_media_id) from the auto-generated
+    # field set — declared explicitly here so /auth/me and /account can
+    # actually see a user's own country (avatar_media_id stays out: no
+    # avatar self-service in this module, see spec).
+    country_code = fields.String(dump_only=True)
 
     class Meta:
         model = User
@@ -81,3 +87,18 @@ class ChangePasswordSchema(ma.Schema):
     current_password = fields.String(required=True, load_only=True)
     new_password = fields.String(required=True, load_only=True, validate=validate.Length(min=8))
     confirm_password = fields.String(required=True, load_only=True)
+
+
+class SelfProfileUpdateSchema(ma.Schema):
+    """PATCH /api/v1/auth/me — deliberately narrow: only the fields a
+    public/staff account may edit about herself. No email, roles,
+    permissions, is_active, is_verified, must_change_password, or any other
+    admin/security field — see AdminUserUpdateSchema/AdminUserCreateSchema
+    above for the separate admin-only path that can touch those.
+    """
+
+    first_name = fields.String(required=False, validate=validate.Length(min=1, max=100))
+    last_name = fields.String(required=False, validate=validate.Length(min=1, max=100))
+    display_name = fields.String(required=False, allow_none=True, validate=validate.Length(max=150))
+    bio = fields.String(required=False, allow_none=True, validate=validate.Length(max=2000))
+    country_code = fields.String(required=False, allow_none=True, validate=validate.Length(min=2, max=10))

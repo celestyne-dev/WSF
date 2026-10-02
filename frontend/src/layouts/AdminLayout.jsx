@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
-import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { LogOut, ExternalLink } from 'lucide-react'
-import { restoreSession, logout } from '../features/auth/authSlice'
+import { restoreSession, logoutUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import { NAV_GROUPS } from '../constants/adminNav'
 import { hasPermission, hasCmsAccess, getDefaultCmsRoute } from '../utils/permissions'
@@ -13,10 +13,31 @@ export default function AdminLayout() {
   const dispatch = useDispatch()
   const { user, accessToken } = useSelector((s) => s.auth)
   const location = useLocation()
+  const navigate = useNavigate()
+  const [signingOut, setSigningOut] = useState(false)
 
   useEffect(() => {
     if (accessToken && !user) dispatch(restoreSession())
   }, [accessToken, user, dispatch])
+
+  function handleLogout() {
+    setSigningOut(true)
+    dispatch(logoutUser())
+    navigate('/')
+  }
+
+  // Signing out is a deliberate exit, not a session loss: once requested,
+  // render a loader instead of the normal guards below, so a lingering
+  // render of this layout (e.g. while the next route's chunk loads) can't
+  // see the now-cleared accessToken and race the "/" we're navigating to
+  // with its own redirect to /login.
+  if (signingOut) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-taupe-100">
+        <p className="text-sm text-charcoal-600">Signing out…</p>
+      </div>
+    )
+  }
 
   if (!accessToken) return <Navigate to="/login" replace />
 
@@ -115,7 +136,7 @@ export default function AdminLayout() {
             </div>
             <button
               type="button"
-              onClick={() => dispatch(logout())}
+              onClick={handleLogout}
               aria-label="Log out"
               className="flex h-9 w-9 items-center justify-center border border-taupe-300 text-charcoal-600 hover:border-burgundy-500 hover:text-burgundy-600"
             >

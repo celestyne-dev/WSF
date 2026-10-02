@@ -88,3 +88,22 @@ export function getDefaultCmsRoute(user) {
   const match = CMS_ROUTE_PERMISSIONS.find((entry) => hasPermission(user, ...entry.permissions))
   return match ? match.route : '/admin'
 }
+
+// The single decision for "where does this user go right after
+// authenticating" — used by LoginPage after a successful login and by
+// ChangePasswordPage after a successful password change (forced or
+// voluntary), so neither page duplicates this order of checks:
+//   1. still must change her password -> /change-password, full stop
+//   2. holds any CMS permission (staff) -> her normal CMS route
+//      (getDefaultCmsRoute above — Community Manager -> /admin/members,
+//      Super Admin -> /admin, etc.)
+//   3. everyone else (a public `member`/`employer` account) -> /account
+// A public account's own permissions (profile.manage, jobs.create_own)
+// are deliberately excluded from CMS access by hasCmsAccess() already, so
+// step 3 is never reached by CMS staff.
+export function getPostLoginRoute(user) {
+  if (!user) return '/'
+  if (user.mustChangePassword) return '/change-password'
+  if (hasCmsAccess(user)) return getDefaultCmsRoute(user)
+  return '/account'
+}

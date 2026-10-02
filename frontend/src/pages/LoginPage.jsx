@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { loginUser } from '../features/auth/authSlice'
 import useSeo from '../hooks/useSeo'
-import { getDefaultCmsRoute } from '../utils/permissions'
+import { getPostLoginRoute } from '../utils/permissions'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -20,11 +20,7 @@ export default function LoginPage() {
     const result = await dispatch(loginUser({ email, password }))
     if (result.meta.requestStatus === 'fulfilled') {
       toast.success(`Welcome back, ${result.payload.user.name.split(' ')[0]}.`)
-      if (result.payload.user.mustChangePassword) {
-        navigate('/change-password')
-      } else {
-        navigate(getDefaultCmsRoute(result.payload.user))
-      }
+      navigate(getPostLoginRoute(result.payload.user))
     } else {
       toast.error(result.payload || 'Login failed')
     }
@@ -52,7 +48,12 @@ export default function LoginPage() {
             {status === 'loading' ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <p className="mt-6 text-center text-xs text-charcoal-600">Use your WSF account credentials to sign in.</p>
+        <p className="mt-6 text-center text-xs text-charcoal-600">
+          New to WSF?{' '}
+          <Link to="/register" className="font-semibold text-burgundy-600 hover:underline">
+            Create an account
+          </Link>
+        </p>
       </div>
     </div>
   )

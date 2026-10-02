@@ -22,6 +22,14 @@ function mapUser(u) {
   return {
     id: u.id,
     name: u.full_name || `${u.first_name} ${u.last_name}`.trim(),
+    // Raw name parts + bio/country, needed by /account's profile form —
+    // `name` above stays the single display string every other page
+    // already reads (header, AdminLayout's "signed in as", etc).
+    firstName: u.first_name || '',
+    lastName: u.last_name || '',
+    displayName: u.display_name || '',
+    bio: u.bio || '',
+    countryCode: u.country_code || '',
     email: u.email,
     role: roles[0] || 'member',
     roles,
@@ -72,9 +80,15 @@ export async function login({ email, password }) {
 // other mock role simply won't see it, same as a real account without
 // users.view/users.manage/roles.manage.
 function mapMockUser(user) {
+  const [firstName = '', ...rest] = (user.name || '').split(' ')
   return {
     id: user.id,
     name: user.name,
+    firstName,
+    lastName: rest.join(' '),
+    displayName: '',
+    bio: '',
+    countryCode: '',
     email: user.email,
     role: user.role,
     roles: [user.role],
@@ -107,6 +121,75 @@ export async function changePassword({ currentPassword, newPassword, confirmPass
       message: err.apiError?.message || 'Could not change your password. Please try again.',
       code: err.apiError?.code,
     }
+  }
+}
+
+// POST /api/v1/auth/register — a self-chosen password, so unlike staff
+// creation/reset this never sets mustChangePassword (the backend already
+// defaults it false; nothing here needs to ask for that). Same never-throw
+// shape as login() above: { success, accessToken, refreshToken, user } |
+// { success: false, message, errors? }. `errors` is the raw
+// field -> [messages] map the backend validation_error response carries
+// (see RegisterSchema), so RegisterPage can show it per-field instead of
+// only a single toast.
+export async function register({ firstName, lastName, email, password, countryCode }) {
+  if (USE_MOCK) {
+    return { success: false, message: 'Account creation is not available in demo mode.' }
+  }
+  try {
+    const { data } = await apiClient.post('/auth/register', {
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      password,
+      country_code: countryCode || undefined,
+    })
+    return { success: true, accessToken: data.access_token, refreshToken: data.refresh_token, user: mapUser(data.user) }
+  } catch (err) {
+    return {
+      success: false,
+      message: err.apiError?.message || 'Could not create your account. Please try again.',
+      errors: err.apiError?.details,
+    }
+  }
+}
+
+// PATCH /api/v1/auth/me — self-service profile edit (first/last/display
+// name, bio, country only; see backend SelfProfileUpdateSchema). Same
+// never-throw convention as the rest of this file.
+export async function updateProfile({ firstName, lastName, displayName, bio, countryCode }) {
+  if (USE_MOCK) {
+    return { success: false, message: 'Profile editing is not available in demo mode.' }
+  }
+  try {
+    const { data } = await apiClient.patch('/auth/me', {
+      first_name: firstName,
+      last_name: lastName,
+      display_name: displayName,
+      bio,
+      country_code: countryCode || null,
+    })
+    return { success: true, user: mapUser(data) }
+  } catch (err) {
+    return {
+      success: false,
+      message: err.apiError?.message || 'Could not update your profile. Please try again.',
+      code: err.apiError?.code,
+    }
+  }
+}
+
+// POST /api/v1/auth/logout — blocklists the current access token
+// server-side. Deliberately swallows any failure (expired/offline/etc):
+// an explicit sign-out must always clear the LOCAL session regardless of
+// whether the backend call succeeds — see authSlice.js's logoutUser thunk,
+// which calls this then clears tokens unconditionally.
+export async function logout() {
+  if (USE_MOCK) return
+  try {
+    await apiClient.post('/auth/logout')
+  } catch {
+    // Local tokens are cleared by the caller either way.
   }
 }
 

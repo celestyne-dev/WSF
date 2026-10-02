@@ -61,9 +61,17 @@ function NavTrigger({ item, isOpen, onToggle }) {
 
 export default function Header() {
   const navigation = useSelector((s) => s.site.navigation)
+  const user = useSelector((s) => s.auth.user)
   const dispatch = useDispatch()
   const [openDropdown, setOpenDropdown] = useState(null)
   const navRef = useRef(null)
+
+  // Logged out -> /login (which itself links to /register — see
+  // LoginPage). Logged in, any account type (public or CMS staff) -> her
+  // own /account; staff keep their normal sidebar access regardless, since
+  // this icon never branches on CMS permissions, only on "is there a user".
+  const accountHref = user ? '/account' : '/login'
+  const accountLabel = user ? 'My account' : 'Sign in'
 
   const primary = navigation?.primary || []
   const secondary = navigation?.secondary || []
@@ -193,7 +201,7 @@ export default function Header() {
             >
               <Search size={20} />
             </button>
-            <Link to="/login" aria-label="Account" className="hidden p-2 text-charcoal transition-colors hover:text-burgundy-600 sm:block">
+            <Link to={accountHref} aria-label={accountLabel} className="hidden p-2 text-charcoal transition-colors hover:text-burgundy-600 sm:block">
               <User size={20} />
             </Link>
             <Link to="/newsletter" className="ml-1 hidden bg-plum-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ivory transition-colors hover:bg-plum-700 md:inline-flex">
