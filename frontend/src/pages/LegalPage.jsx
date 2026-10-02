@@ -3,14 +3,19 @@ import { fetchPublicPage } from '../api/pages'
 import { formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
+import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 
 // Backs /privacy, /terms, /cookies, /editorial-policy — each a fixed
 // system Page identified by `docKey` (== its stable backend `key`, see
-// backend/app/models/page.py SYSTEM_PAGE_KEYS). Content, effective date,
-// and SEO are entirely CMS-managed; this component only lays it out.
+// backend/app/models/page.py SYSTEM_PAGE_KEYS). Title, subtitle, content,
+// hero media, effective date, and SEO are entirely CMS-managed; this
+// component only lays it out — no policy wording lives here. No eyebrow
+// is rendered: a generic "Legal" label adds no CMS-editable information,
+// and a policy-specific one would be exactly the kind of copy an editor
+// should control through AdminPageEditor instead.
 export default function LegalPage({ docKey }) {
   const [page, setPage] = useState(undefined)
 
@@ -26,7 +31,10 @@ export default function LegalPage({ docKey }) {
   }, [docKey])
 
   useSeo({
-    title: page?.seo?.title || `${page?.title || 'Legal'} | Women Shaping Futures`,
+    // No hardcoded literal fallback here — useSeo() itself falls back to
+    // the global Site Settings SEO defaults when this page has none of its
+    // own configured (see hooks/useSeo.js).
+    title: page?.seo?.title,
     description: page?.seo?.description || page?.subtitle,
     canonical: `https://womenshapingfutures.org/${docKey}`,
   })
@@ -36,12 +44,19 @@ export default function LegalPage({ docKey }) {
 
   return (
     <div>
-      <PageHeader eyebrow="Legal" title={page.title} description={page.subtitle} />
-      <div className="container-editorial max-w-reading py-14">
-        {page.effectiveDate && (
-          <p className="mb-8 text-sm text-charcoal-600">Last updated: {formatDate(page.effectiveDate)}</p>
+      <PageHeader title={page.title} description={page.subtitle} />
+      <div className="container-editorial py-14">
+        {page.heroMedia && (
+          <div className="mb-14">
+            <MediaImage media={page.heroMedia} variant="large" width={1200} height={600} aspect={2} priority className="w-full object-cover" />
+          </div>
         )}
-        <ArticleContent blocks={page.content} />
+        <div className="mx-auto max-w-reading">
+          {page.effectiveDate && (
+            <p className="mb-8 text-sm text-charcoal-600">Last updated: {formatDate(page.effectiveDate)}</p>
+          )}
+          <ArticleContent blocks={page.content} />
+        </div>
       </div>
     </div>
   )

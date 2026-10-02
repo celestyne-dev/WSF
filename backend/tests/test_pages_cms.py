@@ -49,7 +49,7 @@ def no_permission_token(client, app):
     return login.get_json()["data"]["access_token"]
 
 
-def _make_system_page(app, key="privacy", status="published"):
+def _make_system_page(app, key="privacy", status="published", **overrides):
     from app.extensions import db
     from app.models.page import Page
 
@@ -67,8 +67,28 @@ def _make_system_page(app, key="privacy", status="published"):
             db.session.add(page)
         else:
             page.status = status
+        for field, value in overrides.items():
+            setattr(page, field, value)
         db.session.commit()
         return page.id
+
+
+def _make_media(app):
+    from app.extensions import db
+    from app.models.media import Media
+
+    with app.app_context():
+        media = Media(
+            original_filename="hero.jpg",
+            stored_filename="hero.jpg",
+            file_path="/tmp/hero.jpg",
+            public_url="/media/originals/hero.jpg",
+            mime_type="image/jpeg",
+            alt_text="A group of women at a conference.",
+        )
+        db.session.add(media)
+        db.session.commit()
+        return media.id
 
 
 class TestPublicPages:
@@ -101,6 +121,35 @@ class TestPublicPages:
         resp = client.get("/api/v1/pages/public/does-not-exist")
         assert resp.status_code == 404
         assert resp.get_json()["success"] is False
+
+    def test_published_about_returns_cms_authored_subtitle_and_content(self, client, app):
+        _make_system_page(
+            app, "about",
+            title="About WSF",
+            subtitle="A CMS-authored subtitle an editor wrote.",
+            content=[{"type": "paragraph", "text": "A CMS-authored paragraph an editor wrote."}],
+        )
+        resp = client.get("/api/v1/pages/public/about")
+        assert resp.status_code == 200
+        data = resp.get_json()["data"]
+        assert data["subtitle"] == "A CMS-authored subtitle an editor wrote."
+        assert data["content"][0]["text"] == "A CMS-authored paragraph an editor wrote."
+
+    def test_effective_date_serialized_publicly(self, client, app):
+        _make_system_page(app, "privacy", effective_date="2026-03-01")
+        resp = client.get("/api/v1/pages/public/privacy")
+        data = resp.get_json()["data"]
+        assert data["effective_date"] == "2026-03-01" or data["effectiveDate"] == "2026-03-01"
+
+    def test_hero_media_serialized_publicly_when_configured(self, client, app):
+        media_id = _make_media(app)
+        _make_system_page(app, "about", hero_media_id=media_id)
+        resp = client.get("/api/v1/pages/public/about")
+        data = resp.get_json()["data"]
+        hero = data.get("hero_media") or data.get("heroMedia")
+        assert hero is not None
+        assert hero["id"] == media_id
+        assert hero.get("alt_text") == "A group of women at a conference." or hero.get("altText") == "A group of women at a conference."
 
 
 class TestAdminPageCRUD:
