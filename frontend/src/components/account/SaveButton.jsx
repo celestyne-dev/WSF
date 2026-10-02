@@ -17,25 +17,28 @@ export default function SaveButton({ contentType, contentId, className }) {
   const navigate = useNavigate()
   const accessToken = useSelector((s) => s.auth.accessToken)
   const [saved, setSaved] = useState(false)
-  const [ready, setReady] = useState(false)
   const [pending, setPending] = useState(false)
+  // `ready` is derived rather than its own piece of state: resolvedKey
+  // records which (accessToken, contentType, contentId) combination the
+  // last checkSaved() call resolved for, so `ready` recomputes during
+  // render as soon as props/accessToken change — no synchronous setState
+  // call is needed inside the effect to reset it.
+  const [resolvedKey, setResolvedKey] = useState(null)
+  const currentKey = `${accessToken || ''}:${contentType}:${contentId}`
+  const ready = !accessToken || (!contentType || !contentId) || resolvedKey === currentKey
 
   useEffect(() => {
+    if (!accessToken || !contentType || !contentId) return undefined
     let cancelled = false
-    setReady(false)
-    if (!accessToken || !contentType || !contentId) {
-      setReady(true)
-      return undefined
-    }
     checkSaved(contentType, contentId).then((isSaved) => {
       if (cancelled) return
       setSaved(isSaved)
-      setReady(true)
+      setResolvedKey(currentKey)
     })
     return () => {
       cancelled = true
     }
-  }, [accessToken, contentType, contentId])
+  }, [accessToken, contentType, contentId, currentKey])
 
   if (!accessToken) {
     return (
