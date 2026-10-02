@@ -14,6 +14,7 @@ import ShareBar from '../components/ui/ShareBar'
 import ArticleContent from '../components/article/ArticleContent'
 import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
 import ArticleCard from '../components/cards/ArticleCard'
+import SaveButton from '../components/account/SaveButton'
 import PersonCard from '../components/cards/PersonCard'
 import NotFoundPage from './NotFoundPage'
 
@@ -180,7 +181,10 @@ export default function ArticlePage() {
               </p>
             </div>
           </div>
-          <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
+          <div className="flex items-center gap-3">
+            <SaveButton contentType="article" contentId={article.id} />
+            <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
+          </div>
         </div>
 
         {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}

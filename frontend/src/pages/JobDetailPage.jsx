@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { MapPin, Briefcase, Clock, DollarSign, AlertCircle, Bookmark, Calendar, Building2 } from 'lucide-react'
+import { MapPin, Briefcase, Clock, DollarSign, AlertCircle, Calendar, Building2 } from 'lucide-react'
 import { fetchJobBySlug, fetchJobs } from '../api/jobs'
 import { fetchOrganizationBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
@@ -11,6 +11,7 @@ import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ShareBar from '../components/ui/ShareBar'
+import SaveButton from '../components/account/SaveButton'
 import NewsletterForm from '../components/ui/NewsletterForm'
 import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
@@ -167,10 +168,6 @@ export default function JobDetailPage() {
     trackEvent('job_apply_click', { jobSlug: job.slug, company: job.company })
   }
 
-  function handleSaveClick() {
-    trackEvent('job_save_click', { jobSlug: job.slug })
-  }
-
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this job" description={error} /></div>
   if (job === undefined) return <PageLoader />
   if (job === null) return <NotFoundPage />
@@ -223,14 +220,7 @@ export default function JobDetailPage() {
                 )}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleSaveClick}
-              title="Sign in to save jobs (coming soon)"
-              className="inline-flex shrink-0 items-center gap-2 self-start border border-taupe-300 px-4 py-2.5 text-sm font-medium text-charcoal-600 transition-colors hover:border-burgundy-500 hover:text-burgundy-600"
-            >
-              <Bookmark size={16} /> Save
-            </button>
+            <SaveButton contentType="job" contentId={job.id} />
           </div>
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-charcoal-600">
             {(job.location || job.city || job.workMode) && (

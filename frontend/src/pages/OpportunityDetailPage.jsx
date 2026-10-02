@@ -11,6 +11,7 @@ import MediaImage from '../components/ui/MediaImage'
 import Tag from '../components/ui/Tag'
 import ArticleContent from '../components/article/ArticleContent'
 import OpportunityCard from '../components/cards/OpportunityCard'
+import SaveButton from '../components/account/SaveButton'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
@@ -159,21 +160,24 @@ export default function OpportunityDetailPage() {
             </div>
           )}
 
-          <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
-            {opportunity.logo && (
-              <MediaImage media={opportunity.logoMedia} variant="thumbnail" mediaPath={opportunity.logo} alt={opportunity.organization} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-contain p-2" />
-            )}
-            <div>
-              {opportunity.type && <Tag tone="plum">{opportunity.type}</Tag>}
-              <h1 className="mt-3 font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{opportunity.title}</h1>
-              {opportunity.organizationSlug ? (
-                <Link to={`/organizations/${opportunity.organizationSlug}`} className="mt-1 inline-block text-lg font-medium text-charcoal-600 hover:text-burgundy-600">
-                  {opportunity.organization}
-                </Link>
-              ) : (
-                opportunity.organization && <p className="mt-1 text-lg font-medium text-charcoal-600">{opportunity.organization}</p>
+          <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+              {opportunity.logo && (
+                <MediaImage media={opportunity.logoMedia} variant="thumbnail" mediaPath={opportunity.logo} alt={opportunity.organization} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-contain p-2" />
               )}
+              <div>
+                {opportunity.type && <Tag tone="plum">{opportunity.type}</Tag>}
+                <h1 className="mt-3 font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{opportunity.title}</h1>
+                {opportunity.organizationSlug ? (
+                  <Link to={`/organizations/${opportunity.organizationSlug}`} className="mt-1 inline-block text-lg font-medium text-charcoal-600 hover:text-burgundy-600">
+                    {opportunity.organization}
+                  </Link>
+                ) : (
+                  opportunity.organization && <p className="mt-1 text-lg font-medium text-charcoal-600">{opportunity.organization}</p>
+                )}
+              </div>
             </div>
+            <SaveButton contentType="opportunity" contentId={opportunity.id} />
           </div>
 
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-charcoal-600">

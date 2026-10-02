@@ -13,6 +13,7 @@ import ArticleContent from '../components/article/ArticleContent'
 import ShareBar from '../components/ui/ShareBar'
 import NewsletterForm from '../components/ui/NewsletterForm'
 import EventCard from '../components/cards/EventCard'
+import SaveButton from '../components/account/SaveButton'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
@@ -286,6 +287,9 @@ export default function EventDetailPage() {
       </div>
 
       <div className="container-editorial pt-6">
+        <div className="flex justify-end">
+          <SaveButton contentType="event" contentId={event.id} />
+        </div>
         {event.sponsored && (
           <div className="inline-flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
             <span className="font-semibold uppercase tracking-wide text-burgundy-600">Sponsored</span>

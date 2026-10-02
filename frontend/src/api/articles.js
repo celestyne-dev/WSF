@@ -44,7 +44,7 @@ async function enrichMockArticle(a) {
 // of the mock's flat slug strings / bare path strings — this maps a
 // backend Article into the exact shape components already expect, so
 // nothing downstream needs to change.
-function mapArticle(a) {
+export function mapArticle(a) {
   if (!a) return null
   return {
     id: a.id,

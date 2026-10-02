@@ -1,13 +1,71 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, Link, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { updateProfile } from '../api/auth'
+import { fetchSavedItems } from '../api/saved'
 import { logoutUser, setUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import useSeo from '../hooks/useSeo'
 import CountrySelect from '../components/ui/CountrySelect'
 import PageLoader from '../components/ui/PageLoader'
+
+// Deliberately a tiny summary, not the full collection (spec: "do NOT
+// overload /account with the entire Saved collection") — one count fetch,
+// perPage: 1 so the items payload stays minimal since only `counts` and
+// `pagination.totalItems` are used here.
+function SavedSummarySection() {
+  const [totalSaved, setTotalSaved] = useState(null)
+  const [typeCounts, setTypeCounts] = useState({})
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSavedItems({ perPage: 1 }).then((result) => {
+      if (cancelled) return
+      setTotalSaved(result.pagination?.totalItems ?? 0)
+      setTypeCounts(result.counts || {})
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const topTypeCounts = Object.entries(typeCounts)
+    .filter(([, count]) => count > 0)
+    .slice(0, 3)
+
+  return (
+    <section className="mt-8 border border-taupe-200 p-6">
+      <h2 className="font-serif text-xl font-semibold text-charcoal">Saved for later</h2>
+      <p className="mt-2 text-sm text-charcoal-600">
+        Keep stories, jobs, opportunities, resources, events and learning programs you want to return to.
+      </p>
+      {totalSaved !== null && totalSaved > 0 && (
+        <p className="mt-3 text-sm text-charcoal-600">
+          <span className="font-semibold text-charcoal">{totalSaved}</span> saved item{totalSaved === 1 ? '' : 's'}
+          {topTypeCounts.length > 0 && (
+            <span className="text-charcoal-600/70">
+              {' '}
+              ({topTypeCounts.map(([type, count]) => `${count} ${SAVED_TYPE_LABEL[type] || type}`).join(', ')})
+            </span>
+          )}
+        </p>
+      )}
+      <Link to="/account/saved" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+        View saved items
+      </Link>
+    </section>
+  )
+}
+
+const SAVED_TYPE_LABEL = {
+  article: 'stories',
+  job: 'jobs',
+  opportunity: 'opportunities',
+  resource: 'resources',
+  event: 'events',
+  learning_program: 'learning',
+}
 
 function formFromUser(user) {
   return {
@@ -202,7 +260,10 @@ export default function AccountPage() {
         <ProfileForm user={user} />
       </section>
 
-      {/* C. Security */}
+      {/* C. Saved for later */}
+      <SavedSummarySection />
+
+      {/* D. Security */}
       <section className="mt-8 border border-taupe-200 p-6">
         <h2 className="font-serif text-xl font-semibold text-charcoal">Security</h2>
         <p className="mt-2 text-sm text-charcoal-600">Change the password you use to sign in.</p>
@@ -211,7 +272,7 @@ export default function AccountPage() {
         </Link>
       </section>
 
-      {/* D. Community */}
+      {/* E. Community */}
       <section className="mt-8 border border-taupe-200 p-6">
         <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Community</h2>
         <p className="mt-2 text-sm text-charcoal-600">

@@ -101,6 +101,7 @@ def create_app(config_name="development"):
     from app.api.v1.public import public_bp
     from app.api.v1.redirects import redirects_bp
     from app.api.v1.resources import resources_bp
+    from app.api.v1.saved import saved_bp
     from app.api.v1.search import search_bp
     from app.api.v1.sponsors import sponsors_bp
     from app.api.v1.submissions import submissions_bp
@@ -142,6 +143,7 @@ def create_app(config_name="development"):
     app.register_blueprint(pages_bp, url_prefix="/api/v1/pages")
     app.register_blueprint(learning_bp, url_prefix="/api/v1/learning")
     app.register_blueprint(notifications_bp, url_prefix="/api/v1/admin/notifications")
+    app.register_blueprint(saved_bp, url_prefix="/api/v1/saved")
 
     @app.get("/api/v1/health")
     def health():

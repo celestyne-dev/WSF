@@ -40,6 +40,7 @@ const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'))
 const ChangePasswordPage = lazy(() => import('../pages/ChangePasswordPage'))
 const AccountPage = lazy(() => import('../pages/AccountPage'))
+const AccountSavedPage = lazy(() => import('../pages/AccountSavedPage'))
 const SubmitStoryPage = lazy(() => import('../pages/SubmitStoryPage'))
 const NominatePage = lazy(() => import('../pages/NominatePage'))
 const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
@@ -194,6 +195,7 @@ export default function AppRoutes() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/account/saved" element={<AccountSavedPage />} />
           <Route path="/submit" element={<SubmitStoryPage />} />
           <Route path="/nominate" element={<NominatePage />} />
           <Route path="/mentorship" element={<MentorshipPage />} />

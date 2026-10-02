@@ -16,7 +16,7 @@ function asList(value) {
   return Array.isArray(value) ? value : []
 }
 
-function mapJob(j) {
+export function mapJob(j) {
   if (!j) return null
   return {
     id: j.id,

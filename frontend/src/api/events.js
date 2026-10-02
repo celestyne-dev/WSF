@@ -50,7 +50,7 @@ function mapAgendaItem(item) {
   }
 }
 
-function mapEvent(e) {
+export function mapEvent(e) {
   if (!e) return null
   return {
     id: e.id,

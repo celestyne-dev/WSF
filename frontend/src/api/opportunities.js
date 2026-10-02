@@ -34,7 +34,7 @@ function attachMockCountriesEligible(o) {
   }
 }
 
-function mapOpportunity(o) {
+export function mapOpportunity(o) {
   if (!o) return null
   return {
     id: o.id,

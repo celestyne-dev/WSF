@@ -14,6 +14,7 @@ import ArticleContent from '../components/article/ArticleContent'
 import ShareBar from '../components/ui/ShareBar'
 import NewsletterForm from '../components/ui/NewsletterForm'
 import ResourceCard from '../components/cards/ResourceCard'
+import SaveButton from '../components/account/SaveButton'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
@@ -246,9 +247,12 @@ export default function ResourceDetailPage() {
           )}
         </div>
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="eyebrow">{resource.type}</span>
-            {resource.featured && <span className="bg-burgundy-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ivory">Featured</span>}
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="eyebrow">{resource.type}</span>
+              {resource.featured && <span className="bg-burgundy-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ivory">Featured</span>}
+            </div>
+            <SaveButton contentType="resource" contentId={resource.id} />
           </div>
           <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{resource.name}</h1>
           {resource.subtitle && <p className="mt-2 max-w-xl text-lg text-charcoal-600">{resource.subtitle}</p>}
