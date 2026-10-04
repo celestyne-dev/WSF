@@ -43,6 +43,7 @@ const AccountPage = lazy(() => import('../pages/AccountPage'))
 const AccountSavedPage = lazy(() => import('../pages/AccountSavedPage'))
 const AccountEventsPage = lazy(() => import('../pages/AccountEventsPage'))
 const AccountLearningPage = lazy(() => import('../pages/AccountLearningPage'))
+const AccountCommunityPage = lazy(() => import('../pages/AccountCommunityPage'))
 const SubmitStoryPage = lazy(() => import('../pages/SubmitStoryPage'))
 const NominatePage = lazy(() => import('../pages/NominatePage'))
 const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
@@ -202,6 +203,7 @@ export default function AppRoutes() {
           <Route path="/account/saved" element={<AccountSavedPage />} />
           <Route path="/account/events" element={<AccountEventsPage />} />
           <Route path="/account/learning" element={<AccountLearningPage />} />
+          <Route path="/account/community" element={<AccountCommunityPage />} />
           <Route path="/submit" element={<SubmitStoryPage />} />
           <Route path="/nominate" element={<NominatePage />} />
           <Route path="/mentorship" element={<MentorshipPage />} />

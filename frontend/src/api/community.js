@@ -88,6 +88,12 @@ export function mapMember(m) {
     directoryOptIn: !!m.directory_opt_in,
     person: m.person ? { id: m.person.id, slug: m.person.slug, name: m.person.name, title: m.person.title } : null,
     personId: m.person_id || null,
+    // Minimal account-connection metadata only — never password/tokens/
+    // roles/unrelated activity (see MemberSchema.get_linked_account in
+    // backend app/schemas/community.py). null when unlinked.
+    linkedAccount: m.linked_account
+      ? { id: m.linked_account.id, fullName: m.linked_account.fullName, email: m.linked_account.email }
+      : null,
     adminTags: Array.isArray(m.admin_tags) ? m.admin_tags : [],
     notes: Array.isArray(m.notes)
       ? m.notes.map((n) => ({ id: n.id, body: n.body, user: n.user?.full_name || null, createdAt: n.created_at }))
@@ -107,6 +113,39 @@ function mapPublicMember(m) {
     country: m.country || null,
     interests: m.interests || [],
     profileImage: mapMediaRef(m.profileImage),
+  }
+}
+
+// The self-service /community/me representation — already camelCase from
+// the backend's build_owner_member_payload() (same convention as
+// build_public_member_payload above), so this just fills in safe
+// defaults rather than converting snake_case.
+function mapOwnerMember(m) {
+  if (!m) return null
+  return {
+    id: m.id,
+    firstName: m.firstName || '',
+    lastName: m.lastName || '',
+    email: m.email || '',
+    professionalTitle: m.professionalTitle || '',
+    organizationName: m.organizationName || '',
+    shortBio: m.shortBio || '',
+    websiteUrl: m.websiteUrl || '',
+    linkedinUrl: m.linkedinUrl || '',
+    country: m.country || null,
+    countryCode: m.country?.code || '',
+    city: m.city || '',
+    interests: Array.isArray(m.interests) ? m.interests : [],
+    interestSlugs: Array.isArray(m.interests) ? m.interests.map((t) => t.slug) : [],
+    status: m.status || 'active',
+    membershipType: m.membershipType || 'Community Member',
+    appliedAt: m.appliedAt || null,
+    activatedAt: m.activatedAt || null,
+    leftAt: m.leftAt || null,
+    communityUpdatesOptIn: !!m.communityUpdatesOptIn,
+    directoryOptIn: !!m.directoryOptIn,
+    profileImage: mapMediaRef(m.profileImage),
+    publiclyListable: !!m.publiclyListable,
   }
 }
 
@@ -186,6 +225,61 @@ export async function fetchCommunityDirectory(params = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Authenticated account <-> Community membership (/community/me)
+// Real-backend only — same convention as api/eventRegistrations.js and
+// api/learningEnrollments.js — no mock-mode branch.
+// ---------------------------------------------------------------------------
+
+export async function fetchMyCommunityMembership() {
+  const { data } = await apiClient.get('/community/me')
+  return { joined: !!data?.joined, member: mapOwnerMember(data?.member) }
+}
+
+export async function joinCommunityAsAccount(payload = {}) {
+  const body = {
+    firstName: payload.firstName || undefined,
+    lastName: payload.lastName || undefined,
+    countryCode: payload.countryCode || undefined,
+    interestSlugs: payload.interestSlugs || [],
+    consentGiven: !!payload.consentGiven,
+    professionalTitle: payload.professionalTitle || undefined,
+    organizationName: payload.organizationName || undefined,
+    shortBio: payload.shortBio || undefined,
+    websiteUrl: payload.websiteUrl || undefined,
+    linkedinUrl: payload.linkedinUrl || undefined,
+    city: payload.city || undefined,
+    subscribeNewsletter: !!payload.subscribeNewsletter,
+  }
+  const { data } = await apiClient.post('/community/me/join', body)
+  return mapOwnerMember(data)
+}
+
+// Partial update — only keys actually present in `payload` are sent, so a
+// caller can update a single field without clobbering the rest.
+export async function updateMyCommunityProfile(payload = {}) {
+  const body = {}
+  const fieldKeys = [
+    'firstName', 'lastName', 'professionalTitle', 'organizationName', 'shortBio', 'websiteUrl',
+    'linkedinUrl', 'countryCode', 'city', 'interestSlugs', 'communityUpdatesOptIn', 'directoryOptIn',
+  ]
+  fieldKeys.forEach((key) => {
+    if (payload[key] !== undefined) body[key] = payload[key]
+  })
+  const { data } = await apiClient.patch('/community/me', body)
+  return mapOwnerMember(data)
+}
+
+export async function leaveCommunity() {
+  const { data } = await apiClient.post('/community/me/leave')
+  return mapOwnerMember(data)
+}
+
+export async function rejoinCommunity() {
+  const { data } = await apiClient.post('/community/me/rejoin')
+  return mapOwnerMember(data)
+}
+
+// ---------------------------------------------------------------------------
 // Admin — members
 // ---------------------------------------------------------------------------
 
@@ -246,6 +340,19 @@ export async function addMemberNote(id, body) {
 
 export async function deleteMember(id) {
   await apiClient.delete(`/community/members/${id}`)
+}
+
+// Exact-email-matched account linking only — never an arbitrary userId,
+// never a generic User search (see backend
+// app/services/community_accounts.py::link_account_by_exact_email).
+export async function linkMemberAccount(id) {
+  const { data } = await apiClient.post(`/community/members/${id}/link-account`)
+  return mapMember(data)
+}
+
+export async function unlinkMemberAccount(id) {
+  const { data } = await apiClient.delete(`/community/members/${id}/link-account`)
+  return mapMember(data)
 }
 
 export async function fetchMemberHistory(id) {

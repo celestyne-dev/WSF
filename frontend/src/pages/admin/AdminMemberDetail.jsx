@@ -2,7 +2,16 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Save, X } from 'lucide-react'
-import { fetchMember, updateMember, updateMemberStatus, addMemberNote, deleteMember, fetchMemberHistory } from '../../api/community'
+import {
+  fetchMember,
+  updateMember,
+  updateMemberStatus,
+  addMemberNote,
+  deleteMember,
+  fetchMemberHistory,
+  linkMemberAccount,
+  unlinkMemberAccount,
+} from '../../api/community'
 import { fetchCountries } from '../../api/geography'
 import { fetchTopics } from '../../api/taxonomies'
 import { fetchPeople } from '../../api/people'
@@ -54,6 +63,7 @@ export default function AdminMemberDetail() {
   const [noteBody, setNoteBody] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [linking, setLinking] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
   const [notFound, setNotFound] = useState(false)
   const [loadError, setLoadError] = useState(null)
@@ -136,6 +146,32 @@ export default function AdminMemberDetail() {
     }
   }
 
+  async function handleLinkAccount() {
+    setLinking(true)
+    try {
+      const updated = await linkMemberAccount(id)
+      setMember(updated)
+      toast.success('Linked to matching WSF account.')
+    } catch (err) {
+      toast.error(err?.apiError?.message || 'No WSF account currently uses this member email.')
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  async function handleUnlinkAccount() {
+    setLinking(true)
+    try {
+      const updated = await unlinkMemberAccount(id)
+      setMember(updated)
+      toast.success('Account disconnected.')
+    } catch (err) {
+      toast.error(err?.apiError?.message || 'Something went wrong disconnecting this account.')
+    } finally {
+      setLinking(false)
+    }
+  }
+
   async function handleDelete() {
     try {
       await deleteMember(id)
@@ -176,8 +212,14 @@ export default function AdminMemberDetail() {
               <Field label="Last name">
                 <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className={inputClass} />
               </Field>
-              <Field label="Email">
-                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} />
+              <Field label="Email" hint={member.linkedAccount ? 'controlled by the linked WSF account' : undefined}>
+                <input
+                  type="email"
+                  value={form.email}
+                  disabled={!!member.linkedAccount}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className={`${inputClass} ${member.linkedAccount ? 'cursor-not-allowed bg-taupe-100 text-charcoal-600' : ''}`}
+                />
               </Field>
             </div>
           </div>
@@ -325,6 +367,45 @@ export default function AdminMemberDetail() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+
+          {/* Account connection */}
+          <div className="border border-taupe-200 bg-white p-6">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Account connection</p>
+            <p className="mb-3 text-xs text-charcoal-600/60">
+              Optional one-to-one link to the WSF account that owns this Community profile. Linking never grants CMS
+              access or changes either record's own visibility.
+            </p>
+            {member.linkedAccount ? (
+              <div className="flex items-center justify-between gap-3 border border-taupe-200 px-3 py-2 text-sm">
+                <div>
+                  <p className="font-medium text-charcoal">Connected to WSF account</p>
+                  <p className="text-charcoal-600/70">
+                    {member.linkedAccount.fullName} &middot; {member.linkedAccount.email} &middot; #{member.linkedAccount.id}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleUnlinkAccount}
+                  disabled={linking}
+                  className="whitespace-nowrap text-xs font-semibold text-charcoal-600/70 hover:text-rose-600 disabled:opacity-60"
+                >
+                  Disconnect account
+                </button>
+              </div>
+            ) : (
+              <div>
+                <p className="mb-2 text-sm text-charcoal-600/70">No WSF account connected.</p>
+                <button
+                  type="button"
+                  onClick={handleLinkAccount}
+                  disabled={linking}
+                  className="btn-secondary !px-4 !py-2 text-xs disabled:opacity-60"
+                >
+                  {linking ? 'Linking…' : 'Link matching WSF account'}
+                </button>
+              </div>
             )}
           </div>
 

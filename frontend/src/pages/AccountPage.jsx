@@ -6,6 +6,7 @@ import { updateProfile } from '../api/auth'
 import { fetchSavedItems } from '../api/saved'
 import { fetchMyEventRegistrations } from '../api/eventRegistrations'
 import { fetchMyLearningEnrollments } from '../api/learningEnrollments'
+import { fetchMyCommunityMembership } from '../api/community'
 import { logoutUser, setUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import useSeo from '../hooks/useSeo'
@@ -143,6 +144,74 @@ function MyLearningSummarySection() {
       <Link to="/account/learning" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
         View my learning
       </Link>
+    </section>
+  )
+}
+
+// Same "tiny summary" principle as the sections above, plus the spec's
+// explicit "handle API failure quietly and resiliently — no unhandled
+// promise rejection" requirement: a failed fetch falls back to the same
+// safe "not joined" copy rather than throwing or blanking the page.
+function MyCommunitySummarySection() {
+  const [membership, setMembership] = useState(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchMyCommunityMembership()
+      .then((result) => {
+        if (!cancelled) setMembership(result)
+      })
+      .catch(() => {
+        if (!cancelled) setMembership(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const member = membership?.member
+  const isActive = member?.status === 'active'
+  const isInactive = member && ['left', 'inactive'].includes(member.status)
+  const isOtherState = member && !isActive && !isInactive
+
+  return (
+    <section className="mt-8 border border-taupe-200 p-6">
+      <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Community</h2>
+      {isActive ? (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">
+            You're a <span className="font-semibold text-charcoal">{member.membershipType}</span>.
+            {member.directoryOptIn && ' Your Community profile is visible in the public member directory.'}
+          </p>
+          <Link to="/account/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            Manage Community profile
+          </Link>
+        </>
+      ) : isInactive ? (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">You're not currently an active Community member.</p>
+          <Link to="/account/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            Rejoin Community
+          </Link>
+        </>
+      ) : isOtherState ? (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">Your Community membership is managed by our team.</p>
+          <Link to="/account/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            View details
+          </Link>
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">
+            A WSF account and WSF Community membership are separate. Having an account here doesn't automatically
+            make you a Community member — joining is a short, separate step whenever you're ready.
+          </p>
+          <Link to="/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            {membership?.joined === false ? 'Join the WSF Community' : 'Explore the WSF Community'}
+          </Link>
+        </>
+      )}
     </section>
   )
 }
@@ -359,16 +428,7 @@ export default function AccountPage() {
       </section>
 
       {/* G. Community */}
-      <section className="mt-8 border border-taupe-200 p-6">
-        <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Community</h2>
-        <p className="mt-2 text-sm text-charcoal-600">
-          A WSF account and WSF Community membership are separate. Having an account here doesn't automatically make
-          you a Community member — joining is a short, separate step whenever you're ready.
-        </p>
-        <Link to="/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-          Explore the WSF Community
-        </Link>
-      </section>
+      <MyCommunitySummarySection />
 
       {/* H. Sign out */}
       <section className="mt-8">

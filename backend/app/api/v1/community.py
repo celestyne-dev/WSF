@@ -6,7 +6,7 @@ from flask import Blueprint, Response, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 
-from app.auth.decorators import permission_required
+from app.auth.decorators import active_user_required, permission_required
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.community import CommunityPage, Member, MemberNote
@@ -15,14 +15,25 @@ from app.schemas.community import (
     CommunityPageInputSchema,
     CommunityPageSchema,
     CommunityPageStatusInputSchema,
+    MemberAccountJoinInputSchema,
     MemberAdminUpdateSchema,
     MemberJoinInputSchema,
     MemberNoteInputSchema,
     MemberSchema,
+    MemberSelfUpdateInputSchema,
     MemberStatusInputSchema,
 )
 from app.schemas.media import MediaSchema
 from app.services.audit import log_action
+from app.services.community_accounts import (
+    get_member_for_user,
+    join_as_account,
+    leave_community,
+    link_account_by_exact_email,
+    rejoin_community,
+    unlink_account,
+    update_self_profile,
+)
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.newsletter import upsert_subscriber
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
@@ -188,6 +199,116 @@ def build_public_member_payload(member):
     }
 
 
+def build_owner_member_payload(member):
+    """The self-service /community/me representation — deliberately
+    separate from MemberSchema (the full admin dump) and from
+    build_public_member_payload (the public-directory subset). Never
+    includes admin_tags, notes, acquisition, or any other staff-internal
+    field; membership_type/status are included read-only (the owner
+    cannot edit them — see MemberSelfUpdateInputSchema).
+    """
+    return {
+        "id": member.id,
+        "firstName": member.first_name,
+        "lastName": member.last_name,
+        "email": member.email,
+        "professionalTitle": member.professional_title,
+        "organizationName": member.organization_name,
+        "shortBio": member.short_bio,
+        "websiteUrl": member.website_url,
+        "linkedinUrl": member.linkedin_url,
+        "country": {"code": member.country.code, "name": member.country.name} if member.country else None,
+        "city": member.city,
+        "interests": [{"slug": t.slug, "name": t.name} for t in member.interests],
+        "status": member.status,
+        "membershipType": member.membership_type,
+        "appliedAt": member.applied_at.isoformat() if member.applied_at else None,
+        "activatedAt": member.activated_at.isoformat() if member.activated_at else None,
+        "leftAt": member.left_at.isoformat() if member.left_at else None,
+        "communityUpdatesOptIn": member.community_updates_opt_in,
+        "directoryOptIn": member.directory_opt_in,
+        "profileImage": MediaSchema().dump(member.profile_image) if member.profile_image else None,
+        "publiclyListable": member.is_publicly_listable(),
+    }
+
+
+class MemberMeResource(Resource):
+    """GET/PATCH /community/me — the authenticated owner's own Community
+    profile. Looked up ONLY by Member.user_id == current_user.id (never by
+    email — see get_member_for_user). Any active authenticated user may
+    call this; no community.manage permission, and no pre-existing
+    Community membership is required just to read it.
+    """
+
+    @active_user_required
+    def get(self):
+        member = get_member_for_user(current_user)
+        if member is None:
+            return success_response({"joined": False, "member": None})
+        return success_response({"joined": True, "member": build_owner_member_payload(member)})
+
+    @active_user_required
+    def patch(self):
+        member = get_member_for_user(current_user)
+        if member is None:
+            raise ApiError("You haven't joined the WSF Community yet.", 404, code="not_joined")
+        data = MemberSelfUpdateInputSchema().load(request.get_json(silent=True) or {}, partial=True)
+        member = update_self_profile(member, data)
+        return success_response(build_owner_member_payload(member))
+
+
+class MemberMeJoinResource(Resource):
+    @active_user_required
+    def post(self):
+        data = MemberAccountJoinInputSchema().load(request.get_json(silent=True) or {})
+        member, created = join_as_account(current_user, data)
+        return success_response(build_owner_member_payload(member), status=201 if created else 200)
+
+
+class MemberMeLeaveResource(Resource):
+    @active_user_required
+    def post(self):
+        member = get_member_for_user(current_user)
+        if member is None:
+            raise ApiError("You haven't joined the WSF Community yet.", 404, code="not_joined")
+        member = leave_community(member)
+        return success_response(build_owner_member_payload(member))
+
+
+class MemberMeRejoinResource(Resource):
+    @active_user_required
+    def post(self):
+        member = get_member_for_user(current_user)
+        if member is None:
+            raise ApiError("You haven't joined the WSF Community yet.", 404, code="not_joined")
+        member = rejoin_community(member)
+        return success_response(build_owner_member_payload(member))
+
+
+class MemberLinkAccountResource(Resource):
+    """Staff-only (community.manage), exact-email-matched account linking
+    — never an arbitrary userId, never a generic User search/browse (see
+    app/services/community_accounts.py::link_account_by_exact_email).
+    """
+
+    @permission_required("community.manage")
+    def post(self, member_id):
+        member = _get_member_or_404(member_id)
+        member, user = link_account_by_exact_email(member)
+        log_action(current_user, "member.link_account", "Member", member.id, changes={"userId": user.id})
+        return success_response(member_schema.dump(member))
+
+    @permission_required("community.manage")
+    def delete(self, member_id):
+        member = _get_member_or_404(member_id)
+        if member.user_id is None:
+            return success_response(member_schema.dump(member))
+        previous_user_id = member.user_id
+        member = unlink_account(member)
+        log_action(current_user, "member.unlink_account", "Member", member.id, changes={"userId": previous_user_id})
+        return success_response(member_schema.dump(member))
+
+
 class PublicMemberDirectoryResource(Resource):
     def get(self):
         query = Member.query.filter_by(status="active", directory_opt_in=True).order_by(Member.first_name)
@@ -259,6 +380,18 @@ class MemberDetailResource(Resource):
 
         if "email" in data:
             normalized = data["email"].strip().lower()
+            # Linked Member email invariant: it must always equal the
+            # linked User's email. Submitting the same value unchanged is
+            # harmless; the Community Manager must never be able to
+            # repoint a linked Member at a different address (that would
+            # desync it from the account identity it's tied to) or
+            # silently change the User's own login email from here.
+            if member.user_id is not None and normalized != member.user.email.strip().lower():
+                raise ApiError(
+                    "This member's email is controlled by its linked WSF account and can't be changed here.",
+                    409,
+                    code="linked_email_locked",
+                )
             conflict = Member.query.filter(Member.email == normalized, Member.id != member.id).first()
             if conflict:
                 raise ApiError("Another member already uses this email address.", 409, code="conflict")
@@ -426,6 +559,10 @@ class CommunityPageStatusResource(Resource):
 
 
 api.add_resource(MemberJoinResource, "/join")
+api.add_resource(MemberMeResource, "/me")
+api.add_resource(MemberMeJoinResource, "/me/join")
+api.add_resource(MemberMeLeaveResource, "/me/leave")
+api.add_resource(MemberMeRejoinResource, "/me/rejoin")
 api.add_resource(PublicMemberDirectoryResource, "/directory")
 api.add_resource(PublicCommunityResource, "/public")
 api.add_resource(MemberListResource, "/members")
@@ -434,5 +571,6 @@ api.add_resource(MemberDetailResource, "/members/<int:member_id>")
 api.add_resource(MemberStatusResource, "/members/<int:member_id>/status")
 api.add_resource(MemberNoteListResource, "/members/<int:member_id>/notes")
 api.add_resource(MemberHistoryResource, "/members/<int:member_id>/history")
+api.add_resource(MemberLinkAccountResource, "/members/<int:member_id>/link-account")
 api.add_resource(CommunityPageResource, "/page")
 api.add_resource(CommunityPageStatusResource, "/page/status")

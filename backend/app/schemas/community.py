@@ -48,6 +48,17 @@ class MemberSchema(ma.SQLAlchemyAutoSchema):
     # visibility rules.
     person = fields.Nested(PersonSchema, dump_only=True, only=("id", "slug", "name", "title"))
     notes = fields.Nested(MemberNoteSchema, many=True, dump_only=True)
+    user_id = fields.Integer(dump_only=True)
+    # Minimal account metadata only — authorized staff (community.manage,
+    # same gate as every other MemberSchema dump site) never sees password
+    # hash, tokens, roles, or unrelated account activity. None when
+    # unlinked.
+    linked_account = fields.Method("get_linked_account", dump_only=True)
+
+    def get_linked_account(self, member):
+        if not member.user:
+            return None
+        return {"id": member.user.id, "fullName": member.user.full_name, "email": member.user.email}
 
     class Meta:
         model = Member
@@ -112,6 +123,64 @@ class MemberAdminUpdateSchema(ma.Schema):
     admin_tags = fields.List(fields.String(), required=False, allow_none=True, data_key="adminTags")
     person_id = fields.Integer(required=False, allow_none=True, data_key="personId")
     profile_image_media_id = fields.Integer(required=False, allow_none=True, data_key="profileImageMediaId")
+
+
+class MemberAccountJoinInputSchema(ma.Schema):
+    """The authenticated "Join the WSF Community" form (POST
+    /community/me/join). Deliberately has NO email field (the route always
+    uses current_user.email — a request can never choose a different one),
+    NO membership_type (always "Community Member"), NO source (the route
+    hardcodes "Community page"), and NO directory_opt_in/
+    community_updates_opt_in (the route controls those defaults — directory
+    always starts False; see app/services/community_accounts.py).
+    """
+
+    first_name = fields.String(required=False, allow_none=True, data_key="firstName", validate=validate.Length(min=1, max=100))
+    last_name = fields.String(required=False, allow_none=True, data_key="lastName", validate=validate.Length(min=1, max=100))
+    country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
+    interest_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="interestSlugs")
+    consent_given = fields.Boolean(required=True, data_key="consentGiven")
+
+    professional_title = fields.String(required=False, allow_none=True, data_key="professionalTitle", validate=validate.Length(max=200))
+    organization_name = fields.String(required=False, allow_none=True, data_key="organizationName", validate=validate.Length(max=200))
+    short_bio = fields.String(required=False, allow_none=True, data_key="shortBio", validate=validate.Length(max=2000))
+    website_url = fields.String(required=False, allow_none=True, data_key="websiteUrl", validate=validate.URL(require_tld=True, schemes={"http", "https"}))
+    linkedin_url = fields.String(required=False, allow_none=True, data_key="linkedinUrl", validate=validate.URL(require_tld=True, schemes={"http", "https"}))
+    city = fields.String(required=False, allow_none=True, validate=validate.Length(max=120))
+
+    # Handled by the route (calls the existing newsletter upsert service) —
+    # never written onto Member as a live subscription flag.
+    subscribe_newsletter = fields.Boolean(required=False, load_default=False, data_key="subscribeNewsletter")
+
+    @validates_schema
+    def validate_consent(self, data, **kwargs):
+        if not data.get("consent_given"):
+            raise ValidationError("Please confirm we can use this information to process your request.", field_name="consent_given")
+
+
+class MemberSelfUpdateInputSchema(ma.Schema):
+    """The self-service PATCH /community/me form. Deliberately excludes
+    user_id, email, status, membership_type, source, admin_tags, person_id,
+    acquisition, applied_at, activated_at, left_at — those fields are not
+    declared at all, so marshmallow's default unknown=RAISE behavior
+    rejects any request that tries to send them (see
+    app/services/community_accounts.py::update_self_profile). No
+    load_default anywhere — a key absent from a PATCH leaves that field
+    untouched (house partial-update rule).
+    """
+
+    first_name = fields.String(required=False, data_key="firstName", validate=validate.Length(min=1, max=100))
+    last_name = fields.String(required=False, data_key="lastName", validate=validate.Length(min=1, max=100))
+    professional_title = fields.String(required=False, allow_none=True, data_key="professionalTitle", validate=validate.Length(max=200))
+    organization_name = fields.String(required=False, allow_none=True, data_key="organizationName", validate=validate.Length(max=200))
+    short_bio = fields.String(required=False, allow_none=True, data_key="shortBio", validate=validate.Length(max=2000))
+    website_url = fields.String(required=False, allow_none=True, data_key="websiteUrl", validate=validate.URL(require_tld=True, schemes={"http", "https"}))
+    linkedin_url = fields.String(required=False, allow_none=True, data_key="linkedinUrl", validate=validate.URL(require_tld=True, schemes={"http", "https"}))
+    country_code = fields.String(required=False, allow_none=True, data_key="countryCode")
+    city = fields.String(required=False, allow_none=True, validate=validate.Length(max=120))
+    interest_slugs = fields.List(fields.String(), required=False, data_key="interestSlugs")
+    community_updates_opt_in = fields.Boolean(required=False, data_key="communityUpdatesOptIn")
+    directory_opt_in = fields.Boolean(required=False, data_key="directoryOptIn")
 
 
 class MemberStatusInputSchema(ma.Schema):

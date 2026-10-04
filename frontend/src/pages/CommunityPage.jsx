@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
-import { fetchPublicCommunity, joinCommunity } from '../api/community'
+import {
+  fetchPublicCommunity,
+  joinCommunity,
+  fetchMyCommunityMembership,
+  joinCommunityAsAccount,
+  rejoinCommunity,
+} from '../api/community'
 import { fetchCountries } from '../api/geography'
 import { fetchTopics } from '../api/taxonomies'
 import { fetchEvents } from '../api/events'
@@ -32,7 +39,219 @@ function blankForm() {
   }
 }
 
+function blankAccountForm(user) {
+  return {
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
+    countryCode: user?.countryCode || '',
+    interestSlugs: [],
+    professionalTitle: '',
+    organizationName: '',
+    linkedinUrl: '',
+    websiteUrl: '',
+    shortBio: '',
+    consentGiven: false,
+    subscribeNewsletter: false,
+  }
+}
+
+// Logged-in, no linked Member yet — a short, account-aware version of the
+// anonymous join form below: email is always read-only (never retyped —
+// the account join always uses current_user.email, never a value from
+// this form), and membership type/status/directory visibility are never
+// offered here (server-decided — see backend
+// app/services/community_accounts.py::join_as_account).
+function AccountJoinForm({ user, countries, topics, onJoined }) {
+  const [form, setForm] = useState(() => blankAccountForm(user))
+  const [submitting, setSubmitting] = useState(false)
+
+  function update(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  function toggleInterest(slug) {
+    setForm((prev) => ({
+      ...prev,
+      interestSlugs: prev.interestSlugs.includes(slug) ? prev.interestSlugs.filter((s) => s !== slug) : [...prev.interestSlugs, slug],
+    }))
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!form.consentGiven) {
+      toast.error('Please confirm we may use your submitted information to process your request.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const member = await joinCommunityAsAccount(form)
+      trackEvent('community_join_submit')
+      toast.success('Welcome to the Women Shaping Futures community!')
+      onJoined(member)
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || 'Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">About you</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="sr-only" htmlFor="acf-firstName">First name</label>
+        <input id="acf-firstName" required placeholder="First name" value={form.firstName} onChange={(e) => update('firstName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+        <label className="sr-only" htmlFor="acf-lastName">Last name</label>
+        <input id="acf-lastName" required placeholder="Last name" value={form.lastName} onChange={(e) => update('lastName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+      </div>
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600" htmlFor="acf-email">Email</label>
+        <input id="acf-email" disabled readOnly value={user?.email || ''} className="mt-1.5 w-full border border-taupe-200 bg-taupe-100 px-4 py-3 text-sm text-charcoal-600" />
+      </div>
+      <label className="sr-only" htmlFor="acf-country">Country</label>
+      <select id="acf-country" required value={form.countryCode} onChange={(e) => update('countryCode', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none">
+        <option value="">Select your country…</option>
+        {countries.map((c) => (
+          <option key={c.code} value={c.code}>{c.name}</option>
+        ))}
+      </select>
+
+      {topics.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Interests</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {topics.map((t) => (
+              <button
+                key={t.slug}
+                type="button"
+                onClick={() => toggleInterest(t.slug)}
+                className={`px-2.5 py-1 text-xs font-medium ${form.interestSlugs.includes(t.slug) ? 'bg-plum-600 text-ivory' : 'bg-taupe-100 text-charcoal-600'}`}
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Optional</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="sr-only" htmlFor="acf-title">Professional title</label>
+        <input id="acf-title" placeholder="Professional title (optional)" value={form.professionalTitle} onChange={(e) => update('professionalTitle', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+        <label className="sr-only" htmlFor="acf-org">Organization</label>
+        <input id="acf-org" placeholder="Organization / company (optional)" value={form.organizationName} onChange={(e) => update('organizationName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+      </div>
+      <label className="sr-only" htmlFor="acf-linkedin">LinkedIn</label>
+      <input id="acf-linkedin" type="url" placeholder="LinkedIn or website (optional)" value={form.linkedinUrl} onChange={(e) => update('linkedinUrl', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+      <label className="sr-only" htmlFor="acf-bio">A short introduction</label>
+      <textarea id="acf-bio" placeholder="A short introduction — what you hope to gain or contribute (optional)" rows={3} value={form.shortBio} onChange={(e) => update('shortBio', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+
+      <label className="flex items-start gap-2 text-sm text-charcoal-600">
+        <input type="checkbox" checked={form.subscribeNewsletter} onChange={(e) => update('subscribeNewsletter', e.target.checked)} className="mt-0.5" />
+        Also subscribe me to the Women Shaping Futures newsletter
+      </label>
+
+      <label className="flex items-start gap-2 text-sm text-charcoal-600">
+        <input required type="checkbox" checked={form.consentGiven} onChange={(e) => update('consentGiven', e.target.checked)} className="mt-0.5" />
+        I confirm the information above may be used by Women Shaping Futures to process this request.
+      </label>
+
+      <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-60">
+        {submitting ? 'Joining…' : 'Join the WSF Community'}
+      </button>
+    </form>
+  )
+}
+
+const SAFE_STATE_COPY = {
+  pending: 'Your Community application is currently being reviewed by our team.',
+  paused: 'Your Community membership is currently paused. If you have questions, please contact Women Shaping Futures.',
+  declined: "Your Community membership isn't currently active. If you have questions, please contact Women Shaping Futures.",
+  archived: "Your Community membership isn't currently active. If you have questions, please contact Women Shaping Futures.",
+}
+
+// The authenticated-account join/membership section that replaces the
+// anonymous join form once a WSF account is signed in (spec: "do not ask
+// the logged-in user to retype an editable email" / "do not show another
+// join form" once already an active member).
+function AccountMembershipSection({ user, countries, topics }) {
+  const [membership, setMembership] = useState(undefined)
+  const [rejoining, setRejoining] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchMyCommunityMembership()
+      .then((result) => !cancelled && setMembership(result))
+      .catch(() => !cancelled && setMembership(null))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleRejoin() {
+    setRejoining(true)
+    try {
+      const updated = await rejoinCommunity()
+      setMembership({ joined: true, member: updated })
+      toast.success('Welcome back to the WSF Community!')
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "This membership can't be reactivated automatically.")
+    } finally {
+      setRejoining(false)
+    }
+  }
+
+  if (membership === undefined) return <PageLoader />
+
+  const member = membership?.member
+
+  if (!membership || !membership.joined) {
+    return (
+      <AccountJoinForm
+        user={user}
+        countries={countries}
+        topics={topics}
+        onJoined={(joinedMember) => setMembership({ joined: true, member: joinedMember })}
+      />
+    )
+  }
+
+  if (member.status === 'active') {
+    return (
+      <div className="border border-taupe-200 bg-cream p-6 text-center">
+        <p className="font-serif text-xl font-semibold text-charcoal">You're part of the WSF Community</p>
+        <Link to="/account/community" className="btn-primary mt-4 inline-block">
+          Manage my Community profile
+        </Link>
+      </div>
+    )
+  }
+
+  if (['left', 'inactive'].includes(member.status)) {
+    return (
+      <div className="border border-taupe-200 bg-cream p-6 text-center">
+        <p className="text-sm text-charcoal-600">You're not currently an active member of the WSF Community.</p>
+        <button type="button" disabled={rejoining} onClick={handleRejoin} className="btn-primary mt-4 disabled:opacity-60">
+          {rejoining ? 'Rejoining…' : 'Rejoin the Community'}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border border-taupe-200 bg-cream p-6 text-center">
+      <p className="text-sm text-charcoal-600">{SAFE_STATE_COPY[member.status] || "Your Community membership isn't currently active."}</p>
+      <Link to="/contact" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+        Contact Women Shaping Futures
+      </Link>
+    </div>
+  )
+}
+
 export default function CommunityPage() {
+  const accessToken = useSelector((s) => s.auth.accessToken)
+  const user = useSelector((s) => s.auth.user)
+
   const [data, setData] = useState(undefined)
   const [notAvailable, setNotAvailable] = useState(false)
   const [countries, setCountries] = useState([])
@@ -226,70 +445,78 @@ export default function CommunityPage() {
             <h2 className="font-serif text-2xl font-semibold text-charcoal">{page.ctaHeading || 'Join the community'}</h2>
             <p className="mt-3 text-base text-charcoal-600">{page.ctaDescription || 'Tell us a bit about yourself and we will be in touch.'}</p>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">About you</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="sr-only" htmlFor="cf-firstName">First name</label>
-              <input id="cf-firstName" required placeholder="First name" value={form.firstName} onChange={(e) => handleFieldChange('firstName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-              <label className="sr-only" htmlFor="cf-lastName">Last name</label>
-              <input id="cf-lastName" required placeholder="Last name" value={form.lastName} onChange={(e) => handleFieldChange('lastName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-            </div>
-            <label className="sr-only" htmlFor="cf-email">Email</label>
-            <input id="cf-email" required type="email" placeholder="Email address" value={form.email} onChange={(e) => handleFieldChange('email', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-            <label className="sr-only" htmlFor="cf-country">Country</label>
-            <select id="cf-country" required value={form.countryCode} onChange={(e) => handleFieldChange('countryCode', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none">
-              <option value="">Select your country…</option>
-              {countries.map((c) => (
-                <option key={c.code} value={c.code}>{c.name}</option>
-              ))}
-            </select>
-
-            {topics.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Interests</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {topics.map((t) => (
-                    <button
-                      key={t.slug}
-                      type="button"
-                      onClick={() => toggleInterest(t.slug)}
-                      className={`px-2.5 py-1 text-xs font-medium ${form.interestSlugs.includes(t.slug) ? 'bg-plum-600 text-ivory' : 'bg-taupe-100 text-charcoal-600'}`}
-                    >
-                      {t.name}
-                    </button>
-                  ))}
-                </div>
+          {accessToken ? (
+            !user ? (
+              <PageLoader />
+            ) : (
+              <AccountMembershipSection user={user} countries={countries} topics={topics} />
+            )
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">About you</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="sr-only" htmlFor="cf-firstName">First name</label>
+                <input id="cf-firstName" required placeholder="First name" value={form.firstName} onChange={(e) => handleFieldChange('firstName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+                <label className="sr-only" htmlFor="cf-lastName">Last name</label>
+                <input id="cf-lastName" required placeholder="Last name" value={form.lastName} onChange={(e) => handleFieldChange('lastName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
               </div>
-            )}
+              <label className="sr-only" htmlFor="cf-email">Email</label>
+              <input id="cf-email" required type="email" placeholder="Email address" value={form.email} onChange={(e) => handleFieldChange('email', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+              <label className="sr-only" htmlFor="cf-country">Country</label>
+              <select id="cf-country" required value={form.countryCode} onChange={(e) => handleFieldChange('countryCode', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none">
+                <option value="">Select your country…</option>
+                {countries.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
 
-            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Optional</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="sr-only" htmlFor="cf-title">Professional title</label>
-              <input id="cf-title" placeholder="Professional title (optional)" value={form.professionalTitle} onChange={(e) => handleFieldChange('professionalTitle', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-              <label className="sr-only" htmlFor="cf-org">Organization</label>
-              <input id="cf-org" placeholder="Organization / company (optional)" value={form.organizationName} onChange={(e) => handleFieldChange('organizationName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-            </div>
-            <label className="sr-only" htmlFor="cf-linkedin">LinkedIn</label>
-            <input id="cf-linkedin" type="url" placeholder="LinkedIn or website (optional)" value={form.linkedinUrl} onChange={(e) => handleFieldChange('linkedinUrl', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-            <label className="sr-only" htmlFor="cf-bio">A short introduction</label>
-            <textarea id="cf-bio" placeholder="A short introduction — what you hope to gain or contribute (optional)" rows={3} value={form.shortBio} onChange={(e) => handleFieldChange('shortBio', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
-            <label className="sr-only" htmlFor="cf-referral">How did you hear about us?</label>
-            <input id="cf-referral" placeholder="How did you hear about us? (optional)" value={form.referralNote} onChange={(e) => handleFieldChange('referralNote', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+              {topics.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Interests</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {topics.map((t) => (
+                      <button
+                        key={t.slug}
+                        type="button"
+                        onClick={() => toggleInterest(t.slug)}
+                        className={`px-2.5 py-1 text-xs font-medium ${form.interestSlugs.includes(t.slug) ? 'bg-plum-600 text-ivory' : 'bg-taupe-100 text-charcoal-600'}`}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-            <label className="flex items-start gap-2 text-sm text-charcoal-600">
-              <input type="checkbox" checked={form.subscribeNewsletter} onChange={(e) => handleFieldChange('subscribeNewsletter', e.target.checked)} className="mt-0.5" />
-              Also subscribe me to the Women Shaping Futures newsletter
-            </label>
+              <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Optional</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="sr-only" htmlFor="cf-title">Professional title</label>
+                <input id="cf-title" placeholder="Professional title (optional)" value={form.professionalTitle} onChange={(e) => handleFieldChange('professionalTitle', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+                <label className="sr-only" htmlFor="cf-org">Organization</label>
+                <input id="cf-org" placeholder="Organization / company (optional)" value={form.organizationName} onChange={(e) => handleFieldChange('organizationName', e.target.value)} className="border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </div>
+              <label className="sr-only" htmlFor="cf-linkedin">LinkedIn</label>
+              <input id="cf-linkedin" type="url" placeholder="LinkedIn or website (optional)" value={form.linkedinUrl} onChange={(e) => handleFieldChange('linkedinUrl', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+              <label className="sr-only" htmlFor="cf-bio">A short introduction</label>
+              <textarea id="cf-bio" placeholder="A short introduction — what you hope to gain or contribute (optional)" rows={3} value={form.shortBio} onChange={(e) => handleFieldChange('shortBio', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
+              <label className="sr-only" htmlFor="cf-referral">How did you hear about us?</label>
+              <input id="cf-referral" placeholder="How did you hear about us? (optional)" value={form.referralNote} onChange={(e) => handleFieldChange('referralNote', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
 
-            <label className="flex items-start gap-2 text-sm text-charcoal-600">
-              <input required type="checkbox" checked={form.consentGiven} onChange={(e) => handleFieldChange('consentGiven', e.target.checked)} className="mt-0.5" />
-              I confirm the information above may be used by Women Shaping Futures to process this request.
-            </label>
+              <label className="flex items-start gap-2 text-sm text-charcoal-600">
+                <input type="checkbox" checked={form.subscribeNewsletter} onChange={(e) => handleFieldChange('subscribeNewsletter', e.target.checked)} className="mt-0.5" />
+                Also subscribe me to the Women Shaping Futures newsletter
+              </label>
 
-            <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-60">
-              {submitting ? 'Joining…' : page.ctaButtonLabel || 'Join WSF'}
-            </button>
-          </form>
+              <label className="flex items-start gap-2 text-sm text-charcoal-600">
+                <input required type="checkbox" checked={form.consentGiven} onChange={(e) => handleFieldChange('consentGiven', e.target.checked)} className="mt-0.5" />
+                I confirm the information above may be used by Women Shaping Futures to process this request.
+              </label>
+
+              <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-60">
+                {submitting ? 'Joining…' : page.ctaButtonLabel || 'Join WSF'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

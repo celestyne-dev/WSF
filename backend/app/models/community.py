@@ -44,6 +44,18 @@ class Member(db.Model):
     optionally be linked to an existing Person by an admin (see
     `person_id`), and that link never changes either record's own
     visibility rules.
+
+    A Member may ALSO be optionally linked one-to-one to the WSF account
+    that owns it (see `user_id`) — "this Community Member belongs to this
+    authenticated WSF account." User and Member remain entirely separate
+    profiles/lifecycles even when linked: registering an account never
+    creates a Member, and joining the Community as an account never
+    grants CMS access, changes `membership_type` into an entitlement, or
+    makes the member a public Person. See app/services/community_accounts.py
+    for the self-service join/leave/rejoin/update logic this link enables,
+    and app/api/v1/community.py's admin link/unlink endpoints for how an
+    existing (pre-account) Member gets connected to an account after the
+    fact — never automatically, only by exact-email-matched staff action.
     """
 
     __tablename__ = "members"
@@ -114,6 +126,21 @@ class Member(db.Model):
     # (or the Person) more or less publicly visible.
     person_id = db.Column(db.Integer, db.ForeignKey("people.id"), nullable=True)
 
+    # Optional one-to-one link to the WSF account that owns this Community
+    # profile. ON DELETE SET NULL (not CASCADE): the Community Member is a
+    # separate domain/lifecycle record with its own history, and must not
+    # be silently destroyed just because the account record disappears —
+    # only the link itself is severed. `unique=True` enforces one User <->
+    # one Member in both directions (Postgres allows any number of NULLs
+    # under a unique constraint, so unlinked Members are unaffected). Never
+    # set by the ordinary anonymous join or by account registration/login —
+    # only by the authenticated self-service join
+    # (app/services/community_accounts.py::join_as_account) or by an
+    # explicit admin link action (api/v1/community.py's
+    # MemberLinkAccountResource), never automatically from a historical
+    # email match.
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), unique=True, nullable=True, index=True)
+
     # Internal only — never serialized to any public response.
     admin_tags = db.Column(db.JSON)  # list[str], optional
 
@@ -125,6 +152,7 @@ class Member(db.Model):
 
     country = db.relationship("Country", foreign_keys=[country_code])
     person = db.relationship("Person", foreign_keys=[person_id])
+    user = db.relationship("User", foreign_keys=[user_id])
     profile_image = db.relationship("Media", foreign_keys=[profile_image_media_id])
     notes = db.relationship(
         "MemberNote", order_by="MemberNote.created_at.desc()", cascade="all, delete-orphan", backref="member"
