@@ -37,13 +37,12 @@ from app.models.opportunity import Event, Job, Opportunity
 from app.models.resource import Resource
 from app.schemas.article import article_summary_schema
 from app.schemas.learning import learning_program_summary_schema
-from app.schemas.opportunity import EventSchema, JobSchema, OpportunitySchema
+from app.schemas.opportunity import EventSchema, JobSchema
 from app.schemas.resource import ResourceSchema
 
 SAVED_CONTENT_TYPES = ("article", "job", "opportunity", "resource", "event", "learning_program")
 
 _job_schema = JobSchema()
-_opportunity_schema = OpportunitySchema()
 _event_schema = EventSchema()
 _resource_schema = ResourceSchema()
 
@@ -76,10 +75,20 @@ def _fetch_public_job(content_id):
 
 
 def _fetch_public_opportunity(content_id):
+    # Uses the same public-safe payload builder the public Opportunity
+    # list/detail routes use (not _opportunity_schema.dump(), which
+    # includes application_url/application_instructions) — a Saved Item
+    # must never carry a circle_only Opportunity's protected application
+    # target just because it was saved (see module docstring + spec
+    # section L). detail=False: Saved Items never re-attach the
+    # protected fields even for a public Opportunity either — the
+    # Opportunity detail/access flow stays the one authoritative path.
+    from app.api.v1.opportunities import build_public_opportunity_payload
+
     opportunity = db.session.get(Opportunity, content_id)
     if opportunity is None or opportunity.status != "published":
         return None
-    return _opportunity_schema.dump(opportunity)
+    return build_public_opportunity_payload(opportunity, None, detail=False)
 
 
 def _fetch_public_event(content_id):

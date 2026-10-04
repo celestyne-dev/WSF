@@ -38,6 +38,11 @@ export default function OpportunityCard({ opportunity }) {
             {opportunity.type && <Tag tone="plum">{opportunity.type}</Tag>}
           </div>
           <div className="flex shrink-0 gap-1.5">
+            {opportunity.accessType === 'circle_only' && (
+              <span className="bg-plum-600/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-plum-700">
+                WSF Circle
+              </span>
+            )}
             {opportunity.featured && (
               <span className="bg-burgundy-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">
                 Featured

@@ -165,12 +165,24 @@ _FUNDING_TYPE_CHECK_SQL = "funding_type IS NULL OR funding_type IN (" + ", ".joi
     f"'{f}'" for f in FUNDING_TYPES
 ) + ")"
 
+# See OPPORTUNITY_ACCESS_TYPES — orthogonal to status (WORKFLOW state) and
+# to the application mechanics themselves (still always external; WSF
+# never runs its own application workflow). public: unchanged behavior.
+# circle_only: listing stays public, but the application
+# destination/instructions are gated behind WSF Circle entitlement (see
+# app/services/opportunity_access.py, the one place that's decided).
+OPPORTUNITY_ACCESS_TYPES = ("public", "circle_only")
+_OPPORTUNITY_ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(
+    f"'{a}'" for a in OPPORTUNITY_ACCESS_TYPES
+) + ")"
+
 
 class Opportunity(db.Model):
     __tablename__ = "opportunities"
     __table_args__ = (
         db.CheckConstraint(_OPPORTUNITY_TYPE_CHECK_SQL, name="ck_opportunities_type"),
         db.CheckConstraint(_OPPORTUNITY_STATUS_CHECK_SQL, name="ck_opportunities_status"),
+        db.CheckConstraint(_OPPORTUNITY_ACCESS_TYPE_CHECK_SQL, name="ck_opportunities_access_type"),
         db.CheckConstraint(_FUNDING_TYPE_CHECK_SQL, name="ck_opportunities_funding_type"),
     )
 
@@ -211,6 +223,7 @@ class Opportunity(db.Model):
 
     application_url = db.Column(db.String(500))
     application_instructions = db.Column(db.Text)
+    access_type = db.Column(db.String(20), nullable=False, default="public")
 
     opening_date = db.Column(db.Date)
     deadline = db.Column(db.Date)

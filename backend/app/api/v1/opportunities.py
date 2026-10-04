@@ -8,8 +8,18 @@ from sqlalchemy import or_
 from app.extensions import db
 from app.models.opportunity import Opportunity
 from app.models.taxonomy import Topic
+from app.schemas.geography import CountrySchema
+from app.schemas.media import MediaSchema
 from app.schemas.opportunity import OpportunityInputSchema, OpportunitySchema
+from app.schemas.people import OrganizationSchema
+from app.schemas.taxonomy import TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.opportunity_access import (
+    check_opportunity_application_access,
+    has_safe_application_target,
+    is_application_open,
+    viewer_can_access,
+)
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
@@ -36,6 +46,22 @@ def _current_user_or_none():
     if not current_user or not current_user.is_active:
         return None
     return current_user
+
+
+def _viewer_for_access_check():
+    """Distinct from _current_user_or_none(): this one does NOT collapse
+    an authenticated-but-inactive account into anonymous — it must reach
+    check_opportunity_application_access() as itself so that function
+    can tell "no account at all" (401 account_required) apart from "a
+    real account that's inactive" (403 forbidden), per spec. Same
+    unfiltered pattern as app/api/v1/resources.py's own
+    _viewer_for_access_check().
+    """
+    try:
+        verify_jwt_in_request(optional=True)
+    except Exception:
+        return None
+    return current_user if current_user else None
 
 
 def _require_manage():
@@ -104,6 +130,7 @@ def _apply_fields(opportunity, data, organization):
     opportunity.funding_value = data.get("funding_value")
     opportunity.application_url = data.get("application_url")
     opportunity.application_instructions = data.get("application_instructions")
+    opportunity.access_type = data.get("access_type", "public")
     opportunity.opening_date = data.get("opening_date")
     opportunity.deadline = data.get("deadline")
     opportunity.expiry_date = data.get("expiry_date")
@@ -121,7 +148,9 @@ def _apply_fields(opportunity, data, organization):
 
 def _validate_for_publish(opportunity):
     """A published opportunity needs a real description and a real way to
-    apply; a draft may stay incomplete indefinitely.
+    apply; a draft may stay incomplete indefinitely. circle_only does not
+    change any of this — the application mechanism itself is always
+    external, with or without Circle gating (spec section U).
     """
     errors = []
     if not opportunity.description:
@@ -130,6 +159,70 @@ def _validate_for_publish(opportunity):
         errors.append("Add an application URL before publishing — WSF never shows a fake Apply button.")
     if errors:
         raise ApiError(errors[0], 422, code="publish_validation_failed", errors=errors)
+
+
+def build_public_opportunity_payload(opportunity, viewer, *, detail=False):
+    """The one public-safe Opportunity representation — NEVER includes
+    application_url/application_instructions by default (spec section C;
+    this is a security boundary, not just a publish-time rule). Reused by
+    the public list, public detail, and Saved Items, so none of those
+    surfaces can leak the protected application target by construction.
+
+    Only on `detail=True`, for an access_type=="public" opportunity whose
+    application is still open and whose stored URL is currently safe, are
+    the two protected fields explicitly re-attached — list never does
+    this regardless of access_type, and circle_only NEVER does this
+    regardless of viewer entitlement (the POST /access endpoint is the
+    only path to a circle_only opportunity's application target).
+    """
+    payload = {
+        "id": opportunity.id,
+        "slug": opportunity.slug,
+        "title": opportunity.title,
+        "organization_id": opportunity.organization_id,
+        "organization": (
+            OrganizationSchema(only=("id", "slug", "name", "logo")).dump(opportunity.organization)
+            if opportunity.organization
+            else None
+        ),
+        "organization_name": opportunity.organization_name,
+        "logo": MediaSchema().dump(opportunity.logo) if opportunity.logo else None,
+        "type": opportunity.type,
+        "short_description": opportunity.short_description,
+        "description": opportunity.description or [],
+        "eligibility": opportunity.eligibility,
+        "eligibility_notes": opportunity.eligibility_notes,
+        "career_stage": opportunity.career_stage,
+        "countries_eligible": CountrySchema(many=True).dump(opportunity.countries_eligible),
+        "location": opportunity.location,
+        "funding_type": opportunity.funding_type,
+        "funding_min": opportunity.funding_min,
+        "funding_max": opportunity.funding_max,
+        "currency": opportunity.currency,
+        "funding_value": opportunity.funding_value,
+        "opening_date": opportunity.opening_date.isoformat() if opportunity.opening_date else None,
+        "deadline": opportunity.deadline.isoformat() if opportunity.deadline else None,
+        "published_date": opportunity.published_date.isoformat() if opportunity.published_date else None,
+        "expiry_date": opportunity.expiry_date.isoformat() if opportunity.expiry_date else None,
+        "featured": opportunity.featured,
+        "sponsored": opportunity.sponsored,
+        "status": opportunity.status,
+        "is_closed": not is_application_open(opportunity),
+        "seo": opportunity.seo or {},
+        "topics": TopicSchema(many=True, exclude=("article_count",)).dump(opportunity.topics),
+        "access_type": opportunity.access_type,
+        "requiresCircle": opportunity.access_type == "circle_only",
+    }
+    if detail:
+        payload["viewerCanAccess"] = viewer_can_access(opportunity, viewer)
+        if (
+            opportunity.access_type == "public"
+            and is_application_open(opportunity)
+            and has_safe_application_target(opportunity)
+        ):
+            payload["application_url"] = opportunity.application_url
+            payload["application_instructions"] = opportunity.application_instructions
+    return payload
 
 
 class OpportunityListResource(Resource):
@@ -165,8 +258,17 @@ class OpportunityListResource(Resource):
         if request.args.get("featured") == "true":
             query = query.filter(Opportunity.featured.is_(True))
 
-        result = paginate(query, opportunity_schema)
-        return success_response(result["items"], meta=result["meta"])
+        if can_manage:
+            result = paginate(query, opportunity_schema)
+            return success_response(result["items"], meta=result["meta"])
+
+        # Public list never re-attaches the protected application fields
+        # (spec section C) and deliberately skips viewerCanAccess here too
+        # (spec section H) — no per-item Circle entitlement query on a
+        # paginated list, unlike the single-item detail response below.
+        result = paginate(query, schema=None)
+        items = [build_public_opportunity_payload(o, None, detail=False) for o in result["items"]]
+        return success_response(items, meta=result["meta"])
 
     def post(self):
         _require_manage()
@@ -192,9 +294,12 @@ class OpportunityDetailResource(Resource):
         opportunity = Opportunity.query.filter_by(slug=slug).first()
         if opportunity is None:
             raise ApiError("Opportunity not found.", 404, code="not_found")
-        if opportunity.status != "published" and not _can_edit_or_none():
+        editor = _can_edit_or_none()
+        if opportunity.status != "published" and not editor:
             raise ApiError("Opportunity not found.", 404, code="not_found")
-        return success_response(opportunity_schema.dump(opportunity))
+        if editor:
+            return success_response(opportunity_schema.dump(opportunity))
+        return success_response(build_public_opportunity_payload(opportunity, _current_user_or_none(), detail=True))
 
     def put(self, slug):
         opportunity = Opportunity.query.filter_by(slug=slug).first()
@@ -225,5 +330,35 @@ class OpportunityDetailResource(Resource):
         return success_response({"deleted": True})
 
 
+class OpportunityAccessResource(Resource):
+    """The ONE access-grant endpoint for a circle_only Opportunity's
+    application target — public opportunities are allowed through too
+    (spec section G, case 4), so a frontend can use this endpoint
+    uniformly for either access_type rather than branching client-side.
+    Never a GET — releasing the protected external destination is a
+    deliberate action, not a passive read (spec section G).
+    """
+
+    def post(self, slug):
+        opportunity = Opportunity.query.filter_by(slug=slug).first()
+        # Draft is never publicly known (matches the detail endpoint).
+        # closed/archived ARE known — they just answer "application
+        # closed" (409) rather than 404, so the distinct code reaches the
+        # caller (spec section G, cases 1-2).
+        if opportunity is None or (opportunity.status == "draft" and not _can_edit_or_none()):
+            raise ApiError("Opportunity not found.", 404, code="not_found")
+
+        viewer = _viewer_for_access_check()
+        check_opportunity_application_access(opportunity, viewer)
+
+        return success_response(
+            {
+                "application_url": opportunity.application_url,
+                "application_instructions": opportunity.application_instructions,
+            }
+        )
+
+
 api.add_resource(OpportunityListResource, "")
 api.add_resource(OpportunityDetailResource, "/<string:slug>")
+api.add_resource(OpportunityAccessResource, "/<string:slug>/access")

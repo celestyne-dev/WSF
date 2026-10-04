@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useSelector } from 'react-redux'
+import { toast } from 'react-toastify'
 import { Calendar, Globe2, Award, AlertCircle } from 'lucide-react'
-import { fetchOpportunityBySlug, fetchOpportunities } from '../api/opportunities'
+import { fetchOpportunityBySlug, fetchOpportunities, accessOpportunity } from '../api/opportunities'
 import { formatDate, formatFunding } from '../utils/format'
 import { resolveImage } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
@@ -33,10 +35,17 @@ const EDUCATIONAL_PROGRAM_TYPES = new Set([
 ])
 const GRANT_TYPES = new Set(['Grant', 'Funding Opportunity'])
 
-function useOpportunityStructuredData(opportunity) {
+function useOpportunityStructuredData(opportunity, canonicalUrl) {
   useEffect(() => {
     if (!opportunity) return
     let data = null
+
+    // A circle_only opportunity's application URL is never public (it's
+    // gated behind POST /access) — JSON-LD must never leak it, and must
+    // never imply the opportunity itself is freely available. The WSF
+    // detail page's own canonical URL is used instead of omitting `url`
+    // entirely (spec section R).
+    const schemaUrl = opportunity.accessType === 'circle_only' ? canonicalUrl : opportunity.applicationUrl || canonicalUrl
 
     if (GRANT_TYPES.has(opportunity.type)) {
       data = {
@@ -44,7 +53,7 @@ function useOpportunityStructuredData(opportunity) {
         '@type': 'MonetaryGrant',
         name: opportunity.title,
         description: opportunity.shortDescription || opportunity.title,
-        url: opportunity.applicationUrl || undefined,
+        url: schemaUrl,
         funder: opportunity.organization ? { '@type': 'Organization', name: opportunity.organization } : undefined,
         ...(opportunity.fundingMin != null && opportunity.currency
           ? {
@@ -62,7 +71,7 @@ function useOpportunityStructuredData(opportunity) {
         '@type': 'EducationalOccupationalProgram',
         name: opportunity.title,
         description: opportunity.shortDescription || opportunity.title,
-        url: opportunity.applicationUrl || undefined,
+        url: schemaUrl,
         provider: opportunity.organization ? { '@type': 'Organization', name: opportunity.organization } : undefined,
         ...(opportunity.deadline ? { applicationDeadline: opportunity.deadline } : {}),
         ...(opportunity.openingDate ? { applicationStartDate: opportunity.openingDate } : {}),
@@ -82,20 +91,62 @@ function useOpportunityStructuredData(opportunity) {
       el.remove()
     }
     return () => el?.remove()
-  }, [opportunity])
+  }, [opportunity, canonicalUrl])
+}
+
+// The one place a circle_only Opportunity's gated application target is
+// requested and opened — public opportunities never call this (their
+// applicationUrl already arrives on the detail response itself; see
+// spec section N/C). Backend remains authoritative either way:
+// opportunity.viewerCanAccess is a UI guidance hint, not POST /access's
+// own check. `circleAccess` (the just-granted {applicationUrl,
+// applicationInstructions}) is plain component state — never persisted
+// to Redux/localStorage/sessionStorage, and cleared on any failure so a
+// stale link can never linger in the UI (spec section R).
+function CircleApplyCta({ opportunity, accessToken, pending, circleAccess, onApply, onSignIn }) {
+  if (!accessToken) {
+    return (
+      <div className="mt-6 border border-taupe-200 bg-cream p-4">
+        <p className="text-sm font-semibold text-charcoal">WSF Circle opportunity</p>
+        <button type="button" onClick={onSignIn} className="btn-primary mt-3 inline-flex">
+          Sign in to access application
+        </button>
+      </div>
+    )
+  }
+  if (!opportunity.viewerCanAccess && !circleAccess) {
+    return (
+      <div className="mt-6 border border-taupe-200 bg-cream p-4">
+        <p className="text-sm font-semibold text-charcoal">Included with WSF Circle</p>
+        <Link to="/circle" className="btn-primary mt-3 inline-flex">
+          Explore WSF Circle
+        </Link>
+      </div>
+    )
+  }
+  return (
+    <button type="button" onClick={onApply} disabled={pending} className="btn-primary mt-6 inline-flex disabled:opacity-60">
+      {pending ? 'Preparing…' : 'Apply now'}
+    </button>
+  )
 }
 
 export default function OpportunityDetailPage() {
   const { slug } = useParams()
+  const navigate = useNavigate()
+  const accessToken = useSelector((s) => s.auth.accessToken)
   const [opportunity, setOpportunity] = useState(undefined)
   const [more, setMore] = useState([])
   const [error, setError] = useState(null)
+  const [applying, setApplying] = useState(false)
+  const [circleAccess, setCircleAccess] = useState(null)
 
   useEffect(() => {
     let active = true
     setOpportunity(undefined)
     setMore([])
     setError(null)
+    setCircleAccess(null)
 
     fetchOpportunityBySlug(slug)
       .then((data) => {
@@ -127,10 +178,30 @@ export default function OpportunityDetailPage() {
       : {},
   )
 
-  useOpportunityStructuredData(opportunity)
+  useOpportunityStructuredData(opportunity, canonicalUrl)
 
   function handleApplyClick() {
     trackEvent('opportunity_apply_click', { opportunitySlug: opportunity.slug })
+  }
+
+  async function handleCircleApply() {
+    trackEvent('opportunity_apply_click', { opportunitySlug: opportunity.slug })
+    setApplying(true)
+    try {
+      const result = await accessOpportunity(opportunity.slug)
+      setCircleAccess(result)
+      window.open(result.applicationUrl, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      setCircleAccess(null)
+      const code = err?.response?.data?.error?.code
+      if (code === 'circle_required') {
+        toast.error('WSF Circle access required.')
+      } else {
+        toast.error(err?.response?.data?.error?.message || 'Something went wrong. Please try again.')
+      }
+    } finally {
+      setApplying(false)
+    }
   }
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this opportunity" description={error} /></div>
@@ -150,6 +221,12 @@ export default function OpportunityDetailPage() {
             <div className="mt-4 inline-flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
               <span className="font-semibold uppercase tracking-wide text-burgundy-600">Sponsored</span>
               <span>This listing is a paid placement{opportunity.organization ? ` from ${opportunity.organization}` : ''}.</span>
+            </div>
+          )}
+
+          {opportunity.accessType === 'circle_only' && (
+            <div className="mt-4 inline-flex items-center gap-2 bg-plum-500/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-ivory">
+              WSF Circle
             </div>
           )}
 
@@ -202,6 +279,15 @@ export default function OpportunityDetailPage() {
             <button type="button" disabled className="btn-secondary mt-6 inline-flex cursor-not-allowed opacity-60">
               Applications closed
             </button>
+          ) : opportunity.accessType === 'circle_only' ? (
+            <CircleApplyCta
+              opportunity={opportunity}
+              accessToken={accessToken}
+              pending={applying}
+              circleAccess={circleAccess}
+              onApply={handleCircleApply}
+              onSignIn={() => navigate('/login')}
+            />
           ) : opportunity.applicationUrl ? (
             <a href={opportunity.applicationUrl} target="_blank" rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-6 inline-flex">
               Apply now
@@ -225,17 +311,31 @@ export default function OpportunityDetailPage() {
             </div>
           )}
 
-          {(opportunity.applicationInstructions || opportunity.applicationUrl) && !opportunity.isClosed && (
-            <div className="mt-8 border border-taupe-200 bg-cream p-5">
-              <p className="text-sm font-semibold text-charcoal">How to apply</p>
-              {opportunity.applicationInstructions && <p className="mt-1 text-sm text-charcoal-600">{opportunity.applicationInstructions}</p>}
-              {opportunity.applicationUrl && (
-                <a href={opportunity.applicationUrl} target="_blank" rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-4 inline-flex">
-                  Apply now
-                </a>
+          {opportunity.accessType === 'circle_only'
+            ? circleAccess &&
+              !opportunity.isClosed && (
+                <div className="mt-8 border border-taupe-200 bg-cream p-5">
+                  <p className="text-sm font-semibold text-charcoal">How to apply</p>
+                  {circleAccess.applicationInstructions && (
+                    <p className="mt-1 text-sm text-charcoal-600">{circleAccess.applicationInstructions}</p>
+                  )}
+                  <a href={circleAccess.applicationUrl} target="_blank" rel="noreferrer" className="btn-primary mt-4 inline-flex">
+                    Apply now
+                  </a>
+                </div>
+              )
+            : (opportunity.applicationInstructions || opportunity.applicationUrl) &&
+              !opportunity.isClosed && (
+                <div className="mt-8 border border-taupe-200 bg-cream p-5">
+                  <p className="text-sm font-semibold text-charcoal">How to apply</p>
+                  {opportunity.applicationInstructions && <p className="mt-1 text-sm text-charcoal-600">{opportunity.applicationInstructions}</p>}
+                  {opportunity.applicationUrl && (
+                    <a href={opportunity.applicationUrl} target="_blank" rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-4 inline-flex">
+                      Apply now
+                    </a>
+                  )}
+                </div>
               )}
-            </div>
-          )}
         </div>
 
         {opportunity.organizationSlug && (

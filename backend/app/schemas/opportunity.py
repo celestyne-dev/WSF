@@ -14,6 +14,7 @@ from app.models.opportunity import (
     EVENT_TYPES,
     FUNDING_TYPES,
     JOB_STATUSES,
+    OPPORTUNITY_ACCESS_TYPES,
     OPPORTUNITY_STATUSES,
     OPPORTUNITY_TYPES,
     REMOTE_SCOPES,
@@ -30,6 +31,17 @@ from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import OrganizationSchema, PersonSchema
 from app.schemas.taxonomy import TopicSchema
+from app.utils.urls import is_safe_http_url
+
+
+def _validate_application_url(value):
+    # Tighter than marshmallow's own validate.URL (which still allows
+    # ftp/ftps by default) — an Opportunity application target must be
+    # an absolute http(s) URL only (spec section F), reusing the same
+    # safety check every other off-site target field in this app relies
+    # on (see app/utils/urls.py).
+    if value and not is_safe_http_url(value):
+        raise ValidationError("Must be a valid http(s) URL.")
 
 
 class JobSchema(ma.SQLAlchemyAutoSchema):
@@ -302,8 +314,13 @@ class OpportunityInputSchema(ma.Schema):
     funding_max = fields.Integer(required=False, allow_none=True, data_key="fundingMax")
     currency = fields.String(required=False, allow_none=True, validate=validate.Length(equal=3))
     funding_value = fields.String(required=False, allow_none=True, data_key="fundingValue")
-    application_url = fields.String(required=False, allow_none=True, data_key="applicationUrl", validate=validate.URL(require_tld=True))
+    application_url = fields.String(required=False, allow_none=True, data_key="applicationUrl", validate=_validate_application_url)
     application_instructions = fields.String(required=False, allow_none=True, data_key="applicationInstructions")
+    # See OPPORTUNITY_ACCESS_TYPES — orthogonal to status (workflow state)
+    # and to the application mechanism (always external either way).
+    access_type = fields.String(
+        required=False, load_default="public", data_key="accessType", validate=validate.OneOf(OPPORTUNITY_ACCESS_TYPES)
+    )
     opening_date = fields.Date(required=False, allow_none=True, data_key="openingDate")
     deadline = fields.Date(required=False, allow_none=True)
     published_date = fields.Date(required=False, allow_none=True, data_key="publishedDate")

@@ -59,6 +59,10 @@ export function mapOpportunity(o) {
     fundingMax: o.funding_max,
     currency: o.currency,
     fundingValue: o.funding_value,
+    // Absent entirely for an unauthorized circle_only viewer or for any
+    // list item (see backend's build_public_opportunity_payload) — never
+    // cached or retried client-side; the POST /access endpoint is the
+    // one authoritative source for a circle_only Opportunity's target.
     applicationUrl: o.application_url,
     applicationInstructions: o.application_instructions,
     openingDate: o.opening_date,
@@ -71,6 +75,9 @@ export function mapOpportunity(o) {
     isClosed: o.is_closed ?? false,
     seo: o.seo || null,
     topicSlugs: (o.topics || []).map((t) => t.slug),
+    accessType: o.access_type || 'public',
+    requiresCircle: !!o.requiresCircle,
+    viewerCanAccess: o.viewerCanAccess ?? (o.access_type || 'public') === 'public',
   }
 }
 
@@ -155,6 +162,7 @@ function toApiPayload(form) {
     fundingValue: form.fundingValue || undefined,
     applicationUrl: form.applicationUrl || undefined,
     applicationInstructions: form.applicationInstructions || undefined,
+    accessType: form.accessType || 'public',
     openingDate: form.openingDate || undefined,
     deadline: form.deadline || undefined,
     expiryDate: form.expiryDate || undefined,
@@ -178,4 +186,14 @@ export async function updateOpportunity(slug, form) {
 
 export async function deleteOpportunity(slug) {
   await apiClient.delete(`/opportunities/${slug}`)
+}
+
+// The one access-grant call for an Opportunity's application target —
+// works for both access types (backend allows public through too), so
+// the frontend never has to branch on accessType before calling it.
+// Never cache the result in Redux/localStorage/sessionStorage; this
+// response is the only authoritative source for the protected target.
+export async function accessOpportunity(slug) {
+  const { data } = await apiClient.post(`/opportunities/${slug}/access`)
+  return { applicationUrl: data.application_url, applicationInstructions: data.application_instructions }
 }

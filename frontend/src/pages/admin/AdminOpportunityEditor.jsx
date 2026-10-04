@@ -69,6 +69,7 @@ function blankForm() {
     fundingValue: '',
     applicationUrl: '',
     applicationInstructions: '',
+    accessType: 'public',
     openingDate: '',
     deadline: '',
     expiryDate: '',
@@ -105,6 +106,7 @@ function toForm(opportunity) {
     fundingValue: opportunity.fundingValue || '',
     applicationUrl: opportunity.applicationUrl || '',
     applicationInstructions: opportunity.applicationInstructions || '',
+    accessType: opportunity.accessType || 'public',
     openingDate: opportunity.openingDate || '',
     deadline: opportunity.deadline || '',
     expiryDate: opportunity.expiryDate || '',
@@ -284,6 +286,7 @@ export default function AdminOpportunityEditor() {
       fundingValue: form.fundingValue || null,
       applicationUrl: form.applicationUrl || null,
       applicationInstructions: form.applicationInstructions || null,
+      accessType: form.accessType || 'public',
       openingDate: form.openingDate || null,
       deadline: form.deadline || null,
       expiryDate: form.expiryDate || null,
@@ -460,7 +463,16 @@ export default function AdminOpportunityEditor() {
             </Field>
           </Section>
 
-          <Section title="Application">
+          <Section
+            title="Application"
+            description="Access controls who can SEE the application URL/instructions below — applying always happens on the provider's own site either way."
+          >
+            <Field label="Access">
+              <select value={form.accessType} onChange={(e) => updateField('accessType', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                <option value="public">Public — application details are available to everyone.</option>
+                <option value="circle_only">WSF Circle members only — listing stays public, but the application URL/instructions require an active WSF Circle membership.</option>
+              </select>
+            </Field>
             <Field label="Application URL" hint="where WSF sends candidates to apply">
               <input value={form.applicationUrl} onChange={(e) => updateField('applicationUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
