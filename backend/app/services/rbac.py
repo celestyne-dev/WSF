@@ -55,6 +55,7 @@ ROLE_PERMISSIONS = {
         "mentorship.manage",
         "directory.manage",
         "learning.manage",
+        "circle.manage",
     ],
     "editor": [
         "articles.manage",
@@ -108,7 +109,7 @@ ROLE_PERMISSIONS = {
     # NewsletterSubscriberExportResource), so this role covers issues and
     # subscriber administration but not bulk export.
     "newsletter_manager": ["newsletter.manage"],
-    "community_manager": ["community.manage", "community.export"],
+    "community_manager": ["community.manage", "community.export", "circle.manage"],
     "mentorship_manager": ["mentorship.manage"],
     "submissions_manager": ["submissions.manage"],
     "nominations_manager": ["nominations.manage"],

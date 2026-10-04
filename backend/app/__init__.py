@@ -89,6 +89,7 @@ def create_app(config_name="development"):
     from app.api.v1.nominations import nominations_bp
     from app.api.v1.notifications import notifications_bp
     from app.api.v1.advertise import advertise_bp
+    from app.api.v1.circle import circle_bp
     from app.api.v1.community import community_bp
     from app.api.v1.contact import contact_bp
     from app.api.v1.directory import directory_bp
@@ -139,6 +140,7 @@ def create_app(config_name="development"):
     app.register_blueprint(sponsors_bp, url_prefix="/api/v1/sponsors")
     app.register_blueprint(advertise_bp, url_prefix="/api/v1/advertise")
     app.register_blueprint(community_bp, url_prefix="/api/v1/community")
+    app.register_blueprint(circle_bp, url_prefix="/api/v1/circle")
     app.register_blueprint(contact_bp, url_prefix="/api/v1/contact")
     app.register_blueprint(directory_bp, url_prefix="/api/v1/directory")
     app.register_blueprint(mentorship_bp, url_prefix="/api/v1/mentorship")

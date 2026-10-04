@@ -44,6 +44,8 @@ const AccountSavedPage = lazy(() => import('../pages/AccountSavedPage'))
 const AccountEventsPage = lazy(() => import('../pages/AccountEventsPage'))
 const AccountLearningPage = lazy(() => import('../pages/AccountLearningPage'))
 const AccountCommunityPage = lazy(() => import('../pages/AccountCommunityPage'))
+const AccountMembershipPage = lazy(() => import('../pages/AccountMembershipPage'))
+const CirclePage = lazy(() => import('../pages/CirclePage'))
 const SubmitStoryPage = lazy(() => import('../pages/SubmitStoryPage'))
 const NominatePage = lazy(() => import('../pages/NominatePage'))
 const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
@@ -78,6 +80,10 @@ const AdminLearningProgramEditor = lazy(() => import('../pages/admin/AdminLearni
 const AdminLearningEnrollments = lazy(() => import('../pages/admin/AdminLearningEnrollments'))
 const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
+const AdminCirclePlans = lazy(() => import('../pages/admin/AdminCirclePlans'))
+const AdminCirclePlanEditor = lazy(() => import('../pages/admin/AdminCirclePlanEditor'))
+const AdminCircleMemberships = lazy(() => import('../pages/admin/AdminCircleMemberships'))
+const AdminCircleMembershipDetail = lazy(() => import('../pages/admin/AdminCircleMembershipDetail'))
 const AdminResources = lazy(() => import('../pages/admin/AdminResources'))
 const AdminResourceEditor = lazy(() => import('../pages/admin/AdminResourceEditor'))
 const AdminTopics = lazy(() => import('../pages/admin/AdminTopics'))
@@ -204,10 +210,12 @@ export default function AppRoutes() {
           <Route path="/account/events" element={<AccountEventsPage />} />
           <Route path="/account/learning" element={<AccountLearningPage />} />
           <Route path="/account/community" element={<AccountCommunityPage />} />
+          <Route path="/account/membership" element={<AccountMembershipPage />} />
           <Route path="/submit" element={<SubmitStoryPage />} />
           <Route path="/nominate" element={<NominatePage />} />
           <Route path="/mentorship" element={<MentorshipPage />} />
           <Route path="/community" element={<CommunityPage />} />
+          <Route path="/circle" element={<CirclePage />} />
           <Route path="/learning" element={<LearningPage />} />
           <Route path="/learning/:slug" element={<LearningProgramDetailPage />} />
           <Route path="/shop" element={<ShopPage />} />
@@ -262,6 +270,12 @@ export default function AppRoutes() {
           <Route path="products" element={<AdminProducts />} />
           <Route path="products/new" element={<AdminProductEditor />} />
           <Route path="products/:id" element={<AdminProductEditor />} />
+          <Route path="circle/plans" element={<AdminCirclePlans />} />
+          <Route path="circle/plans/new" element={<AdminCirclePlanEditor />} />
+          <Route path="circle/plans/:id" element={<AdminCirclePlanEditor />} />
+          <Route path="circle/memberships" element={<AdminCircleMemberships />} />
+          <Route path="circle/memberships/new" element={<AdminCircleMembershipDetail />} />
+          <Route path="circle/memberships/:id" element={<AdminCircleMembershipDetail />} />
           <Route path="resources" element={<AdminResources />} />
           <Route path="resources/new" element={<AdminResourceEditor />} />
           <Route path="resources/:id" element={<AdminResourceEditor />} />

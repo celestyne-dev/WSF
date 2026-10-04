@@ -7,6 +7,7 @@ import { fetchSavedItems } from '../api/saved'
 import { fetchMyEventRegistrations } from '../api/eventRegistrations'
 import { fetchMyLearningEnrollments } from '../api/learningEnrollments'
 import { fetchMyCommunityMembership } from '../api/community'
+import { fetchMyCircleMembership } from '../api/circle'
 import { logoutUser, setUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import useSeo from '../hooks/useSeo'
@@ -209,6 +210,76 @@ function MyCommunitySummarySection() {
           </p>
           <Link to="/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
             {membership?.joined === false ? 'Join the WSF Community' : 'Explore the WSF Community'}
+          </Link>
+        </>
+      )}
+    </section>
+  )
+}
+
+// Same "tiny summary + resilient failure" principle as
+// MyCommunitySummarySection above — GET /circle/me, falls back to the
+// safe "no membership" copy on any fetch failure rather than throwing or
+// blanking the page.
+function MyCircleSummarySection() {
+  const [membership, setMembership] = useState(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchMyCircleMembership()
+      .then((result) => {
+        if (!cancelled) setMembership(result)
+      })
+      .catch(() => {
+        if (!cancelled) setMembership(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const subscription = membership?.subscription
+  const status = subscription?.status
+
+  return (
+    <section className="mt-8 border border-taupe-200 p-6">
+      <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Circle</h2>
+      {status === 'active' ? (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">
+            <span className="font-semibold text-burgundy-600">WSF Circle — Active</span>
+            {subscription.plan?.name && <> &middot; {subscription.plan.name}</>}
+          </p>
+          <Link to="/account/membership" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            Manage membership
+          </Link>
+        </>
+      ) : status === 'pending' ? (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">Membership pending.</p>
+          <Link to="/account/membership" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            View details
+          </Link>
+        </>
+      ) : status === 'past_due' ? (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">Membership needs attention.</p>
+          <Link to="/account/membership" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            View details
+          </Link>
+        </>
+      ) : status === 'cancelled' || status === 'expired' || status === 'revoked' ? (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">Not currently active.</p>
+          <Link to="/circle" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            Explore membership options
+          </Link>
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-charcoal-600">You are not currently a WSF Circle member.</p>
+          <Link to="/circle" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            Explore WSF Circle
           </Link>
         </>
       )}
@@ -429,6 +500,9 @@ export default function AccountPage() {
 
       {/* G. Community */}
       <MyCommunitySummarySection />
+
+      {/* G2. WSF Circle */}
+      <MyCircleSummarySection />
 
       {/* H. Sign out */}
       <section className="mt-8">

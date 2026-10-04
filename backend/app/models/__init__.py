@@ -59,6 +59,7 @@ from app.models.password_reset import PasswordResetToken  # noqa: F401
 from app.models.saved_item import SavedItem  # noqa: F401
 from app.models.event_registration import EventRegistration  # noqa: F401
 from app.models.learning_enrollment import LearningEnrollment, LearningLessonProgress  # noqa: F401
+from app.models.circle import CirclePlan, CircleSubscription  # noqa: F401
 
 __all__ = [
     "Country",
@@ -129,4 +130,6 @@ __all__ = [
     "EventRegistration",
     "LearningEnrollment",
     "LearningLessonProgress",
+    "CirclePlan",
+    "CircleSubscription",
 ]

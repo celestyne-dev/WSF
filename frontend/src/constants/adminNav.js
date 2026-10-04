@@ -38,6 +38,7 @@ import {
   MessageSquare,
   Library,
   Bell,
+  Sparkles,
 } from 'lucide-react'
 
 // The single source of truth for the CMS sidebar AND the route-level access
@@ -114,6 +115,13 @@ export const NAV_GROUPS = [
   {
     heading: 'Learning',
     items: [{ to: '/admin/learning', icon: Library, label: 'Programs', permission: ['learning.manage'] }],
+  },
+  {
+    heading: 'WSF Circle',
+    items: [
+      { to: '/admin/circle/plans', icon: Sparkles, label: 'Plans', permission: ['circle.manage'] },
+      { to: '/admin/circle/memberships', icon: Users2, label: 'Memberships', permission: ['circle.manage'] },
+    ],
   },
   {
     heading: 'Community',
