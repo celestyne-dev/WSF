@@ -19,6 +19,7 @@ from app.services.event_registrations import (
     admin_update_registration_status,
     count_active_registrations,
     is_event_publicly_visible,
+    public_event_access_fields,
     registration_availability,
     serialize_event_for_viewer,
 )
@@ -155,6 +156,7 @@ def _apply_fields(event, data, organizer, speakers, sponsors):
     event.venue = data.get("venue")
     event.virtual_link = data.get("virtual_link")
     event.virtual_link_public = data.get("virtual_link_public", False)
+    event.access_type = data.get("access_type", "public")
     event.organizer = organizer
     event.organizer_name = data.get("organizer_name") or (organizer.name if organizer else event.organizer_name)
     event.registration_url = data.get("registration_url")
@@ -194,6 +196,14 @@ def _validate_for_publish(event):
     cannot (yet) be paid — see schemas/opportunity.py's
     EventInputSchema.validate_pricing for the same rule enforced at
     submit time too.
+
+    circle_only additionally requires WSF-managed, required, free
+    registration and a non-public virtual link (spec section C) — WSF
+    cannot securely enforce Circle entitlement through an external
+    registration platform, and a Circle-only joining link must never be
+    intentionally public. A draft/review circle_only event may still
+    carry an incomplete combination; only publishing/scheduling rejects
+    it.
     """
     errors = []
     if not event.description:
@@ -205,6 +215,13 @@ def _validate_for_publish(event):
             errors.append(
                 "Paid WSF-managed event registration is not available yet. Use external registration for paid events."
             )
+    if event.access_type == "circle_only":
+        if not event.registration_required:
+            errors.append("Circle-only events must require registration.")
+        elif event.registration_mode != "wsf":
+            errors.append("Circle-only events must use WSF-managed registration.")
+        if event.virtual_link_public:
+            errors.append("A Circle-only event cannot expose its virtual joining link publicly.")
     if errors:
         raise ApiError(errors[0], 422, code="publish_validation_failed", errors=errors)
 
@@ -268,8 +285,15 @@ class EventListResource(Resource):
 
         query = apply_search(query, Event, request.args, ["title", "short_description"], param="query")
 
-        result = paginate(query, event_schema)
-        return success_response(result["items"], meta=result["meta"])
+        # Dumped manually (schema=None) rather than via paginate(query,
+        # event_schema) so each item can still carry the safe
+        # requiresCircle/viewerCanAccess UI hints (spec section N) —
+        # public_event_access_fields() never queries EventRegistration,
+        # so this stays the same one-query-per-page cost as before.
+        result = paginate(query, schema=None)
+        viewer = _current_user_or_none()
+        items = [{**event_schema.dump(e), **public_event_access_fields(e, viewer)} for e in result["items"]]
+        return success_response(items, meta=result["meta"])
 
     def post(self):
         _require_manage()

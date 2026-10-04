@@ -50,7 +50,16 @@ function RegistrationRow({ item, onCancel, onReregister, busy }) {
     !event.isPostponed &&
     !event.registrationFull &&
     (!event.registrationDeadline || event.registrationDeadline >= todayIso())
-  const canJoinOnline = (item.status === 'registered' || item.status === 'attended') && event.virtualLink
+  // Circle entitlement lapsed (spec section S) — the registration row and
+  // its history stay exactly as-is; only "Join online" is withheld, and
+  // only while the registration is otherwise active. Cancel remains the
+  // learner's own action regardless of current Circle access.
+  const circleAccessLapsed =
+    event.accessType === 'circle_only' &&
+    item.status !== 'cancelled' &&
+    item.canAccessEvent === false &&
+    item.accessReason === 'circle_required'
+  const canJoinOnline = !circleAccessLapsed && (item.status === 'registered' || item.status === 'attended') && event.virtualLink
 
   return (
     <div>
@@ -68,8 +77,14 @@ function RegistrationRow({ item, onCancel, onReregister, busy }) {
           {item.status === 'cancelled' && item.cancelledAt && <span>Cancelled {formatDate(item.cancelledAt)}</span>}
           {event.isCancelled && <span className="font-semibold text-rose-600">Event cancelled</span>}
           {event.isPostponed && <span className="font-semibold text-amber-700">Event postponed</span>}
+          {circleAccessLapsed && <span className="font-semibold text-rose-600">Your WSF Circle access is currently inactive.</span>}
         </div>
         <div className="flex items-center gap-3">
+          {circleAccessLapsed && (
+            <Link to="/circle" className="font-semibold text-burgundy-600 hover:underline">
+              Explore WSF Circle
+            </Link>
+          )}
           {canJoinOnline && (
             <a href={event.virtualLink} target="_blank" rel="noreferrer" className="font-semibold text-burgundy-600 hover:underline">
               Join online

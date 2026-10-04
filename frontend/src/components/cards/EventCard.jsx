@@ -18,6 +18,9 @@ export default function EventCard({ event }) {
         <div className="flex items-start justify-between gap-2">
           <span className="eyebrow">{event.type}</span>
           <div className="flex shrink-0 gap-1.5">
+            {event.accessType === 'circle_only' && (
+              <span className="bg-plum-600/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-plum-700">WSF Circle</span>
+            )}
             {event.featured && (
               <span className="bg-burgundy-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-burgundy-600">Featured</span>
             )}

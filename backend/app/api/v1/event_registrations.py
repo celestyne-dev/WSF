@@ -19,6 +19,7 @@ from app.extensions import db
 from app.models.event_registration import EventRegistration
 from app.models.opportunity import Event
 from app.services.email import send_email
+from app.services.event_access import event_access_state
 from app.services.event_registrations import (
     fetch_visible_event_or_404,
     register,
@@ -33,6 +34,13 @@ api = Api(event_registrations_bp)
 
 
 def _dump_registration(registration, user):
+    # can_access_event/access_reason (spec section M) are the one
+    # learner-facing "why can't I access this" state, computed by the
+    # one central app/services/event_access.py rule — My Events uses
+    # this to distinguish "event exists" from "your Circle access is
+    # currently paused" without exposing any CircleSubscription id/
+    # provider/payment detail (none of which this function ever reads).
+    can_access_event, access_reason = event_access_state(registration.event, user)
     return {
         "id": registration.id,
         "status": registration.status,
@@ -40,6 +48,8 @@ def _dump_registration(registration, user):
         "cancelled_at": registration.cancelled_at.isoformat() if registration.cancelled_at else None,
         "attended_at": registration.attended_at.isoformat() if registration.attended_at else None,
         "event": serialize_event_for_viewer(registration.event, user),
+        "can_access_event": can_access_event,
+        "access_reason": access_reason,
     }
 
 

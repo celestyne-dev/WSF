@@ -78,6 +78,15 @@ export function mapEvent(e) {
     organizerId: e.organizer_id || e.organizer?.id || null,
     organizerLogo: e.organizer?.logo?.public_url || null,
     organizerLogoMedia: mapMediaRef(e.organizer?.logo),
+    // See EVENT_ACCESS_TYPES — orthogonal to registrationMode/ticketPrice
+    // (backend app/models/opportunity.py). requiresCircle/viewerCanAccess
+    // are UI guidance only (set directly on the response dict, already
+    // camelCase — see app/services/event_registrations.py's
+    // serialize_event_for_viewer/public_event_access_fields); the real
+    // gate is always the registration/virtual-link endpoints themselves.
+    accessType: e.access_type || 'public',
+    requiresCircle: !!e.requiresCircle,
+    viewerCanAccess: e.viewerCanAccess ?? (e.access_type || 'public') === 'public',
     registrationUrl: e.registration_url,
     registrationRequired: e.registration_required ?? true,
     registrationMode: e.registration_mode || 'external',
@@ -231,6 +240,7 @@ function toApiPayload(form) {
     venue: form.venue || undefined,
     virtualLink: form.virtualLink || undefined,
     virtualLinkPublic: !!form.virtualLinkPublic,
+    accessType: form.accessType || 'public',
     organizerId: form.organizerId || undefined,
     organizerName: form.organizerName || undefined,
     registrationUrl: form.registrationUrl || undefined,

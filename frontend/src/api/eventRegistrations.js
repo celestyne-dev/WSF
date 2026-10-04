@@ -15,6 +15,12 @@ function mapRegistration(r) {
     cancelledAt: r.cancelled_at,
     attendedAt: r.attended_at,
     event: mapEvent(r.event),
+    // Owner-only safe access state (spec section M) — never a provider/
+    // payment id, just whether THIS attendee can currently access this
+    // event's Circle-gated content and, if not, a stable reason the UI
+    // can render a clear message from.
+    canAccessEvent: r.can_access_event ?? r.canAccessEvent ?? true,
+    accessReason: r.access_reason ?? r.accessReason ?? null,
   }
 }
 

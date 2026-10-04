@@ -7,6 +7,7 @@ from app.models.geography import REGIONS
 from app.models.opportunity import (
     CAREER_LEVELS,
     EMPLOYMENT_TYPES,
+    EVENT_ACCESS_TYPES,
     EVENT_FORMATS,
     EVENT_REGISTRATION_MODES,
     EVENT_STATUSES,
@@ -402,6 +403,13 @@ class EventInputSchema(ma.Schema):
     venue = fields.String(required=False, allow_none=True)
     virtual_link = fields.String(required=False, allow_none=True, data_key="virtualLink")
     virtual_link_public = fields.Boolean(required=False, load_default=False, data_key="virtualLinkPublic")
+    # See EVENT_ACCESS_TYPES — orthogonal to registration_mode (HOW
+    # registration is collected) and ticket_price (event PRICING).
+    # Defaults to "public" so a form that never sends this field keeps
+    # today's behavior exactly.
+    access_type = fields.String(
+        required=False, load_default="public", data_key="accessType", validate=validate.OneOf(EVENT_ACCESS_TYPES)
+    )
     organizer_id = fields.Integer(required=False, allow_none=True, data_key="organizerId")
     organizer_name = fields.String(required=False, allow_none=True, data_key="organizerName")
     registration_url = fields.String(

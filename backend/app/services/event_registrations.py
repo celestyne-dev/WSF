@@ -29,6 +29,7 @@ from app.extensions import db
 from app.models.event_registration import EVENT_REGISTRATION_STATUSES, EventRegistration
 from app.models.opportunity import Event
 from app.schemas.opportunity import EventSchema
+from app.services.event_access import can_access_event
 from app.utils.responses import ApiError
 
 _event_schema = EventSchema()
@@ -82,24 +83,50 @@ def registration_availability(event):
     }
 
 
+def public_event_access_fields(event, user):
+    """The same requiresCircle/viewerCanAccess UI hints
+    serialize_event_for_viewer() adds, WITHOUT that function's
+    virtual_link/registration-row lookup — safe to call once per item on
+    the public Event LIST page (same no-N+1-query discipline
+    registration_availability's own docstring describes) since
+    can_access_event() never queries EventRegistration.
+    """
+    return {
+        "requiresCircle": event.access_type == "circle_only",
+        "viewerCanAccess": can_access_event(event, user),
+    }
+
+
 def is_authorized_for_virtual_link(event, user):
     """True iff `user` may be shown event.virtual_link right now.
 
-    - Always true when the organizer marked it public.
     - Always true for staff with events.manage (CMS/admin access).
-    - Otherwise only true for a user with an ACTIVE (registered or
+    - circle_only: virtual_link_public is NEVER consulted — a Circle-only
+      joining link must never be intentionally public (spec section C),
+      and a historical/bad row with virtual_link_public == True must
+      still not leak it anonymously (spec section D, a security
+      boundary, not just a publish-time validation). Requires BOTH
+      can_access_event() (current Circle entitlement) AND an ACTIVE
+      (registered or attended) registration for this exact event.
+    - public (unchanged): true when the organizer marked it public;
+      otherwise only true for a user with an ACTIVE (registered or
       attended) WSF-managed registration for this exact event — never
       merely because they're logged in, never because the event happens
       to use external registration (WSF never issued or tracked that
       attendee's registration, so it has no basis to call them
       authorized), and never for a cancelled registrant.
     """
+    if user and user.has_permission("events.manage"):
+        return True
+    if event.access_type == "circle_only":
+        if not user or not can_access_event(event, user):
+            return False
+        registration = EventRegistration.query.filter_by(event_id=event.id, user_id=user.id).first()
+        return bool(registration and registration.status in ("registered", "attended"))
     if event.virtual_link_public:
         return True
     if not user:
         return False
-    if user.has_permission("events.manage"):
-        return True
     registration = EventRegistration.query.filter_by(event_id=event.id, user_id=user.id).first()
     return bool(registration and registration.status in ("registered", "attended"))
 
@@ -108,10 +135,15 @@ def serialize_event_for_viewer(event, user):
     """The same safe public Event representation EventSchema always
     produces (virtual_link excluded unconditionally — see that schema's
     own Meta.exclude note), with the private virtual_link re-attached
-    only when `user` is actually authorized for it right now.
+    only when `user` is actually authorized for it right now. Also
+    carries the UI-guidance-only requiresCircle/viewerCanAccess hints
+    (spec section N) — never authoritative themselves; backend
+    registration and virtual-link authorization remain the real gate.
     """
     data = _event_schema.dump(event)
     data["virtual_link"] = event.virtual_link if is_authorized_for_virtual_link(event, user) else None
+    data["requiresCircle"] = event.access_type == "circle_only"
+    data["viewerCanAccess"] = can_access_event(event, user)
     return data
 
 
@@ -148,9 +180,20 @@ def register(event, user):
     user_id)). Returns (registration, created) where `created` is False
     for an idempotent repeat call while already actively registered (no
     email should be sent for that case — see the resource).
+
+    circle_only additionally requires can_access_event() (the one
+    central Event access-tier rule, see app/services/event_access.py)
+    BEFORE touching any existing registration row or consuming capacity
+    — denied access creates/reactivates nothing and never counts toward
+    capacity, matching public's own "no partial side effects on
+    rejection" behavior.
     """
     locked_event = Event.query.with_for_update().filter_by(id=event.id).one()
     _check_registration_window(locked_event)
+    if locked_event.access_type == "circle_only" and not can_access_event(locked_event, user):
+        raise ApiError(
+            "Active WSF Circle membership is required to register for this event.", 403, code="circle_required"
+        )
 
     existing = EventRegistration.query.filter_by(event_id=locked_event.id, user_id=user.id).first()
     if existing and existing.status in ("registered", "attended"):

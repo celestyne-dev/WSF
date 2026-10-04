@@ -285,6 +285,21 @@ _EVENT_REGISTRATION_MODE_CHECK_SQL = (
     "registration_mode IN (" + ", ".join(f"'{m}'" for m in EVENT_REGISTRATION_MODES) + ")"
 )
 
+# Event access TIER — orthogonal to registration_mode (HOW registration is
+# collected: external/wsf) and to ticket_price (event PRICING). "public":
+# today's behavior, unchanged. "circle_only": the event remains publicly
+# discoverable (metadata/detail stay visible — this markets WSF Circle
+# benefits), but WSF-managed registration requires a current WSF Circle
+# entitlement (see app/services/event_access.py, the one place that
+# decides this — never re-derived here or in event_registrations.py) and
+# the private virtual_link is never exposed except to a Circle-entitled,
+# actively-registered attendee (see
+# app/services/event_registrations.py's is_authorized_for_virtual_link).
+# Defaults to "public" so every existing Event keeps behaving exactly as
+# before this column existed.
+EVENT_ACCESS_TYPES = ("public", "circle_only")
+_EVENT_ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in EVENT_ACCESS_TYPES) + ")"
+
 
 class Event(db.Model):
     __tablename__ = "events"
@@ -293,6 +308,7 @@ class Event(db.Model):
         db.CheckConstraint(_EVENT_FORMAT_CHECK_SQL, name="ck_events_format"),
         db.CheckConstraint(_EVENT_STATUS_CHECK_SQL, name="ck_events_status"),
         db.CheckConstraint(_EVENT_REGISTRATION_MODE_CHECK_SQL, name="ck_events_registration_mode"),
+        db.CheckConstraint(_EVENT_ACCESS_TYPE_CHECK_SQL, name="ck_events_access_type"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -327,6 +343,14 @@ class Event(db.Model):
 
     organizer_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True)
     organizer_name = db.Column(db.String(200))  # denormalized fallback when no Organization is linked
+
+    # See EVENT_ACCESS_TYPES above. Server-defaulted to "public" at the
+    # database level too (set in the migration) so every event that
+    # existed before this column was added keeps behaving exactly as
+    # before. Not indexed — public listing/detail already filters
+    # primarily by status/date, and an index here would serve no actual
+    # query this app runs.
+    access_type = db.Column(db.String(20), nullable=False, default="public")
 
     registration_url = db.Column(db.String(500))
     registration_required = db.Column(db.Boolean, nullable=False, default=True)

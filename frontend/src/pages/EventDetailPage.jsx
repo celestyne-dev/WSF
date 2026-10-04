@@ -226,16 +226,7 @@ function WsfRegistrationCta({ event, registrationClosed, registration, pending, 
     )
   }
   if (registration && (registration.status === 'registered' || registration.status === 'attended')) {
-    return (
-      <div className="mt-5 border border-emerald-200 bg-emerald-50 p-4 text-center">
-        <p className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-emerald-700">
-          <CheckCircle2 size={16} /> You're registered
-        </p>
-        <Link to="/account/events" className="mt-2 inline-block text-xs font-semibold text-burgundy-600 hover:underline">
-          View in My Events
-        </Link>
-      </div>
-    )
+    return <RegisteredState event={event} registration={registration} />
   }
   if (!accessToken) {
     return (
@@ -247,6 +238,93 @@ function WsfRegistrationCta({ event, registrationClosed, registration, pending, 
   return (
     <button type="button" onClick={onRegister} disabled={pending} className="btn-primary mt-5 flex w-full disabled:opacity-60">
       {pending ? 'Registering…' : 'Register free'}
+    </button>
+  )
+}
+
+// The registration CHECK/REGISTER response's nested `event` is always
+// the freshest authorized view (recomputed server-side at response
+// time) — preferred over the page's own (possibly stale, fetched once
+// on mount) `event` state for virtualLink/viewerCanAccess, so a Circle
+// lapse mid-visit is reflected the next time this page talks to the
+// backend rather than rendering a cached private link (spec section R).
+function RegisteredState({ event, registration }) {
+  const liveEvent = registration?.event || event
+  const showJoinOnline = event.accessType === 'circle_only' && event.format !== 'in-person'
+  return (
+    <div className="mt-5 border border-emerald-200 bg-emerald-50 p-4 text-center">
+      <p className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-emerald-700">
+        <CheckCircle2 size={16} /> You're registered
+      </p>
+      <Link to="/account/events" className="mt-2 inline-block text-xs font-semibold text-burgundy-600 hover:underline">
+        View in My Events
+      </Link>
+      {showJoinOnline &&
+        (liveEvent.virtualLink ? (
+          <p className="mt-3 border-t border-emerald-200 pt-3 text-xs">
+            <a href={liveEvent.virtualLink} target="_blank" rel="noreferrer" className="font-semibold text-burgundy-600 hover:underline">
+              Join online
+            </a>
+          </p>
+        ) : (
+          <div className="mt-3 border-t border-emerald-200 pt-3 text-xs text-charcoal-600">
+            <p className="font-semibold text-charcoal">WSF Circle access required</p>
+            <Link to="/circle" className="font-semibold text-burgundy-600 hover:underline">
+              Explore WSF Circle
+            </Link>
+          </div>
+        ))}
+    </div>
+  )
+}
+
+// circle_only WSF-managed registration CTA — the "Circle active?" gate
+// (spec section Q) sits in front of the same register/registered states
+// public WSF events use. Backend remains authoritative either way:
+// event.viewerCanAccess is a UI guidance hint, not the registration/
+// virtual-link endpoints' own checks.
+function CircleRegistrationCta({ event, registrationClosed, registration, pending, accessToken, onRegister, onSignIn }) {
+  if (registrationClosed || event.isPast) {
+    return (
+      <button type="button" disabled className="btn-secondary mt-5 flex w-full cursor-not-allowed justify-center opacity-60">
+        {event.isCancelled ? 'Event cancelled' : event.isPostponed ? 'New date TBD' : event.soldOut ? 'Sold out' : 'Registration closed'}
+      </button>
+    )
+  }
+  if (event.registrationFull) {
+    return (
+      <button type="button" disabled className="btn-secondary mt-5 flex w-full cursor-not-allowed justify-center opacity-60">
+        Event full
+      </button>
+    )
+  }
+  const isRegistered = registration && (registration.status === 'registered' || registration.status === 'attended')
+  if (!accessToken) {
+    return (
+      <div className="mt-5 border border-taupe-200 bg-cream p-4 text-center">
+        <p className="text-sm font-semibold text-charcoal">WSF Circle event</p>
+        <button type="button" onClick={onSignIn} className="btn-primary mt-3 flex w-full justify-center">
+          Sign in to register
+        </button>
+      </div>
+    )
+  }
+  if (!event.viewerCanAccess && !isRegistered) {
+    return (
+      <div className="mt-5 border border-taupe-200 bg-cream p-4 text-center">
+        <p className="text-sm font-semibold text-charcoal">Included with WSF Circle</p>
+        <Link to="/circle" className="btn-primary mt-3 flex w-full justify-center">
+          Explore WSF Circle
+        </Link>
+      </div>
+    )
+  }
+  if (isRegistered) {
+    return <RegisteredState event={event} registration={registration} />
+  }
+  return (
+    <button type="button" onClick={onRegister} disabled={pending} className="btn-primary mt-5 flex w-full disabled:opacity-60">
+      {pending ? 'Registering…' : 'Register'}
     </button>
   )
 }
@@ -356,6 +434,9 @@ export default function EventDetailPage() {
           <Breadcrumb items={[{ label: 'Events', to: '/events' }, { label: event.title }]} />
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {event.type && <p className="eyebrow !text-blush-200">{event.type}</p>}
+            {event.accessType === 'circle_only' && (
+              <span className="bg-plum-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ivory">WSF Circle</span>
+            )}
             {event.isOngoing && <span className="inline-flex items-center gap-1 bg-emerald-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ivory">Happening now</span>}
           </div>
           <h1 className="mt-1 font-serif text-3xl font-semibold sm:text-4xl">{event.title}</h1>
@@ -482,7 +563,17 @@ export default function EventDetailPage() {
               )}
             </ul>
 
-            {event.registrationRequired && event.registrationMode === 'wsf' ? (
+            {event.accessType === 'circle_only' ? (
+              <CircleRegistrationCta
+                event={event}
+                registrationClosed={registrationClosed}
+                registration={wsfRegistration}
+                pending={wsfRegistering}
+                accessToken={accessToken}
+                onRegister={handleWsfRegister}
+                onSignIn={() => navigate('/login')}
+              />
+            ) : event.registrationRequired && event.registrationMode === 'wsf' ? (
               <WsfRegistrationCta
                 event={event}
                 registrationClosed={registrationClosed}

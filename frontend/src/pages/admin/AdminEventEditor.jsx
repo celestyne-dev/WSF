@@ -99,6 +99,7 @@ function blankForm() {
     venue: '',
     virtualLink: '',
     virtualLinkPublic: false,
+    accessType: 'public',
     organizerId: '',
     organizerName: '',
     speakers: [],
@@ -144,6 +145,7 @@ function toForm(event) {
     venue: event.venue || '',
     virtualLink: event.virtualLink || '',
     virtualLinkPublic: !!event.virtualLinkPublic,
+    accessType: event.accessType || 'public',
     organizerId: event.organizerId || '',
     organizerName: event.organizer || '',
     speakers: event.speakers || [],
@@ -473,6 +475,17 @@ export default function AdminEventEditor() {
         const org = organizations.find((o) => String(o.id) === String(value))
         if (org && !prev.organizerName) next.organizerName = org.name
       }
+      // Selecting WSF Circle normalizes the fields that architecture
+      // requires — WSF cannot securely enforce Circle entitlement
+      // through external registration, and a Circle-only joining link
+      // must never be intentionally public. Backend publish validation
+      // remains authoritative regardless of this convenience.
+      if (field === 'accessType' && value === 'circle_only') {
+        next.registrationRequired = true
+        next.registrationMode = 'wsf'
+        next.virtualLinkPublic = false
+        next.ticketPrice = ''
+      }
       return next
     })
   }
@@ -501,6 +514,9 @@ export default function AdminEventEditor() {
   const endTimeInvalid = form && !form.endDate && form.startTime && form.endTime && form.endTime < form.startTime
   const registrationDeadlineInvalid = form && form.registrationDeadline && (form.endDate || form.date) && form.registrationDeadline > (form.endDate || form.date)
   const paidWithoutCurrency = form && form.ticketPrice !== '' && Number(form.ticketPrice) > 0 && !form.currency
+  const circleOnlyNotRequired = form && form.accessType === 'circle_only' && !form.registrationRequired
+  const circleOnlyNotWsf = form && form.accessType === 'circle_only' && form.registrationRequired && form.registrationMode !== 'wsf'
+  const circleOnlyLinkPublic = form && form.accessType === 'circle_only' && form.virtualLinkPublic
 
   async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
@@ -546,6 +562,18 @@ export default function AdminEventEditor() {
         toast.error('Paid WSF-managed event registration is not available yet. Use external registration for paid events.')
         return
       }
+      if (circleOnlyNotRequired) {
+        toast.error('Circle-only events must require registration.')
+        return
+      }
+      if (circleOnlyNotWsf) {
+        toast.error('Circle-only events must use WSF-managed registration.')
+        return
+      }
+      if (circleOnlyLinkPublic) {
+        toast.error('A Circle-only event cannot expose its virtual joining link publicly.')
+        return
+      }
     }
     setErrors({})
     setSaving(true)
@@ -569,6 +597,7 @@ export default function AdminEventEditor() {
       venue: form.venue || null,
       virtualLink: form.virtualLink || null,
       virtualLinkPublic: form.virtualLinkPublic,
+      accessType: form.accessType || 'public',
       organizerId: form.organizerId || null,
       organizerName: form.organizerName || selectedOrg?.name || null,
       speakers: form.speakers,
@@ -755,10 +784,32 @@ export default function AdminEventEditor() {
                   <input value={form.virtualLink} onChange={(e) => updateField('virtualLink', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
                 </Field>
                 <label className="flex items-center gap-2 text-sm text-charcoal-600">
-                  <input type="checkbox" checked={form.virtualLinkPublic} onChange={(e) => updateField('virtualLinkPublic', e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={form.virtualLinkPublic}
+                    disabled={form.accessType === 'circle_only'}
+                    onChange={(e) => updateField('virtualLinkPublic', e.target.checked)}
+                  />
                   Show this link publicly on the event page (leave unchecked to send it only to registered attendees)
+                  {form.accessType === 'circle_only' ? ' — never available for WSF Circle events' : ''}
                 </label>
               </>
+            )}
+          </Section>
+
+          <Section title="Access" description="Who can register for and access this event — separate from how registration is collected and how it's priced.">
+            <Field label="Access">
+              <select value={form.accessType} onChange={(e) => updateField('accessType', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                <option value="public">Public — available according to normal registration settings</option>
+                <option value="circle_only">WSF Circle — active Circle membership required to register/access member-only event benefits</option>
+              </select>
+            </Field>
+            {form.accessType === 'circle_only' && (
+              <p className="border border-taupe-200 bg-taupe-100 p-3 text-xs text-charcoal-600">
+                WSF Circle events require: registration required, WSF accounts registration, and are free under the
+                current system — the virtual joining link can never be made public. WSF Circle pricing lives only in
+                the Circle Plan, never here.
+              </p>
             )}
           </Section>
 
@@ -780,14 +831,24 @@ export default function AdminEventEditor() {
 
           <Section title="Registration">
             <label className="flex items-center gap-2 text-sm text-charcoal-600">
-              <input type="checkbox" checked={form.registrationRequired} onChange={(e) => updateField('registrationRequired', e.target.checked)} />
-              Registration required
+              <input
+                type="checkbox"
+                checked={form.registrationRequired}
+                disabled={form.accessType === 'circle_only'}
+                onChange={(e) => updateField('registrationRequired', e.target.checked)}
+              />
+              Registration required{form.accessType === 'circle_only' ? ' (required for WSF Circle events)' : ''}
             </label>
 
             {form.registrationRequired && (
               <>
-                <Field label="Registration method">
-                  <select value={form.registrationMode} onChange={(e) => updateField('registrationMode', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                <Field label="Registration method" hint={form.accessType === 'circle_only' ? 'WSF Circle events must use WSF-managed registration' : undefined}>
+                  <select
+                    value={form.registrationMode}
+                    disabled={form.accessType === 'circle_only'}
+                    onChange={(e) => updateField('registrationMode', e.target.value)}
+                    className="w-full border border-taupe-300 px-3 py-2 text-sm disabled:bg-taupe-100 disabled:text-charcoal-600/70"
+                  >
                     <option value="external">External — WSF sends attendees to a URL</option>
                     <option value="wsf">WSF accounts — attendees register and manage it here</option>
                   </select>
@@ -827,8 +888,15 @@ export default function AdminEventEditor() {
 
           <Section title="Pricing" description="Leave the ticket price blank for a free event.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Ticket price" hint="optional — leave blank if free">
-                <input type="number" min="0" value={form.ticketPrice} onChange={(e) => updateField('ticketPrice', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              <Field label="Ticket price" hint={form.accessType === 'circle_only' ? 'WSF Circle events are free under the current system' : 'optional — leave blank if free'}>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.ticketPrice}
+                  disabled={form.accessType === 'circle_only'}
+                  onChange={(e) => updateField('ticketPrice', e.target.value)}
+                  className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none disabled:bg-taupe-100 disabled:text-charcoal-600/70"
+                />
               </Field>
               <Field label="Currency" hint="ISO code, e.g. USD, KES, EUR">
                 <input value={form.currency} onChange={(e) => updateField('currency', e.target.value.toUpperCase().slice(0, 3))} className="w-full border border-taupe-300 px-3 py-2.5 text-sm uppercase focus:border-burgundy-500 focus:outline-none" />
