@@ -198,6 +198,32 @@ class TestAuthenticatedJoin:
         member = _get_member_by_user_email(app, USER1["email"])
         assert member.directory_opt_in is False
 
+    # join rejects an unknown interest slug outright — the whole request
+    # fails, and no Member is created (contrast with the separate,
+    # deliberately lenient anonymous /community/join flow).
+    def test_authenticated_join_rejects_unknown_interest_slug(self, client, app, user1_token):
+        resp = client.post(
+            "/api/v1/community/me/join",
+            json={"consentGiven": True, "interestSlugs": ["not-a-real-slug"]},
+            headers=auth_headers(user1_token),
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "invalid_interest"
+        assert _get_member_by_user_email(app, USER1["email"]) is None
+
+    # mixed valid + invalid slugs also rejects the whole join — never
+    # creates a Member with only the valid interest kept.
+    def test_authenticated_join_rejects_mixed_valid_invalid_slugs(self, client, app, user1_token):
+        _make_topic(app)
+        resp = client.post(
+            "/api/v1/community/me/join",
+            json={"consentGiven": True, "interestSlugs": ["leadership", "not-a-real-slug"]},
+            headers=auth_headers(user1_token),
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "invalid_interest"
+        assert _get_member_by_user_email(app, USER1["email"]) is None
+
     # 10. duplicate authenticated join is idempotent — never mutates status
     def test_duplicate_authenticated_join_is_idempotent(self, client, app, user1_token):
         first = client.post("/api/v1/community/me/join", json={"consentGiven": True}, headers=auth_headers(user1_token))
@@ -277,13 +303,14 @@ class TestSelfUpdate:
         resp = client.post("/api/v1/community/me/join", json={"consentGiven": True}, headers=auth_headers(user1_token))
         return resp.get_json()["data"]
 
-    # 16,21,22,23. owner can update allowed profile fields; topics/country/URLs validate
+    # 16,22,23. owner can update allowed profile fields; country/URLs validate;
+    # a valid interest slug is accepted.
     def test_owner_can_update_allowed_fields(self, client, app, user1_token, joined_member):
         resp = client.patch(
             "/api/v1/community/me",
             json={
                 "professionalTitle": "Engineer", "countryCode": "NG", "city": "Lagos",
-                "websiteUrl": "https://example.com", "interestSlugs": ["leadership", "not-a-real-slug"],
+                "websiteUrl": "https://example.com", "interestSlugs": ["leadership"],
                 "directoryOptIn": True, "communityUpdatesOptIn": False,
             },
             headers=auth_headers(user1_token),
@@ -293,11 +320,61 @@ class TestSelfUpdate:
         assert data["professionalTitle"] == "Engineer"
         assert data["country"]["code"] == "NG"
         assert data["directoryOptIn"] is True
-        assert [i["slug"] for i in data["interests"]] == ["leadership"]  # unknown slug silently ignored
+        assert [i["slug"] for i in data["interests"]] == ["leadership"]
 
     def test_owner_update_rejects_invalid_country(self, client, joined_member, user1_token):
         resp = client.patch("/api/v1/community/me", json={"countryCode": "ZZ"}, headers=auth_headers(user1_token))
         assert resp.status_code == 422
+
+    # 21. PATCH rejects an unknown interest slug outright — never a silent
+    # partial apply that keeps only the valid ones.
+    def test_owner_update_rejects_unknown_interest_slug(self, client, app, user1_token, joined_member):
+        resp = client.patch(
+            "/api/v1/community/me", json={"interestSlugs": ["not-a-real-slug"]}, headers=auth_headers(user1_token),
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "invalid_interest"
+
+    # mixed valid + invalid slugs rejects the WHOLE update
+    def test_owner_update_mixed_valid_invalid_slugs_rejects_whole_request(self, client, app, user1_token, joined_member):
+        resp = client.patch(
+            "/api/v1/community/me",
+            json={"professionalTitle": "Should not apply", "interestSlugs": ["leadership", "not-a-real-slug"]},
+            headers=auth_headers(user1_token),
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "invalid_interest"
+
+    # a failed PATCH (unknown slug) leaves EVERYTHING — including other
+    # fields in the same request and existing interests — unchanged.
+    def test_owner_update_failure_leaves_member_unchanged(self, client, app, user1_token, joined_member):
+        client.patch("/api/v1/community/me", json={"interestSlugs": ["leadership"]}, headers=auth_headers(user1_token))
+
+        failed = client.patch(
+            "/api/v1/community/me",
+            json={"professionalTitle": "Should not apply", "interestSlugs": ["leadership", "not-a-real-slug"]},
+            headers=auth_headers(user1_token),
+        )
+        assert failed.status_code == 422
+
+        unchanged = client.get("/api/v1/community/me", headers=auth_headers(user1_token)).get_json()["data"]["member"]
+        assert unchanged["professionalTitle"] != "Should not apply"
+        assert [i["slug"] for i in unchanged["interests"]] == ["leadership"]
+
+    # empty list is valid and clears interests
+    def test_owner_update_empty_interest_list_clears_interests(self, client, app, user1_token, joined_member):
+        client.patch("/api/v1/community/me", json={"interestSlugs": ["leadership"]}, headers=auth_headers(user1_token))
+        resp = client.patch("/api/v1/community/me", json={"interestSlugs": []}, headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["interests"] == []
+
+    # duplicate valid slugs in the request never create duplicate associations
+    def test_owner_update_duplicate_valid_slugs_no_duplicate_associations(self, client, app, user1_token, joined_member):
+        resp = client.patch(
+            "/api/v1/community/me", json={"interestSlugs": ["leadership", "leadership"]}, headers=auth_headers(user1_token),
+        )
+        assert resp.status_code == 200
+        assert [i["slug"] for i in resp.get_json()["data"]["interests"]] == ["leadership"]
 
     def test_owner_update_rejects_invalid_url(self, client, joined_member, user1_token):
         resp = client.patch("/api/v1/community/me", json={"websiteUrl": "not-a-url"}, headers=auth_headers(user1_token))

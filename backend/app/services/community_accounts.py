@@ -45,9 +45,30 @@ def get_member_for_user(user):
 
 
 def _resolve_topics(slugs):
+    """Strict for these authenticated account flows: every submitted slug
+    must match an existing Topic, or the whole request is rejected (422
+    `invalid_interest`) before anything is written — never silently drops
+    an unknown slug and keeps the rest. Contrast with the separate,
+    deliberately lenient anonymous /community/join flow's own resolver in
+    api/v1/community.py, which this module never shares or touches (see
+    that file's own _resolve_topics). An empty list is valid and means no
+    interests. Duplicate slugs collapse to their one matching Topic (no
+    duplicate associations), since in_() naturally de-duplicates and a
+    Topic's slug is itself unique.
+    """
     if not slugs:
         return []
-    return Topic.query.filter(Topic.slug.in_(slugs)).all()
+    unique_slugs = list(dict.fromkeys(slugs))
+    topics = Topic.query.filter(Topic.slug.in_(unique_slugs)).all()
+    found = {t.slug for t in topics}
+    missing = [s for s in unique_slugs if s not in found]
+    if missing:
+        raise ApiError(
+            f"Unknown interest{'s' if len(missing) > 1 else ''}: {', '.join(missing)}",
+            422,
+            code="invalid_interest",
+        )
+    return topics
 
 
 def _normalize_country_code(data):
@@ -86,6 +107,7 @@ def join_as_account(user, data):
         )
 
     interest_slugs = data.pop("interest_slugs", [])
+    topics = _resolve_topics(interest_slugs)  # validated before any Member field is touched
     member = Member(
         email=email,
         user_id=user.id,
@@ -107,7 +129,7 @@ def join_as_account(user, data):
     # either — the model column default already is False, set explicitly
     # here so the rule is visible at the call site, not just implied.
     member.directory_opt_in = False
-    member.interests = _resolve_topics(interest_slugs)
+    member.interests = topics
 
     db.session.add(member)
     db.session.commit()
@@ -135,11 +157,15 @@ def update_self_profile(member, data):
     """
     _normalize_country_code(data)
     interest_slugs = data.pop("interest_slugs", None)
+    # Validated BEFORE any field is applied — an unknown slug must reject
+    # the whole request and leave the Member (interests included)
+    # completely untouched, never a partial apply.
+    topics = _resolve_topics(interest_slugs) if interest_slugs is not None else None
     for field in _SELF_UPDATE_FIELDS:
         if field in data:
             setattr(member, field, data[field])
-    if interest_slugs is not None:
-        member.interests = _resolve_topics(interest_slugs)
+    if topics is not None:
+        member.interests = topics
     db.session.commit()
     return member
 
