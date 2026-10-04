@@ -39,7 +39,9 @@ class CirclePlanInputSchema(ma.Schema):
     description = fields.List(fields.Dict(), required=False, load_default=list)
     billing_interval = fields.String(required=False, load_default="monthly", data_key="billingInterval", validate=validate.OneOf(CIRCLE_PLAN_BILLING_INTERVALS))
     price = fields.Integer(required=False, load_default=0, validate=validate.Range(min=0))
-    currency = fields.String(required=False, load_default="USD", validate=_CURRENCY_VALIDATE)
+    # Required, no default: WSF is global and must not silently assume
+    # USD for a plan the admin never gave a currency for.
+    currency = fields.String(required=True, validate=_CURRENCY_VALIDATE)
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(CIRCLE_PLAN_STATUSES))
     featured = fields.Boolean(required=False, load_default=False)
     display_order = fields.Integer(required=False, load_default=0, data_key="displayOrder")

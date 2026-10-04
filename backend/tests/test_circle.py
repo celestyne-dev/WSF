@@ -247,6 +247,66 @@ class TestPlans:
         assert subscription.plan_id == plan_id
 
 
+class TestCurrencyValidation:
+    """WSF is global — currency must never be silently assumed. See
+    app/models/circle.py's CirclePlan.currency (no column default) and
+    app/schemas/circle.py's CirclePlanInputSchema.currency (required=True,
+    no load_default).
+    """
+
+    # currency.1 — missing currency on create -> 422
+    def test_plan_create_without_currency_rejected(self, client, manager_token):
+        payload = _plan_payload()
+        del payload["currency"]
+        resp = client.post("/api/v1/circle/plans", json=payload, headers=auth_headers(manager_token))
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "validation_error"
+
+    # currency.2 — explicit USD works
+    def test_explicit_usd_accepted(self, client, manager_token):
+        resp = client.post("/api/v1/circle/plans", json=_plan_payload(currency="USD"), headers=auth_headers(manager_token))
+        assert resp.status_code == 201
+        assert resp.get_json()["data"]["currency"] == "USD"
+
+    # currency.3 — explicit KES works (WSF is global, not USD-only)
+    def test_explicit_kes_accepted(self, client, manager_token):
+        resp = client.post("/api/v1/circle/plans", json=_plan_payload(currency="KES"), headers=auth_headers(manager_token))
+        assert resp.status_code == 201
+        assert resp.get_json()["data"]["currency"] == "KES"
+
+    # currency.4 — lowercase rejected (regression: already covered by
+    # TestPlans.test_invalid_currency_rejected's "usd" case above).
+
+    # currency.5 — no implicit USD default remains, at the model layer: a
+    # CirclePlan created without `currency` must fail at the DB (NOT NULL,
+    # no server/column default), not silently become "USD".
+    def test_plan_model_has_no_implicit_currency_default(self, app):
+        from sqlalchemy.exc import IntegrityError
+
+        from app.extensions import db
+        from app.models.circle import CirclePlan
+
+        with app.app_context():
+            plan = CirclePlan(
+                slug=f"plan-{uuid.uuid4().hex[:10]}", name="No Currency Plan",
+                billing_interval="monthly", price=500, status="draft",
+            )
+            db.session.add(plan)
+            with pytest.raises(IntegrityError):
+                db.session.commit()
+            db.session.rollback()
+
+    # currency.5 — no implicit USD default remains, at the schema layer.
+    def test_plan_input_schema_currency_has_no_implicit_default(self):
+        from marshmallow.utils import missing
+
+        from app.schemas.circle import CirclePlanInputSchema
+
+        field = CirclePlanInputSchema().fields["currency"]
+        assert field.required is True
+        assert field.load_default is missing
+
+
 class TestSubscriptionRecording:
     # 11. admin can record subscription for existing exact-email User
     def test_admin_can_record_subscription(self, client, app, manager_token, user1_token):
@@ -321,6 +381,164 @@ class TestSubscriptionRecording:
         with app.app_context():
             reloaded = Member.query.filter_by(email=USER1["email"]).first()
             assert reloaded.membership_type == "Premium Member"
+
+
+class TestSubscriptionPeriodPatchValidation:
+    """PATCH /circle/subscriptions/<id> must validate the RESULTING
+    (effective) current_period_start/current_period_end before mutating
+    or committing anything — not just the fields a given PATCH happens to
+    touch. See app/api/v1/circle.py's _validate_effective_period(). The
+    DB CHECK constraint (ck_circle_subscriptions_period_order) stays in
+    place as defense in depth and is exercised directly below.
+    """
+
+    # period.6 — create still rejects invalid period order (regression,
+    # already enforced by CircleSubscriptionAdminCreateSchema.validate_period_order)
+    def test_create_subscription_rejects_invalid_period_order(self, client, app, manager_token, user1_token):
+        plan_id, _ = _make_plan(app)
+        start = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        resp = client.post(
+            "/api/v1/circle/subscriptions",
+            json={
+                "email": USER1["email"], "planId": plan_id, "status": "active", "source": "manual",
+                "currentPeriodStart": _iso(start), "currentPeriodEnd": _iso(end),
+            },
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 422
+
+    # period.7 — PATCH only end, before the existing start -> 422 invalid_period
+    def test_patch_only_end_before_existing_start_rejected(self, client, app, manager_token, user1_token):
+        plan_id, _ = _make_plan(app)
+        start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        sub_id = _make_subscription(
+            app, USER1["email"], plan_id, status="active",
+            current_period_start=start, current_period_end=end,
+        )
+        resp = client.patch(
+            f"/api/v1/circle/subscriptions/{sub_id}",
+            json={"currentPeriodEnd": _iso(datetime(2026, 9, 1, tzinfo=timezone.utc))},
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "invalid_period"
+
+    # period.8 — PATCH only start, after the existing end -> 422 invalid_period
+    def test_patch_only_start_after_existing_end_rejected(self, client, app, manager_token, user1_token):
+        plan_id, _ = _make_plan(app)
+        start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        sub_id = _make_subscription(
+            app, USER1["email"], plan_id, status="active",
+            current_period_start=start, current_period_end=end,
+        )
+        resp = client.patch(
+            f"/api/v1/circle/subscriptions/{sub_id}",
+            json={"currentPeriodStart": _iso(datetime(2026, 12, 1, tzinfo=timezone.utc))},
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "invalid_period"
+
+    # period.9 — PATCH with both dates supplied in valid order succeeds
+    def test_patch_both_dates_in_valid_order_succeeds(self, client, app, manager_token, user1_token):
+        plan_id, _ = _make_plan(app)
+        sub_id = _make_subscription(app, USER1["email"], plan_id, status="active")
+        new_start = datetime(2027, 1, 1, tzinfo=timezone.utc)
+        new_end = datetime(2027, 2, 1, tzinfo=timezone.utc)
+        resp = client.patch(
+            f"/api/v1/circle/subscriptions/{sub_id}",
+            json={"currentPeriodStart": _iso(new_start), "currentPeriodEnd": _iso(new_end)},
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 200
+        reloaded = _get_subscription(app, sub_id)
+        assert reloaded.current_period_start == new_start
+        assert reloaded.current_period_end == new_end
+
+    # period.10 — clearing current_period_end to null succeeds (null on
+    # either side is always valid, regardless of the other side)
+    def test_patch_clearing_period_end_to_null_succeeds(self, client, app, manager_token, user1_token):
+        plan_id, _ = _make_plan(app)
+        start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        sub_id = _make_subscription(
+            app, USER1["email"], plan_id, status="active",
+            current_period_start=start, current_period_end=end,
+        )
+        resp = client.patch(
+            f"/api/v1/circle/subscriptions/{sub_id}",
+            json={"currentPeriodEnd": None},
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 200
+        reloaded = _get_subscription(app, sub_id)
+        assert reloaded.current_period_end is None
+        assert reloaded.current_period_start == start
+
+    # period.10 — clearing current_period_start to null succeeds
+    def test_patch_clearing_period_start_to_null_succeeds(self, client, app, manager_token, user1_token):
+        plan_id, _ = _make_plan(app)
+        start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        sub_id = _make_subscription(
+            app, USER1["email"], plan_id, status="active",
+            current_period_start=start, current_period_end=end,
+        )
+        resp = client.patch(
+            f"/api/v1/circle/subscriptions/{sub_id}",
+            json={"currentPeriodStart": None},
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 200
+        reloaded = _get_subscription(app, sub_id)
+        assert reloaded.current_period_start is None
+        assert reloaded.current_period_end == end
+
+    # period.11 — a failed (422) period PATCH leaves the original dates
+    # completely unchanged — validation ran before any mutation/commit.
+    def test_failed_period_patch_leaves_original_dates_unchanged(self, client, app, manager_token, user1_token):
+        plan_id, _ = _make_plan(app)
+        start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        sub_id = _make_subscription(
+            app, USER1["email"], plan_id, status="active",
+            current_period_start=start, current_period_end=end,
+        )
+        resp = client.patch(
+            f"/api/v1/circle/subscriptions/{sub_id}",
+            json={"currentPeriodEnd": _iso(datetime(2026, 9, 1, tzinfo=timezone.utc))},
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 422
+        reloaded = _get_subscription(app, sub_id)
+        assert reloaded.current_period_start == start
+        assert reloaded.current_period_end == end
+
+    # period.12 — the DB CHECK constraint remains present as defense in
+    # depth, independent of the application-level 422 above: a row that
+    # bypasses the API/schema layer entirely (direct ORM insert) still
+    # cannot violate end >= start.
+    def test_db_period_check_constraint_present(self, app, user1_token):
+        from sqlalchemy.exc import IntegrityError
+
+        from app.extensions import db
+        from app.models.circle import CircleSubscription
+
+        plan_id, _ = _make_plan(app)
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            subscription = CircleSubscription(
+                user_id=user.id, plan_id=plan_id, status="pending", source="manual",
+                current_period_start=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                current_period_end=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            )
+            db.session.add(subscription)
+            with pytest.raises(IntegrityError):
+                db.session.commit()
+            db.session.rollback()
 
 
 class TestEntitlement:

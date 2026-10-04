@@ -123,7 +123,7 @@ def _apply_plan_fields(plan, data):
     plan.description = sanitize_content_blocks(data.get("description", []))
     plan.billing_interval = data.get("billing_interval", "monthly")
     plan.price = data.get("price", 0)
-    plan.currency = data.get("currency", "USD")
+    plan.currency = data["currency"]  # required by CirclePlanInputSchema — no implicit default
     plan.status = data.get("status", "draft")
     plan.featured = data.get("featured", False)
     plan.display_order = data.get("display_order", 0)
@@ -131,6 +131,23 @@ def _apply_plan_fields(plan, data):
     plan.manage_billing_url = data.get("manage_billing_url")
     plan.benefits = data.get("benefits", [])
     plan.seo = data.get("seo")
+
+
+def _validate_effective_period(subscription, data):
+    """PATCH must validate the RESULTING period, not just the fields it
+    happens to touch: a field absent from `data` keeps the subscription's
+    existing value (house partial-update convention), so "effective"
+    start/end are whichever of (submitted, existing) applies to each side
+    independently. Must run before any field is mutated so a rejected
+    PATCH leaves the subscription completely unchanged. The DB CHECK
+    constraint (ck_circle_subscriptions_period_order) stays in place as
+    defense in depth — this is the pre-commit, user-facing 422 version of
+    the same rule.
+    """
+    start = data["current_period_start"] if "current_period_start" in data else subscription.current_period_start
+    end = data["current_period_end"] if "current_period_end" in data else subscription.current_period_end
+    if start is not None and end is not None and end < start:
+        raise ApiError("Current period end cannot be before its start.", 422, code="invalid_period")
 
 
 def build_owner_subscription_payload(subscription):
@@ -290,6 +307,7 @@ class CircleSubscriptionDetailResource(Resource):
     def patch(self, subscription_id):
         subscription = _get_subscription_or_404(subscription_id)
         data = CircleSubscriptionAdminUpdateSchema().load(request.get_json(silent=True) or {}, partial=True)
+        _validate_effective_period(subscription, data)
 
         if "status" in data:
             new_status = data.pop("status")

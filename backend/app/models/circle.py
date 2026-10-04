@@ -65,7 +65,10 @@ class CirclePlan(db.Model):
 
     billing_interval = db.Column(db.String(10), nullable=False, default="monthly")
     price = db.Column(db.Integer, nullable=False, default=0)  # whole currency units, paired with `currency`
-    currency = db.Column(db.String(3), nullable=False, default="USD")
+    # No default: WSF is global, so every plan must state its own ISO 4217
+    # currency explicitly (see CirclePlanInputSchema.currency, required=True)
+    # rather than silently inheriting a US-centric assumption.
+    currency = db.Column(db.String(3), nullable=False)
 
     status = db.Column(db.String(20), nullable=False, default="draft")
     featured = db.Column(db.Boolean, nullable=False, default=False)
