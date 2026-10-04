@@ -83,6 +83,7 @@ def create_app(config_name="development"):
     from app.api.v1.event_registrations import event_registrations_bp
     from app.api.v1.jobs import jobs_bp
     from app.api.v1.learning import learning_bp
+    from app.api.v1.learning_enrollments import learning_enrollments_bp
     from app.api.v1.media import media_bp
     from app.api.v1.newsletter import newsletter_bp
     from app.api.v1.nominations import nominations_bp
@@ -144,6 +145,7 @@ def create_app(config_name="development"):
     app.register_blueprint(admin_taxonomy_bp, url_prefix="/api/v1/admin/taxonomy")
     app.register_blueprint(pages_bp, url_prefix="/api/v1/pages")
     app.register_blueprint(learning_bp, url_prefix="/api/v1/learning")
+    app.register_blueprint(learning_enrollments_bp, url_prefix="/api/v1/learning-enrollments")
     app.register_blueprint(notifications_bp, url_prefix="/api/v1/admin/notifications")
     app.register_blueprint(saved_bp, url_prefix="/api/v1/saved")
 

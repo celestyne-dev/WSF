@@ -6,6 +6,7 @@ body/downloads, all left to Product/Event/Article/Resource).
 from flask import Blueprint, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
+from sqlalchemy import or_
 
 from app.extensions import db
 from app.models.commerce import Product
@@ -18,10 +19,12 @@ from app.models.learning import (
     LearningProgramRelatedArticle,
 )
 from app.models.article import Article
+from app.models.learning_enrollment import LearningEnrollment
 from app.models.opportunity import Event
 from app.models.people import Author, Organization
 from app.models.resource import Resource as ResourceModel
 from app.models.taxonomy import Topic
+from app.models.user import User
 from app.schemas.learning import (
     LearningCurriculumInputSchema,
     LearningProgramInputSchema,
@@ -33,6 +36,7 @@ from app.schemas.learning import (
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.homepage import validate_cta_url
 from app.services.audit import log_action
+from app.services.learning_enrollments import progress_summary
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -318,13 +322,30 @@ class AdminLearningProgramDetailResource(Resource):
 
 
 class AdminLearningCurriculumResource(Resource):
-    """Replaces a program's entire modules+lessons tree in one request —
-    transaction-safe: every referenced Article/Resource is resolved and
-    every external_url validated BEFORE any ORM object is created, so a
-    validation failure never leaves half the curriculum saved (spec
-    section 70). Unlinking never deletes the referenced Article/Resource
-    itself (spec section 71) — only the LearningLesson row that pointed
-    at it.
+    """Replaces a program's modules+lessons tree IN PLACE rather than
+    discarding and recreating every row — an existing module/lesson `id`
+    (which LearningModuleInputSchema/LearningLessonInputSchema already
+    accept) is matched against this program's OWN current curriculum and
+    updated on the SAME row, so its id survives a normal edit. This is
+    load-bearing: app/services/learning_enrollments.py's
+    LearningLessonProgress rows FK to learning_lessons.id, so an id that
+    silently changed on every save would otherwise sever a learner's
+    progress from lessons that, from an editor's point of view, never
+    moved (see that module's own docstring for how a learner's earned
+    completion is preserved across curriculum edits — it depends on this).
+
+    Still transaction-safe: every referenced Article/Resource is
+    resolved and every external_url/id validated BEFORE the tree is
+    swapped, and nothing here ever touches the Article/Resource rows a
+    lesson referenced, or the LearningEnrollment/progress rows
+    themselves — this resource updates curriculum shape only.
+
+    SECURITY: a submitted module/lesson id is only ever matched against
+    THIS program's own current modules/lessons (never a global lookup),
+    so an id belonging to a different LearningProgram — or a lesson id
+    belonging to a different module within this SAME program — is
+    rejected as not-found rather than silently reattached or edited
+    cross-program/cross-module.
     """
 
     def put(self, program_id):
@@ -335,14 +356,30 @@ class AdminLearningCurriculumResource(Resource):
 
         data = LearningCurriculumInputSchema().load(request.get_json(silent=True) or {})
 
+        existing_modules_by_id = {m.id: m for m in program.modules}
+
         new_modules = []
+        seen_module_ids = set()
         for module_index, module_data in enumerate(data["modules"]):
-            module = LearningModule(
-                title=module_data["title"],
-                description=module_data.get("description"),
-                sort_order=module_index,
-            )
+            module_id = module_data.get("id")
+            existing_lessons_by_id = {}
+            if module_id is not None:
+                module = existing_modules_by_id.get(module_id)
+                if module is None:
+                    raise ApiError(f"Module {module_id} not found in this program.", 404, code="not_found")
+                if module_id in seen_module_ids:
+                    raise ApiError(f"Module {module_id} was submitted more than once.", 422, code="validation_error")
+                seen_module_ids.add(module_id)
+                existing_lessons_by_id = {lesson.id: lesson for lesson in module.lessons}
+            else:
+                module = LearningModule()
+
+            module.title = module_data["title"]
+            module.description = module_data.get("description")
+            module.sort_order = module_index
+
             lessons = []
+            seen_lesson_ids = set()
             for lesson_index, lesson_data in enumerate(module_data.get("lessons", [])):
                 lesson_type = lesson_data.get("lesson_type", "text")
                 article = None
@@ -370,27 +407,38 @@ class AdminLearningCurriculumResource(Resource):
                         code="validation_error",
                     )
 
-                lessons.append(
-                    LearningLesson(
-                        title=lesson_data["title"],
-                        lesson_type=lesson_type,
-                        summary=lesson_data.get("summary"),
-                        content=sanitize_content_blocks(lesson_data.get("content", [])),
-                        article_id=article.id if article else None,
-                        resource_id=resource.id if resource else None,
-                        external_url=external_url,
-                        duration_minutes=lesson_data.get("duration_minutes"),
-                        sort_order=lesson_index,
-                    )
-                )
+                lesson_id = lesson_data.get("id")
+                if lesson_id is not None:
+                    lesson = existing_lessons_by_id.get(lesson_id)
+                    if lesson is None:
+                        raise ApiError(f"Lesson {lesson_id} not found in this module.", 404, code="not_found")
+                    if lesson_id in seen_lesson_ids:
+                        raise ApiError(f"Lesson {lesson_id} was submitted more than once.", 422, code="validation_error")
+                    seen_lesson_ids.add(lesson_id)
+                else:
+                    lesson = LearningLesson()
+
+                lesson.title = lesson_data["title"]
+                lesson.lesson_type = lesson_type
+                lesson.summary = lesson_data.get("summary")
+                lesson.content = sanitize_content_blocks(lesson_data.get("content", []))
+                lesson.article_id = article.id if article else None
+                lesson.resource_id = resource.id if resource else None
+                lesson.external_url = external_url
+                lesson.duration_minutes = lesson_data.get("duration_minutes")
+                lesson.sort_order = lesson_index
+                lessons.append(lesson)
+
             module.lessons = lessons
             new_modules.append(module)
 
-        # Everything above is resolved/validated with nothing yet attached
-        # to the session-tracked program — only now, with no further way to
-        # fail, do we replace the tree (delete-orphan cascade removes the
-        # old modules/lessons; nothing here ever touches the Article/
-        # Resource rows those lessons referenced).
+        # Everything above is resolved/validated against this program's
+        # own existing rows only — now, with no further way to fail, the
+        # tree is replaced: delete-orphan cascade removes any omitted
+        # module/lesson (and, via LearningLesson's own cascade, that
+        # lesson's LearningLessonProgress rows — spec: "removed lesson
+        # progress is safely removed"), while every reused object above
+        # keeps its existing id and is updated, not recreated.
         program.modules = new_modules
         db.session.commit()
 
@@ -404,8 +452,78 @@ class AdminLearningCurriculumResource(Resource):
         return success_response(program_schema.dump(program))
 
 
+def _dump_admin_enrollment(enrollment):
+    user = enrollment.user
+    summary = progress_summary(enrollment, enrollment.learning_program)
+    return {
+        "id": enrollment.id,
+        "status": enrollment.status,
+        "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+        "withdrawn_at": enrollment.withdrawn_at.isoformat() if enrollment.withdrawn_at else None,
+        "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+        "completed_lessons": summary["completed_lessons"],
+        "total_lessons": summary["total_lessons"],
+        "progress_percent": summary["progress_percent"],
+        "learner_name": user.full_name if user else None,
+        "learner_email": user.email if user else None,
+        "learner_country": user.country.name if user and user.country else None,
+    }
+
+
+class LearningEnrollmentAdminListResource(Resource):
+    """Read-only operational view for learning.manage staff — spec:
+    "primarily operational/read-only"; "do not let staff casually mark
+    lessons complete" / "fabricate completion". No mutation endpoint is
+    exposed here at all, so learner lifecycle/progress stays entirely
+    self-service (the spec explicitly allows leaving it that way rather
+    than adding a staff withdraw/reactivate action).
+    """
+
+    def get(self, program_id):
+        _require_manage()
+        program = LearningProgram.query.get(program_id)
+        if program is None:
+            raise ApiError("Learning program not found.", 404, code="not_found")
+
+        query = LearningEnrollment.query.filter_by(learning_program_id=program.id).join(LearningEnrollment.user)
+
+        state = request.args.get("state")
+        if state == "current":
+            query = query.filter(LearningEnrollment.status == "active", LearningEnrollment.completed_at.is_(None))
+        elif state == "completed":
+            query = query.filter(LearningEnrollment.status == "active", LearningEnrollment.completed_at.isnot(None))
+        elif state == "withdrawn":
+            query = query.filter(LearningEnrollment.status == "withdrawn")
+
+        search_term = request.args.get("q")
+        if search_term:
+            like = f"%{search_term}%"
+            query = query.filter(or_(User.first_name.ilike(like), User.last_name.ilike(like), User.email.ilike(like)))
+
+        query = query.order_by(LearningEnrollment.enrolled_at.desc())
+        result = paginate(query, schema=None)
+
+        counts = {
+            "current": LearningEnrollment.query.filter_by(
+                learning_program_id=program.id, status="active"
+            ).filter(LearningEnrollment.completed_at.is_(None)).count(),
+            "completed": LearningEnrollment.query.filter_by(
+                learning_program_id=program.id, status="active"
+            ).filter(LearningEnrollment.completed_at.isnot(None)).count(),
+            "withdrawn": LearningEnrollment.query.filter_by(learning_program_id=program.id, status="withdrawn").count(),
+        }
+        items = [_dump_admin_enrollment(e) for e in result["items"]]
+        # Pagination nested inside `data` (not the `meta=` kwarg) so the
+        # frontend apiClient's response interceptor — which only reshapes
+        # a bare-array `data` into {items, pagination} — leaves `counts`
+        # intact alongside `items` (same convention as the Event
+        # Registration admin list; see frontend/src/api/client.js).
+        return success_response({"items": items, "counts": counts, "pagination": result["meta"]})
+
+
 api.add_resource(LearningProgramPublicListResource, "")
 api.add_resource(LearningProgramPublicDetailResource, "/<string:slug>")
 api.add_resource(AdminLearningProgramListResource, "/admin/programs")
 api.add_resource(AdminLearningProgramDetailResource, "/admin/programs/<int:program_id>")
 api.add_resource(AdminLearningCurriculumResource, "/admin/programs/<int:program_id>/curriculum")
+api.add_resource(LearningEnrollmentAdminListResource, "/admin/programs/<int:program_id>/enrollments")

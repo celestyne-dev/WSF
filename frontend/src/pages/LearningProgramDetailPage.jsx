@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ExternalLink, FileText, PlayCircle, BookOpen, ClipboardList } from 'lucide-react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useSelector } from 'react-redux'
+import { toast } from 'react-toastify'
+import { ExternalLink, FileText, PlayCircle, BookOpen, ClipboardList, CheckCircle2, Circle } from 'lucide-react'
 import { fetchLearningProgramBySlug } from '../api/learning'
+import { enrollInProgram, checkLearningEnrollment, markLessonComplete, markLessonIncomplete } from '../api/learningEnrollments'
 import { resolveImage } from '../utils/media'
 import { formatCurrency, formatDate } from '../utils/format'
+import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -31,7 +35,7 @@ const LESSON_ICON = {
   text: FileText,
 }
 
-function LessonRow({ lesson }) {
+function LessonRow({ lesson, enrollment, onToggleComplete, toggleBusy }) {
   const Icon = LESSON_ICON[lesson.lessonType] || FileText
   const label = lesson.article?.title || lesson.resource?.name || lesson.title
   const linkClass = 'text-sm font-medium text-charcoal hover:text-burgundy-600'
@@ -51,19 +55,50 @@ function LessonRow({ lesson }) {
     content = <span className="text-sm font-medium text-charcoal">{label}</span>
   }
 
+  // Native text/activity content was already stored on the lesson but
+  // never rendered anywhere — minimally surfaced here rather than built
+  // into a new lesson-player route (spec: keep progress interaction
+  // within this existing curriculum view).
+  const showInlineContent = (lesson.lessonType === 'text' || lesson.lessonType === 'activity') && lesson.content?.length > 0
+  const canToggle = !!enrollment && enrollment.status === 'active'
+  const isComplete = canToggle && enrollment.completedLessonIds?.includes(lesson.id)
+
   return (
-    <li className="flex items-start gap-3 py-2.5">
-      <Icon size={16} className="mt-0.5 shrink-0 text-charcoal-600" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        {content}
-        {lesson.summary && <p className="mt-0.5 text-xs text-charcoal-600/80">{lesson.summary}</p>}
+    <li className="py-2.5">
+      <div className="flex items-start gap-3">
+        <Icon size={16} className="mt-0.5 shrink-0 text-charcoal-600" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          {content}
+          {lesson.summary && <p className="mt-0.5 text-xs text-charcoal-600/80">{lesson.summary}</p>}
+          {showInlineContent && (
+            <div className="mt-2 text-sm text-charcoal-700">
+              <ArticleContent blocks={lesson.content} />
+            </div>
+          )}
+        </div>
+        {lesson.durationMinutes ? <span className="shrink-0 text-xs text-charcoal-600/70">{lesson.durationMinutes} min</span> : null}
       </div>
-      {lesson.durationMinutes ? <span className="shrink-0 text-xs text-charcoal-600/70">{lesson.durationMinutes} min</span> : null}
+      {canToggle && (
+        <div className="mt-1.5 pl-7">
+          <button
+            type="button"
+            disabled={toggleBusy}
+            onClick={() => onToggleComplete(lesson, isComplete)}
+            aria-pressed={isComplete}
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold disabled:opacity-60 ${
+              isComplete ? 'text-emerald-700' : 'text-charcoal-600 hover:text-burgundy-600'
+            }`}
+          >
+            {isComplete ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+            {isComplete ? 'Completed' : 'Mark complete'}
+          </button>
+        </div>
+      )}
     </li>
   )
 }
 
-function ModuleAccordion({ module, index }) {
+function ModuleAccordion({ module, index, enrollment, onToggleComplete, toggleBusyLessonId }) {
   return (
     <details className="border border-taupe-200 bg-white" open={index === 0}>
       <summary className="cursor-pointer list-none px-5 py-4 font-serif text-lg font-semibold text-charcoal marker:content-none">
@@ -74,7 +109,13 @@ function ModuleAccordion({ module, index }) {
         {module.lessons.length > 0 ? (
           <ul className="mt-2 divide-y divide-taupe-100">
             {module.lessons.map((lesson) => (
-              <LessonRow key={lesson.id} lesson={lesson} />
+              <LessonRow
+                key={lesson.id}
+                lesson={lesson}
+                enrollment={enrollment}
+                onToggleComplete={onToggleComplete}
+                toggleBusy={toggleBusyLessonId === lesson.id}
+              />
             ))}
           </ul>
         ) : (
@@ -106,17 +147,64 @@ function CtaButton({ program }) {
       </a>
     )
   }
-  // Free access with no external URL and no linked Product: there is
-  // nothing to gate — the curriculum itself is the offering, so no fake
-  // "Start course" button is shown pointing nowhere (spec: "no fake
-  // gating" — this app has no learner accounts/lesson-access system).
   return null
+}
+
+// Free-access programs only (spec's core product decision — external/
+// product programs never get a WSF enrollment row, see CtaButton above
+// and backend app/services/learning_enrollments.py's own docstring).
+function LearningEnrollmentCta({ enrollment, accessToken, pending, onEnroll, onSignIn }) {
+  if (!accessToken) {
+    return (
+      <button type="button" onClick={onSignIn} className="btn-primary inline-flex">
+        Sign in to track progress
+      </button>
+    )
+  }
+  if (enrollment === undefined) return null // still checking — avoid a CTA flash
+  if (enrollment && enrollment.completedAt) {
+    return (
+      <div className="inline-flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-2 border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700">
+          <CheckCircle2 size={16} /> Completed
+        </span>
+        <Link to="/account/learning" className="text-sm font-semibold text-burgundy-600 hover:underline">
+          View in My Learning
+        </Link>
+      </div>
+    )
+  }
+  if (enrollment && enrollment.status === 'active') {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <a href="#curriculum" className="btn-primary inline-flex">
+          Continue learning
+        </a>
+        {enrollment.totalLessons > 0 && (
+          <span className="text-sm text-charcoal-600">
+            {enrollment.completedLessons} of {enrollment.totalLessons} lessons complete
+          </span>
+        )}
+      </div>
+    )
+  }
+  const label = enrollment && enrollment.status === 'withdrawn' ? 'Resume learning' : 'Start learning'
+  return (
+    <button type="button" onClick={onEnroll} disabled={pending} className="btn-primary inline-flex disabled:opacity-60">
+      {pending ? 'Please wait…' : label}
+    </button>
+  )
 }
 
 export default function LearningProgramDetailPage() {
   const { slug } = useParams()
+  const navigate = useNavigate()
+  const accessToken = useSelector((s) => s.auth.accessToken)
   const [program, setProgram] = useState(undefined)
   const [error, setError] = useState(null)
+  const [enrollment, setEnrollment] = useState(undefined)
+  const [enrolling, setEnrolling] = useState(false)
+  const [toggleBusyLessonId, setToggleBusyLessonId] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -129,6 +217,17 @@ export default function LearningProgramDetailPage() {
       active = false
     }
   }, [slug])
+
+  useEffect(() => {
+    if (!program || program.accessType !== 'free' || !accessToken) return undefined
+    let active = true
+    checkLearningEnrollment(program.id).then((result) => {
+      if (active) setEnrollment(result.enrollment)
+    })
+    return () => {
+      active = false
+    }
+  }, [program, accessToken])
 
   const canonicalUrl = program ? `https://womenshapingfutures.org/learning/${program.slug}` : ''
 
@@ -146,6 +245,40 @@ export default function LearningProgramDetailPage() {
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this program" description={error} /></div>
   if (program === undefined) return <PageLoader />
   if (program === null) return <NotFoundPage />
+
+  async function handleEnroll() {
+    setEnrolling(true)
+    try {
+      const result = await enrollInProgram(program.id)
+      setEnrollment(result.enrollment)
+      toast.success(`You're enrolled in ${program.title}.`)
+      trackEvent('learning_enrollment_started', { programSlug: program.slug })
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || 'Something went wrong. Please try again.')
+    } finally {
+      setEnrolling(false)
+    }
+  }
+
+  async function handleToggleLesson(lesson, isComplete) {
+    setToggleBusyLessonId(lesson.id)
+    try {
+      const updated = isComplete
+        ? await markLessonIncomplete(enrollment.id, lesson.id)
+        : await markLessonComplete(enrollment.id, lesson.id)
+      setEnrollment(updated)
+      if (!isComplete) {
+        trackEvent('learning_lesson_completed', { programSlug: program.slug, lessonId: lesson.id })
+        if (updated.completedAt) {
+          trackEvent('learning_program_completed', { programSlug: program.slug })
+        }
+      }
+    } catch {
+      toast.error('Something went wrong. Please try again.')
+    } finally {
+      setToggleBusyLessonId(null)
+    }
+  }
 
   const upcomingEvent = program.events?.[0] || null
 
@@ -195,7 +328,17 @@ export default function LearningProgramDetailPage() {
           )}
 
           <div className="mt-6">
-            <CtaButton program={program} />
+            {program.accessType === 'free' ? (
+              <LearningEnrollmentCta
+                enrollment={enrollment}
+                accessToken={accessToken}
+                pending={enrolling}
+                onEnroll={handleEnroll}
+                onSignIn={() => navigate('/login')}
+              />
+            ) : (
+              <CtaButton program={program} />
+            )}
           </div>
 
           <div className="mt-6">
@@ -233,11 +376,25 @@ export default function LearningProgramDetailPage() {
       )}
 
       {program.modules?.length > 0 && (
-        <div className="container-editorial max-w-reading pb-10">
-          <h2 className="font-serif text-xl font-semibold text-charcoal">Curriculum</h2>
+        <div id="curriculum" className="container-editorial max-w-reading pb-10">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-serif text-xl font-semibold text-charcoal">Curriculum</h2>
+            {enrollment && enrollment.status === 'active' && enrollment.totalLessons > 0 && (
+              <p className="text-sm text-charcoal-600">
+                {enrollment.completedLessons} of {enrollment.totalLessons} lessons complete · {enrollment.progressPercent}%
+              </p>
+            )}
+          </div>
           <div className="mt-4 space-y-3">
             {program.modules.map((module, i) => (
-              <ModuleAccordion key={module.id} module={module} index={i} />
+              <ModuleAccordion
+                key={module.id}
+                module={module}
+                index={i}
+                enrollment={enrollment}
+                onToggleComplete={handleToggleLesson}
+                toggleBusyLessonId={toggleBusyLessonId}
+              />
             ))}
           </div>
         </div>

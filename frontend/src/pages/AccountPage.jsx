@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 import { updateProfile } from '../api/auth'
 import { fetchSavedItems } from '../api/saved'
 import { fetchMyEventRegistrations } from '../api/eventRegistrations'
+import { fetchMyLearningEnrollments } from '../api/learningEnrollments'
 import { logoutUser, setUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import useSeo from '../hooks/useSeo'
@@ -96,6 +97,51 @@ function MyEventsSummarySection() {
       )}
       <Link to="/account/events" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
         View my events
+      </Link>
+    </section>
+  )
+}
+
+// Same "tiny summary, not the full collection" principle as the sections
+// above — two count-only fetches (perPage: 1, one per state), only
+// `pagination.totalItems` from each is used.
+function MyLearningSummarySection() {
+  const [counts, setCounts] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      fetchMyLearningEnrollments({ state: 'current', perPage: 1 }),
+      fetchMyLearningEnrollments({ state: 'completed', perPage: 1 }),
+    ]).then(([current, completed]) => {
+      if (cancelled) return
+      setCounts({
+        inProgress: current.pagination?.totalItems ?? 0,
+        completed: completed.pagination?.totalItems ?? 0,
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return (
+    <section className="mt-8 border border-taupe-200 p-6">
+      <h2 className="font-serif text-xl font-semibold text-charcoal">My Learning</h2>
+      <p className="mt-2 text-sm text-charcoal-600">Programs you're learning with Women Shaping Futures.</p>
+      {counts && (counts.inProgress > 0 || counts.completed > 0) && (
+        <p className="mt-3 text-sm text-charcoal-600">
+          <span className="font-semibold text-charcoal">{counts.inProgress}</span> in progress
+          {counts.completed > 0 && (
+            <>
+              {' · '}
+              <span className="font-semibold text-charcoal">{counts.completed}</span> completed
+            </>
+          )}
+        </p>
+      )}
+      <Link to="/account/learning" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+        View my learning
       </Link>
     </section>
   )
@@ -300,7 +346,10 @@ export default function AccountPage() {
       {/* D. My Events */}
       <MyEventsSummarySection />
 
-      {/* E. Security */}
+      {/* E. My Learning */}
+      <MyLearningSummarySection />
+
+      {/* F. Security */}
       <section className="mt-8 border border-taupe-200 p-6">
         <h2 className="font-serif text-xl font-semibold text-charcoal">Security</h2>
         <p className="mt-2 text-sm text-charcoal-600">Change the password you use to sign in.</p>
@@ -309,7 +358,7 @@ export default function AccountPage() {
         </Link>
       </section>
 
-      {/* E. Community */}
+      {/* G. Community */}
       <section className="mt-8 border border-taupe-200 p-6">
         <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Community</h2>
         <p className="mt-2 text-sm text-charcoal-600">
@@ -321,7 +370,7 @@ export default function AccountPage() {
         </Link>
       </section>
 
-      {/* E. Sign out */}
+      {/* H. Sign out */}
       <section className="mt-8">
         <button
           type="button"

@@ -42,6 +42,7 @@ const ChangePasswordPage = lazy(() => import('../pages/ChangePasswordPage'))
 const AccountPage = lazy(() => import('../pages/AccountPage'))
 const AccountSavedPage = lazy(() => import('../pages/AccountSavedPage'))
 const AccountEventsPage = lazy(() => import('../pages/AccountEventsPage'))
+const AccountLearningPage = lazy(() => import('../pages/AccountLearningPage'))
 const SubmitStoryPage = lazy(() => import('../pages/SubmitStoryPage'))
 const NominatePage = lazy(() => import('../pages/NominatePage'))
 const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
@@ -73,6 +74,7 @@ const AdminEventEditor = lazy(() => import('../pages/admin/AdminEventEditor'))
 const AdminEventRegistrations = lazy(() => import('../pages/admin/AdminEventRegistrations'))
 const AdminLearningPrograms = lazy(() => import('../pages/admin/AdminLearningPrograms'))
 const AdminLearningProgramEditor = lazy(() => import('../pages/admin/AdminLearningProgramEditor'))
+const AdminLearningEnrollments = lazy(() => import('../pages/admin/AdminLearningEnrollments'))
 const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
 const AdminResources = lazy(() => import('../pages/admin/AdminResources'))
@@ -199,6 +201,7 @@ export default function AppRoutes() {
           <Route path="/account" element={<AccountPage />} />
           <Route path="/account/saved" element={<AccountSavedPage />} />
           <Route path="/account/events" element={<AccountEventsPage />} />
+          <Route path="/account/learning" element={<AccountLearningPage />} />
           <Route path="/submit" element={<SubmitStoryPage />} />
           <Route path="/nominate" element={<NominatePage />} />
           <Route path="/mentorship" element={<MentorshipPage />} />
@@ -253,6 +256,7 @@ export default function AppRoutes() {
           <Route path="learning" element={<AdminLearningPrograms />} />
           <Route path="learning/new" element={<AdminLearningProgramEditor />} />
           <Route path="learning/:id" element={<AdminLearningProgramEditor />} />
+          <Route path="learning/:id/enrollments" element={<AdminLearningEnrollments />} />
           <Route path="products" element={<AdminProducts />} />
           <Route path="products/new" element={<AdminProductEditor />} />
           <Route path="products/:id" element={<AdminProductEditor />} />

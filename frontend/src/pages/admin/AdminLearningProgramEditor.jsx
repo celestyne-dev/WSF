@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
-import { Save, Eye, Archive, Trash2, ChevronUp, ChevronDown, Plus } from 'lucide-react'
+import { Save, Eye, Archive, Trash2, ChevronUp, ChevronDown, Plus, Users } from 'lucide-react'
 import {
   fetchAdminLearningProgram,
   createAdminLearningProgram,
@@ -534,6 +534,11 @@ export default function AdminLearningProgramEditor() {
         actions={
           <>
             <StatusBadge status={form.status} />
+            {!isNew && form.accessType === 'free' && (
+              <Link to={`/admin/learning/${id}/enrollments`} className="btn-secondary !px-4 !py-2 text-xs">
+                <Users size={14} /> Enrollments
+              </Link>
+            )}
             {!isNew && form.slug && (
               <a href={`/learning/${form.slug}`} target="_blank" rel="noreferrer" className="btn-secondary !px-4 !py-2 text-xs">
                 <Eye size={14} /> Preview
