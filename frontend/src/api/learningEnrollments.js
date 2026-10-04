@@ -2,9 +2,11 @@ import { apiClient } from './client'
 import { mapLearningProgram, mapModule } from './learning'
 
 // First-party WSF Learning enrollment + lesson-progress tracking — free
-// published programs only (see backend app/services/learning_enrollments.py
-// and app/api/v1/learning_enrollments.py). Real-backend only, same
-// convention as api/eventRegistrations.js — no mock-mode branch.
+// or circle_only published programs only (external/product programs are
+// never internally enrollable; see backend
+// app/services/learning_enrollments.py and api/v1/learning_enrollments.py).
+// Real-backend only, same convention as api/eventRegistrations.js — no
+// mock-mode branch.
 function mapEnrollment(e) {
   if (!e) return null
   return {

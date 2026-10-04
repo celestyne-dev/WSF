@@ -3,11 +3,16 @@ actual eligibility/completion logic behind
 app/api/v1/learning_enrollments.py (self-service) and the read-only
 enrollment-listing endpoint added to app/api/v1/learning.py (staff).
 
-Only ever relevant for a LearningProgram whose access_type == "free": an
-"external" or "product" program is never internally enrollable — see
-enroll()'s explicit rejection of those two access types (spec: never
-infer entitlement from a Product relationship, never create an
-enrollment merely because someone clicked an external link).
+Relevant for a LearningProgram whose access_type is "free" or
+"circle_only" — an "external" or "product" program is never internally
+enrollable — see enroll()'s explicit rejection of those two access types
+(spec: never infer entitlement from a Product relationship, never create
+an enrollment merely because someone clicked an external link). Program-
+content eligibility (free always, circle_only only with current WSF
+Circle access) is decided exclusively by
+app/services/learning_access.py's can_access_program_content() /
+curriculum_access_state() — this module never re-derives Circle
+entitlement itself.
 
 Completion is derived from the program's CURRENT lesson set and is never
 persisted as a percentage — only `completed_at` is a stored fact, and it
@@ -23,8 +28,7 @@ from datetime import datetime, timezone
 from app.extensions import db
 from app.models.learning import LearningProgram
 from app.models.learning_enrollment import LearningEnrollment, LearningLessonProgress
-from app.services.circle import has_circle_access
-from app.services.learning_access import curriculum_access_state
+from app.services.learning_access import can_access_program_content, curriculum_access_state
 from app.utils.responses import ApiError
 
 
@@ -52,10 +56,11 @@ def enroll(program, user):
     """Never silently enrolls an external/product program — each gets its
     own distinct, clearly-coded rejection so the caller can show the
     right message rather than a generic failure. circle_only additionally
-    requires has_circle_access(user) (the one authoritative Circle check,
-    see app/services/circle.py) BEFORE touching any existing enrollment
-    row — denied access creates/reactivates nothing, matching free's own
-    "no partial side effects on rejection" behavior.
+    requires can_access_program_content() (app/services/learning_access.py
+    — the one central Learning content-eligibility rule, itself built on
+    app/services/circle.py's has_circle_access()) BEFORE touching any
+    existing enrollment row — denied access creates/reactivates nothing,
+    matching free's own "no partial side effects on rejection" behavior.
     """
     if program.status != "published":
         raise ApiError("Learning program not found.", 404, code="not_found")
@@ -71,7 +76,7 @@ def enroll(program, user):
             422,
             code="product_enrollment",
         )
-    if program.access_type == "circle_only" and not has_circle_access(user):
+    if program.access_type == "circle_only" and not can_access_program_content(program, user):
         raise ApiError(
             "Active WSF Circle membership is required to enroll in this program.", 403, code="circle_required"
         )
@@ -144,16 +149,23 @@ def _check_progress_allowed(enrollment, lesson):
     # lesson complete through an enrollment belonging to another program").
     if lesson.module is None or lesson.module.learning_program_id != enrollment.learning_program_id:
         raise ApiError("This lesson does not belong to this enrollment's program.", 403, code="forbidden")
-    # circle_only: a Circle subscription that has since lapsed must block
-    # further progress mutation WITHOUT touching any existing
-    # LearningLessonProgress row or completed_at — the enrollment and its
-    # earned progress are historical learner records (spec section F/I);
-    # access simply returns automatically once Circle access does.
-    if program.access_type == "circle_only" and not has_circle_access(enrollment.user):
+    # The same central Learning content-eligibility rule the enrollment/
+    # curriculum endpoints use (app/services/learning_access.py) — never
+    # touches any existing LearningLessonProgress row or completed_at on
+    # denial, since the enrollment and its earned progress are historical
+    # learner records (spec section F/I). This also closes the edge case
+    # where a historical/invalid enrollment row exists against an
+    # external/product program: such a program is never internally
+    # accessible regardless of the enrollment row's mere existence.
+    if not can_access_program_content(program, enrollment.user):
+        if program.access_type == "circle_only":
+            raise ApiError(
+                "Active WSF Circle membership is required to update progress in this program.",
+                403,
+                code="circle_required",
+            )
         raise ApiError(
-            "Active WSF Circle membership is required to update progress in this program.",
-            403,
-            code="circle_required",
+            "You do not have access to update progress in this program.", 403, code="access_denied"
         )
 
 

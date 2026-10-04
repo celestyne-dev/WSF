@@ -1,7 +1,7 @@
-"""First-party WSF learner enrollment for a `free`-access LearningProgram
-only (see app/services/learning_enrollments.py). An `external` or
-`product` program never gets a row here — see that module's own
-docstring for why.
+"""First-party WSF learner enrollment for a `free`- or `circle_only`-
+access LearningProgram (see app/services/learning_enrollments.py). An
+`external` or `product` program never gets a row here — see that
+module's own docstring for why.
 
 One lifecycle row per (program, user): withdrawing and later
 re-enrolling reactivates the SAME row rather than creating a new one, so

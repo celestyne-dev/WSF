@@ -1134,3 +1134,195 @@ def test_75_historical_completion_semantics_intact_for_circle_only(client, app, 
     assert data["completed_at"] is not None  # historical completion preserved
     assert data["total_lessons"] == 2
     assert data["completed_lessons"] == 1
+
+
+# ===========================================================================
+# Follow-up fix: can_access_program_content() is the ONE Learning content-
+# eligibility authority — learning_enrollments.py must never import/call
+# has_circle_access() directly, and the same rule must deny progress
+# mutation on a historical/invalid enrollment against an external/product
+# program (not just circle_only).
+# ===========================================================================
+
+
+def _make_legacy_enrollment(app, program_id, email):
+    """A deliberately invalid LearningEnrollment row against an external/
+    product program — enroll() itself would never create one (it rejects
+    both access types outright), but a historical/migrated row could
+    still exist. _check_progress_allowed() must deny it regardless.
+    """
+    from app.extensions import db
+    from app.models.learning_enrollment import LearningEnrollment
+    from app.models.user import User
+
+    with app.app_context():
+        user = User.query.filter_by(email=email).first()
+        enrollment = LearningEnrollment(
+            learning_program_id=program_id, user_id=user.id, status="active", enrolled_at=datetime.now(timezone.utc)
+        )
+        db.session.add(enrollment)
+        db.session.commit()
+        return enrollment.id
+
+
+def test_76_learning_enrollments_module_does_not_import_has_circle_access():
+    import app.services.learning_enrollments as mod
+
+    assert not hasattr(mod, "has_circle_access")
+
+
+def test_77_can_access_program_content_false_for_forced_password_change(client, app):
+    from app.extensions import db
+    from app.models.user import User
+    from app.services.learning_access import can_access_program_content
+
+    _register(client, USER_A)
+    _give_active_circle(app, USER_A["email"])
+    program_id, _ = _make_program(app, lesson_count=0, access_type="circle_only")
+    with app.app_context():
+        user = User.query.filter_by(email=USER_A["email"]).first()
+        user.must_change_password = True
+        db.session.commit()
+
+    with app.app_context():
+        from app.models.learning import LearningProgram
+
+        program = db.session.get(LearningProgram, program_id)
+        user = User.query.filter_by(email=USER_A["email"]).first()
+        assert can_access_program_content(program, user) is False
+
+
+def test_78_public_circle_only_viewer_can_access_false_for_forced_password_change(client, app):
+    from app.extensions import db
+    from app.models.user import User
+
+    user_a_token = _register(client, USER_A)
+    _give_active_circle(app, USER_A["email"])
+    program_id, _ = _make_program(app, lesson_count=0, access_type="circle_only")
+    with app.app_context():
+        user = User.query.filter_by(email=USER_A["email"]).first()
+        user.must_change_password = True
+        db.session.commit()
+
+    slug = _get_program_slug(app, program_id)
+    resp = client.get(f"/api/v1/learning/{slug}", headers=auth_headers(user_a_token))
+    assert resp.get_json()["data"]["viewerCanAccess"] is False
+
+
+def test_79_circle_enroll_blocked_by_password_change_required(client, app):
+    user_a_token = _register(client, USER_A)
+    _give_active_circle(app, USER_A["email"])
+    program_id, _ = _make_program(app, access_type="circle_only")
+
+    from app.extensions import db
+    from app.models.user import User
+
+    with app.app_context():
+        user = User.query.filter_by(email=USER_A["email"]).first()
+        user.must_change_password = True
+        db.session.commit()
+
+    resp = client.post("/api/v1/learning-enrollments", json={"program_id": program_id}, headers=auth_headers(user_a_token))
+    assert resp.status_code == 403
+    assert resp.get_json()["error"]["code"] == "password_change_required"
+
+
+def test_80_legacy_external_enrollment_mark_complete_denied(client, app, user_a_token):
+    program_id, lesson_ids = _make_program(app, lesson_count=1, access_type="external", external_url="https://example.org/go")
+    enrollment_id = _make_legacy_enrollment(app, program_id, USER_A["email"])
+
+    resp = client.post(
+        f"/api/v1/learning-enrollments/{enrollment_id}/lessons/{lesson_ids[0]}/complete", headers=auth_headers(user_a_token)
+    )
+    assert resp.status_code == 403
+    assert resp.get_json()["error"]["code"] == "access_denied"
+
+    from app.models.learning_enrollment import LearningLessonProgress
+
+    with app.app_context():
+        assert LearningLessonProgress.query.filter_by(enrollment_id=enrollment_id).count() == 0
+
+
+def test_81_legacy_product_enrollment_mark_complete_denied(client, app, user_a_token):
+    from app.extensions import db
+    from app.models.commerce import Product
+
+    with app.app_context():
+        product = Product(slug=_slug("product"), name="A Product", price=4900, currency="USD", status="active")
+        db.session.add(product)
+        db.session.commit()
+        product_id = product.id
+
+    program_id, lesson_ids = _make_program(app, lesson_count=1, access_type="product", product_id=product_id)
+    enrollment_id = _make_legacy_enrollment(app, program_id, USER_A["email"])
+
+    resp = client.post(
+        f"/api/v1/learning-enrollments/{enrollment_id}/lessons/{lesson_ids[0]}/complete", headers=auth_headers(user_a_token)
+    )
+    assert resp.status_code == 403
+    assert resp.get_json()["error"]["code"] == "access_denied"
+
+    from app.models.learning_enrollment import LearningLessonProgress
+
+    with app.app_context():
+        assert LearningLessonProgress.query.filter_by(enrollment_id=enrollment_id).count() == 0
+
+
+def test_82_legacy_external_enrollment_mark_incomplete_denied_without_mutating_progress(client, app, user_a_token):
+    from app.extensions import db
+    from app.models.learning_enrollment import LearningLessonProgress
+
+    program_id, lesson_ids = _make_program(app, lesson_count=1, access_type="external", external_url="https://example.org/go")
+    enrollment_id = _make_legacy_enrollment(app, program_id, USER_A["email"])
+
+    # Pre-seed a progress row directly (bypassing the API) so the test can
+    # assert the denied incomplete-call leaves it completely untouched.
+    with app.app_context():
+        db.session.add(LearningLessonProgress(enrollment_id=enrollment_id, lesson_id=lesson_ids[0]))
+        db.session.commit()
+
+    resp = client.delete(
+        f"/api/v1/learning-enrollments/{enrollment_id}/lessons/{lesson_ids[0]}/complete", headers=auth_headers(user_a_token)
+    )
+    assert resp.status_code == 403
+    assert resp.get_json()["error"]["code"] == "access_denied"
+
+    with app.app_context():
+        assert LearningLessonProgress.query.filter_by(enrollment_id=enrollment_id, lesson_id=lesson_ids[0]).count() == 1
+
+
+def test_83_free_progress_still_works_after_fix(client, app, user_a_token):
+    program_id, lesson_ids = _make_program(app, lesson_count=1, access_type="free")
+    client.post("/api/v1/learning-enrollments", json={"program_id": program_id}, headers=auth_headers(user_a_token))
+    enrollment = _get_enrollment_row(app, program_id, USER_A["email"])
+    resp = client.post(
+        f"/api/v1/learning-enrollments/{enrollment.id}/lessons/{lesson_ids[0]}/complete", headers=auth_headers(user_a_token)
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["enrollment"]["completed_lessons"] == 1
+
+
+def test_84_valid_circle_progress_still_works_after_fix(client, app, user_a_token):
+    _give_active_circle(app, USER_A["email"])
+    program_id, lesson_ids = _make_program(app, lesson_count=1, access_type="circle_only")
+    client.post("/api/v1/learning-enrollments", json={"program_id": program_id}, headers=auth_headers(user_a_token))
+    enrollment = _get_enrollment_row(app, program_id, USER_A["email"])
+    resp = client.post(
+        f"/api/v1/learning-enrollments/{enrollment.id}/lessons/{lesson_ids[0]}/complete", headers=auth_headers(user_a_token)
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["enrollment"]["completed_lessons"] == 1
+
+
+def test_85_lapsed_circle_progress_still_returns_circle_required_after_fix(client, app, user_a_token):
+    sub_id = _give_active_circle(app, USER_A["email"])
+    program_id, lesson_ids = _make_program(app, lesson_count=1, access_type="circle_only")
+    client.post("/api/v1/learning-enrollments", json={"program_id": program_id}, headers=auth_headers(user_a_token))
+    enrollment = _get_enrollment_row(app, program_id, USER_A["email"])
+
+    _expire_subscription(app, sub_id)
+    resp = client.post(
+        f"/api/v1/learning-enrollments/{enrollment.id}/lessons/{lesson_ids[0]}/complete", headers=auth_headers(user_a_token)
+    )
+    assert resp.status_code == 403
+    assert resp.get_json()["error"]["code"] == "circle_required"
