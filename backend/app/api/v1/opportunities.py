@@ -31,6 +31,19 @@ api = Api(opportunities_bp)
 opportunity_schema = OpportunitySchema()
 
 
+def _dump_opportunity_for_staff(opportunity):
+    """OpportunitySchema always excludes application_url/
+    application_instructions (see that schema's own Meta.exclude) — this
+    is the one place they're explicitly re-attached, and only after the
+    caller has already passed an opportunities.manage check. Mirrors
+    app/api/v1/events.py's _dump_event_for_staff() for virtual_link.
+    """
+    data = opportunity_schema.dump(opportunity)
+    data["application_url"] = opportunity.application_url
+    data["application_instructions"] = opportunity.application_instructions
+    return data
+
+
 def _require_active_user():
     verify_jwt_in_request()
     if not current_user or not current_user.is_active:
@@ -259,8 +272,9 @@ class OpportunityListResource(Resource):
             query = query.filter(Opportunity.featured.is_(True))
 
         if can_manage:
-            result = paginate(query, opportunity_schema)
-            return success_response(result["items"], meta=result["meta"])
+            result = paginate(query, schema=None)
+            items = [_dump_opportunity_for_staff(o) for o in result["items"]]
+            return success_response(items, meta=result["meta"])
 
         # Public list never re-attaches the protected application fields
         # (spec section C) and deliberately skips viewerCanAccess here too
@@ -286,7 +300,7 @@ class OpportunityListResource(Resource):
             _validate_for_publish(opportunity)
         db.session.add(opportunity)
         db.session.commit()
-        return success_response(opportunity_schema.dump(opportunity), status=201)
+        return success_response(_dump_opportunity_for_staff(opportunity), status=201)
 
 
 class OpportunityDetailResource(Resource):
@@ -298,7 +312,7 @@ class OpportunityDetailResource(Resource):
         if opportunity.status != "published" and not editor:
             raise ApiError("Opportunity not found.", 404, code="not_found")
         if editor:
-            return success_response(opportunity_schema.dump(opportunity))
+            return success_response(_dump_opportunity_for_staff(opportunity))
         return success_response(build_public_opportunity_payload(opportunity, _current_user_or_none(), detail=True))
 
     def put(self, slug):
@@ -317,7 +331,7 @@ class OpportunityDetailResource(Resource):
         if opportunity.status == "published":
             _validate_for_publish(opportunity)
         db.session.commit()
-        return success_response(opportunity_schema.dump(opportunity))
+        return success_response(_dump_opportunity_for_staff(opportunity))
 
     def delete(self, slug):
         opportunity = Opportunity.query.filter_by(slug=slug).first()

@@ -965,3 +965,184 @@ def test_81_sponsored_featured_behavior_preserved(client, manager_token):
     assert created.status_code == 201
     assert created.get_json()["data"]["featured"] is True
     assert created.get_json()["data"]["sponsored"] is True
+
+
+# ===========================================================================
+# 82-95: OpportunitySchema safe-by-default + staff re-attachment
+# (security-hardening follow-up — generic schema must never leak the
+# protected application fields; only _dump_opportunity_for_staff() may)
+# ===========================================================================
+
+
+def test_82_generic_schema_dump_excludes_application_url_for_public(app):
+    from app.schemas.opportunity import OpportunitySchema
+
+    opportunity_id = _make_opportunity(app, access_type="public", application_url="https://example.com/public-apply")
+    with app.app_context():
+        from app.extensions import db
+        from app.models.opportunity import Opportunity
+
+        opportunity = db.session.get(Opportunity, opportunity_id)
+        dumped = OpportunitySchema().dump(opportunity)
+    assert "application_url" not in dumped
+
+
+def test_83_generic_schema_dump_excludes_application_instructions_for_public(app):
+    from app.schemas.opportunity import OpportunitySchema
+
+    opportunity_id = _make_opportunity(app, access_type="public", application_instructions="Submit your CV.")
+    with app.app_context():
+        from app.extensions import db
+        from app.models.opportunity import Opportunity
+
+        opportunity = db.session.get(Opportunity, opportunity_id)
+        dumped = OpportunitySchema().dump(opportunity)
+    assert "application_instructions" not in dumped
+
+
+def test_84_generic_schema_dump_excludes_application_url_for_circle_only(app):
+    from app.schemas.opportunity import OpportunitySchema
+
+    opportunity_id = _make_opportunity(app, access_type="circle_only", application_url="https://example.com/circle-apply")
+    with app.app_context():
+        from app.extensions import db
+        from app.models.opportunity import Opportunity
+
+        opportunity = db.session.get(Opportunity, opportunity_id)
+        dumped = OpportunitySchema().dump(opportunity)
+    assert "application_url" not in dumped
+
+
+def test_85_generic_schema_dump_excludes_application_instructions_for_circle_only(app):
+    from app.schemas.opportunity import OpportunitySchema
+
+    opportunity_id = _make_opportunity(app, access_type="circle_only", application_instructions="Secret steps")
+    with app.app_context():
+        from app.extensions import db
+        from app.models.opportunity import Opportunity
+
+        opportunity = db.session.get(Opportunity, opportunity_id)
+        dumped = OpportunitySchema().dump(opportunity)
+    assert "application_instructions" not in dumped
+
+
+def test_86_manager_list_response_contains_both_protected_fields(client, app, manager_token):
+    _make_opportunity(app, access_type="public", application_url="https://example.com/mgr-list-apply", application_instructions="Mgr list steps")
+    resp = client.get("/api/v1/opportunities", headers=auth_headers(manager_token))
+    body = resp.get_json()["data"]
+    assert any(o.get("application_url") == "https://example.com/mgr-list-apply" for o in body)
+    assert any(o.get("application_instructions") == "Mgr list steps" for o in body)
+
+
+def test_87_manager_detail_contains_both_protected_fields(client, app, manager_token):
+    opportunity_id = _make_opportunity(
+        app, access_type="circle_only", application_url="https://example.com/mgr-detail-apply",
+        application_instructions="Mgr detail steps",
+    )
+    slug = _opportunity_slug(app, opportunity_id)
+    resp = client.get(f"/api/v1/opportunities/{slug}", headers=auth_headers(manager_token))
+    data = resp.get_json()["data"]
+    assert data["application_url"] == "https://example.com/mgr-detail-apply"
+    assert data["application_instructions"] == "Mgr detail steps"
+
+
+def test_88_create_response_contains_both_protected_fields(client, manager_token):
+    created = client.post(
+        "/api/v1/opportunities",
+        json=_base_payload(applicationUrl="https://example.com/create-apply", applicationInstructions="Create steps"),
+        headers=auth_headers(manager_token),
+    )
+    assert created.status_code == 201
+    data = created.get_json()["data"]
+    assert data["application_url"] == "https://example.com/create-apply"
+    assert data["application_instructions"] == "Create steps"
+
+
+def test_89_update_response_contains_both_protected_fields(client, manager_token):
+    created = client.post("/api/v1/opportunities", json=_base_payload(), headers=auth_headers(manager_token))
+    slug = created.get_json()["data"]["slug"]
+    updated = client.put(
+        f"/api/v1/opportunities/{slug}",
+        json=_base_payload(applicationUrl="https://example.com/update-apply", applicationInstructions="Update steps"),
+        headers=auth_headers(manager_token),
+    )
+    assert updated.status_code == 200
+    data = updated.get_json()["data"]
+    assert data["application_url"] == "https://example.com/update-apply"
+    assert data["application_instructions"] == "Update steps"
+
+
+def test_90_anonymous_public_list_contains_neither_protected_field(client, app):
+    _make_opportunity(app, access_type="public", application_url="https://example.com/anon-list", application_instructions="Anon list steps")
+    resp = client.get("/api/v1/opportunities")
+    serialized = str(resp.get_json())
+    assert "anon-list" not in serialized
+    assert "Anon list steps" not in serialized
+
+
+def test_91_anonymous_circle_only_detail_contains_neither_protected_field(client, app):
+    opportunity_id = _make_opportunity(
+        app, access_type="circle_only", application_url="https://example.com/anon-circle",
+        application_instructions="Anon circle steps",
+    )
+    slug = _opportunity_slug(app, opportunity_id)
+    resp = client.get(f"/api/v1/opportunities/{slug}")
+    serialized = str(resp.get_json())
+    assert "anon-circle" not in serialized
+    assert "Anon circle steps" not in serialized
+
+
+def test_92_active_circle_viewer_detail_still_excludes_protected_fields_for_circle_only(client, app, user_a_token):
+    _give_active_circle(app, USER_A["email"])
+    opportunity_id = _make_opportunity(
+        app, access_type="circle_only", application_url="https://example.com/active-circle-detail",
+        application_instructions="Active circle steps",
+    )
+    slug = _opportunity_slug(app, opportunity_id)
+    resp = client.get(f"/api/v1/opportunities/{slug}", headers=auth_headers(user_a_token))
+    serialized = str(resp.get_json())
+    assert "active-circle-detail" not in serialized
+    assert "Active circle steps" not in serialized
+    assert resp.get_json()["data"]["viewerCanAccess"] is True
+
+
+def test_93_post_access_for_active_circle_still_returns_both_protected_fields(client, app, user_a_token):
+    _give_active_circle(app, USER_A["email"])
+    opportunity_id = _make_opportunity(
+        app, access_type="circle_only", application_url="https://example.com/access-endpoint-apply",
+        application_instructions="Access endpoint steps",
+    )
+    slug = _opportunity_slug(app, opportunity_id)
+    resp = client.post(f"/api/v1/opportunities/{slug}/access", headers=auth_headers(user_a_token))
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["application_url"] == "https://example.com/access-endpoint-apply"
+    assert data["application_instructions"] == "Access endpoint steps"
+
+
+def test_94_saved_items_circle_only_still_contains_neither_protected_field(client, app, user_a_token):
+    opportunity_id = _make_opportunity(
+        app, access_type="circle_only", application_url="https://example.com/saved-circle",
+        application_instructions="Saved circle steps",
+    )
+    client.post("/api/v1/saved", json={"content_type": "opportunity", "content_id": opportunity_id}, headers=auth_headers(user_a_token))
+    resp = client.get("/api/v1/saved", headers=auth_headers(user_a_token))
+    serialized = str(resp.get_json())
+    assert "saved-circle" not in serialized
+    assert "Saved circle steps" not in serialized
+
+
+def test_95_ordinary_public_apply_behavior_unchanged(client, app):
+    opportunity_id = _make_opportunity(
+        app, access_type="public", application_url="https://example.com/ordinary-apply",
+        application_instructions="Ordinary apply steps",
+    )
+    slug = _opportunity_slug(app, opportunity_id)
+    detail = client.get(f"/api/v1/opportunities/{slug}")
+    data = detail.get_json()["data"]
+    assert data["application_url"] == "https://example.com/ordinary-apply"
+    assert data["application_instructions"] == "Ordinary apply steps"
+
+    access = client.post(f"/api/v1/opportunities/{slug}/access")
+    assert access.status_code == 200
+    assert access.get_json()["data"]["application_url"] == "https://example.com/ordinary-apply"

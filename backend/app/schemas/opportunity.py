@@ -100,6 +100,19 @@ class OpportunitySchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Opportunity
         load_instance = False
+        # application_url/application_instructions are the protected
+        # application destination/details for a circle_only Opportunity
+        # (see app/services/opportunity_access.py) — excluded from this
+        # schema's dump UNCONDITIONALLY, never merely hidden by the
+        # frontend, so every caller of OpportunitySchema (public list/
+        # detail, Saved Items, search, …) is safe by construction, the
+        # same pattern EventSchema uses for virtual_link. app/api/v1/
+        # opportunities.py's _dump_opportunity_for_staff() is the one
+        # place that re-attaches them, and only after an
+        # opportunities.manage check; the public-safe detail builder
+        # re-attaches application_url/application_instructions on its
+        # own terms (open + public + URL-safe) separately.
+        exclude = ("application_url", "application_instructions")
 
     def get_is_closed(self, obj):
         """True when the opportunity should present as no longer accepting
