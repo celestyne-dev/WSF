@@ -1,4 +1,4 @@
-from marshmallow import fields, validate
+from marshmallow import fields, validate, ValidationError
 
 from app.extensions import ma
 from app.models.resource import (
@@ -13,6 +13,17 @@ from app.models.resource import (
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema
 from app.schemas.taxonomy import TagSchema, TopicSchema
+from app.utils.urls import is_safe_http_url, is_safe_resource_target
+
+
+def _validate_external_url(value):
+    if value and not is_safe_http_url(value):
+        raise ValidationError("Must be a valid http(s) URL.")
+
+
+def _validate_file_url(value):
+    if value and not is_safe_resource_target(value):
+        raise ValidationError("Must be a valid http(s) URL or an internal /media/ path.")
 
 
 class ResourceImageSchema(ma.SQLAlchemyAutoSchema):
@@ -39,6 +50,7 @@ class ResourceSchema(ma.SQLAlchemyAutoSchema):
     is_free = fields.Method("get_is_free")
     requires_email = fields.Method("get_requires_email")
     requires_account = fields.Method("get_requires_account")
+    requires_circle = fields.Method("get_requires_circle")
     # The existing Product.resource_id hook — surfaced read-only so an
     # editor can see (not create) a Shop listing that already wraps this
     # Resource, without duplicating any product/payment logic here.
@@ -55,7 +67,14 @@ class ResourceSchema(ma.SQLAlchemyAutoSchema):
         return obj.access_type == "email_gate"
 
     def get_requires_account(self, obj):
-        return obj.access_type == "member_only"
+        # Any valid authenticated WSF account is enough for member_only;
+        # circle_only also strictly requires one (plus active Circle
+        # entitlement — see get_requires_circle), so it's "account
+        # required" too, just not account-SUFFICIENT.
+        return obj.access_type in ("member_only", "circle_only")
+
+    def get_requires_circle(self, obj):
+        return obj.access_type == "circle_only"
 
     def get_linked_product(self, obj):
         from app.models.commerce import Product
@@ -87,8 +106,8 @@ class ResourceInputSchema(ma.Schema):
     currency = fields.String(required=False, load_default="USD", validate=validate.Length(equal=3))
 
     access_type = fields.String(required=False, load_default="direct_download", data_key="accessType", validate=validate.OneOf(ACCESS_TYPES))
-    file_url = fields.String(required=False, allow_none=True, data_key="fileUrl")
-    external_url = fields.String(required=False, allow_none=True, data_key="externalUrl")
+    file_url = fields.String(required=False, allow_none=True, data_key="fileUrl", validate=_validate_file_url)
+    external_url = fields.String(required=False, allow_none=True, data_key="externalUrl", validate=_validate_external_url)
     file_format = fields.String(required=False, allow_none=True, data_key="fileFormat", validate=validate.OneOf(FILE_FORMATS))
     file_size = fields.Integer(required=False, allow_none=True, data_key="fileSize", validate=validate.Range(min=0))
     page_count = fields.Integer(required=False, allow_none=True, data_key="pageCount", validate=validate.Range(min=0))

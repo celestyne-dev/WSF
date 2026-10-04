@@ -283,8 +283,13 @@ def test_free_resource_direct_download_access(client, manager_token):
     assert access.status_code == 200
     assert access.get_json()["data"]["url"]
 
+    # The anonymous GET now returns the public-safe payload (camelCase,
+    # no raw file/external target) rather than the full admin dump — see
+    # app/api/v1/resources.py's build_public_resource_payload().
     fetched = client.get(f"/api/v1/resources/{slug}")
-    assert fetched.get_json()["data"]["download_count"] == 1
+    assert fetched.get_json()["data"]["downloadCount"] == 1
+    assert "file_url" not in fetched.get_json()["data"]
+    assert "fileUrl" not in fetched.get_json()["data"]
 
 
 def test_email_gated_resource_creates_lead_without_forcing_newsletter(client, app, manager_token):

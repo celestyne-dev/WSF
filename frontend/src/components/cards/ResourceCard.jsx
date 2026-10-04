@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom'
-import { Mail, Lock, ExternalLink } from 'lucide-react'
+import { Mail, Lock, Sparkles, ExternalLink } from 'lucide-react'
 import MediaImage from '../ui/MediaImage'
 import { formatCurrency } from '../../utils/format'
 
 const ACCESS_BADGE = {
-  email_gate: { icon: Mail, label: 'Free — email required' },
+  email_gate: { icon: Mail, label: 'Email required' },
+  member_only: { icon: Lock, label: 'WSF account' },
+  circle_only: { icon: Sparkles, label: 'WSF Circle' },
   premium: { icon: Lock, label: 'Premium' },
-  member_only: { icon: Lock, label: 'Members only' },
   external_link: { icon: ExternalLink, label: 'External' },
 }
 
@@ -44,7 +45,13 @@ export default function ResourceCard({ resource }) {
         <div className="mt-1.5 flex items-center gap-2 text-sm font-medium text-charcoal-600">
           {resource.author?.name && <span>{resource.author.name}</span>}
           {resource.author?.name && <span className="text-charcoal-600/40">·</span>}
-          <span>{resource.isFree ? 'Free' : formatCurrency(resource.price, resource.currency)}</span>
+          <span>
+            {resource.accessType === 'circle_only'
+              ? 'WSF Circle'
+              : resource.isFree
+                ? 'Free'
+                : formatCurrency(resource.price, resource.currency)}
+          </span>
         </div>
       </div>
     </Link>

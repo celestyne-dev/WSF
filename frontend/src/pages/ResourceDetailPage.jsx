@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Download, Lock, Mail, ExternalLink, X } from 'lucide-react'
 import { fetchResourceBySlug, fetchResources, requestResourceAccess } from '../api/resources'
+import { fetchMyCircleMembership } from '../api/circle'
 import { resolveImage } from '../utils/media'
 import { formatCurrency } from '../utils/format'
 import { trackEvent, withAcquisitionMetadata } from '../utils/analytics'
@@ -38,12 +39,20 @@ function useResourceStructuredData(resource, canonicalUrl) {
           ? { author: { '@type': 'Organization', name: resource.authorName } }
           : {}),
       publisher: { '@type': 'Organization', name: siteName },
-      offers: {
+    }
+    // A zero-price Offer is only truthful for a resource that's openly
+    // available for the taking. member_only/circle_only gate on
+    // something real (an account, a paid Circle membership) and premium
+    // has no working purchase yet — none of those is an openly
+    // available free Offer, so Offer is omitted entirely rather than
+    // falsely advertised as free/InStock (see spec section M).
+    if (['direct_download', 'email_gate', 'external_link'].includes(resource.accessType)) {
+      data.offers = {
         '@type': 'Offer',
-        price: resource.isFree ? 0 : resource.price,
+        price: 0,
         priceCurrency: resource.currency || 'USD',
         availability: 'https://schema.org/InStock',
-      },
+      }
     }
     let el = document.head.querySelector('script[data-resource-structured-data]')
     if (!el) {
@@ -129,8 +138,100 @@ function EmailGateModal({ resource, onClose, onSuccess }) {
   )
 }
 
+// The one place a resource's access_type decides its CTA. Backend
+// remains authoritative for the actual grant (POST /access) — this only
+// decides which button/link to show, and never claims access the
+// backend hasn't confirmed (see spec section J: "Backend remains
+// authoritative... Show a safe fallback" if the Circle check fails).
+function AccessCta({ resource, accessToken, requesting, onAccessClick, onEmailGateClick }) {
+  const [circleMembership, setCircleMembership] = useState(undefined)
+
+  useEffect(() => {
+    if (!accessToken || resource.accessType !== 'circle_only') return undefined
+    let active = true
+    fetchMyCircleMembership()
+      .then((result) => active && setCircleMembership(result))
+      .catch(() => active && setCircleMembership(null))
+    return () => {
+      active = false
+    }
+  }, [accessToken, resource.accessType])
+
+  if (resource.accessType === 'premium') {
+    return (
+      <div className="mt-5">
+        <p className="inline-flex items-center gap-2 border border-taupe-300 bg-taupe-50 px-4 py-2.5 text-sm font-semibold text-charcoal-600">
+          <Lock size={16} /> Premium resource
+        </p>
+        <p className="mt-2 text-xs text-charcoal-600/70">Purchasing isn't available yet — check back soon.</p>
+      </div>
+    )
+  }
+
+  if (resource.accessType === 'member_only') {
+    if (!accessToken) {
+      return (
+        <Link to="/login" className="btn-primary mt-5 inline-flex">
+          <Lock size={16} /> Sign in to access
+        </Link>
+      )
+    }
+    return (
+      <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
+        <Download size={16} /> {requesting ? 'Preparing…' : 'Access resource'}
+      </button>
+    )
+  }
+
+  if (resource.accessType === 'circle_only') {
+    if (!accessToken) {
+      return (
+        <Link to="/login" className="btn-primary mt-5 inline-flex">
+          <Lock size={16} /> Sign in
+        </Link>
+      )
+    }
+    if (circleMembership === undefined) {
+      return (
+        <button type="button" disabled className="btn-secondary mt-5 inline-flex opacity-60">
+          Checking membership…
+        </button>
+      )
+    }
+    if (!circleMembership?.hasAccess) {
+      return (
+        <Link to="/circle" className="btn-primary mt-5 inline-flex">
+          Explore WSF Circle
+        </Link>
+      )
+    }
+    return (
+      <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
+        <Download size={16} /> {requesting ? 'Preparing…' : 'Access resource'}
+      </button>
+    )
+  }
+
+  if (resource.accessType === 'email_gate') {
+    return (
+      <button type="button" onClick={onEmailGateClick} className="btn-primary mt-5 inline-flex">
+        <Mail size={16} /> Get the free download
+      </button>
+    )
+  }
+
+  const Icon = resource.accessType === 'external_link' ? ExternalLink : Download
+  const label = resource.accessType === 'external_link' ? 'Visit resource' : 'Download now'
+  return (
+    <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
+      <Icon size={16} /> {requesting ? 'Preparing…' : label}
+    </button>
+  )
+}
+
 export default function ResourceDetailPage() {
   const { slug } = useParams()
+  const accessToken = useSelector((s) => s.auth.accessToken)
   const [resource, setResource] = useState(undefined)
   const [related, setRelated] = useState([])
   const [error, setError] = useState(null)
@@ -188,21 +289,6 @@ export default function ResourceDetailPage() {
   async function handleAccessClick() {
     if (!resource) return
 
-    if (resource.accessType === 'premium') {
-      trackEvent('resource_premium_cta_click', { resourceSlug: resource.slug })
-      toast('Purchasing isn\'t available yet — check back soon.')
-      return
-    }
-    if (resource.accessType === 'member_only') {
-      trackEvent('resource_premium_cta_click', { resourceSlug: resource.slug })
-      toast('An account is required for this resource — accounts aren\'t available yet.')
-      return
-    }
-    if (resource.accessType === 'email_gate') {
-      setShowEmailGate(true)
-      return
-    }
-
     trackEvent(resource.accessType === 'external_link' ? 'resource_external_click' : 'resource_download_click', {
       resourceSlug: resource.slug,
     })
@@ -221,14 +307,6 @@ export default function ResourceDetailPage() {
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this resource" description={error} /></div>
   if (resource === undefined) return <PageLoader />
   if (resource === null) return <NotFoundPage />
-
-  const ButtonIcon = resource.accessType === 'external_link' ? ExternalLink : resource.accessType === 'email_gate' ? Mail : resource.accessType === 'premium' || resource.accessType === 'member_only' ? Lock : Download
-  const buttonLabel =
-    resource.accessType === 'external_link' ? 'Visit resource'
-      : resource.accessType === 'premium' ? `Unlock — ${formatCurrency(resource.price, resource.currency)}`
-      : resource.accessType === 'member_only' ? 'Sign in required'
-      : resource.accessType === 'email_gate' ? 'Get the free download'
-      : 'Download now'
 
   return (
     <div>
@@ -273,13 +351,20 @@ export default function ResourceDetailPage() {
           </div>
 
           <p className="mt-4 font-serif text-2xl font-semibold text-charcoal">
-            {resource.isFree ? 'Free' : formatCurrency(resource.price, resource.currency)}
+            {resource.accessType === 'circle_only'
+              ? 'Included with WSF Circle'
+              : resource.isFree
+                ? 'Free'
+                : formatCurrency(resource.price, resource.currency)}
           </p>
 
-          <button type="button" onClick={handleAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
-            <ButtonIcon size={16} />
-            {requesting ? 'Preparing…' : buttonLabel}
-          </button>
+          <AccessCta
+            resource={resource}
+            accessToken={accessToken}
+            requesting={requesting}
+            onAccessClick={handleAccessClick}
+            onEmailGateClick={() => setShowEmailGate(true)}
+          />
 
           <div className="mt-6">
             <ShareBar title={resource.name} url={canonicalUrl} trackEventName="resource_share_click" trackPayload={{ resourceSlug: resource.slug }} />

@@ -50,6 +50,14 @@ export function mapResource(r) {
     isFree: r.is_free ?? !r.isPremium,
     requiresEmail: r.requires_email ?? (r.access_type === 'email_gate' || r.accessType === 'email_gate'),
     requiresAccount: r.requires_account ?? false,
+    requiresCircle: r.requires_circle ?? r.requiresCircle ?? false,
+    // Serialization-only hint from the backend (never itself an
+    // authorization) — absent for the staff/admin dump, where it simply
+    // doesn't apply. See app/services/resource_access.py.
+    viewerCanAccess: r.viewerCanAccess ?? null,
+    // Present only in the public-safe payload — the admin/staff dump
+    // never includes these (see app/api/v1/resources.py); null here for
+    // a staff-authenticated response is expected, not a bug.
     fileUrl: r.file_url || r.fileUrl || null,
     externalUrl: r.external_url || r.externalUrl || null,
     fileFormat: r.file_format || r.fileFormat || null,

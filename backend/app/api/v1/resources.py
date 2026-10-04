@@ -1,3 +1,17 @@
+"""Resources — public catalog, the one access-grant endpoint, and staff
+CRUD. See app/models/resource.py (Resource.ACCESS_TYPES/
+is_publicly_visible) and app/services/resource_access.py (the one place
+access_type rules — including WSF Circle, via app/services/circle.py's
+has_circle_access — are actually evaluated).
+
+SECURITY: an anonymous/ordinary public caller must never receive
+file_url/external_url directly from the list/detail endpoints — only
+build_public_resource_payload() below is ever returned to such a caller,
+and only POST /resources/{slug}/access, after check_resource_access()
+succeeds, ever hands back a real target URL. Staff holding
+resources.manage still receive the full ResourceSchema dump they need to
+edit the resource.
+"""
 from datetime import date
 
 from flask import Blueprint, request
@@ -11,14 +25,19 @@ from app.models.media import Media
 from app.models.people import Author, Organization
 from app.models.resource import Resource as ResourceModel, ResourceImage, ResourceLead
 from app.models.taxonomy import Tag, Topic
+from app.schemas.media import MediaSchema
+from app.schemas.people import AuthorSchema, OrganizationSchema
 from app.schemas.resource import ResourceInputSchema, ResourceLeadInputSchema, ResourceSchema
+from app.schemas.taxonomy import TagSchema, TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.newsletter import upsert_subscriber
+from app.services.resource_access import check_resource_access, viewer_can_access
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.slugs import slugify
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
+from app.utils.urls import is_safe_http_url, is_safe_resource_target
 
 resources_bp = Blueprint("resources", __name__)
 api = Api(resources_bp)
@@ -48,6 +67,21 @@ def _require_manage():
     if not user.has_permission("resources.manage"):
         raise ApiError("You do not have permission to manage resources.", 403, code="forbidden")
     return user
+
+
+def _viewer_for_access_check():
+    """Distinct from _current_user_or_none(): this one does NOT collapse
+    an authenticated-but-inactive account into anonymous — it must reach
+    check_resource_access() as itself so that function can tell "no
+    account at all" (401 account_required) apart from "a real account
+    that's inactive" (403 forbidden), per spec. Same unfiltered pattern
+    as app/api/v1/circle.py's _current_user_or_none().
+    """
+    try:
+        verify_jwt_in_request(optional=True)
+    except Exception:
+        return None
+    return current_user if current_user else None
 
 
 def _can_edit_or_none():
@@ -113,7 +147,11 @@ def _resolve_gallery(media_ids):
 def _validate_publish(resource):
     """A published (or scheduled) resource needs a real description and a
     real way to actually get it — same "don't let an empty shell go live"
-    guard already applied to Job/Event/Product.
+    guard already applied to Job/Event/Product. Every access type whose
+    target the /access endpoint would need to resolve (everything except
+    premium, which has no real target yet) must have one configured
+    before it can go live — including circle_only, so a Circle member
+    can never reach a published resource with nothing behind it.
     """
     if resource.status not in ("published", "scheduled"):
         return
@@ -123,7 +161,9 @@ def _validate_publish(resource):
         raise ApiError("A published resource needs a description.", 422, code="validation_error")
     if resource.access_type == "external_link" and not resource.external_url:
         raise ApiError("A published external-link resource needs an external URL.", 422, code="validation_error")
-    if resource.access_type in ("direct_download", "email_gate") and not resource.file_url and not resource.external_url:
+    if resource.access_type in ("direct_download", "email_gate", "member_only", "circle_only") and not (
+        resource.file_url or resource.external_url
+    ):
         raise ApiError("A published resource needs a file URL or external URL.", 422, code="validation_error")
 
 
@@ -145,10 +185,12 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     # is_premium/is_downloadable/is_external are legacy stored booleans kept
     # for existing call sites (Product-resource linkage, old mock parity);
     # derived here from the one field an editor actually sets, so they can
-    # never drift out of sync with it.
+    # never drift out of sync with it. circle_only is deliberately NOT
+    # is_premium — WSF Circle membership and a one-off premium resource
+    # purchase are separate commercial concepts (see model docstring).
     resource.is_premium = resource.access_type == "premium"
     resource.is_external = resource.access_type == "external_link"
-    resource.is_downloadable = resource.access_type in ("direct_download", "email_gate")
+    resource.is_downloadable = resource.access_type in ("direct_download", "email_gate", "member_only", "circle_only")
     resource.file_url = data.get("file_url")
     resource.external_url = data.get("external_url")
     resource.file_format = data.get("file_format")
@@ -178,6 +220,10 @@ def _build_query(user):
         query = query.filter(ResourceModel.status == request.args["status"])
     elif not can_manage:
         today = date.today()
+        # Mirrors Resource.is_publicly_visible() exactly — a scheduled
+        # resource with a NULL published_date is excluded here the same
+        # way that method excludes it (NULL <= today evaluates to NULL/
+        # false in SQL, same as the explicit `is not None` check there).
         query = query.filter(
             or_(
                 ResourceModel.status == "published",
@@ -203,12 +249,76 @@ def _build_query(user):
     return query
 
 
+def build_public_resource_payload(resource, viewer):
+    """The one public-safe Resource representation — never includes
+    file_url/external_url (see module docstring). `viewerCanAccess` is a
+    serialization-only hint (app/services/resource_access.py never
+    resolves or leaks the target itself); POST /access remains the sole
+    authoritative grant.
+    """
+    return {
+        "id": resource.id,
+        "slug": resource.slug,
+        "name": resource.name,
+        "subtitle": resource.subtitle,
+        "shortDescription": resource.short_description,
+        "description": resource.description or [],
+        "coverMedia": MediaSchema().dump(resource.cover_media) if resource.cover_media else None,
+        "images": [
+            {"id": img.id, "position": img.position, "media": MediaSchema().dump(img.media)}
+            for img in resource.images
+        ],
+        "type": resource.type,
+        "topics": TopicSchema(many=True, exclude=("article_count",)).dump(resource.topics),
+        "tags": TagSchema(many=True).dump(resource.tags),
+        "author": AuthorSchema(exclude=("article_count",)).dump(resource.author) if resource.author else None,
+        "authorName": resource.author_name,
+        "price": resource.price,
+        "currency": resource.currency,
+        "accessType": resource.access_type,
+        "isFree": resource.access_type != "premium",
+        "isPremium": resource.is_premium,
+        "isDownloadable": resource.is_downloadable,
+        "isExternal": resource.is_external,
+        "requiresEmail": resource.access_type == "email_gate",
+        "requiresAccount": resource.access_type in ("member_only", "circle_only"),
+        "requiresCircle": resource.access_type == "circle_only",
+        "viewerCanAccess": viewer_can_access(resource, viewer),
+        "fileFormat": resource.file_format,
+        "fileSize": resource.file_size,
+        "pageCount": resource.page_count,
+        "sponsor": (
+            OrganizationSchema(only=("id", "slug", "name", "logo")).dump(resource.sponsor)
+            if resource.sponsor
+            else None
+        ),
+        "sponsored": resource.sponsored,
+        "downloadCount": resource.download_count,
+        "featured": resource.featured,
+        "status": resource.status,
+        "publishedDate": resource.published_date.isoformat() if resource.published_date else None,
+        "seo": resource.seo or {},
+        "linkedProduct": _linked_product_payload(resource),
+    }
+
+
+def _linked_product_payload(resource):
+    product = Product.query.filter_by(resource_id=resource.id).first()
+    if product is None:
+        return None
+    return {"id": product.id, "slug": product.slug, "name": product.name, "status": product.status}
+
+
 class ResourceListResource(Resource):
     def get(self):
         user = _current_user_or_none()
         query = _build_query(user)
-        result = paginate(query, resource_schema)
-        return success_response(result["items"], meta=result["meta"])
+        can_manage = bool(user and user.has_permission("resources.manage"))
+        result = paginate(query, resource_schema if can_manage else None)
+        if can_manage:
+            return success_response(result["items"], meta=result["meta"])
+        items = [build_public_resource_payload(r, user) for r in result["items"]]
+        return success_response(items, meta=result["meta"])
 
     def post(self):
         _require_manage()
@@ -237,12 +347,11 @@ class ResourceDetailResource(Resource):
         if resource is None:
             raise ApiError("Resource not found.", 404, code="not_found")
         editor = _can_edit_or_none()
-        publicly_visible = resource.status == "published" or (
-            resource.status == "scheduled" and resource.published_date and resource.published_date <= date.today()
-        )
-        if not publicly_visible and not editor:
+        if not resource.is_publicly_visible() and not editor:
             raise ApiError("Resource not found.", 404, code="not_found")
-        return success_response(resource_schema.dump(resource))
+        if editor:
+            return success_response(resource_schema.dump(resource))
+        return success_response(build_public_resource_payload(resource, _current_user_or_none()))
 
     def put(self, slug):
         resource = ResourceModel.query.filter_by(slug=slug).first()
@@ -283,37 +392,48 @@ class ResourceDetailResource(Resource):
         return success_response({"deleted": True})
 
 
+def _resolve_target_url(resource):
+    """The one place a real target is ever computed — only ever called
+    after check_resource_access() has already succeeded. Re-validates
+    safety at resolution time too (not just at save time), so a row
+    saved before this validation existed can never hand back an unsafe
+    scheme or a raw filesystem path.
+    """
+    if resource.access_type == "external_link":
+        candidate = resource.external_url
+        if not candidate or not is_safe_http_url(candidate):
+            raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
+        return candidate
+
+    candidate = resource.file_url or resource.external_url
+    if not candidate or not is_safe_resource_target(candidate):
+        raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
+    return candidate
+
+
 class ResourceAccessResource(Resource):
-    """Grants access to a resource per its access_type — the one place the
-    free lead-magnet flow, a plain direct download, and an external-link
-    hand-off all resolve through. premium/member_only never had a real
-    payment/account system to grant against, so they return a 403 the
-    frontend renders as an honest "not yet available" state rather than
-    faking a working entitlement.
+    """The ONE access-grant endpoint — every access_type's real target
+    resolves through here, and only here. See
+    app/services/resource_access.py's check_resource_access() for the
+    actual entitlement rules (member_only/circle_only/premium); nothing
+    here re-derives WSF Circle logic.
     """
 
     def post(self, slug):
         resource = ResourceModel.query.filter_by(slug=slug).first()
-        if resource is None or resource.status not in ("published", "scheduled"):
+        if resource is None or not resource.is_publicly_visible():
             raise ApiError("Resource not found.", 404, code="not_found")
 
-        access_type = resource.access_type
+        viewer = _viewer_for_access_check()
+        # Raises (401/403) and stops here on denial — no target is
+        # resolved, no lead is recorded, no download_count increment
+        # happens for a denied request of any kind.
+        check_resource_access(resource, viewer)
 
-        if access_type == "premium":
-            raise ApiError(
-                "This is a premium resource. Purchasing isn't available yet.", 403, code="premium_unavailable"
-            )
-        if access_type == "member_only":
-            raise ApiError(
-                "This resource requires an account. Accounts aren't available yet.", 403, code="account_required"
-            )
-
-        target_url = resource.external_url if access_type == "external_link" else (resource.file_url or resource.external_url)
-        if not target_url:
-            raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
+        target_url = _resolve_target_url(resource)
 
         lead = None
-        if access_type == "email_gate":
+        if resource.access_type == "email_gate":
             data = ResourceLeadInputSchema().load(request.get_json(silent=True) or {})
             email = data["email"].lower()
             lead = ResourceLead(
@@ -343,7 +463,7 @@ class ResourceAccessResource(Resource):
         resource.download_count = (resource.download_count or 0) + 1
         db.session.commit()
 
-        response = {"url": target_url, "accessType": access_type}
+        response = {"url": target_url, "accessType": resource.access_type}
         return success_response(response, status=201 if lead else 200)
 
 

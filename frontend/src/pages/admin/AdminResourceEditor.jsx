@@ -33,10 +33,11 @@ const RESOURCE_TYPES = [
   'Ebook', 'Worksheet', 'Report', 'Download', 'Video Resource', 'External Resource',
 ]
 const ACCESS_TYPES = [
-  { value: 'direct_download', label: 'Direct download — no gate' },
-  { value: 'email_gate', label: 'Email-gated — capture name/email first' },
-  { value: 'member_only', label: 'Member only — accounts not available yet' },
-  { value: 'premium', label: 'Premium — purchasing not available yet' },
+  { value: 'direct_download', label: 'Direct download — open access' },
+  { value: 'email_gate', label: 'Email-gated — capture details first' },
+  { value: 'member_only', label: 'WSF account only' },
+  { value: 'circle_only', label: 'WSF Circle members only' },
+  { value: 'premium', label: 'Premium purchase — checkout not connected yet' },
   { value: 'external_link', label: 'External link — hosted elsewhere' },
 ]
 const FILE_FORMATS = ['PDF', 'DOCX', 'XLSX', 'PPTX', 'ZIP', 'Image', 'Video', 'Other']
@@ -238,7 +239,10 @@ export default function AdminResourceEditor() {
   }
 
   const needsFileOrExternalUrl =
-    form && ['direct_download', 'email_gate', 'external_link'].includes(form.accessType) && !form.fileUrl && !form.externalUrl
+    form &&
+    ['direct_download', 'email_gate', 'member_only', 'circle_only', 'external_link'].includes(form.accessType) &&
+    !form.fileUrl &&
+    !form.externalUrl
 
   async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
@@ -435,6 +439,9 @@ export default function AdminResourceEditor() {
             </div>
             {form.accessType === 'premium' && (
               <p className="text-xs text-charcoal-600/70">Purchasing isn't available yet — this resource will show a "coming soon" state publicly until the Shop supports it.</p>
+            )}
+            {form.accessType === 'circle_only' && (
+              <p className="text-xs text-charcoal-600/70">Price/currency aren't used for a Circle-only resource — WSF Circle membership pricing lives in the Circle Plan, not here.</p>
             )}
           </Section>
 

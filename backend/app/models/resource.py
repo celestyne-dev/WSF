@@ -1,3 +1,5 @@
+from datetime import date
+
 from app.extensions import db
 
 RESOURCE_TYPES = (
@@ -28,18 +30,26 @@ _RESOURCE_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in RESOURC
 # is_premium/is_downloadable/is_external (kept below for the handful of
 # existing call sites built against them) are derived from this at write
 # time rather than being independently editable — one status an editor
-# sets, not several that could disagree.
+# sets, not several that could disagree. See app/services/resource_access.py
+# for the one place every one of these rules is actually enforced — this
+# module only declares the allowed values.
 #   direct_download: free, no gate — the button just works.
 #   email_gate: free, but first name/email (+ consent) is captured before
 #     the file is handed over — the lead-magnet flow.
-#   member_only: reserved for a future logged-in-customer entitlement;
-#     WSF has no real customer accounts yet, so the public page shows this
-#     honestly as "not yet available" rather than faking a login gate.
+#   member_only: any valid authenticated WSF account (User) — not a
+#     Community membership, not WSF Circle. WSF accounts exist now, so
+#     this is a real gate, not a placeholder.
+#   circle_only: requires an active WSF Circle entitlement (see
+#     app/services/circle.py's has_circle_access — the one authoritative
+#     check; never re-derived here).
 #   premium: has a real price; no payment processing exists yet, so the
 #     public CTA is an honest "coming soon" rather than a working
-#     checkout (same posture the Shop's Product model already takes).
+#     checkout (same posture the Shop's Product model already takes). A
+#     WSF Circle membership does NOT unlock a premium resource — Circle
+#     and one-off resource purchase are deliberately separate commercial
+#     concepts.
 #   external_link: hosted elsewhere — the CTA sends the visitor off-site.
-ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "premium", "external_link")
+ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "circle_only", "premium", "external_link")
 _ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in ACCESS_TYPES) + ")"
 
 FILE_FORMATS = ("PDF", "DOCX", "XLSX", "PPTX", "ZIP", "Image", "Video", "Other")
@@ -119,11 +129,16 @@ class Resource(db.Model):
 
     access_type = db.Column(db.String(20), nullable=False, default="direct_download")
     # The downloadable asset itself isn't run through the image Media
-    # pipeline (it's usually a PDF/doc, not an image) — just a VPS path or
-    # external URL, whichever `is_external` says to use. No generic
-    # binary-file upload/storage pipeline exists yet (Media only handles
-    # images); building one is out of this task's scope — see the final
-    # report.
+    # pipeline (it's usually a PDF/doc, not an image) — just this app's
+    # own MEDIA_URL-rooted path or an http(s) URL, whichever `is_external`
+    # says to use (see app/utils/urls.py's is_safe_resource_target, the
+    # one place both are validated — never a raw filesystem path, never
+    # javascript:/data:/file:). No generic binary-file upload/storage
+    # pipeline exists yet (Media only handles images); building one is out
+    # of this task's scope — see the final report. Never serialized to an
+    # anonymous/public caller directly (see app/schemas/resource.py's
+    # build_public_resource_payload) — only POST /resources/{slug}/access,
+    # after the resource's access_type rule succeeds, ever hands this back.
     file_url = db.Column(db.String(500))
     external_url = db.Column(db.String(500))
     file_format = db.Column(db.String(20))  # see FILE_FORMATS
@@ -153,6 +168,19 @@ class Resource(db.Model):
     images = db.relationship(
         "ResourceImage", order_by="ResourceImage.position", cascade="all, delete-orphan", backref="resource"
     )
+
+    def is_publicly_visible(self):
+        """The ONE rule for whether an anonymous/ordinary visitor may see
+        this resource at all — reused by the public list, public detail,
+        and /access endpoints so a future-dated scheduled resource can
+        never be reached early through any of the three. A resource whose
+        `published_date` is None is never treated as "past due" — it's
+        simply not eligible via the scheduled branch (status must be
+        flipped to "published" directly for it to become visible).
+        """
+        if self.status == "published":
+            return True
+        return self.status == "scheduled" and self.published_date is not None and self.published_date <= date.today()
 
 
 class ResourceLead(db.Model):
