@@ -37,12 +37,23 @@ AUDIENCE_TYPES = (
     "general",
 )
 
-# free: publicly accessible, no login/checkout. external: CTA sends the
-# visitor to a safe external enrollment URL. product: linked to an
-# existing Product for commercial access — Product stays the source of
-# truth for price/currency (see product relationship below); Learning
-# never stores a duplicate price.
-ACCESS_TYPES = ("free", "external", "product")
+# free: publicly accessible, no login/checkout — login is only needed to
+# enroll/track progress, never to read the curriculum itself.
+# circle_only: full curriculum/lesson content requires an authenticated
+# active User with an active WSF Circle entitlement (see
+# app/services/circle.py's has_circle_access — the one authoritative
+# check, never re-derived here) AND an active LearningEnrollment; the
+# catalog/detail metadata and a safe curriculum OUTLINE (titles/summaries/
+# duration, no lesson content/external_url/article+resource target
+# details) remain public (see app/services/learning_access.py and
+# app/schemas/learning.py's LearningProgramOutlineSchema). external: CTA
+# sends the visitor to a safe external enrollment URL; no first-party
+# enrollment or protected content exists. product: linked to an existing
+# Product for commercial access — Product stays the source of truth for
+# price/currency (see product relationship below); Learning never stores
+# a duplicate price, and WSF Circle membership never unlocks a product
+# program (Circle and one-off/commercial purchase are separate concepts).
+ACCESS_TYPES = ("free", "circle_only", "external", "product")
 _ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in ACCESS_TYPES) + ")"
 
 DURATION_UNITS = ("minutes", "hours", "days", "weeks")

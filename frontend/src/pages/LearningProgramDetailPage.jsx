@@ -4,7 +4,13 @@ import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { ExternalLink, FileText, PlayCircle, BookOpen, ClipboardList, CheckCircle2, Circle } from 'lucide-react'
 import { fetchLearningProgramBySlug } from '../api/learning'
-import { enrollInProgram, checkLearningEnrollment, markLessonComplete, markLessonIncomplete } from '../api/learningEnrollments'
+import {
+  enrollInProgram,
+  checkLearningEnrollment,
+  fetchProtectedCurriculum,
+  markLessonComplete,
+  markLessonIncomplete,
+} from '../api/learningEnrollments'
 import { resolveImage } from '../utils/media'
 import { formatCurrency, formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
@@ -150,17 +156,9 @@ function CtaButton({ program }) {
   return null
 }
 
-// Free-access programs only (spec's core product decision — external/
-// product programs never get a WSF enrollment row, see CtaButton above
-// and backend app/services/learning_enrollments.py's own docstring).
-function LearningEnrollmentCta({ enrollment, accessToken, pending, onEnroll, onSignIn }) {
-  if (!accessToken) {
-    return (
-      <button type="button" onClick={onSignIn} className="btn-primary inline-flex">
-        Sign in to track progress
-      </button>
-    )
-  }
+// Shared by both free and circle_only CTAs once access to enroll/continue
+// is already established — only the gate above it differs per access type.
+function EnrollmentStateCta({ enrollment, pending, onEnroll }) {
   if (enrollment === undefined) return null // still checking — avoid a CTA flash
   if (enrollment && enrollment.completedAt) {
     return (
@@ -196,6 +194,49 @@ function LearningEnrollmentCta({ enrollment, accessToken, pending, onEnroll, onS
   )
 }
 
+// Free-access programs only (spec's core product decision — external/
+// product programs never get a WSF enrollment row, see CtaButton above
+// and backend app/services/learning_enrollments.py's own docstring).
+function LearningEnrollmentCta({ enrollment, accessToken, pending, onEnroll, onSignIn }) {
+  if (!accessToken) {
+    return (
+      <button type="button" onClick={onSignIn} className="btn-primary inline-flex">
+        Sign in to track progress
+      </button>
+    )
+  }
+  return <EnrollmentStateCta enrollment={enrollment} pending={pending} onEnroll={onEnroll} />
+}
+
+// circle_only programs — the "Circle active?" gate (spec section L) sits
+// in front of the same enroll/continue states free programs use. Backend
+// remains authoritative either way: viewerCanAccess/circleAccessDenied
+// are UI guidance, not the enrollment/curriculum/progress endpoints'
+// own checks.
+function CircleLearningCta({ enrollment, accessToken, viewerCanAccess, circleAccessDenied, pending, onEnroll, onSignIn }) {
+  if (!accessToken) {
+    return (
+      <div className="inline-flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-charcoal">Included with WSF Circle</span>
+        <button type="button" onClick={onSignIn} className="btn-primary inline-flex">
+          Sign in
+        </button>
+      </div>
+    )
+  }
+  if (!viewerCanAccess || circleAccessDenied) {
+    return (
+      <div className="inline-flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-charcoal">WSF Circle access required</span>
+        <Link to="/circle" className="btn-primary inline-flex">
+          Explore WSF Circle
+        </Link>
+      </div>
+    )
+  }
+  return <EnrollmentStateCta enrollment={enrollment} pending={pending} onEnroll={onEnroll} />
+}
+
 export default function LearningProgramDetailPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
@@ -205,6 +246,11 @@ export default function LearningProgramDetailPage() {
   const [enrollment, setEnrollment] = useState(undefined)
   const [enrolling, setEnrolling] = useState(false)
   const [toggleBusyLessonId, setToggleBusyLessonId] = useState(null)
+  // Full protected curriculum for circle_only (spec section H/L) — null
+  // until a successful fetch; never populated from stale state once
+  // access is lost (see the effect below's circle_required handling).
+  const [protectedModules, setProtectedModules] = useState(null)
+  const [circleAccessDenied, setCircleAccessDenied] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -219,7 +265,8 @@ export default function LearningProgramDetailPage() {
   }, [slug])
 
   useEffect(() => {
-    if (!program || program.accessType !== 'free' || !accessToken) return undefined
+    const eligible = program && (program.accessType === 'free' || program.accessType === 'circle_only')
+    if (!eligible || !accessToken) return undefined
     let active = true
     checkLearningEnrollment(program.id).then((result) => {
       if (active) setEnrollment(result.enrollment)
@@ -228,6 +275,32 @@ export default function LearningProgramDetailPage() {
       active = false
     }
   }, [program, accessToken])
+
+  // Protected curriculum fetch for circle_only (spec sections H/L/M) — the
+  // public detail payload only ever carries the safe outline for this
+  // access type, so full lesson content is fetched separately once an
+  // active enrollment exists. Any circle_required failure here clears
+  // protectedModules rather than leaving stale content on screen.
+  useEffect(() => {
+    let active = true
+    async function run() {
+      setProtectedModules(null)
+      setCircleAccessDenied(false)
+      if (!program || program.accessType !== 'circle_only' || !accessToken) return
+      if (!enrollment || enrollment.status !== 'active') return
+      try {
+        const modules = await fetchProtectedCurriculum(enrollment.id)
+        if (active) setProtectedModules(modules)
+      } catch (err) {
+        if (!active) return
+        if (err?.response?.data?.error?.code === 'circle_required') setCircleAccessDenied(true)
+      }
+    }
+    run()
+    return () => {
+      active = false
+    }
+  }, [program, accessToken, enrollment])
 
   const canonicalUrl = program ? `https://womenshapingfutures.org/learning/${program.slug}` : ''
 
@@ -336,6 +409,16 @@ export default function LearningProgramDetailPage() {
                 onEnroll={handleEnroll}
                 onSignIn={() => navigate('/login')}
               />
+            ) : program.accessType === 'circle_only' ? (
+              <CircleLearningCta
+                enrollment={enrollment}
+                accessToken={accessToken}
+                viewerCanAccess={program.viewerCanAccess}
+                circleAccessDenied={circleAccessDenied}
+                pending={enrolling}
+                onEnroll={handleEnroll}
+                onSignIn={() => navigate('/login')}
+              />
             ) : (
               <CtaButton program={program} />
             )}
@@ -375,30 +458,45 @@ export default function LearningProgramDetailPage() {
         </div>
       )}
 
-      {program.modules?.length > 0 && (
-        <div id="curriculum" className="container-editorial max-w-reading pb-10">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-serif text-xl font-semibold text-charcoal">Curriculum</h2>
-            {enrollment && enrollment.status === 'active' && enrollment.totalLessons > 0 && (
-              <p className="text-sm text-charcoal-600">
-                {enrollment.completedLessons} of {enrollment.totalLessons} lessons complete · {enrollment.progressPercent}%
-              </p>
+      {(() => {
+        // free: public detail already carries the full curriculum. circle_only
+        // with an active enrollment + confirmed access: swap in the protected
+        // curriculum fetched above. Everything else (circle_only without full
+        // access yet, external, product) renders the safe public outline the
+        // backend returned instead — never lesson content/links/toggles.
+        const circleFullAccess = program.accessType === 'circle_only' && protectedModules !== null
+        const curriculumModules = circleFullAccess ? protectedModules : program.modules
+        const curriculumEnrollment = program.accessType === 'free' || circleFullAccess ? enrollment : null
+        if (!curriculumModules?.length) return null
+        return (
+          <div id="curriculum" className="container-editorial max-w-reading pb-10">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-serif text-xl font-semibold text-charcoal">Curriculum</h2>
+              {curriculumEnrollment && curriculumEnrollment.status === 'active' && curriculumEnrollment.totalLessons > 0 && (
+                <p className="text-sm text-charcoal-600">
+                  {curriculumEnrollment.completedLessons} of {curriculumEnrollment.totalLessons} lessons complete ·{' '}
+                  {curriculumEnrollment.progressPercent}%
+                </p>
+              )}
+            </div>
+            {program.accessType === 'circle_only' && !circleFullAccess && (
+              <p className="mt-1 text-sm text-charcoal-600">Full lessons are available to WSF Circle members.</p>
             )}
+            <div className="mt-4 space-y-3">
+              {curriculumModules.map((module, i) => (
+                <ModuleAccordion
+                  key={module.id}
+                  module={module}
+                  index={i}
+                  enrollment={curriculumEnrollment}
+                  onToggleComplete={handleToggleLesson}
+                  toggleBusyLessonId={toggleBusyLessonId}
+                />
+              ))}
+            </div>
           </div>
-          <div className="mt-4 space-y-3">
-            {program.modules.map((module, i) => (
-              <ModuleAccordion
-                key={module.id}
-                module={module}
-                index={i}
-                enrollment={enrollment}
-                onToggleComplete={handleToggleLesson}
-                toggleBusyLessonId={toggleBusyLessonId}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
       {(program.relatedArticles?.length > 0 || program.relatedResources?.length > 0) && (
         <div className="container-editorial max-w-reading border-t border-taupe-200 py-10">

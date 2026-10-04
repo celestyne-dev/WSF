@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from app.extensions import db
 from app.models.learning import LearningProgram
 from app.models.learning_enrollment import LearningEnrollment, LearningLessonProgress
+from app.services.circle import has_circle_access
+from app.services.learning_access import curriculum_access_state
 from app.utils.responses import ApiError
 
 
@@ -49,7 +51,11 @@ def progress_summary(enrollment, program=None):
 def enroll(program, user):
     """Never silently enrolls an external/product program — each gets its
     own distinct, clearly-coded rejection so the caller can show the
-    right message rather than a generic failure.
+    right message rather than a generic failure. circle_only additionally
+    requires has_circle_access(user) (the one authoritative Circle check,
+    see app/services/circle.py) BEFORE touching any existing enrollment
+    row — denied access creates/reactivates nothing, matching free's own
+    "no partial side effects on rejection" behavior.
     """
     if program.status != "published":
         raise ApiError("Learning program not found.", 404, code="not_found")
@@ -64,6 +70,10 @@ def enroll(program, user):
             "This program's access is handled through the Shop — purchase or access is managed separately.",
             422,
             code="product_enrollment",
+        )
+    if program.access_type == "circle_only" and not has_circle_access(user):
+        raise ApiError(
+            "Active WSF Circle membership is required to enroll in this program.", 403, code="circle_required"
         )
 
     existing = LearningEnrollment.query.filter_by(learning_program_id=program.id, user_id=user.id).first()
@@ -82,6 +92,30 @@ def enroll(program, user):
 
     db.session.commit()
     return enrollment, True
+
+
+def fetch_protected_curriculum(enrollment):
+    """The actual protected-curriculum check behind
+    GET /learning-enrollments/{id}/curriculum (spec section H) — raises
+    the same reason codes app/services/learning_access.py's
+    curriculum_access_state produces, mapped to their HTTP status, so a
+    denial here and the owner payload's `access_reason` always agree.
+    Returns the owning Program on success; the route dumps its modules
+    with the FULL curriculum schema (content, external_url, safe
+    article/resource refs) since access has already been verified.
+    """
+    can_access, reason = curriculum_access_state(enrollment, enrollment.user)
+    if not can_access:
+        if reason == "enrollment_withdrawn":
+            raise ApiError("This enrollment has been withdrawn.", 409, code="enrollment_withdrawn")
+        if reason == "program_unavailable":
+            raise ApiError("This learning program is no longer available.", 409, code="program_unavailable")
+        if reason == "circle_required":
+            raise ApiError(
+                "Active WSF Circle membership is required to access this curriculum.", 403, code="circle_required"
+            )
+        raise ApiError("You do not have access to this curriculum.", 403, code="access_denied")
+    return enrollment.learning_program
 
 
 def withdraw(enrollment, user):
@@ -110,6 +144,17 @@ def _check_progress_allowed(enrollment, lesson):
     # lesson complete through an enrollment belonging to another program").
     if lesson.module is None or lesson.module.learning_program_id != enrollment.learning_program_id:
         raise ApiError("This lesson does not belong to this enrollment's program.", 403, code="forbidden")
+    # circle_only: a Circle subscription that has since lapsed must block
+    # further progress mutation WITHOUT touching any existing
+    # LearningLessonProgress row or completed_at — the enrollment and its
+    # earned progress are historical learner records (spec section F/I);
+    # access simply returns automatically once Circle access does.
+    if program.access_type == "circle_only" and not has_circle_access(enrollment.user):
+        raise ApiError(
+            "Active WSF Circle membership is required to update progress in this program.",
+            403,
+            code="circle_required",
+        )
 
 
 def mark_lesson_complete(enrollment, lesson):
@@ -152,10 +197,21 @@ def serialize_enrollment_for_owner(enrollment, program_summary_schema):
     archived program's hidden curriculum is never leaked through this
     endpoint regardless of its current status (spec: "the enrollment
     should not leak hidden curriculum" through the account endpoint).
+
+    `can_access_curriculum`/`access_reason` (spec section J) are the one
+    learner-facing "why can't I see this" state, computed by
+    app/services/learning_access.py's curriculum_access_state — My
+    Learning uses this to distinguish "program exists" from "your Circle
+    access is currently paused" without exposing any
+    CircleSubscription id/provider/payment detail (none of which this
+    function ever reads in the first place). `program_available` stays
+    purely about program status, never overloaded to mean Circle
+    entitlement.
     """
     program = enrollment.learning_program
     summary = progress_summary(enrollment, program)
     current_lesson_ids = set(_current_lesson_ids(program))
+    can_access_curriculum, access_reason = curriculum_access_state(enrollment, enrollment.user)
     return {
         "id": enrollment.id,
         "status": enrollment.status,
@@ -172,5 +228,7 @@ def serialize_enrollment_for_owner(enrollment, program_summary_schema):
         # aggregate count/percent above isn't enough for that).
         "completed_lesson_ids": sorted(p.lesson_id for p in enrollment.lesson_progress if p.lesson_id in current_lesson_ids),
         "program_available": program.status == "published",
+        "can_access_curriculum": can_access_curriculum,
+        "access_reason": access_reason,
         "program": program_summary_schema.dump(program),
     }

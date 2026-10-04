@@ -47,9 +47,10 @@ const DELIVERY_MODES = [
   { value: 'hybrid', label: 'Hybrid' },
 ]
 const ACCESS_TYPES = [
-  { value: 'free', label: 'Free — publicly accessible, no login or checkout' },
-  { value: 'external', label: 'External — sends visitors to a safe external enrollment URL' },
-  { value: 'product', label: 'Product — linked to an existing Product for commercial access' },
+  { value: 'free', label: 'Free — publicly accessible' },
+  { value: 'circle_only', label: 'WSF Circle — active Circle membership required' },
+  { value: 'external', label: 'External — enrollment hosted elsewhere' },
+  { value: 'product', label: 'Product — commercial access via Shop' },
 ]
 const LESSON_TYPES = [
   { value: 'text', label: 'Text' },
@@ -534,7 +535,7 @@ export default function AdminLearningProgramEditor() {
         actions={
           <>
             <StatusBadge status={form.status} />
-            {!isNew && form.accessType === 'free' && (
+            {!isNew && (form.accessType === 'free' || form.accessType === 'circle_only') && (
               <Link to={`/admin/learning/${id}/enrollments`} className="btn-secondary !px-4 !py-2 text-xs">
                 <Users size={14} /> Enrollments
               </Link>
@@ -692,6 +693,12 @@ export default function AdminLearningProgramEditor() {
                 </Field>
                 {externalWithoutUrl && <p className="text-xs text-amber-700">An external URL is required before publishing.</p>}
               </>
+            )}
+            {form.accessType === 'circle_only' && (
+              <p className="text-xs text-charcoal-600/70">
+                No Product or external URL needed — access is granted by an active WSF Circle membership
+                (checked automatically). Circle membership pricing lives in the Circle Plan, not here.
+              </p>
             )}
           </Section>
 

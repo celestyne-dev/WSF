@@ -56,6 +56,30 @@ class LearningModuleSchema(ma.SQLAlchemyAutoSchema):
         exclude = ("learning_program_id",)
 
 
+class LearningLessonOutlineSchema(ma.Schema):
+    """SAFE curriculum-outline shape — deliberately excludes `content`,
+    `external_url`, and the article/resource target details (spec
+    section C). Used for circle_only/external/product public detail;
+    `free` programs keep the full LearningLessonSchema above since
+    `free` explicitly means publicly accessible with no login required.
+    """
+
+    id = fields.Integer(dump_only=True)
+    title = fields.String(dump_only=True)
+    lesson_type = fields.String(dump_only=True, data_key="lessonType")
+    summary = fields.String(dump_only=True)
+    duration_minutes = fields.Integer(dump_only=True, data_key="durationMinutes")
+    sort_order = fields.Integer(dump_only=True, data_key="sortOrder")
+
+
+class LearningModuleOutlineSchema(ma.Schema):
+    id = fields.Integer(dump_only=True)
+    title = fields.String(dump_only=True)
+    description = fields.String(dump_only=True)
+    sort_order = fields.Integer(dump_only=True, data_key="sortOrder")
+    lessons = fields.Nested(LearningLessonOutlineSchema, many=True, dump_only=True)
+
+
 _INSTRUCTOR_ONLY = ("id", "slug", "name", "role", "photo")
 
 
@@ -123,11 +147,30 @@ class LearningProgramSchema(ma.SQLAlchemyAutoSchema):
         ]
 
 
-def public_learning_program_schema(many=False):
-    """Public detail — see LearningProgramSchema's own docstring for why
-    nothing further needs excluding here.
+class LearningProgramOutlineSchema(LearningProgramSchema):
+    """Identical to LearningProgramSchema except `modules` is the SAFE
+    OUTLINE shape (spec section C) — used for circle_only/external/
+    product public detail, where protected lesson content/external_url/
+    article+resource target details must never be publicly exposed.
+    Everything else about the program (title, overview, instructor,
+    product/external_url CTA, etc.) stays identical to the full schema,
+    since only the curriculum itself is restricted.
     """
-    return LearningProgramSchema(many=many)
+
+    modules = fields.Nested(LearningModuleOutlineSchema, many=True, dump_only=True)
+
+
+def public_learning_program_schema(program=None, many=False):
+    """Public detail — `free` keeps the full curriculum (spec section D:
+    "no login required to read lessons"); circle_only/external/product
+    get the safe outline instead (see LearningProgramOutlineSchema).
+    `program=None`/`many=True` (list contexts) default to the full shape
+    since callers that need outline-only behavior always pass a single
+    program instance.
+    """
+    if many or program is None or program.access_type == "free":
+        return LearningProgramSchema(many=many)
+    return LearningProgramOutlineSchema(many=many)
 
 
 def learning_program_summary_schema(many=False):

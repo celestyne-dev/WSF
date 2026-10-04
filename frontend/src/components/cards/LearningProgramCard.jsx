@@ -10,10 +10,14 @@ const PROGRAM_TYPE_LABEL = {
 }
 
 function accessLabel(program) {
-  if (program.accessType === 'product' && program.product) {
-    return program.product.price ? formatCurrency(program.product.price, program.product.currency) : 'Paid'
+  if (program.accessType === 'circle_only') return 'WSF Circle'
+  if (program.accessType === 'product') {
+    if (program.product) {
+      return program.product.price ? formatCurrency(program.product.price, program.product.currency) : 'Premium'
+    }
+    return 'Premium'
   }
-  if (program.accessType === 'external') return 'External enrollment'
+  if (program.accessType === 'external') return 'External'
   return 'Free'
 }
 

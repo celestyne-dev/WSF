@@ -72,7 +72,7 @@ function mapLesson(l) {
   }
 }
 
-function mapModule(m) {
+export function mapModule(m) {
   if (!m) return null
   return {
     id: m.id,
@@ -111,6 +111,11 @@ export function mapLearningProgram(p) {
     deliveryMode: p.delivery_mode ?? p.deliveryMode ?? 'self_paced',
     events: Array.isArray(p.events) ? p.events.map(mapEventRef) : [],
     accessType: p.access_type ?? p.accessType ?? 'free',
+    // UI guidance only (spec section K) — never authoritative. The
+    // backend's public detail payload sets these directly (not via the
+    // marshmallow schema), already camelCase.
+    requiresCircle: !!p.requiresCircle,
+    viewerCanAccess: p.viewerCanAccess ?? (p.access_type ?? p.accessType) === 'free',
     product: mapProductRef(p.product),
     externalUrl: p.external_url ?? p.externalUrl ?? null,
     modules: Array.isArray(p.modules) ? p.modules.map(mapModule) : [],

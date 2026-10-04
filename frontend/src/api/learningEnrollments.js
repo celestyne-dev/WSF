@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import { mapLearningProgram } from './learning'
+import { mapLearningProgram, mapModule } from './learning'
 
 // First-party WSF Learning enrollment + lesson-progress tracking — free
 // published programs only (see backend app/services/learning_enrollments.py
@@ -18,6 +18,13 @@ function mapEnrollment(e) {
     progressPercent: e.progress_percent,
     completedLessonIds: Array.isArray(e.completed_lesson_ids) ? e.completed_lesson_ids : [],
     programAvailable: e.program_available !== false,
+    // Owner-only safe access state (spec section J) — never a provider/
+    // payment id, just whether THIS learner can currently see the
+    // protected curriculum and, if not, a stable reason the UI can
+    // render a clear message from (never overloaded onto
+    // programAvailable, which stays purely about program status).
+    canAccessCurriculum: e.can_access_curriculum ?? e.canAccessCurriculum ?? true,
+    accessReason: e.access_reason ?? e.accessReason ?? null,
     program: mapLearningProgram(e.program),
   }
 }
@@ -58,6 +65,17 @@ export async function fetchMyLearningEnrollments(params = {}) {
     items: (data.items || []).map(mapEnrollment),
     pagination: data.pagination,
   }
+}
+
+// The protected curriculum (spec section H) — full lesson content,
+// returned only once the backend confirms ownership + enrollment/
+// program availability + program-content eligibility (free, or
+// circle_only with current Circle access). Never fall back to the
+// public outline on failure here — the caller must show a clear
+// "access required" state instead of stale content.
+export async function fetchProtectedCurriculum(enrollmentId) {
+  const { data } = await apiClient.get(`/learning-enrollments/${enrollmentId}/curriculum`)
+  return Array.isArray(data) ? data.map(mapModule) : []
 }
 
 export async function withdrawFromProgram(enrollmentId) {

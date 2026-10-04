@@ -36,6 +36,7 @@ from app.schemas.learning import (
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.homepage import validate_cta_url
 from app.services.audit import log_action
+from app.services.learning_access import can_access_program_content
 from app.services.learning_enrollments import progress_summary
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.pagination import paginate
@@ -51,6 +52,21 @@ def _require_active_user():
     verify_jwt_in_request()
     if not current_user or not current_user.is_active:
         raise ApiError("Account is inactive or no longer exists.", 403, code="forbidden")
+    return current_user
+
+
+def _current_user_or_none():
+    """Optional-auth viewer resolution for the public endpoints below —
+    anonymous access is always preserved (a missing/invalid token never
+    raises); only used to compute the safe `viewerCanAccess` hint, never
+    as authorization itself (see app/services/learning_access.py).
+    """
+    try:
+        verify_jwt_in_request(optional=True)
+    except Exception:
+        return None
+    if not current_user or not current_user.is_active:
+        return None
     return current_user
 
 
@@ -208,12 +224,26 @@ class LearningProgramPublicListResource(Resource):
         return success_response(result["items"], meta=result["meta"])
 
 
+def build_public_program_payload(program, viewer):
+    """The public detail payload — full curriculum for `free`, a SAFE
+    OUTLINE for circle_only/external/product (see
+    public_learning_program_schema). `requiresCircle`/`viewerCanAccess`
+    are UI guidance only (spec section K) — the real rule is
+    app/services/learning_access.py's can_access_program_content, never
+    re-derived here; backend endpoints remain the actual authority.
+    """
+    payload = public_learning_program_schema(program).dump(program)
+    payload["requiresCircle"] = program.access_type == "circle_only"
+    payload["viewerCanAccess"] = can_access_program_content(program, viewer)
+    return payload
+
+
 class LearningProgramPublicDetailResource(Resource):
     def get(self, slug):
         program = LearningProgram.query.filter_by(slug=slug, status="published").first()
         if program is None:
             raise ApiError("Learning program not found.", 404, code="not_found")
-        return success_response(public_learning_program_schema().dump(program))
+        return success_response(build_public_program_payload(program, _current_user_or_none()))
 
 
 class AdminLearningProgramListResource(Resource):

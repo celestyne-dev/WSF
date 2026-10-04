@@ -12,11 +12,12 @@ from app.auth.decorators import active_user_required
 from app.extensions import db
 from app.models.learning import LearningLesson
 from app.models.learning_enrollment import LearningEnrollment
-from app.schemas.learning import learning_program_summary_schema
+from app.schemas.learning import LearningModuleSchema, learning_program_summary_schema
 from app.services.email import send_email
 from app.services.learning_enrollments import (
     enroll,
     fetch_program_or_404,
+    fetch_protected_curriculum,
     mark_lesson_complete,
     mark_lesson_incomplete,
     serialize_enrollment_for_owner,
@@ -124,6 +125,23 @@ class LearningEnrollmentWithdrawResource(Resource):
         return success_response({"enrollment": _dump_enrollment(enrollment)})
 
 
+class LearningEnrollmentCurriculumResource(Resource):
+    """The protected curriculum endpoint (spec section H) — the ONE place
+    an enrolled learner's full curriculum (lesson content, external
+    URLs, safe Article/Resource refs) is ever returned, and only after
+    app/services/learning_enrollments.py's fetch_protected_curriculum
+    confirms ownership + enrollment/program availability + program-
+    content eligibility (free, or circle_only with current Circle
+    access) via the one central app/services/learning_access.py rule.
+    """
+
+    @active_user_required
+    def get(self, enrollment_id):
+        enrollment = _fetch_owned_enrollment_or_404(enrollment_id, current_user)
+        program = fetch_protected_curriculum(enrollment)
+        return success_response(LearningModuleSchema(many=True).dump(program.modules))
+
+
 class LearningLessonCompletionResource(Resource):
     @active_user_required
     def post(self, enrollment_id, lesson_id):
@@ -144,4 +162,5 @@ api.add_resource(LearningEnrollmentListResource, "")
 api.add_resource(LearningEnrollmentCheckResource, "/check")
 api.add_resource(LearningEnrollmentMeResource, "/me")
 api.add_resource(LearningEnrollmentWithdrawResource, "/<int:enrollment_id>/withdraw")
+api.add_resource(LearningEnrollmentCurriculumResource, "/<int:enrollment_id>/curriculum")
 api.add_resource(LearningLessonCompletionResource, "/<int:enrollment_id>/lessons/<int:lesson_id>/complete")

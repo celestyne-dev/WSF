@@ -31,6 +31,11 @@ function EnrollmentRow({ item, onWithdraw, onResume, busy }) {
   if (!program) return null
 
   const unavailable = item.programAvailable === false
+  // Circle entitlement lapsed (spec section Q) — the enrollment row and
+  // its progress stay exactly as-is; only the "Continue learning" action
+  // is replaced, and only while the program is otherwise available. The
+  // learner's own Withdraw action is unaffected and never automatic.
+  const circleAccessLapsed = !unavailable && item.status === 'active' && item.canAccessCurriculum === false && item.accessReason === 'circle_required'
 
   return (
     <div>
@@ -50,6 +55,9 @@ function EnrollmentRow({ item, onWithdraw, onResume, busy }) {
             <span className="font-semibold text-rose-600">This learning program is no longer available.</span>
           ) : (
             <>
+              {circleAccessLapsed && (
+                <span className="font-semibold text-rose-600">Your WSF Circle access is currently inactive.</span>
+              )}
               {item.status === 'active' && item.completedAt && (
                 <span className="font-semibold text-emerald-700">Completed {formatDate(item.completedAt)}</span>
               )}
@@ -64,7 +72,12 @@ function EnrollmentRow({ item, onWithdraw, onResume, busy }) {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {!unavailable && item.status === 'active' && (
+          {!unavailable && item.status === 'active' && circleAccessLapsed && (
+            <Link to="/circle" className="font-semibold text-burgundy-600 hover:underline">
+              Explore WSF Circle
+            </Link>
+          )}
+          {!unavailable && item.status === 'active' && !circleAccessLapsed && (
             <Link to={`/learning/${program.slug}#curriculum`} className="font-semibold text-burgundy-600 hover:underline">
               Continue learning
             </Link>
