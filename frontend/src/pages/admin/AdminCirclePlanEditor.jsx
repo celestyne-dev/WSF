@@ -298,7 +298,7 @@ export default function AdminCirclePlanEditor() {
                   ))}
                 </select>
               </Field>
-              <Field label="Price" hint="whole units, e.g. 1000 = $10.00 if USD treats it as cents — follow your own currency's convention">
+              <Field label="Price" hint="whole currency units — enter 10 for USD 10, 1000 for KES 1,000">
                 <input type="number" min="0" value={form.price} onChange={(e) => updateField('price', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
               <Field label="Currency" hint="ISO code, e.g. USD, KES, EUR">
