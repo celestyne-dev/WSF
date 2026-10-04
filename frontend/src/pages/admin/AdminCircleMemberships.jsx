@@ -19,9 +19,12 @@ export default function AdminCircleMemberships() {
 
   useEffect(() => {
     let active = true
-    setError(null)
     fetchCircleSubscriptions({ q: query || undefined, status: status || undefined, page, perPage: 25 })
-      .then((res) => active && setResult(res))
+      .then((res) => {
+        if (!active) return
+        setResult(res)
+        setError(null)
+      })
       .catch(() => active && setError('Something went wrong loading WSF Circle memberships. Please try again.'))
     return () => {
       active = false

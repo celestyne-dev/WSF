@@ -91,7 +91,15 @@ export default function AdminCirclePlanEditor() {
   const navigate = useNavigate()
   const isNew = !slug
 
-  const [form, setForm] = useState(undefined)
+  // Lazy-initialized rather than set from an effect: a brand-new plan's
+  // blank form has no async dependency, so it's known synchronously at
+  // mount from the route (isNew is already correct at that point — see
+  // AppRoutes.jsx's separate "circle/plans/new" vs "circle/plans/:id"
+  // routes). Navigating new -> the newly created slug (see handleSave
+  // below) re-renders this same mounted instance rather than remounting
+  // it, so this initializer does not re-run then; the effect below picks
+  // up that slug/isNew change and fetches the real record instead.
+  const [form, setForm] = useState(() => (isNew ? blankForm() : undefined))
   const [newBenefit, setNewBenefit] = useState('')
   const [notFound, setNotFound] = useState(false)
   const [slugTouched, setSlugTouched] = useState(!isNew)
@@ -100,10 +108,7 @@ export default function AdminCirclePlanEditor() {
   const [loadError, setLoadError] = useState(null)
 
   useEffect(() => {
-    if (isNew) {
-      setForm(blankForm())
-      return undefined
-    }
+    if (isNew) return undefined
     let active = true
     fetchAdminCirclePlan(slug)
       .then((existing) => {

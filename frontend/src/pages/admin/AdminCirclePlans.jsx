@@ -17,9 +17,12 @@ export default function AdminCirclePlans() {
 
   useEffect(() => {
     let active = true
-    setError(null)
     fetchAdminCirclePlans({ status: status || undefined })
-      .then((res) => active && setRows(res))
+      .then((res) => {
+        if (!active) return
+        setRows(res)
+        setError(null)
+      })
       .catch(() => active && setError('Something went wrong loading WSF Circle plans. Please try again.'))
     return () => {
       active = false
