@@ -160,6 +160,35 @@ def create_app(config_name="development"):
         # any count derived from user data.
         return success_response({"status": "ok"})
 
+    @app.get("/sitemap.xml")
+    def sitemap():
+        # Deliberately NOT under /api/v1 — the sitemap protocol restricts
+        # a sitemap file to only listing URLs at or below its own path, so
+        # nested under /api/v1 it could never validly list a page like
+        # /jobs/some-slug. See deploy/nginx/*.conf.example's dedicated
+        # `location = /sitemap.xml` block, which is what actually routes
+        # this bare path to Gunicorn in production (the SPA fallback would
+        # otherwise swallow it, same reasoning as the /media/ exception).
+        from flask import Response
+
+        from app.services.sitemap import build_sitemap_xml
+
+        xml_bytes = build_sitemap_xml(app.config["PUBLIC_SITE_URL"])
+        return Response(xml_bytes, mimetype="application/xml")
+
+    @app.get("/robots.txt")
+    def robots():
+        # Same reasoning and same nginx exact-match pattern as /sitemap.xml
+        # above — this is what lets the Sitemap: directive read the real
+        # configured PUBLIC_SITE_URL instead of a value hard-coded into a
+        # static file (see frontend/public/robots.txt's own comment: that
+        # file deliberately has no Sitemap: line any more).
+        from flask import Response
+
+        from app.services.sitemap import build_robots_txt
+
+        return Response(build_robots_txt(app.config["PUBLIC_SITE_URL"]), mimetype="text/plain")
+
     @app.after_request
     def set_security_headers(response):
         # A conservative, framework-agnostic baseline that doesn't risk

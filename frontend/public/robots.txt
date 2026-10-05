@@ -3,6 +3,14 @@
 # excluded here as a courtesy signal, not as access control — the real
 # protection is the backend's own authentication (see DEPLOYMENT.md's
 # security checklist).
+#
+# This static file has no Sitemap: directive on purpose — it can't read
+# backend/config.py's PUBLIC_SITE_URL at build time, and hard-coding the
+# production domain here was rejected (see app/__init__.py's /robots.txt
+# route and app/services/sitemap.py's build_robots_txt()). In production,
+# nginx routes the bare /robots.txt path to that backend route instead of
+# this static file (see deploy/nginx/*.conf.example's exact-match
+# location block) — this file only matters where the backend isn't
+# fronting the static build (e.g. `vite preview` on its own).
 User-agent: *
 Disallow: /admin/
-

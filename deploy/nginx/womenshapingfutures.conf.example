@@ -10,6 +10,8 @@
 #   https://womenshapingfutures.org/            -> React/Vite static build
 #   https://womenshapingfutures.org/api/...      -> Gunicorn (Flask) on 127.0.0.1:8000
 #   https://womenshapingfutures.org/media/...    -> media files on disk (Nginx serves directly, Flask never in this path)
+#   https://womenshapingfutures.org/sitemap.xml  -> Gunicorn (Flask) on 127.0.0.1:8000 (must be exactly this path — see app/__init__.py's /sitemap.xml route docstring for why it can't live under /api/)
+#   https://womenshapingfutures.org/robots.txt   -> Gunicorn (Flask) on 127.0.0.1:8000 (so its Sitemap: line reads the real configured PUBLIC_SITE_URL — see app/__init__.py's /robots.txt route)
 #   everything else under a client-side route    -> index.html (SPA fallback)
 
 # ---------------------------------------------------------------------
@@ -83,6 +85,38 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         # Matches app/__init__.py's TRUSTED_PROXY_COUNT=1 and
         # gunicorn.conf.py's forwarded_allow_ips — exactly one hop.
+    }
+
+    # --- Sitemap: proxy to Gunicorn, same as /api/ ---------------------
+    # Must be an exact match (not a prefix) and must come before the SPA
+    # fallback below — the sitemap protocol restricts a sitemap file to
+    # only listing URLs at or below its own path, so this can never be
+    # served from under /api/ (it would then only be allowed to list
+    # /api/... URLs). Without this block the SPA fallback's `try_files`
+    # would swallow /sitemap.xml and return index.html instead.
+    location = /sitemap.xml {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # --- robots.txt: proxy to Gunicorn too, same reasoning -------------
+    # The frontend build still ships a static frontend/public/robots.txt
+    # (Vite copies it to dist/robots.txt), but this exact-match block
+    # takes priority regardless, so Flask's version — whose Sitemap: line
+    # reads the real configured PUBLIC_SITE_URL instead of a hard-coded
+    # domain — is what's actually served in production. The static file
+    # only matters for a frontend-only preview with no backend behind it.
+    location = /robots.txt {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     # --- Media: served directly by Nginx, never proxied to Flask -----
