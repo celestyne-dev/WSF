@@ -80,6 +80,8 @@ const AdminLearningProgramEditor = lazy(() => import('../pages/admin/AdminLearni
 const AdminLearningEnrollments = lazy(() => import('../pages/admin/AdminLearningEnrollments'))
 const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
+const AdminOrders = lazy(() => import('../pages/admin/AdminOrders'))
+const AdminOrderDetail = lazy(() => import('../pages/admin/AdminOrderDetail'))
 const AdminCirclePlans = lazy(() => import('../pages/admin/AdminCirclePlans'))
 const AdminCirclePlanEditor = lazy(() => import('../pages/admin/AdminCirclePlanEditor'))
 const AdminCircleMemberships = lazy(() => import('../pages/admin/AdminCircleMemberships'))
@@ -270,6 +272,8 @@ export default function AppRoutes() {
           <Route path="products" element={<AdminProducts />} />
           <Route path="products/new" element={<AdminProductEditor />} />
           <Route path="products/:id" element={<AdminProductEditor />} />
+          <Route path="orders" element={<AdminOrders />} />
+          <Route path="orders/:uuid" element={<AdminOrderDetail />} />
           <Route path="circle/plans" element={<AdminCirclePlans />} />
           <Route path="circle/plans/new" element={<AdminCirclePlanEditor />} />
           <Route path="circle/plans/:id" element={<AdminCirclePlanEditor />} />

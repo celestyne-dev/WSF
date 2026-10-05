@@ -39,6 +39,7 @@ import {
   Library,
   Bell,
   Sparkles,
+  Receipt,
 } from 'lucide-react'
 
 // The single source of truth for the CMS sidebar AND the route-level access
@@ -110,7 +111,10 @@ export const NAV_GROUPS = [
   },
   {
     heading: 'Shop',
-    items: [{ to: '/admin/products', icon: ShoppingBag, label: 'Products', permission: ['products.manage'] }],
+    items: [
+      { to: '/admin/products', icon: ShoppingBag, label: 'Products', permission: ['products.manage'] },
+      { to: '/admin/orders', icon: Receipt, label: 'Orders', permission: ['orders.manage'] },
+    ],
   },
   {
     heading: 'Learning',

@@ -40,6 +40,20 @@ const STYLES = {
   attended: 'bg-emerald-100 text-emerald-700',
   current: 'bg-blush-200 text-burgundy-700',
   withdrawn: 'bg-rose-100 text-rose-600',
+  // Orders CMS (order_status/payment_status/fulfillment_status — see
+  // backend app/models/commerce.py). Additive only — every key above is
+  // untouched.
+  confirmed: 'bg-blush-200 text-burgundy-700',
+  processing: 'bg-blush-200 text-burgundy-700',
+  refunded: 'bg-amber-100 text-amber-700',
+  unpaid: 'bg-taupe-200 text-charcoal-600',
+  paid: 'bg-emerald-100 text-emerald-700',
+  failed: 'bg-rose-100 text-rose-600',
+  partially_refunded: 'bg-amber-100 text-amber-700',
+  not_applicable: 'bg-taupe-100 text-charcoal-600/70',
+  unfulfilled: 'bg-taupe-200 text-charcoal-600',
+  shipped: 'bg-blush-200 text-burgundy-700',
+  delivered: 'bg-emerald-100 text-emerald-700',
 }
 
 // Editorial workflow states must not be distinguished by color alone (see
