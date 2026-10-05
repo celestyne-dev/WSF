@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock } from 'lucide-react'
 import { fetchEditorialCalendar } from '../../api/articles'
 import { fetchAuthors, fetchTopics } from '../../api/taxonomies'
 import { formatDate } from '../../utils/format'
@@ -11,6 +11,27 @@ import EmptyState from '../../components/ui/EmptyState'
 
 const STATUS_OPTIONS = ['approved', 'scheduled', 'published']
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// Mirrors StatusBadge's own approved/scheduled icon convention (not
+// imported from there — a named export alongside StatusBadge's default
+// component export would break React Fast Refresh for that file) so the
+// desktop month-grid cells below stay distinguishable the same way
+// StatusBadge already is: approved and scheduled share one color family,
+// so the icon — not color alone — is what tells them apart.
+const STATUS_ICONS = {
+  approved: CheckCircle2,
+  scheduled: Clock,
+}
+
+// bg-burgundy-500 and bg-emerald-500 are both already used elsewhere in
+// the app, so this introduces no new Tailwind utility — just reuses the
+// same color families StatusBadge uses for these statuses, compacted to a
+// small dot since the grid cells are too small for a full badge.
+const STATUS_DOT_COLOR = {
+  approved: 'bg-burgundy-500',
+  scheduled: 'bg-burgundy-500',
+  published: 'bg-emerald-500',
+}
 
 // The date the calendar cares about: scheduled_at while scheduled,
 // otherwise the effective publish date — see backend
@@ -198,17 +219,22 @@ export default function AdminEditorialCalendar() {
                   >
                     <p className="text-[11px] font-semibold">{day.getDate()}</p>
                     <div className="mt-1 space-y-1">
-                      {dayItems.slice(0, 3).map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => openArticle(item)}
-                          className="block w-full truncate border-l-2 border-burgundy-400 bg-blush-100 px-1.5 py-0.5 text-left text-[11px] text-charcoal hover:bg-blush-200"
-                          title={item.title}
-                        >
-                          {item.title}
-                        </button>
-                      ))}
+                      {dayItems.slice(0, 3).map((item) => {
+                        const StatusIcon = STATUS_ICONS[item.status]
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => openArticle(item)}
+                            className="flex w-full items-center gap-1 truncate bg-blush-100 px-1.5 py-0.5 text-left text-[11px] text-charcoal hover:bg-blush-200"
+                            title={`${item.title} — ${item.status}`}
+                          >
+                            <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT_COLOR[item.status] || 'bg-taupe-400'}`} aria-hidden="true" />
+                            {StatusIcon && <StatusIcon size={10} className="shrink-0" aria-hidden="true" />}
+                            <span className="truncate">{item.title}</span>
+                          </button>
+                        )
+                      })}
                       {dayItems.length > 3 && <p className="text-[10px] text-charcoal-600/70">+{dayItems.length - 3} more</p>}
                     </div>
                   </div>

@@ -6,6 +6,22 @@ import StatusBadge from './StatusBadge'
 import ConfirmDialog from './ConfirmDialog'
 import { formatDate } from '../../utils/format'
 
+// Explains why the panel below shows the actions it does for the current
+// status — e.g. a brand-new draft only offers "Submit for review" for
+// every role, including super_admin, because the workflow requires
+// Approved (or Scheduled) before Publish becomes available; it is never a
+// sign that another account must act first. Purely explanatory copy — it
+// does not change which buttons render or what any of them do.
+const WORKFLOW_HELP = {
+  draft: 'Draft — submit for review before this article can be approved and published.',
+  in_review: 'In review — approve it yourself, or request changes to send it back.',
+  changes_requested: 'Changes requested — move back to draft or resubmit once updated.',
+  approved: 'Approved — ready to publish now, or schedule for a future date/time.',
+  scheduled: 'Scheduled — will publish automatically at the time shown above.',
+  published: 'Published — live on the site now.',
+  archived: 'Archived — no longer publicly visible.',
+}
+
 /**
  * The editorial workflow action panel for AdminArticleEditor — shows the
  * current status, the effective publication/schedule time, and only the
@@ -94,6 +110,8 @@ export default function ArticleWorkflowPanel({
           </div>
         )}
       </dl>
+
+      {WORKFLOW_HELP[status] && <p className="mt-3 text-xs text-charcoal-600/80">{WORKFLOW_HELP[status]}</p>}
 
       <div className="mt-4 space-y-2">
         {status === 'draft' && (

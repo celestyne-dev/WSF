@@ -105,17 +105,25 @@ function BlockShell({ label, icon: Icon, onMoveUp, onMoveDown, onRemove, canMove
   )
 }
 
-const inputClass = 'w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
+// Width-free so callers can compose their own width utility instead of
+// fighting the baked-in `w-full` below — see HeadingBlock, where the level
+// `<select>` needs a fixed width instead of full width (pairing `w-full`
+// and `w-24` on the same element is a no-op/bug: Tailwind's generated
+// stylesheet always places `.w-full` after `.w-24`, so `.w-full` wins
+// regardless of class order in the JSX, silently crushing the sibling
+// field's share of the row).
+const inputBaseClass = 'border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
+const inputClass = `w-full ${inputBaseClass}`
 
 function HeadingBlock({ block, onChange }) {
   return (
     <div className="flex gap-2">
-      <select value={block.level || 2} onChange={(e) => onChange({ ...block, level: Number(e.target.value) })} className={`${inputClass} w-24 shrink-0`}>
+      <select value={block.level || 2} onChange={(e) => onChange({ ...block, level: Number(e.target.value) })} className={`${inputBaseClass} w-24 shrink-0`}>
         <option value={2}>H2</option>
         <option value={3}>H3</option>
         <option value={4}>H4</option>
       </select>
-      <input value={block.text || ''} onChange={(e) => onChange({ ...block, text: e.target.value })} placeholder="Heading text" className={inputClass} />
+      <input value={block.text || ''} onChange={(e) => onChange({ ...block, text: e.target.value })} placeholder="Heading text" className={`${inputBaseClass} min-w-0 flex-1`} />
     </div>
   )
 }

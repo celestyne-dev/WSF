@@ -41,6 +41,41 @@ def editor_token(client, app):
     return login.get_json()["data"]["access_token"]
 
 
+SUPER_ADMIN_PAYLOAD = {
+    "email": "workflow-super-admin@example.com",
+    "password": "supersecret1",
+    "first_name": "Root",
+    "last_name": "Admin",
+}
+
+
+@pytest.fixture()
+def super_admin_token(client, app):
+    """A `super_admin` user — seeded with every Permission row via the "*"
+    expansion in rbac.py's seed_roles_and_permissions(), rather than an
+    explicit permission list like every other role. Used to prove the
+    editorial-workflow audit's finding in code: super_admin already holds
+    articles.manage/articles.publish and can walk the full workflow
+    unassisted, exactly like an editor token — it's just gated by the same
+    one-step-at-a-time state machine as everyone else, not missing any
+    permission.
+    """
+    from app.extensions import db
+    from app.models.user import Role, User
+
+    client.post("/api/v1/auth/register", json=SUPER_ADMIN_PAYLOAD)
+    with app.app_context():
+        user = User.query.filter_by(email=SUPER_ADMIN_PAYLOAD["email"]).first()
+        role = Role.query.filter_by(name="super_admin").first()
+        user.roles.append(role)
+        db.session.commit()
+
+    login = client.post(
+        "/api/v1/auth/login", json={"email": SUPER_ADMIN_PAYLOAD["email"], "password": SUPER_ADMIN_PAYLOAD["password"]}
+    )
+    return login.get_json()["data"]["access_token"]
+
+
 @pytest.fixture()
 def author_user_token(client, app):
     """A plain "author" role — articles.create/edit_own only, no manage/
@@ -172,6 +207,53 @@ def test_request_changes_and_return_to_draft(client, editor_token, author_slug):
         assert entry.changes.get("note") == "Please add a stronger lede."
         # Never a full Article body in the audit trail.
         assert "content" not in entry.changes
+
+
+# ---------------------------------------------------------------------------
+# Super Admin — proves the editorial-workflow audit's finding: super_admin
+# already holds articles.manage/articles.publish and can walk the full
+# workflow unassisted, identically to an editor token. No other workflow
+# test in this file uses a super_admin token, which was a real coverage
+# gap the audit flagged — this closes it without changing any RBAC/
+# transition code.
+# ---------------------------------------------------------------------------
+
+
+def test_super_admin_can_submit_approve_and_publish(client, super_admin_token, author_slug):
+    slug = _create_draft(client, super_admin_token, author_slug, title="Super Admin Direct Publish")
+
+    submit = client.post(f"/api/v1/articles/{slug}/submit-review", headers=auth_headers(super_admin_token))
+    assert submit.status_code == 200
+    assert submit.get_json()["data"]["status"] == "in_review"
+
+    approve = client.post(f"/api/v1/articles/{slug}/approve", headers=auth_headers(super_admin_token))
+    assert approve.status_code == 200
+    assert approve.get_json()["data"]["status"] == "approved"
+
+    publish = client.post(f"/api/v1/articles/{slug}/publish", headers=auth_headers(super_admin_token))
+    assert publish.status_code == 200
+    assert publish.get_json()["data"]["status"] == "published"
+
+    public = client.get(f"/api/v1/articles/{slug}")
+    assert public.status_code == 200
+
+
+def test_super_admin_can_schedule_and_publish(client, super_admin_token, author_slug):
+    slug = _create_draft(client, super_admin_token, author_slug, title="Super Admin Scheduled Publish")
+    client.post(f"/api/v1/articles/{slug}/submit-review", headers=auth_headers(super_admin_token))
+    client.post(f"/api/v1/articles/{slug}/approve", headers=auth_headers(super_admin_token))
+
+    schedule = client.post(
+        f"/api/v1/articles/{slug}/schedule",
+        json={"scheduledAt": _future_iso()},
+        headers=auth_headers(super_admin_token),
+    )
+    assert schedule.status_code == 200
+    assert schedule.get_json()["data"]["status"] == "scheduled"
+
+    publish = client.post(f"/api/v1/articles/{slug}/publish", headers=auth_headers(super_admin_token))
+    assert publish.status_code == 200
+    assert publish.get_json()["data"]["status"] == "published"
 
 
 # ---------------------------------------------------------------------------
