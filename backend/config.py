@@ -15,6 +15,19 @@ _DEV_SECRET_KEY = "dev-secret-change-me"
 _DEV_JWT_SECRET_KEY = "dev-jwt-secret-change-me-please-32-bytes-min"
 
 
+def _parse_currency_allowlist(raw_value, default):
+    """Shared by PAYSTACK_ALLOWED_CURRENCIES — split on commas, strip
+    whitespace, uppercase, drop empties. Pulled out as its own function
+    (rather than inlined in the Config class body, same as every other
+    env-parsed value here) purely so a test can exercise the parsing
+    rule directly without needing to reload this module under a
+    monkeypatched environment variable.
+    """
+    if not raw_value:
+        return list(default)
+    return [c.strip().upper() for c in raw_value.split(",") if c.strip()]
+
+
 class Config:
     ENV = "production"
     DEBUG = False
@@ -90,6 +103,33 @@ class Config:
     MPESA_CONSUMER_SECRET = os.environ.get("MPESA_CONSUMER_SECRET")
     MPESA_SHORTCODE = os.environ.get("MPESA_SHORTCODE")
     MPESA_PASSKEY = os.environ.get("MPESA_PASSKEY")
+
+    # Paystack — WSF Circle one-time membership-period payments (see
+    # app/services/paystack.py, app/models/circle.py's CirclePayment).
+    # Unrelated to the MPESA_* placeholders above, which are reserved for
+    # a possible future direct Safaricom Daraja integration; Paystack's
+    # own M-Pesa channel (for Kenyan customers) goes through Paystack's
+    # hosted checkout, never through those credentials.
+    #
+    # Disabled by default: importing/loading this app, and running its
+    # test suite, must never require a real Paystack secret key, and a
+    # deployment that hasn't deliberately opted in must never be able to
+    # accept a real charge. app/services/paystack.py checks this flag
+    # itself before ever making an outbound request, rather than relying
+    # on every caller to remember to check it.
+    PAYSTACK_ENABLED = os.environ.get("PAYSTACK_ENABLED", "false").strip().lower() in ("true", "1", "yes")
+    # Backend-only — never serialized into any API response, never sent to
+    # the frontend. The hosted-redirect checkout flow this integration
+    # uses has no need for a separate publishable/public key.
+    PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY")
+    # Currencies WSF has actually enabled for Circle payments — NOT every
+    # currency Paystack itself might support. Paystack's Kenya merchants
+    # are limited to KES/USD collection regardless of what's listed here,
+    # but this is WSF's own narrower allowlist within that, so a
+    # CirclePlan in some other ISO 4217 currency can never become
+    # Paystack-payable just by existing. Defaults to the single currency
+    # already confirmed usable (KES) rather than assuming USD is safe too.
+    PAYSTACK_ALLOWED_CURRENCIES = _parse_currency_allowlist(os.environ.get("PAYSTACK_ALLOWED_CURRENCIES"), ["KES"])
 
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
     API_URL = os.environ.get("API_URL", "http://localhost:5000/api/v1")

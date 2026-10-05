@@ -16,3 +16,5 @@ Pillow==10.4.0
 gunicorn==22.0.0
 bleach==6.4.0
 Flask-Limiter==3.8.0
+requests==2.32.3
+python-dateutil==2.9.0.post0
