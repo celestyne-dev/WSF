@@ -12,6 +12,16 @@ from app.models.geography import REGIONS
 JOB_STATUSES = ("draft", "review", "scheduled", "published", "expired", "archived")
 _JOB_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in JOB_STATUSES) + ")"
 
+# public: listing and its application channel (URL/email/instructions) are
+# visible to anyone who can see the job at all. circle_only: the listing
+# itself stays publicly discoverable (title, description, company, etc.)
+# but the application channel is withheld until the viewer has an active
+# WSF Circle subscription — orthogonal to status (WORKFLOW state) and to
+# jobs.create_own ownership (an owner can always manage their own listing
+# regardless of access_type or their own Circle membership).
+JOB_ACCESS_TYPES = ("public", "circle_only")
+_JOB_ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in JOB_ACCESS_TYPES) + ")"
+
 WORK_MODES = ("On-site", "Hybrid", "Remote")
 _WORK_MODE_CHECK_SQL = "work_mode IS NULL OR work_mode IN (" + ", ".join(f"'{w}'" for w in WORK_MODES) + ")"
 
@@ -59,6 +69,7 @@ class Job(db.Model):
         db.CheckConstraint(_CAREER_LEVEL_CHECK_SQL, name="ck_jobs_career_level"),
         db.CheckConstraint(_REMOTE_SCOPE_CHECK_SQL, name="ck_jobs_remote_scope"),
         db.CheckConstraint(_REMOTE_REGION_CHECK_SQL, name="ck_jobs_remote_region"),
+        db.CheckConstraint(_JOB_ACCESS_TYPE_CHECK_SQL, name="ck_jobs_access_type"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -121,6 +132,10 @@ class Job(db.Model):
     # record is linked.
     sponsor_id = db.Column(db.Integer, db.ForeignKey("sponsors.id"), nullable=True)
     status = db.Column(db.String(20), nullable=False, default="published")
+    # See JOB_ACCESS_TYPES — orthogonal to status (workflow state) and to
+    # the application mechanism (URL and/or email, always external either
+    # way).
+    access_type = db.Column(db.String(20), nullable=False, default="public")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
 
     posted_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)

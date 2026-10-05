@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useSelector } from 'react-redux'
+import { toast } from 'react-toastify'
 import { MapPin, Briefcase, Clock, DollarSign, AlertCircle, Calendar, Building2 } from 'lucide-react'
-import { fetchJobBySlug, fetchJobs } from '../api/jobs'
+import { fetchJobBySlug, fetchJobs, accessJob } from '../api/jobs'
 import { fetchOrganizationBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
 import { formatSalary, formatDate } from '../utils/format'
@@ -101,13 +103,55 @@ function useJobStructuredData(job, canonicalUrl) {
   }, [job, canonicalUrl])
 }
 
+// The one place a circle_only Job's gated application channel is
+// requested and opened — public jobs never call this (their
+// applicationUrl/applicationEmail already arrive on the detail response
+// itself). Backend remains authoritative either way: job.viewerCanAccess
+// is a UI guidance hint, not POST /access's own check. `circleAccess`
+// (the just-granted {applicationUrl, applicationEmail,
+// applicationInstructions}) is plain component state — never persisted
+// to Redux/localStorage/sessionStorage, and cleared on any failure
+// (URL+email+instructions together, as one unit) so a stale channel can
+// never linger in the UI.
+function CircleApplyCta({ job, accessToken, pending, circleAccess, onApply, onSignIn }) {
+  if (!accessToken) {
+    return (
+      <div className="mt-6 border border-taupe-200 bg-cream p-4">
+        <p className="text-sm font-semibold text-charcoal">WSF Circle role</p>
+        <button type="button" onClick={onSignIn} className="btn-primary mt-3 inline-flex">
+          Sign in to access application
+        </button>
+      </div>
+    )
+  }
+  if (!job.viewerCanAccess && !circleAccess) {
+    return (
+      <div className="mt-6 border border-taupe-200 bg-cream p-4">
+        <p className="text-sm font-semibold text-charcoal">Included with WSF Circle</p>
+        <Link to="/circle" className="btn-primary mt-3 inline-flex">
+          Explore WSF Circle
+        </Link>
+      </div>
+    )
+  }
+  return (
+    <button type="button" onClick={onApply} disabled={pending} className="btn-primary mt-6 inline-flex disabled:opacity-60">
+      {pending ? 'Preparing…' : 'Apply now'}
+    </button>
+  )
+}
+
 export default function JobDetailPage() {
   const { slug } = useParams()
+  const navigate = useNavigate()
+  const accessToken = useSelector((s) => s.auth.accessToken)
   const [job, setJob] = useState(undefined)
   const [company, setCompany] = useState(null)
   const [moreJobs, setMoreJobs] = useState([])
   const [relatedArticles, setRelatedArticles] = useState([])
   const [error, setError] = useState(null)
+  const [applying, setApplying] = useState(false)
+  const [circleAccess, setCircleAccess] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -116,6 +160,7 @@ export default function JobDetailPage() {
     setMoreJobs([])
     setRelatedArticles([])
     setError(null)
+    setCircleAccess(null)
 
     fetchJobBySlug(slug)
       .then((data) => {
@@ -168,6 +213,27 @@ export default function JobDetailPage() {
     trackEvent('job_apply_click', { jobSlug: job.slug, company: job.company })
   }
 
+  async function handleCircleApply() {
+    trackEvent('job_apply_click', { jobSlug: job.slug, company: job.company })
+    setApplying(true)
+    try {
+      const result = await accessJob(job.slug)
+      setCircleAccess(result)
+      const href = result.applicationUrl || (result.applicationEmail ? `mailto:${result.applicationEmail}` : null)
+      if (href) window.open(href, result.applicationUrl ? '_blank' : undefined, 'noopener,noreferrer')
+    } catch (err) {
+      setCircleAccess(null)
+      const code = err?.response?.data?.error?.code
+      if (code === 'circle_required') {
+        toast.error('WSF Circle access required.')
+      } else {
+        toast.error(err?.response?.data?.error?.message || 'Something went wrong. Please try again.')
+      }
+    } finally {
+      setApplying(false)
+    }
+  }
+
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this job" description={error} /></div>
   if (job === undefined) return <PageLoader />
   if (job === null) return <NotFoundPage />
@@ -196,6 +262,12 @@ export default function JobDetailPage() {
             <div className="mt-4 inline-flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
               <span className="font-semibold uppercase tracking-wide text-burgundy-600">Sponsored</span>
               <span>This listing is a paid placement from {job.company}.</span>
+            </div>
+          )}
+
+          {job.accessType === 'circle_only' && (
+            <div className="mt-4 inline-flex items-center gap-2 bg-plum-500/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-ivory">
+              WSF Circle
             </div>
           )}
 
@@ -258,6 +330,15 @@ export default function JobDetailPage() {
             <button type="button" disabled className="btn-secondary mt-6 inline-flex cursor-not-allowed opacity-60">
               Applications closed
             </button>
+          ) : job.accessType === 'circle_only' ? (
+            <CircleApplyCta
+              job={job}
+              accessToken={accessToken}
+              pending={applying}
+              circleAccess={circleAccess}
+              onApply={handleCircleApply}
+              onSignIn={() => navigate('/login')}
+            />
           ) : applyHref ? (
             <a href={applyHref} target={job.applicationUrl ? '_blank' : undefined} rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-6 inline-flex">
               {applyLabel}
@@ -329,17 +410,38 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {(job.applicationInstructions || applyHref) && !job.isClosed && (
-            <div className="mt-8 border border-taupe-200 bg-cream p-5">
-              <p className="text-sm font-semibold text-charcoal">How to apply</p>
-              {job.applicationInstructions && <p className="mt-1 text-sm text-charcoal-600">{job.applicationInstructions}</p>}
-              {applyHref && (
-                <a href={applyHref} target={job.applicationUrl ? '_blank' : undefined} rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-4 inline-flex">
-                  {applyLabel}
-                </a>
+          {job.accessType === 'circle_only'
+            ? circleAccess &&
+              !job.isClosed && (
+                <div className="mt-8 border border-taupe-200 bg-cream p-5">
+                  <p className="text-sm font-semibold text-charcoal">How to apply</p>
+                  {circleAccess.applicationInstructions && (
+                    <p className="mt-1 text-sm text-charcoal-600">{circleAccess.applicationInstructions}</p>
+                  )}
+                  {(circleAccess.applicationUrl || circleAccess.applicationEmail) && (
+                    <a
+                      href={circleAccess.applicationUrl || `mailto:${circleAccess.applicationEmail}`}
+                      target={circleAccess.applicationUrl ? '_blank' : undefined}
+                      rel="noreferrer"
+                      className="btn-primary mt-4 inline-flex"
+                    >
+                      {circleAccess.applicationUrl ? 'Apply now' : 'Email your application'}
+                    </a>
+                  )}
+                </div>
+              )
+            : (job.applicationInstructions || applyHref) &&
+              !job.isClosed && (
+                <div className="mt-8 border border-taupe-200 bg-cream p-5">
+                  <p className="text-sm font-semibold text-charcoal">How to apply</p>
+                  {job.applicationInstructions && <p className="mt-1 text-sm text-charcoal-600">{job.applicationInstructions}</p>}
+                  {applyHref && (
+                    <a href={applyHref} target={job.applicationUrl ? '_blank' : undefined} rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-4 inline-flex">
+                      {applyLabel}
+                    </a>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
           <div className="mt-10 border-t border-taupe-200 pt-6">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Share this role</p>

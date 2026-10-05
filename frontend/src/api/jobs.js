@@ -55,6 +55,11 @@ export function mapJob(j) {
     qualifications: asList(j.qualifications),
     skills: asList(j.skills),
     benefits: asList(j.benefits),
+    // Absent entirely for a circle_only job, or for any list item or
+    // closed listing (see backend's build_public_job_payload) — never
+    // cached or retried client-side; the POST /jobs/{slug}/access
+    // endpoint is the one authoritative source for a circle_only job's
+    // application channel.
     applicationUrl: j.application_url,
     applicationEmail: j.application_email,
     applicationInstructions: j.application_instructions,
@@ -69,6 +74,9 @@ export function mapJob(j) {
     seo: j.seo || null,
     publishedDate: j.published_date,
     expiryDate: j.expiry_date,
+    accessType: j.access_type || 'public',
+    requiresCircle: !!j.requiresCircle,
+    viewerCanAccess: j.viewerCanAccess ?? (j.access_type || 'public') === 'public',
   }
 }
 
@@ -170,6 +178,20 @@ export async function duplicateJob(slug) {
     return mapJob(data)
   }
   return delay({ id: `mock-${Date.now()}`, slug: `${slug}-copy` })
+}
+
+// The one access-grant call for a Job's application channel — works for
+// both access types (backend allows public through too), so the
+// frontend never has to branch on accessType before calling it. Never
+// cache the result in Redux/localStorage/sessionStorage; this response
+// is the only authoritative source for the protected channel.
+export async function accessJob(slug) {
+  const { data } = await apiClient.post(`/jobs/${slug}/access`)
+  return {
+    applicationUrl: data.application_url,
+    applicationEmail: data.application_email,
+    applicationInstructions: data.application_instructions,
+  }
 }
 
 export async function fetchJobsFilterOptions() {

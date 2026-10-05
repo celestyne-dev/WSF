@@ -13,6 +13,7 @@ from app.models.opportunity import (
     EVENT_STATUSES,
     EVENT_TYPES,
     FUNDING_TYPES,
+    JOB_ACCESS_TYPES,
     JOB_STATUSES,
     OPPORTUNITY_ACCESS_TYPES,
     OPPORTUNITY_STATUSES,
@@ -63,7 +64,14 @@ class JobSchema(ma.SQLAlchemyAutoSchema):
         # posted_by_id is an internal workflow field (which staff/employer
         # account created this listing) — never part of any Job payload,
         # public or CMS; scoping for jobs.create_own happens server-side.
-        exclude = ("posted_by_id",)
+        # application_url/application_email/application_instructions are
+        # the protected application channel — safe-by-default so EVERY
+        # caller of this schema (list, detail, saved items, search, …) is
+        # safe by construction rather than relying on call-site discipline.
+        # The one place that re-attaches them is
+        # app/api/v1/jobs.py's _dump_job_for_editor(), gated behind the
+        # real jobs.manage/jobs.create_own authorization check.
+        exclude = ("posted_by_id", "application_url", "application_email", "application_instructions")
 
     def get_is_closed(self, obj):
         """True when the job should present as no longer accepting
@@ -266,7 +274,7 @@ class JobInputSchema(ma.Schema):
     qualifications = fields.List(fields.String(), required=False, load_default=list)
     skills = fields.List(fields.String(), required=False, load_default=list)
     benefits = fields.List(fields.String(), required=False, load_default=list)
-    application_url = fields.String(required=False, allow_none=True, data_key="applicationUrl", validate=validate.URL(require_tld=True))
+    application_url = fields.String(required=False, allow_none=True, data_key="applicationUrl", validate=_validate_application_url)
     application_email = fields.Email(required=False, allow_none=True, data_key="applicationEmail")
     application_instructions = fields.String(required=False, allow_none=True, data_key="applicationInstructions")
     deadline = fields.Date(required=False, allow_none=True)
@@ -276,6 +284,13 @@ class JobInputSchema(ma.Schema):
     sponsored = fields.Boolean(required=False, load_default=False)
     sponsor_id = fields.Integer(required=False, allow_none=True, data_key="sponsorId")
     status = fields.String(required=False, load_default="published", validate=validate.OneOf(JOB_STATUSES))
+    # See JOB_ACCESS_TYPES — orthogonal to status (workflow state) and to
+    # the application mechanism (always URL/email either way). Defaults to
+    # "public" so a form that never sends this field keeps today's
+    # behavior exactly.
+    access_type = fields.String(
+        required=False, load_default="public", data_key="accessType", validate=validate.OneOf(JOB_ACCESS_TYPES)
+    )
     seo = fields.Dict(required=False, allow_none=True)
 
     @validates_schema
