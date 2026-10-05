@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { loginUser } from '../features/auth/authSlice'
 import useSeo from '../hooks/useSeo'
-import { getPostLoginRoute } from '../utils/permissions'
+import { getPostLoginRoute, sanitizeReturnTo } from '../utils/permissions'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const status = useSelector((s) => s.auth.status)
 
   useSeo({ title: 'Login | Women Shaping Futures', description: 'Sign in to your Women Shaping Futures account.', robots: 'noindex, follow' })
@@ -19,8 +20,15 @@ export default function LoginPage() {
     e.preventDefault()
     const result = await dispatch(loginUser({ email, password }))
     if (result.meta.requestStatus === 'fulfilled') {
-      toast.success(`Welcome back, ${result.payload.user.name.split(' ')[0]}.`)
-      navigate(getPostLoginRoute(result.payload.user))
+      const user = result.payload.user
+      toast.success(`Welcome back, ${user.name.split(' ')[0]}.`)
+      // A page the visitor was sent here from (see e.g. CirclePage.jsx,
+      // ResourceDetailPage.jsx) takes priority over the ordinary default
+      // route — but never ahead of a forced password change, and never an
+      // unsafe/external target (sanitizeReturnTo only ever returns a
+      // same-app path or null — see its own docstring in utils/permissions.js).
+      const returnTo = user.mustChangePassword ? null : sanitizeReturnTo(location.state?.from)
+      navigate(returnTo || getPostLoginRoute(user))
     } else {
       toast.error(result.payload || 'Login failed')
     }

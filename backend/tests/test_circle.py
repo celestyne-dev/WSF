@@ -977,3 +977,154 @@ class TestRegressions:
     def test_learning_enrollments_still_works(self, client, user1_token):
         resp = client.get("/api/v1/learning-enrollments/me", headers=auth_headers(user1_token))
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 staff-assisted enrollment lead — POST /circle/membership-requests.
+# Reuses the existing ContactInquiry model (see CircleMembershipRequestResource,
+# app/api/v1/circle.py); never creates/modifies a CircleSubscription. See the
+# WSF Circle customer-journey audit's Phase 1 scope.
+# ---------------------------------------------------------------------------
+class TestMembershipRequest:
+    # 60. unauthenticated cannot submit a request at all
+    def test_unauthenticated_cannot_submit(self, client, app):
+        from app.models.contact import ContactInquiry
+
+        resp = client.post("/api/v1/circle/membership-requests", json={})
+        assert resp.status_code == 401
+        with app.app_context():
+            assert ContactInquiry.query.count() == 0
+
+    # 61. authenticated request with no plan creates exactly one lead, no subscription
+    def test_submits_general_request_creates_lead_only(self, client, app, user1_token):
+        from app.models.circle import CircleSubscription
+        from app.models.contact import ContactInquiry
+
+        resp = client.post("/api/v1/circle/membership-requests", json={"note": "Excited to join!"}, headers=auth_headers(user1_token))
+        assert resp.status_code == 201
+        body = resp.get_json()["data"]
+        assert body["status"] == "received"
+        assert body["reference"]
+
+        with app.app_context():
+            inquiries = ContactInquiry.query.all()
+            assert len(inquiries) == 1
+            inquiry = inquiries[0]
+            assert inquiry.source == "circle_membership_request"
+            assert inquiry.inquiry_type == "other"
+            assert inquiry.email == USER1["email"]
+            assert inquiry.first_name == USER1["first_name"]
+            assert inquiry.last_name == USER1["last_name"]
+            assert "WSF Circle membership request" in inquiry.subject
+            assert "Excited to join!" in inquiry.message
+            assert CircleSubscription.query.count() == 0
+
+    # 62. name/email are pulled from the authenticated account, not the request body
+    def test_identity_comes_from_authenticated_account_not_payload(self, client, app, user1_token):
+        from app.models.contact import ContactInquiry
+
+        resp = client.post(
+            "/api/v1/circle/membership-requests",
+            json={"note": "ignore my identity below"},
+            headers=auth_headers(user1_token),
+        )
+        assert resp.status_code == 201
+        with app.app_context():
+            inquiry = ContactInquiry.query.one()
+            assert inquiry.email == USER1["email"]
+            assert inquiry.first_name == USER1["first_name"]
+
+    # 63. a real, active plan is quoted by name in the lead's message
+    def test_valid_active_plan_is_referenced_in_message(self, client, app, user1_token):
+        from app.models.contact import ContactInquiry
+
+        plan_id, plan_slug = _make_plan(app, name="Founding Circle", status="active")
+        resp = client.post(
+            "/api/v1/circle/membership-requests", json={"planSlug": plan_slug}, headers=auth_headers(user1_token)
+        )
+        assert resp.status_code == 201
+        with app.app_context():
+            inquiry = ContactInquiry.query.one()
+            assert "Founding Circle" in inquiry.subject
+            assert "Founding Circle" in inquiry.message
+
+    # 64. a nonexistent plan slug is rejected
+    def test_nonexistent_plan_slug_rejected(self, client, user1_token):
+        resp = client.post(
+            "/api/v1/circle/membership-requests", json={"planSlug": "does-not-exist"}, headers=auth_headers(user1_token)
+        )
+        assert resp.status_code == 404
+
+    # 65. a real but inactive (draft) plan slug is rejected, not silently accepted
+    def test_inactive_plan_slug_rejected(self, client, app, user1_token):
+        _plan_id, plan_slug = _make_plan(app, status="draft")
+        resp = client.post(
+            "/api/v1/circle/membership-requests", json={"planSlug": plan_slug}, headers=auth_headers(user1_token)
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["error"]["code"] == "plan_not_active"
+
+    # 66. an accidental double submission within the dedupe window returns the
+    # same reference rather than creating a second lead
+    def test_duplicate_submission_is_deduped(self, client, app, user1_token):
+        from app.models.contact import ContactInquiry
+
+        first = client.post("/api/v1/circle/membership-requests", json={}, headers=auth_headers(user1_token))
+        second = client.post("/api/v1/circle/membership-requests", json={}, headers=auth_headers(user1_token))
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert first.get_json()["data"]["reference"] == second.get_json()["data"]["reference"]
+        with app.app_context():
+            assert ContactInquiry.query.count() == 1
+
+    # 67. submitting a request never grants has_circle_access
+    def test_request_never_grants_circle_access(self, client, user1_token):
+        before = client.get("/api/v1/circle/me", headers=auth_headers(user1_token))
+        assert before.get_json()["data"]["hasAccess"] is False
+
+        submit = client.post("/api/v1/circle/membership-requests", json={}, headers=auth_headers(user1_token))
+        assert submit.status_code == 201
+
+        after = client.get("/api/v1/circle/me", headers=auth_headers(user1_token))
+        assert after.get_json()["data"]["hasAccess"] is False
+        assert after.get_json()["data"]["subscription"] is None
+
+    # 68. an existing active member's entitlement and subscription are
+    # completely unaffected by also submitting a membership request
+    def test_active_members_existing_access_is_unaffected(self, client, app, user1_token):
+        from app.models.circle import CircleSubscription
+
+        plan_id, _slug = _make_plan(app)
+        subscription_id = _make_subscription(app, USER1["email"], plan_id, status="active")
+
+        before = client.get("/api/v1/circle/me", headers=auth_headers(user1_token))
+        assert before.get_json()["data"]["hasAccess"] is True
+
+        submit = client.post("/api/v1/circle/membership-requests", json={}, headers=auth_headers(user1_token))
+        assert submit.status_code == 201
+
+        after = client.get("/api/v1/circle/me", headers=auth_headers(user1_token))
+        assert after.get_json()["data"]["hasAccess"] is True
+
+        with app.app_context():
+            from app.extensions import db
+
+            subscription = db.session.get(CircleSubscription, subscription_id)
+            assert subscription.status == "active"
+            assert CircleSubscription.query.count() == 1
+
+    # 69. the lead is reviewable by staff exactly like any other contact
+    # inquiry (same admin endpoint, same permission) — proves "staff can
+    # identify this clearly" doesn't require new admin UI/API work
+    def test_staff_can_review_the_lead_via_existing_contact_admin_api(self, client, app, user1_token, admin_token):
+        submit = client.post("/api/v1/circle/membership-requests", json={}, headers=auth_headers(user1_token))
+        reference = submit.get_json()["data"]["reference"]
+
+        from app.models.contact import ContactInquiry
+
+        with app.app_context():
+            inquiry_id = ContactInquiry.query.filter_by(reference=reference).one().id
+
+        resp = client.get(f"/api/v1/contact/{inquiry_id}", headers=auth_headers(admin_token))
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["subject"].startswith("WSF Circle membership request")

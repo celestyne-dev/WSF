@@ -10,6 +10,8 @@ authorized circle.manage staff member may ever activate/modify a
 subscription (see CircleSubscriptionListResource.post/
 CircleSubscriptionDetailResource.patch below).
 """
+from datetime import datetime, timedelta, timezone
+
 from flask import Blueprint, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
@@ -17,8 +19,10 @@ from flask_restful import Api, Resource
 from app.auth.decorators import active_user_required, permission_required
 from app.extensions import db
 from app.models.circle import CirclePlan, CIRCLE_PLAN_STATUSES, CircleSubscription
+from app.models.contact import ContactInquiry
 from app.models.user import User
 from app.schemas.circle import (
+    CircleMembershipRequestInputSchema,
     CirclePlanInputSchema,
     CirclePlanSchema,
     CirclePlanUpdateSchema,
@@ -32,7 +36,9 @@ from app.services.circle import (
     get_circle_entitlement,
     validate_subscription_status_transition,
 )
+from app.services.contact import generate_contact_reference
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.notifications import notify_contact_received
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -261,6 +267,87 @@ class CircleMeResource(Resource):
         )
 
 
+def _find_recent_circle_membership_request(email, subject):
+    """Same accidental-double-submission guard as the public Contact form
+    (app/api/v1/contact.py's _find_recent_duplicate) — an identical-subject
+    request from the same email within a short window is treated as the
+    same click, not a second lead.
+    """
+    window_start = datetime.now(timezone.utc) - timedelta(minutes=5)
+    return ContactInquiry.query.filter(
+        ContactInquiry.email == email,
+        ContactInquiry.subject == subject,
+        ContactInquiry.source == "circle_membership_request",
+        ContactInquiry.created_at >= window_start,
+    ).first()
+
+
+class CircleMembershipRequestResource(Resource):
+    """Phase 1 staff-assisted enrollment lead. No payment gateway exists
+    yet (see this module's own docstring), so this is deliberately NOT a
+    subscribe/activate endpoint — it only ever creates a staff-reviewable
+    lead, reusing the existing ContactInquiry model/admin-review workflow
+    (app/models/contact.py, app/api/v1/contact.py) rather than a new
+    persistence model: ContactInquiry.source already exists precisely so a
+    second entry point like this one doesn't need a schema change, and its
+    own docstring's "deliberately excludes" list is about categories with
+    a DEDICATED workflow — a WSF Circle lead has no dedicated workflow of
+    its own yet, so the general inbox is the right fit for this phase.
+
+    Never touches CircleSubscription in any way — name/email come from the
+    authenticated account (never trusted from the request body), and the
+    optional plan reference is only ever used to look up a real, currently
+    active CirclePlan to quote back in the message staff will read.
+    """
+
+    @active_user_required
+    def post(self):
+        data = CircleMembershipRequestInputSchema().load(request.get_json(silent=True) or {})
+
+        plan = None
+        if data["plan_slug"]:
+            plan = _get_plan_or_404(data["plan_slug"])
+            if plan.status != "active":
+                raise ApiError("That plan is not currently available.", 422, code="plan_not_active")
+
+        subject = f"WSF Circle membership request — {plan.name}" if plan else "WSF Circle membership request"
+        email = current_user.email.strip().lower()
+
+        duplicate = _find_recent_circle_membership_request(email, subject)
+        if duplicate is not None:
+            return success_response({"reference": duplicate.reference, "status": "received"}, status=201)
+
+        message_lines = ["A WSF Circle membership request was submitted from a signed-in WSF account."]
+        if plan:
+            message_lines.append(f"Plan of interest: {plan.name} ({plan.price} {plan.currency} / {plan.billing_interval}).")
+        else:
+            message_lines.append("No specific plan was selected.")
+        note = (data.get("note") or "").strip()
+        message_lines.append(f"Member note: {note}" if note else "Member note: (none provided)")
+
+        inquiry = ContactInquiry(
+            first_name=current_user.first_name,
+            last_name=current_user.last_name,
+            email=email,
+            inquiry_type="other",
+            subject=subject,
+            message="\n".join(message_lines),
+            source="circle_membership_request",
+            privacy_acknowledged=True,
+        )
+        db.session.add(inquiry)
+        db.session.flush()
+        inquiry.reference = generate_contact_reference(inquiry)
+        db.session.commit()
+        notify_contact_received(inquiry)
+
+        log_action(
+            current_user, "circle_membership_request.created", "ContactInquiry", inquiry.id,
+            changes={"reference": inquiry.reference, "planSlug": plan.slug if plan else None},
+        )
+        return success_response({"reference": inquiry.reference, "status": "received"}, status=201)
+
+
 def _build_subscription_query():
     query = CircleSubscription.query.order_by(CircleSubscription.created_at.desc())
     query = apply_equality_filters(query, CircleSubscription, request.args, ["status", "plan_id", "source"])
@@ -353,5 +440,6 @@ class CircleSubscriptionDetailResource(Resource):
 api.add_resource(CirclePlanListResource, "/plans")
 api.add_resource(CirclePlanDetailResource, "/plans/<string:slug>")
 api.add_resource(CircleMeResource, "/me")
+api.add_resource(CircleMembershipRequestResource, "/membership-requests")
 api.add_resource(CircleSubscriptionListResource, "/subscriptions")
 api.add_resource(CircleSubscriptionDetailResource, "/subscriptions/<int:subscription_id>")

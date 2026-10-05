@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Calendar, MapPin, Clock, Ticket, Globe2, AlertCircle, CalendarPlus, PauseCircle, CheckCircle2 } from 'lucide-react'
 import { fetchEventBySlug, fetchEvents } from '../api/events'
@@ -332,6 +332,7 @@ function CircleRegistrationCta({ event, registrationClosed, registration, pendin
 export default function EventDetailPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const accessToken = useSelector((s) => s.auth.accessToken)
   const [event, setEvent] = useState(undefined)
   const [related, setRelated] = useState([])
@@ -571,7 +572,7 @@ export default function EventDetailPage() {
                 pending={wsfRegistering}
                 accessToken={accessToken}
                 onRegister={handleWsfRegister}
-                onSignIn={() => navigate('/login')}
+                onSignIn={() => navigate('/login', { state: { from: location.pathname } })}
               />
             ) : event.registrationRequired && event.registrationMode === 'wsf' ? (
               <WsfRegistrationCta
@@ -581,7 +582,7 @@ export default function EventDetailPage() {
                 pending={wsfRegistering}
                 accessToken={accessToken}
                 onRegister={handleWsfRegister}
-                onSignIn={() => navigate('/login')}
+                onSignIn={() => navigate('/login', { state: { from: location.pathname } })}
               />
             ) : canRegister ? (
               <a href={event.registrationUrl} target="_blank" rel="noreferrer" onClick={handleRegisterClick} className="btn-primary mt-5 flex w-full">

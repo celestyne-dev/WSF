@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Download, Lock, Mail, ExternalLink, X } from 'lucide-react'
 import { fetchResourceBySlug, fetchResources, requestResourceAccess } from '../api/resources'
@@ -144,6 +144,7 @@ function EmailGateModal({ resource, onClose, onSuccess }) {
 // backend hasn't confirmed (see spec section J: "Backend remains
 // authoritative... Show a safe fallback" if the Circle check fails).
 function AccessCta({ resource, accessToken, requesting, onAccessClick, onEmailGateClick }) {
+  const location = useLocation()
   const [circleMembership, setCircleMembership] = useState(undefined)
 
   useEffect(() => {
@@ -171,7 +172,7 @@ function AccessCta({ resource, accessToken, requesting, onAccessClick, onEmailGa
   if (resource.accessType === 'member_only') {
     if (!accessToken) {
       return (
-        <Link to="/login" className="btn-primary mt-5 inline-flex">
+        <Link to="/login" state={{ from: location.pathname }} className="btn-primary mt-5 inline-flex">
           <Lock size={16} /> Sign in to access
         </Link>
       )
@@ -186,7 +187,7 @@ function AccessCta({ resource, accessToken, requesting, onAccessClick, onEmailGa
   if (resource.accessType === 'circle_only') {
     if (!accessToken) {
       return (
-        <Link to="/login" className="btn-primary mt-5 inline-flex">
+        <Link to="/login" state={{ from: location.pathname }} className="btn-primary mt-5 inline-flex">
           <Lock size={16} /> Sign in
         </Link>
       )

@@ -119,6 +119,18 @@ class CircleSubscriptionAdminCreateSchema(ma.Schema):
             raise ValidationError("Current period end cannot be before its start.", field_name="current_period_end")
 
 
+class CircleMembershipRequestInputSchema(ma.Schema):
+    """POST /circle/membership-requests — a Phase 1, staff-assisted
+    enrollment lead (see CircleMembershipRequestResource, api/v1/circle.py).
+    Deliberately tiny: name/email come from the authenticated account, not
+    this payload, and there is no status/date/provider field here at all —
+    this can never activate, create, or modify a CircleSubscription.
+    """
+
+    plan_slug = fields.String(required=False, allow_none=True, load_default=None, data_key="planSlug")
+    note = fields.String(required=False, allow_none=True, load_default=None, validate=validate.Length(max=1000))
+
+
 class CircleSubscriptionAdminUpdateSchema(ma.Schema):
     """PATCH /admin/circle/memberships/<id> — no load_default anywhere, so
     a key absent from the request leaves that field untouched (house

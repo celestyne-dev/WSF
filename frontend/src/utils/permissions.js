@@ -107,3 +107,22 @@ export function getPostLoginRoute(user) {
   if (hasCmsAccess(user)) return getDefaultCmsRoute(user)
   return '/account'
 }
+
+// Validates a post-login "return to" target (passed as router `state`,
+// e.g. `navigate('/login', { state: { from: location.pathname } })` —
+// never a query string, so it's never put in a URL, logged, or bookmarked)
+// before LoginPage ever hands it to navigate(). Accepts only a same-app,
+// root-relative path: must start with a single "/", never "//" or "/\"
+// (both are browser-recognized ways to smuggle a protocol-relative
+// external origin past a naive "starts with /" check — rejecting both is
+// what actually prevents an open redirect here), and never points back at
+// an auth page itself (would otherwise bounce the user straight back to
+// /login after they just signed in). Anything else — a full URL, a
+// mistyped value, undefined/null — returns null, and every call site
+// must fall back to its own existing default route when this does.
+export function sanitizeReturnTo(path) {
+  if (typeof path !== 'string' || path.length === 0) return null
+  if (path[0] !== '/' || path[1] === '/' || path[1] === '\\') return null
+  if (path.startsWith('/login') || path.startsWith('/register')) return null
+  return path
+}

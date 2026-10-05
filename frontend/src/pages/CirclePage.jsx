@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { fetchCirclePlans, fetchMyCircleMembership } from '../api/circle'
+import { fetchCirclePlans, fetchMyCircleMembership, requestCircleMembership } from '../api/circle'
 import { formatProductPrice } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -19,10 +19,73 @@ function billingLabel(plan) {
   return plan.billingInterval === 'yearly' ? '/ year' : '/ month'
 }
 
-function PlanCta({ plan, accessToken, hasAccess }) {
+// Phase 1: WSF Circle has no self-service checkout yet (see
+// api/circle.js's module docstring) — this submits a staff-reviewable
+// lead only (POST /circle/membership-requests) and never implies payment
+// happened or membership is now active. `plan` is optional: omitted on
+// the zero-plans fallback below, where the request simply isn't tied to a
+// specific plan yet.
+function CircleMembershipRequestPanel({ plan }) {
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(false)
+    try {
+      await requestCircleMembership({ planSlug: plan?.slug, note })
+      trackEvent('circle_membership_request_submitted', { planSlug: plan?.slug || null })
+      setSubmitted(true)
+    } catch {
+      // Kept as a local inline message rather than react-toastify — this
+      // panel already renders its own error state below.
+      setError(true)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div className="mt-4 border border-burgundy-400 bg-blush-50 p-4 text-sm text-charcoal">
+        <p className="font-semibold">Your WSF Circle membership request has been received.</p>
+        <p className="mt-1 text-charcoal-600">Our team will contact you with the next steps.</p>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-4 border border-taupe-200 bg-white p-4 text-sm">
+      <p className="font-serif text-base font-semibold text-charcoal">Ready to join WSF Circle?</p>
+      <p className="mt-1 text-charcoal-600">
+        WSF Circle enrollment is currently assisted by our team. Send your membership request and we&apos;ll help you
+        complete your enrollment.
+      </p>
+      <label htmlFor={`circle-request-note-${plan?.slug || 'general'}`} className="mt-3 block text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+        Anything we should know? <span className="normal-case text-charcoal-600/60">(optional)</span>
+      </label>
+      <textarea
+        id={`circle-request-note-${plan?.slug || 'general'}`}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
+      />
+      {error && <p className="mt-2 text-xs text-rose-600">Something went wrong. Please try again.</p>}
+      <button type="submit" disabled={submitting} className="btn-primary mt-3 disabled:opacity-60">
+        {submitting ? 'Sending…' : 'Request to Join WSF Circle'}
+      </button>
+    </form>
+  )
+}
+
+function PlanCta({ plan, accessToken, hasAccess, loginFrom }) {
   if (!accessToken) {
     return (
-      <Link to="/login" className="mt-4 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+      <Link to="/login" state={{ from: loginFrom }} className="mt-4 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
         Join WSF Circle &rarr;
       </Link>
     )
@@ -34,30 +97,30 @@ function PlanCta({ plan, accessToken, hasAccess }) {
 
   if (plan.checkoutAvailable && plan.checkoutUrl) {
     return (
-      <a
-        href={plan.checkoutUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() => trackEvent('circle_checkout_click', { planSlug: plan.slug })}
-        className="mt-4 inline-block text-sm font-semibold text-burgundy-600 hover:underline"
-      >
-        Continue to secure checkout &rarr;
-      </a>
+      <div className="mt-4 text-sm">
+        <a
+          href={plan.checkoutUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackEvent('circle_checkout_click', { planSlug: plan.slug })}
+          className="font-semibold text-burgundy-600 hover:underline"
+        >
+          Continue to secure checkout &rarr;
+        </a>
+        <p className="mt-2 text-xs text-charcoal-600/70">
+          Membership access becomes active once your enrollment and payment have been confirmed by our team — it
+          isn&apos;t activated automatically when you follow this link.
+        </p>
+      </div>
     )
   }
 
-  return (
-    <div className="mt-4 text-sm text-charcoal-600/70">
-      <p>Membership enrollment coming soon.</p>
-      <Link to="/contact" className="font-semibold text-burgundy-600 hover:underline">
-        Contact WSF
-      </Link>
-    </div>
-  )
+  return <CircleMembershipRequestPanel plan={plan} />
 }
 
 export default function CirclePage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
+  const location = useLocation()
 
   const [plans, setPlans] = useState(undefined)
   const [membership, setMembership] = useState(undefined)
@@ -129,13 +192,16 @@ export default function CirclePage() {
         <div className="py-14">
           <h2 className="font-serif text-3xl font-semibold text-charcoal">Membership</h2>
           {plans.length === 0 ? (
-            <p className="mt-4 text-sm text-charcoal-600">
-              WSF Circle membership plans are being finalized. Please check back soon, or{' '}
-              <Link to="/contact" className="font-semibold text-burgundy-600 hover:underline">
-                contact WSF
-              </Link>{' '}
-              with questions.
-            </p>
+            <div className="mt-4 text-sm text-charcoal-600">
+              <p>
+                WSF Circle membership plans are being finalized. Please check back soon, or{' '}
+                <Link to="/contact" className="font-semibold text-burgundy-600 hover:underline">
+                  contact WSF
+                </Link>{' '}
+                with questions.
+              </p>
+              {accessToken && !hasAccess && <CircleMembershipRequestPanel plan={null} />}
+            </div>
           ) : (
             <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {plans.map((plan) => (
@@ -164,7 +230,7 @@ export default function CirclePage() {
                       <ArticleContent blocks={plan.description} />
                     </div>
                   )}
-                  <PlanCta plan={plan} accessToken={accessToken} hasAccess={hasAccess} />
+                  <PlanCta plan={plan} accessToken={accessToken} hasAccess={hasAccess} loginFrom={location.pathname} />
                 </div>
               ))}
             </div>

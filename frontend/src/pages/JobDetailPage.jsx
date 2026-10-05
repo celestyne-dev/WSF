@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { MapPin, Briefcase, Clock, DollarSign, AlertCircle, Calendar, Building2 } from 'lucide-react'
@@ -144,6 +144,7 @@ function CircleApplyCta({ job, accessToken, pending, circleAccess, onApply, onSi
 export default function JobDetailPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const accessToken = useSelector((s) => s.auth.accessToken)
   const [job, setJob] = useState(undefined)
   const [company, setCompany] = useState(null)
@@ -337,7 +338,7 @@ export default function JobDetailPage() {
               pending={applying}
               circleAccess={circleAccess}
               onApply={handleCircleApply}
-              onSignIn={() => navigate('/login')}
+              onSignIn={() => navigate('/login', { state: { from: location.pathname } })}
             />
           ) : applyHref ? (
             <a href={applyHref} target={job.applicationUrl ? '_blank' : undefined} rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-6 inline-flex">

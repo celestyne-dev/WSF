@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { Calendar, Globe2, Award, AlertCircle } from 'lucide-react'
@@ -134,6 +134,7 @@ function CircleApplyCta({ opportunity, accessToken, pending, circleAccess, onApp
 export default function OpportunityDetailPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const accessToken = useSelector((s) => s.auth.accessToken)
   const [opportunity, setOpportunity] = useState(undefined)
   const [more, setMore] = useState([])
@@ -286,7 +287,7 @@ export default function OpportunityDetailPage() {
               pending={applying}
               circleAccess={circleAccess}
               onApply={handleCircleApply}
-              onSignIn={() => navigate('/login')}
+              onSignIn={() => navigate('/login', { state: { from: location.pathname } })}
             />
           ) : opportunity.applicationUrl ? (
             <a href={opportunity.applicationUrl} target="_blank" rel="noreferrer" onClick={handleApplyClick} className="btn-primary mt-6 inline-flex">

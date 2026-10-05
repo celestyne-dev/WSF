@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { ExternalLink, FileText, PlayCircle, BookOpen, ClipboardList, CheckCircle2, Circle } from 'lucide-react'
@@ -240,6 +240,7 @@ function CircleLearningCta({ enrollment, accessToken, viewerCanAccess, circleAcc
 export default function LearningProgramDetailPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const accessToken = useSelector((s) => s.auth.accessToken)
   const [program, setProgram] = useState(undefined)
   const [error, setError] = useState(null)
@@ -407,7 +408,7 @@ export default function LearningProgramDetailPage() {
                 accessToken={accessToken}
                 pending={enrolling}
                 onEnroll={handleEnroll}
-                onSignIn={() => navigate('/login')}
+                onSignIn={() => navigate('/login', { state: { from: location.pathname } })}
               />
             ) : program.accessType === 'circle_only' ? (
               <CircleLearningCta
@@ -417,7 +418,7 @@ export default function LearningProgramDetailPage() {
                 circleAccessDenied={circleAccessDenied}
                 pending={enrolling}
                 onEnroll={handleEnroll}
-                onSignIn={() => navigate('/login')}
+                onSignIn={() => navigate('/login', { state: { from: location.pathname } })}
               />
             ) : (
               <CtaButton program={program} />

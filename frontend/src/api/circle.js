@@ -106,6 +106,18 @@ export async function fetchMyCircleMembership() {
   return { hasAccess: !!data?.hasAccess, subscription: mapCircleSubscription(data?.subscription) }
 }
 
+// Phase 1 staff-assisted enrollment — creates a staff-reviewable lead
+// only (reuses the Contact Inquiries inbox server-side; see
+// CircleMembershipRequestResource, backend/app/api/v1/circle.py). Never
+// activates or affects a CircleSubscription in any way.
+export async function requestCircleMembership({ planSlug, note } = {}) {
+  const { data } = await apiClient.post('/circle/membership-requests', {
+    planSlug: planSlug || undefined,
+    note: note || undefined,
+  })
+  return { reference: data?.reference, status: data?.status }
+}
+
 // ---------------------------------------------------------------------------
 // Admin — plans (circle.manage)
 // ---------------------------------------------------------------------------
