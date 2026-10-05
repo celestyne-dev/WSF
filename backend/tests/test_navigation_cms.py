@@ -6,6 +6,18 @@ ADMIN_PAYLOAD = {"email": "nav-admin@example.com", "password": "supersecret1", "
 EDITOR_PAYLOAD = {"email": "nav-editor@example.com", "password": "supersecret1", "first_name": "Nav", "last_name": "Editor"}
 WRITER_PAYLOAD = {"email": "nav-writer@example.com", "password": "supersecret1", "first_name": "Nav", "last_name": "Writer"}
 NO_PERMISSION_PAYLOAD = {"email": "nav-nobody@example.com", "password": "supersecret1", "first_name": "No", "last_name": "Permission"}
+NAVIGATION_MANAGER_PAYLOAD = {
+    "email": "nav-manager-only@example.com",
+    "password": "supersecret1",
+    "first_name": "Nav",
+    "last_name": "ManagerOnly",
+}
+FOOTER_MANAGER_PAYLOAD = {
+    "email": "footer-manager-only@example.com",
+    "password": "supersecret1",
+    "first_name": "Footer",
+    "last_name": "ManagerOnly",
+}
 
 
 def _register_with_role(client, app, payload, role_name):
@@ -41,6 +53,22 @@ def writer_token(client, app):
 @pytest.fixture()
 def no_permission_token(client, app):
     return _register_with_role(client, app, NO_PERMISSION_PAYLOAD, None)
+
+
+@pytest.fixture()
+def navigation_manager_token(client, app):
+    # "navigation_manager" grants navigation.manage/navigation.publish
+    # ONLY (see app/services/rbac.py) — no footer.* — the exact shape the
+    # footer-ownership boundary test needs: navigation.manage alone.
+    return _register_with_role(client, app, NAVIGATION_MANAGER_PAYLOAD, "navigation_manager")
+
+
+@pytest.fixture()
+def footer_manager_token(client, app):
+    # "footer_manager" grants footer.manage/footer.publish ONLY — no
+    # navigation.* — so this fixture can never reach AdminNavigationResource
+    # at all; it's used only to prove Footer CMS's own endpoint still works.
+    return _register_with_role(client, app, FOOTER_MANAGER_PAYLOAD, "footer_manager")
 
 
 def _make_topic(app, slug="leadership", status="published"):
@@ -898,3 +926,111 @@ class TestEffectiveDestinationHealingAndAboutDuplicateRepair:
 
         assert len(custom_items) == 2
         assert {it.label for it in custom_items} == {"Custom Link A", "Custom Link B"}
+
+
+class TestFooterOwnershipBoundary:
+    """Footer-owned footer_* Menu groups (footer_explore/footer_opportunity/
+    footer_wsf/footer_legal, and any other footer_* key — see
+    app/services/footer.py's FOOTER_MENU_KEY_PREFIX) must never be
+    writable through PUT /admin/navigation by a caller who holds only
+    navigation.manage/navigation.publish — that would silently bypass
+    Footer CMS's own footer.manage/footer.publish gate on the exact same
+    underlying Menu rows. See AdminNavigationResource.put's docstring in
+    app/api/v1/admin.py for the enforcement this covers.
+    """
+
+    def test_navigation_manage_alone_cannot_mutate_a_footer_menu(self, client, navigation_manager_token):
+        resp = client.put(
+            "/api/v1/admin/navigation",
+            json={"menus": [{"key": "footer_legal", "heading": "Legal", "items": [{"label": "Hacked", "url": "/hacked"}]}]},
+            headers=auth_headers(navigation_manager_token),
+        )
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "forbidden"
+
+    def test_navigation_manage_alone_cannot_mutate_any_footer_prefixed_key(self, client, navigation_manager_token):
+        # Not just the four seeded groups — the boundary is the footer_*
+        # prefix itself, including an admin-created custom footer group.
+        for key in ["footer_explore", "footer_opportunity", "footer_wsf", "footer_custom_1"]:
+            resp = client.put(
+                "/api/v1/admin/navigation",
+                json={"menus": [{"key": key, "items": []}]},
+                headers=auth_headers(navigation_manager_token),
+            )
+            assert resp.status_code == 403, key
+
+    def test_rejected_request_persists_nothing_even_when_bundled_with_an_owned_menu(self, client, navigation_manager_token):
+        # A payload that bundles a legitimate "primary" update together
+        # with a footer_* key the caller can't touch must be rejected as a
+        # whole — never a partial save that quietly applies the primary
+        # half while "silently" refusing the footer half.
+        resp = client.put(
+            "/api/v1/admin/navigation",
+            json={
+                "menus": [
+                    {"key": "primary", "items": [{"label": "Should Not Save", "url": "/nope"}]},
+                    {"key": "footer_legal", "heading": "Legal", "items": [{"label": "Hacked", "url": "/hacked"}]},
+                ]
+            },
+            headers=auth_headers(navigation_manager_token),
+        )
+        assert resp.status_code == 403
+
+        public = client.get("/api/v1/public/navigation")
+        primary_items = public.get_json()["data"]["menus"].get("primary", {}).get("items", [])
+        assert [i["label"] for i in primary_items] != ["Should Not Save"]
+
+    def test_direct_api_request_cannot_bypass_the_boundary(self, client, navigation_manager_token):
+        # There is exactly one PUT endpoint for Navigation CMS — this hits
+        # it directly, with a minimal payload, bypassing any frontend-only
+        # restriction entirely. The server-side check is what must hold.
+        resp = client.put(
+            "/api/v1/admin/navigation",
+            json={"menus": [{"key": "footer_explore", "items": []}]},
+            headers=auth_headers(navigation_manager_token),
+        )
+        assert resp.status_code == 403
+
+    def test_navigation_owned_menu_still_saves_with_navigation_manage_alone(self, client, navigation_manager_token):
+        resp = client.put(
+            "/api/v1/admin/navigation",
+            json={"menus": [{"key": "primary", "items": [{"label": "Jobs", "url": "/jobs"}]}]},
+            headers=auth_headers(navigation_manager_token),
+        )
+        assert resp.status_code == 200
+        public = client.get("/api/v1/public/navigation")
+        assert [i["label"] for i in public.get_json()["data"]["menus"]["primary"]["items"]] == ["Jobs"]
+
+    def test_footer_manage_alone_can_still_save_footer_via_its_own_endpoint(self, client, footer_manager_token):
+        resp = client.put(
+            "/api/v1/admin/footer",
+            json={
+                "groups": [{"heading": "Legal", "visible": True, "items": [{"label": "Privacy", "itemType": "route", "url": "/privacy"}]}],
+                "socialLinks": [],
+                "settings": {},
+            },
+            headers=auth_headers(footer_manager_token),
+        )
+        assert resp.status_code == 200
+
+    def test_footer_manager_cannot_reach_navigation_endpoint_at_all(self, client, footer_manager_token):
+        # footer_manager holds no navigation.* permission — confirms the
+        # two roles stay genuinely separate, not just footer_* key-scoped.
+        resp = client.put(
+            "/api/v1/admin/navigation",
+            json=_basic_payload(),
+            headers=auth_headers(footer_manager_token),
+        )
+        assert resp.status_code == 403
+
+    def test_user_with_both_permissions_can_still_update_footer_via_navigation_endpoint(self, client, admin_token):
+        # admin holds both navigation.* and footer.* — the boundary must
+        # not regress a legitimately dual-permissioned caller.
+        resp = client.put(
+            "/api/v1/admin/navigation",
+            json={"menus": [{"key": "footer_legal", "heading": "Legal", "items": [{"label": "Privacy", "url": "/privacy"}]}]},
+            headers=auth_headers(admin_token),
+        )
+        assert resp.status_code == 200
+        public = client.get("/api/v1/public/navigation")
+        assert [i["label"] for i in public.get_json()["data"]["menus"]["footer_legal"]["items"]] == ["Privacy"]

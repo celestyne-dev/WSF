@@ -88,11 +88,18 @@ ROLE_PERMISSIONS = {
     # is withheld from newsletter_manager: bulk personal-data export is
     # gated more strictly than day-to-day member administration.
     "moderator": ["submissions.manage", "nominations.manage", "contact.manage", "community.manage", "mentorship.manage"],
-    # Commercial analytics (Sponsor CTR, Advertise inquiries, Partnership
-    # pipeline, Orders/revenue) is the one Analytics section a
-    # Partnerships Manager is specifically authorized to see, per spec —
-    # general analytics.view is deliberately withheld (this role has no
-    # reason to see Content/Search/Newsletter performance).
+    # analytics.commercial is reserved for a commercial-analytics view
+    # (Sponsor CTR, Advertise inquiries, Partnership pipeline, Orders/
+    # revenue) that does not exist yet — every endpoint under
+    # app/api/v1/analytics.py and AdminDashboardResource currently checks
+    # analytics.view only, which this role deliberately does NOT hold (it
+    # has no reason to see Content/Search/Newsletter performance). Because
+    # of that, the Analytics nav item is gated on analytics.view alone
+    # (see frontend/src/constants/adminNav.js) so this role is never
+    # routed to a page whose data calls would all 403 — granting
+    # analytics.view here instead would be privilege expansion with no
+    # product need behind it. Revisit this comment and the nav gate
+    # together if a real commercial-analytics view is ever built.
     # Directory listings carry the only commercial surface this module has
     # (featured placement — see app/models/directory.py's module docstring)
     # — spec explicitly names Partnership Manager as a possible holder of

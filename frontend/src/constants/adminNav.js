@@ -167,7 +167,15 @@ export const NAV_GROUPS = [
       // (RedirectListResource, gated on articles.manage) alongside it —
       // same gate as Articles, not Settings.
       { to: '/admin/seo', icon: Search, label: 'SEO', permission: ['articles.manage'] },
-      { to: '/admin/analytics', icon: BarChart3, label: 'Analytics', permission: ['analytics.view', 'analytics.commercial'] },
+      // analytics.commercial is deliberately NOT one of the gates here:
+      // every endpoint the Analytics page actually calls (AdminDashboardResource,
+      // AnalyticsSummaryResource, AnalyticsTrafficSourceResource,
+      // AnalyticsSubscriberGrowthResource) checks analytics.view only, and
+      // no commercial-analytics view exists yet — see analytics.commercial's
+      // comment in app/services/rbac.py. Gating on it here would route a
+      // partnerships_manager (who holds analytics.commercial but not
+      // analytics.view) to a page every data call 403s on.
+      { to: '/admin/analytics', icon: BarChart3, label: 'Analytics', permission: ['analytics.view'] },
       { to: '/admin/users', icon: Users, label: 'Users', permission: ['users.view', 'users.manage', 'roles.manage'] },
       { to: '/admin/roles', icon: ShieldCheck, label: 'Roles & Permissions', permission: ['users.view', 'users.manage', 'roles.manage'] },
       { to: '/admin/audit', icon: History, label: 'Audit Log', permission: ['audit.view'] },

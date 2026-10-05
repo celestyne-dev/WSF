@@ -37,7 +37,7 @@ from app.services.cms import (
     replace_social_links,
     upsert_site_settings,
 )
-from app.services.footer import FOOTER_SETTINGS_KEY, get_footer_menus, get_footer_settings
+from app.services.footer import FOOTER_MENU_KEY_PREFIX, FOOTER_SETTINGS_KEY, get_footer_menus, get_footer_settings
 from app.services.homepage import modules_with_warnings
 from app.services.navigation import find_duplicate_top_level_destinations
 from app.services.site_settings import SITE_IDENTITY_KEY, get_site_identity_resolved, save_site_identity
@@ -226,6 +226,18 @@ class AdminNavigationResource(Resource):
     payload (existing behavior, unchanged) — an omitted menu key is left
     exactly as it was, so a save that only touches "primary" can never
     wipe the footer menus.
+
+    Any footer_* key (see app/services/footer.py's FOOTER_MENU_KEY_PREFIX)
+    is a Menu row Footer CMS owns and gates behind its own footer.manage/
+    footer.publish permissions (see AdminFooterResource below) — a caller
+    who holds only navigation.manage must not be able to reach that same
+    row through this endpoint instead. Enforced here, server-side, not
+    just by the admin UI omitting footer_* from its editable menu list
+    (see frontend's EDITABLE_MENUS): the whole request is rejected before
+    anything is written whenever it touches a footer_* key the caller
+    isn't authorized for, so a payload can never partially save (e.g. a
+    legitimate "primary" update bundled with a footer_* key the caller
+    can't touch never silently applies the primary half).
     """
 
     @permission_required("navigation.manage")
@@ -235,6 +247,13 @@ class AdminNavigationResource(Resource):
     @permission_required("navigation.publish", "navigation.manage")
     def put(self):
         data = NavigationInputSchema().load(request.get_json(silent=True) or {})
+        footer_keys = [m["key"] for m in data["menus"] if m["key"].startswith(FOOTER_MENU_KEY_PREFIX)]
+        if footer_keys and not current_user.has_permission("footer.manage", "footer.publish"):
+            raise ApiError(
+                "You do not have permission to modify footer menu groups. Use Footer CMS instead.",
+                403,
+                code="forbidden",
+            )
         for menu_data in data["menus"]:
             replace_menu(menu_data["key"], menu_data.get("heading"), menu_data.get("items", []))
         if data.get("social_links"):

@@ -113,3 +113,88 @@ def test_analytics_traffic_sources_and_subscriber_growth(client, admin_token):
     assert growth.status_code == 200
     assert len(growth.get_json()["data"]) == 6
     assert sum(row["subscribers"] for row in growth.get_json()["data"]) >= 1
+
+
+def _register_with_role(client, app, payload, role_name):
+    from app.extensions import db
+    from app.models.user import Role, User
+
+    client.post("/api/v1/auth/register", json=payload)
+    with app.app_context():
+        user = User.query.filter_by(email=payload["email"]).first()
+        role = Role.query.filter_by(name=role_name).first()
+        user.roles.append(role)
+        db.session.commit()
+    login = client.post("/api/v1/auth/login", json={"email": payload["email"], "password": payload["password"]})
+    return login.get_json()["data"]["access_token"]
+
+
+@pytest.fixture()
+def partnerships_manager_token(client, app):
+    payload = {
+        "email": "pm-analytics@example.com",
+        "password": "supersecret1",
+        "first_name": "Partnerships",
+        "last_name": "Manager",
+    }
+    return _register_with_role(client, app, payload, "partnerships_manager")
+
+
+@pytest.fixture()
+def analyst_token(client, app):
+    # "analyst" holds analytics.view (and analytics.export) — the actual
+    # permission every Analytics endpoint below checks, unlike
+    # partnerships_manager's analytics.commercial.
+    payload = {
+        "email": "analyst-analytics@example.com",
+        "password": "supersecret1",
+        "first_name": "An",
+        "last_name": "Alyst",
+    }
+    return _register_with_role(client, app, payload, "analyst")
+
+
+class TestAnalyticsCommercialPermissionBoundary:
+    """analytics.commercial (held by partnerships_manager) is reserved for
+    a commercial-analytics view that does not exist yet — every endpoint
+    the Analytics admin page actually calls checks analytics.view only
+    (see app/api/v1/admin.py's AdminDashboardResource and
+    app/api/v1/analytics.py). This documents that truthfully: a role
+    holding analytics.commercial but not analytics.view gets a real 403
+    from every one of those endpoints, which is exactly why the frontend
+    Analytics nav/route gate (constants/adminNav.js) no longer lists
+    analytics.commercial as an alternate way in — see that file's comment
+    and app/services/rbac.py's comment on the partnerships_manager role.
+    """
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/v1/admin/dashboard",
+            "/api/v1/analytics/summary",
+            "/api/v1/analytics/traffic-sources",
+            "/api/v1/analytics/subscriber-growth",
+        ],
+    )
+    def test_partnerships_manager_is_rejected_by_every_analytics_endpoint(self, client, partnerships_manager_token, path):
+        resp = client.get(path, headers=auth_headers(partnerships_manager_token))
+        assert resp.status_code == 403
+
+    def test_partnerships_manager_retains_its_own_legitimate_permissions(self, client, partnerships_manager_token):
+        # The fix must never remove partnerships.manage/directory.manage —
+        # only the misleading route to a page that always 403s.
+        resp = client.get("/api/v1/partnerships/inquiries", headers=auth_headers(partnerships_manager_token))
+        assert resp.status_code == 200
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/v1/admin/dashboard",
+            "/api/v1/analytics/summary",
+            "/api/v1/analytics/traffic-sources",
+            "/api/v1/analytics/subscriber-growth",
+        ],
+    )
+    def test_a_role_holding_the_real_permission_still_has_access(self, client, analyst_token, path):
+        resp = client.get(path, headers=auth_headers(analyst_token))
+        assert resp.status_code == 200

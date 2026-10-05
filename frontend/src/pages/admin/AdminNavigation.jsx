@@ -82,7 +82,7 @@ export default function AdminNavigation() {
     <div>
       <AdminPageHeader
         title="Navigation"
-        description="Manage the primary menu, utility bar, and footer columns. Saving publishes that section immediately — other sections are untouched."
+        description="Manage the primary menu and utility bar. Saving publishes that section immediately — other sections are untouched. Footer columns are managed separately in Footer."
         actions={
           <>
             <a href="/" target="_blank" rel="noreferrer" className="btn-secondary !px-4 !py-2 text-xs">
