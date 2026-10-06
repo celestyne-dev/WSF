@@ -1,10 +1,18 @@
-# EXAMPLE systemd service — runs `flask publish-due-content` once, then
-# exits. Triggered on a schedule by the paired
+# EXAMPLE systemd service — runs `flask --app run:app publish-due-content`
+# once, then exits. Triggered on a schedule by the paired
 # womenshapingfutures-publish.timer.example (see that file). NOT installed
 # automatically. See app/cli.py:publish_due_content_command's own
 # docstring for the command's concurrency-safety/idempotency guarantees —
 # this unit adds no logic of its own, it only invokes that existing,
 # already-safe command.
+#
+# ExecStart explicitly targets `run:app` rather than relying on Flask's
+# bare CLI auto-discovery. Without `--app run:app`, `flask
+# publish-due-content` would have Flask's own CLI auto-discovery load
+# the app factory with no config_name argument, silently running
+# DevelopmentConfig regardless of the Environment=FLASK_CONFIG=production
+# line below — a systemd timer firing every 5 minutes unattended is
+# exactly the worst place for that mistake to go unnoticed.
 
 [Unit]
 Description=Women Shaping Futures — publish due scheduled content
@@ -17,4 +25,4 @@ Group=womenshapingfutures
 WorkingDirectory=/var/www/womenshapingfutures/backend
 EnvironmentFile=/var/www/womenshapingfutures/backend/.env
 Environment=FLASK_CONFIG=production
-ExecStart=/var/www/womenshapingfutures/backend/.venv/bin/flask publish-due-content
+ExecStart=/var/www/womenshapingfutures/backend/.venv/bin/flask --app run:app publish-due-content

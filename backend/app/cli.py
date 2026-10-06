@@ -148,9 +148,13 @@ def register_cli(app):
         published rows are re-checked and skipped, not re-published).
         Production invocation (Hostinger VPS, no Celery/Redis):
             cd /var/www/womenshapingfutures/backend && \\
-              source .venv/bin/activate && flask publish-due-content
+              source .venv/bin/activate && flask --app run:app publish-due-content
         via a cron entry or systemd timer — this command does not modify
-        any system-level scheduler itself.
+        any system-level scheduler itself. The explicit `--app run:app`
+        matters: a bare `flask publish-due-content` lets Flask's CLI
+        auto-discovery load the app factory with no config_name argument,
+        silently defaulting to DevelopmentConfig regardless of
+        FLASK_CONFIG (see production-check's own CONFIG_NAME check).
         """
         result = publish_due_articles()
         click.echo(
@@ -191,6 +195,15 @@ def register_cli(app):
         seed, no write) — safe to run repeatedly, including against a live
         deployment, as a deploy-script sanity gate (see DEPLOYMENT.md).
         Exits non-zero on any failure so it can gate a deploy script.
+
+        Must always be invoked as `flask --app run:app production-check`
+        (never bare `flask production-check`) — see DEPLOYMENT.md §11/§13.
+        A bare invocation lets Flask's CLI auto-discovery call the app
+        factory with no config_name argument, which defaults to
+        DevelopmentConfig regardless of FLASK_CONFIG; this command's own
+        CONFIG_NAME check below exists specifically to still catch that
+        mistake and fail loudly rather than reporting PASSED against the
+        wrong app.
         """
         from config import require_production_settings
 
@@ -215,8 +228,25 @@ def register_cli(app):
             # never its value) — safe to echo directly.
             problems.append(str(exc))
 
-        if current_app.config.get("ENV") != "production":
-            warnings.append(f"FLASK_CONFIG is '{current_app.config.get('ENV')}', not 'production'.")
+        # CONFIG_NAME (not ENV) is the authoritative check here: it's set
+        # directly from the config_name create_app() actually received,
+        # with no separate layer that could itself default to something
+        # misleading. This must be a hard failure, never a warning — a
+        # bare `flask production-check` (no `--app run:app`) has Flask's
+        # own CLI auto-discovery call create_app() with NO argument,
+        # silently loading DevelopmentConfig regardless of FLASK_CONFIG
+        # in the environment, which is exactly the scenario this check
+        # exists to catch. See DEPLOYMENT.md §13/§11 for why every
+        # production Flask CLI invocation must say `--app run:app`.
+        config_name = current_app.config.get("CONFIG_NAME")
+        if config_name != "production":
+            problems.append(
+                f"CONFIG_NAME is {config_name!r}, not 'production' — this process did not "
+                f"load ProductionConfig. If this was invoked as a bare `flask <command>` "
+                f"without `--app run:app`, Flask's CLI auto-discovery silently defaults to "
+                f"the development app factory regardless of FLASK_CONFIG. Re-run every "
+                f"production CLI command as `flask --app run:app <command>` (see DEPLOYMENT.md)."
+            )
         if current_app.debug:
             problems.append("DEBUG is True — must be False in production.")
         if current_app.config.get("TRUSTED_PROXY_COUNT", 0) < 1:

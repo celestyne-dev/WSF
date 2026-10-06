@@ -179,7 +179,7 @@ pip install -r requirements.txt
 **Always** apply already-reviewed, already-committed migrations:
 
 ```bash
-flask db upgrade
+flask --app run:app db upgrade
 ```
 
 **Never** run `flask db init` or `flask db migrate` against production —
@@ -192,19 +192,24 @@ Before running `flask db upgrade` on a real deploy: **back up the database
 first** (§10) and sanity-check the migration graph:
 
 ```bash
-flask db heads     # must show exactly one head
-flask db current   # confirms what's actually applied right now
+flask --app run:app db heads     # must show exactly one head
+flask --app run:app db current   # confirms what's actually applied right now
 ```
+
+Every command in this section uses `--app run:app` explicitly rather than
+relying on Flask's bare CLI auto-discovery — see §11 for exactly why a
+bare `flask ...` invocation can silently run against the wrong
+configuration.
 
 ## 7. Bootstrap data (idempotent — safe to re-run)
 
 ```bash
-flask seed-roles       # roles/permissions — safe, idempotent
-flask seed-geography   # country reference table — safe, idempotent
-flask seed-pages       # required system Pages (About/Contact/Privacy/Terms/Cookies/Editorial Policy) — safe, idempotent
-flask seed-navigation  # header "primary"/"secondary" menus — safe, idempotent
-flask seed-footer      # footer's four canonical groups (Explore/Opportunities/About/Legal) — safe, idempotent
-flask seed-advertise   # /advertise page + its eight canonical offerings — safe, idempotent
+flask --app run:app seed-roles       # roles/permissions — safe, idempotent
+flask --app run:app seed-geography   # country reference table — safe, idempotent
+flask --app run:app seed-pages       # required system Pages (About/Contact/Privacy/Terms/Cookies/Editorial Policy) — safe, idempotent
+flask --app run:app seed-navigation  # header "primary"/"secondary" menus — safe, idempotent
+flask --app run:app seed-footer      # footer's four canonical groups (Explore/Opportunities/About/Legal) — safe, idempotent
+flask --app run:app seed-advertise   # /advertise page + its eight canonical offerings — safe, idempotent
 ```
 
 `seed-pages` runs before `seed-navigation` because the header's "About"
@@ -272,7 +277,7 @@ this codebase. Create the first Super Admin explicitly, once, with a
 strong password you generate yourself:
 
 ```bash
-flask create-superadmin --email you@womenshapingfutures.org --password '<a-real-strong-password>'
+flask --app run:app create-superadmin --email you@womenshapingfutures.org --password '<a-real-strong-password>'
 ```
 
 Never reuse a password that has appeared anywhere else (including any
@@ -341,7 +346,17 @@ connection limits.
 
 `flask run` (the Flask development server) must never be used in
 production — only Gunicorn serves real traffic. `flask` itself remains
-the right tool for CLI commands (migrations, seeding, the scheduler hook).
+the right tool for CLI commands (migrations, seeding, the scheduler hook)
+— but **never invoke it bare** in production. Without `--app run:app`,
+Flask's own CLI auto-discovery finds `app/__init__.py`'s `create_app`
+factory and calls it with no argument, silently loading
+`DevelopmentConfig` regardless of what `FLASK_CONFIG` is set to in the
+environment — `run.py`'s own `create_app(os.environ.get("FLASK_CONFIG",
+...))` call is never reached at all. Every production Flask CLI command
+in this document explicitly says `flask --app run:app ...` for exactly
+this reason; `flask production-check` additionally fails hard (not a
+warning) if the active `CONFIG_NAME` isn't `production`, as a second,
+automated guard against this exact mistake.
 
 ## 12. Running as a service (systemd)
 
@@ -382,8 +397,16 @@ Run this after configuring `.env` and before starting the service, and
 again any time `.env` changes:
 
 ```bash
-FLASK_CONFIG=production flask production-check
+FLASK_CONFIG=production flask --app run:app production-check
 ```
+
+**Always include `--app run:app`.** Without it, Flask's CLI
+auto-discovery loads the app factory directly with no config_name
+argument and silently runs `DevelopmentConfig` regardless of
+`FLASK_CONFIG` — `production-check` itself now guards against exactly
+this (it fails hard, not with a warning, if the active `CONFIG_NAME`
+isn't `production`), but the explicit flag is what gets the real
+production app checked in the first place, not a decoy.
 
 It verifies `SECRET_KEY`/`JWT_SECRET_KEY`/`DATABASE_URL`/`CORS_ORIGINS`/
 `MEDIA_ROOT`/`EMAIL_BACKEND` (and its required `SMTP_*` variables, see
@@ -466,12 +489,15 @@ scheduler — it only documents invoking the existing command.
 **Cron** (simplest option):
 
 ```cron
-*/5 * * * * cd /var/www/womenshapingfutures/backend && /var/www/womenshapingfutures/backend/.venv/bin/flask publish-due-content >> /var/log/womenshapingfutures/publish.log 2>&1
+*/5 * * * * cd /var/www/womenshapingfutures/backend && /var/www/womenshapingfutures/backend/.venv/bin/flask --app run:app publish-due-content >> /var/log/womenshapingfutures/publish.log 2>&1
 ```
 
 (Set `FLASK_CONFIG=production` and the rest of `.env` however cron reads
 environment on this system — e.g. via a wrapper script that sources
-`.env` first, since cron does not read it automatically.)
+`.env` first, since cron does not read it automatically. `--app run:app`
+is not optional here: without it, cron's bare `flask publish-due-content`
+would silently run against `DevelopmentConfig` regardless of
+`FLASK_CONFIG`, exactly the auto-discovery trap described in §11.)
 
 **systemd timer** (alternative): example unit + timer files are provided
 at `deploy/systemd/womenshapingfutures-publish.{service,timer}.example` —
@@ -495,10 +521,10 @@ bare `SELECT 1`), and never let it leak a raw database error message.
    an untested branch).
 3. **Activate** the virtualenv, **install** backend dependencies
    (`pip install -r requirements.txt`).
-4. **Apply** committed migrations: `flask db upgrade`.
+4. **Apply** committed migrations: `flask --app run:app db upgrade`.
 5. **Build** the frontend: `npm ci && npm run build`.
-6. **Run** `flask production-check` — fix anything it flags before
-   proceeding.
+6. **Run** `flask --app run:app production-check` — fix anything it
+   flags before proceeding.
 7. **Restart** Gunicorn: `sudo systemctl restart womenshapingfutures`.
 8. **Reload** Nginx only if its config changed: `sudo nginx -t &&
    sudo systemctl reload nginx`.

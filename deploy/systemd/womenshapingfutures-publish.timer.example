@@ -3,8 +3,8 @@
 # same command on the same cadence works identically if cron is preferred
 # over systemd timers on the target VPS — see DEPLOYMENT.md for both
 # forms. Either way, this only ever invokes the existing
-# `flask publish-due-content` CLI command — nothing here builds a new
-# scheduler.
+# `flask --app run:app publish-due-content` CLI command — nothing here
+# builds a new scheduler.
 
 [Unit]
 Description=Run Women Shaping Futures scheduled-publish check every 5 minutes

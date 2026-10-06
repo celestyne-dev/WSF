@@ -333,6 +333,62 @@ def test_create_app_development_still_works_with_no_config_name():
     assert app.config["DEBUG"] is True
 
 
+def test_production_check_cli_fails_when_active_config_is_not_production():
+    # The exact scenario Module 7 fixes: `flask production-check` run
+    # against whatever app create_app() actually built — here the
+    # ordinary development default (no config_name passed), the same
+    # thing Flask's own CLI auto-discovery falls back to when invoked
+    # bare (no `--app run:app`), silently ignoring FLASK_CONFIG. This
+    # must be a hard failure (non-zero exit), never a warning that still
+    # reports PASSED.
+    from app import create_app
+
+    app = create_app()
+    assert app.config["CONFIG_NAME"] == "development"
+
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["production-check"])
+
+    assert result.exit_code != 0
+    assert "PRODUCTION CHECK FAILED" in result.output
+    assert "CONFIG_NAME is 'development'" in result.output
+    assert "not 'production'" in result.output
+    # Never downgraded to a mere warning line (the pre-fix bug).
+    assert "PRODUCTION CHECK PASSED" not in result.output
+
+
+def test_production_check_cli_passes_with_valid_production_config(monkeypatch):
+    # Mirrors test_create_app_production_boots_when_config_is_valid's own
+    # monkeypatch pattern, but drives the actual `production-check` CLI
+    # command end-to-end (not just require_production_settings) — this is
+    # the "production app + valid settings -> passes" counterpart to the
+    # failure test above.
+    from config import ProductionConfig
+
+    monkeypatch.setattr(ProductionConfig, "SECRET_KEY", "a-real-random-production-secret")
+    monkeypatch.setattr(ProductionConfig, "JWT_SECRET_KEY", "a-different-real-random-jwt-secret")
+    monkeypatch.setattr(ProductionConfig, "SQLALCHEMY_DATABASE_URI", "postgresql://wsf:x@db-host:5432/womenshapingfutures")
+    monkeypatch.setattr(ProductionConfig, "CORS_ORIGINS", ["https://womenshapingfutures.org"])
+    monkeypatch.setattr(ProductionConfig, "EMAIL_BACKEND", "smtp")
+    monkeypatch.setattr(ProductionConfig, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(ProductionConfig, "SMTP_FROM_EMAIL", "noreply@womenshapingfutures.org")
+    monkeypatch.setattr(ProductionConfig, "FRONTEND_URL", "https://womenshapingfutures.org")
+    monkeypatch.setattr(ProductionConfig, "MEDIA_ROOT", "/var/lib/womenshapingfutures/media")
+
+    from app import create_app
+
+    app = create_app("production")
+    assert app.config["CONFIG_NAME"] == "production"
+
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["production-check"])
+
+    assert result.exit_code == 0
+    assert "PRODUCTION CHECK PASSED" in result.output
+    assert "Active config: FLASK_CONFIG='production'" in result.output
+    assert "PRODUCTION CHECK FAILED" not in result.output
+
+
 def test_security_headers_present_on_response(client):
     resp = client.get("/api/v1/health")
     assert resp.headers.get("X-Content-Type-Options") == "nosniff"
