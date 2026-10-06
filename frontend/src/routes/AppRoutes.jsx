@@ -46,6 +46,7 @@ const AccountLearningPage = lazy(() => import('../pages/AccountLearningPage'))
 const AccountCommunityPage = lazy(() => import('../pages/AccountCommunityPage'))
 const AccountMembershipPage = lazy(() => import('../pages/AccountMembershipPage'))
 const CirclePage = lazy(() => import('../pages/CirclePage'))
+const CircleCheckoutCallbackPage = lazy(() => import('../pages/CircleCheckoutCallbackPage'))
 const SubmitStoryPage = lazy(() => import('../pages/SubmitStoryPage'))
 const NominatePage = lazy(() => import('../pages/NominatePage'))
 const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
@@ -218,6 +219,7 @@ export default function AppRoutes() {
           <Route path="/mentorship" element={<MentorshipPage />} />
           <Route path="/community" element={<CommunityPage />} />
           <Route path="/circle" element={<CirclePage />} />
+          <Route path="/circle/checkout/callback" element={<CircleCheckoutCallbackPage />} />
           <Route path="/learning" element={<LearningPage />} />
           <Route path="/learning/:slug" element={<LearningProgramDetailPage />} />
           <Route path="/shop" element={<ShopPage />} />

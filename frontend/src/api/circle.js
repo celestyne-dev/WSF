@@ -2,9 +2,17 @@ import { apiClient } from './client'
 
 // WSF Circle — provider-neutral premium membership. See backend
 // app/models/circle.py / app/services/circle.py / app/api/v1/circle.py.
-// No payment gateway exists — this module never implements checkout,
-// payment-success callbacks, or subscribe/activate actions for ordinary
-// users (see CircleMeResource's GET-only owner API).
+//
+// Module 4 adds the two functions below (startCircleCheckout,
+// getCirclePaymentStatus) for the Paystack-backed self-service checkout
+// flow — see app/services/circle_payments.py (Modules 2/3). Entitlement
+// itself is still never decided here or anywhere else in the frontend:
+// the backend is the sole authority on whether a payment succeeded and
+// whether membership is active (CircleMeResource/CirclePaymentStatusResource
+// remain GET-only from this module's point of view). Nothing in this file
+// ever sends amount, currency, email, user id, or payment/membership
+// status to the backend — checkout takes only a plan slug, exactly as
+// app/api/v1/circle.py's CircleCheckoutResource expects.
 
 // Handles both shapes GET /circle/plans can return from the SAME
 // endpoint: the public, already-camelCase build_public_plan_payload()
@@ -109,13 +117,43 @@ export async function fetchMyCircleMembership() {
 // Phase 1 staff-assisted enrollment — creates a staff-reviewable lead
 // only (reuses the Contact Inquiries inbox server-side; see
 // CircleMembershipRequestResource, backend/app/api/v1/circle.py). Never
-// activates or affects a CircleSubscription in any way.
+// activates or affects a CircleSubscription in any way. Still available
+// in Module 4 as the secondary/fallback path — see CirclePage.jsx.
 export async function requestCircleMembership({ planSlug, note } = {}) {
   const { data } = await apiClient.post('/circle/membership-requests', {
     planSlug: planSlug || undefined,
     note: note || undefined,
   })
   return { reference: data?.reference, status: data?.status }
+}
+
+// ---------------------------------------------------------------------------
+// Module 4 — Paystack checkout (authenticated owner only). The request
+// body is deliberately empty: `planSlug` is the only input, carried in the
+// URL, and the backend derives amount/currency/billing interval/customer
+// email itself from the database and the authenticated session (see
+// start_circle_checkout's own docstring) — there is nothing for the
+// frontend to send even if it wanted to.
+// ---------------------------------------------------------------------------
+
+export async function startCircleCheckout(planSlug) {
+  const { data } = await apiClient.post(`/circle/plans/${encodeURIComponent(planSlug)}/checkout`)
+  return { reference: data?.reference, authorizationUrl: data?.authorizationUrl }
+}
+
+// The callback page's one source of truth for whether a payment succeeded
+// — see CircleCheckoutCallbackPage.jsx. `reference` here is only ever used
+// as an opaque lookup key; the backend (owner-scoped — see
+// get_circle_payment_or_404) decides everything else.
+export async function getCirclePaymentStatus(reference) {
+  const { data } = await apiClient.get(`/circle/payments/${encodeURIComponent(reference)}`)
+  return {
+    reference: data?.reference,
+    status: data?.status,
+    membershipActivated: !!data?.membershipActivated,
+    reconciliationRequired: !!data?.reconciliationRequired,
+    reason: data?.reason || null,
+  }
 }
 
 // ---------------------------------------------------------------------------
