@@ -555,6 +555,47 @@ class TestPremium:
         assert _get_resource(app, resource_id).download_count == 0
 
 
+class TestPublicListingAccessFilter:
+    """Module 8 audit fix: the public listing's `free`/`access_type` query
+    params must never let a circle_only resource masquerade as "Free" —
+    it requires a paid WSF Circle membership, so it isn't genuinely free
+    to a visitor who doesn't have one. See
+    app/api/v1/resources.py:build_resource_list_query.
+    """
+
+    # "Free" excludes both premium AND circle_only.
+    def test_free_filter_excludes_circle_only_and_premium(self, app, client):
+        _, free_slug = _make_resource(app, access_type="direct_download")
+        _, circle_slug = _make_resource(app, access_type="circle_only")
+        _, premium_slug = _make_resource(app, access_type="premium", price=4900)
+        resp = client.get("/api/v1/resources", query_string={"free": "true"})
+        slugs = {item["slug"] for item in resp.get_json()["data"]}
+        assert free_slug in slugs
+        assert circle_slug not in slugs
+        assert premium_slug not in slugs
+
+    # "Premium" filter is unchanged — premium only, never circle_only.
+    def test_premium_filter_still_excludes_circle_only(self, app, client):
+        _, circle_slug = _make_resource(app, access_type="circle_only")
+        _, premium_slug = _make_resource(app, access_type="premium", price=4900)
+        resp = client.get("/api/v1/resources", query_string={"free": "false"})
+        slugs = {item["slug"] for item in resp.get_json()["data"]}
+        assert premium_slug in slugs
+        assert circle_slug not in slugs
+
+    # The listing's own correctly-labeled way to find WSF Circle
+    # resources — already-generic ?access_type=... equality filtering,
+    # confirmed here so the public "WSF Circle" filter bucket has a
+    # covered, working query to rely on.
+    def test_access_type_circle_only_filter_finds_circle_resources(self, app, client):
+        _, circle_slug = _make_resource(app, access_type="circle_only")
+        _, free_slug = _make_resource(app, access_type="direct_download")
+        resp = client.get("/api/v1/resources", query_string={"access_type": "circle_only"})
+        slugs = {item["slug"] for item in resp.get_json()["data"]}
+        assert circle_slug in slugs
+        assert free_slug not in slugs
+
+
 class TestExternalLink:
     # 52. anonymous external link succeeds
     def test_anonymous_external_link_succeeds(self, app, client):

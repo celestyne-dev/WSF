@@ -11,9 +11,10 @@ import PageLoader from '../components/ui/PageLoader'
 import ArticleContent from '../components/article/ArticleContent'
 
 const BENEFITS = [
-  { title: 'Deeper learning', description: 'Priority access to WSF Learning programs as the catalog grows.' },
-  { title: 'Career resources', description: 'Curated guidance and tools designed for ambitious career moves.' },
-  { title: 'Community experiences', description: 'A closer connection to the women shaping their industries alongside you.' },
+  { title: 'WSF Learning', description: 'Full access to WSF Circle learning programs and courses as the catalog grows.' },
+  { title: 'WSF Circle resources', description: 'Guides, workbooks, and tools reserved for WSF Circle members — separate from one-off premium purchases.' },
+  { title: 'Opportunities & jobs', description: 'Selected roles and opportunities reserved for WSF Circle members.' },
+  { title: 'WSF Circle events', description: 'Community gatherings and sessions held exclusively for members.' },
 ]
 
 function billingLabel(plan) {
@@ -280,7 +281,7 @@ export default function CirclePage() {
 
         <div className="border-b border-taupe-200 pb-14">
           <h2 className="font-serif text-3xl font-semibold text-charcoal">Why WSF Circle</h2>
-          <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {BENEFITS.map((b, i) => (
               <div key={i} className="border border-taupe-200 bg-white p-5">
                 <h3 className="font-serif text-lg font-semibold text-charcoal">{b.title}</h3>

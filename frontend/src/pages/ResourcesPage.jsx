@@ -12,7 +12,13 @@ import PageLoader from '../components/ui/PageLoader'
 export default function ResourcesPage() {
   const [query, setQuery] = useState('')
   const [type, setType] = useState('')
-  const [free, setFree] = useState('')
+  // Three distinct buckets, never two: "Free" must never include a
+  // circle_only resource (it requires a paid WSF Circle membership, so
+  // it isn't genuinely free to a visitor without one), and "WSF Circle"
+  // must never be folded into "Premium" (a separate one-off commercial
+  // resource type — Circle membership never unlocks it, see
+  // app/services/resource_access.py). '' means no access filter applied.
+  const [access, setAccess] = useState('')
   const [types, setTypes] = useState([])
   const [featured, setFeatured] = useState(null)
   const [latest, setLatest] = useState(null)
@@ -20,11 +26,11 @@ export default function ResourcesPage() {
   const [results, setResults] = useState(null)
   const [error, setError] = useState(null)
 
-  const isFiltering = !!(query || type || free)
+  const isFiltering = !!(query || type || access)
 
   useSeo({
     title: 'Resource Library | Women Shaping Futures',
-    description: 'Guides, workbooks, templates, and toolkits to help you plan your career, negotiate pay, and grow a business — free and premium.',
+    description: 'Guides, workbooks, templates, and toolkits to help you plan your career, negotiate pay, and grow a business — free, WSF Circle, and premium.',
     canonical: 'https://womenshapingfutures.org/resources',
   })
 
@@ -63,20 +69,25 @@ export default function ResourcesPage() {
     }
     let active = true
     setError(null)
-    fetchResources({ type, free, q: query, pageSize: 100 })
+    // "WSF Circle" is its own access_type equality filter, never the
+    // free=true/false boolean — see the `access` state comment above.
+    const params = { type, q: query, pageSize: 100 }
+    if (access === 'circle') params.accessType = 'circle_only'
+    else if (access) params.free = access
+    fetchResources(params)
       .then((res) => active && setResults(res.items))
       .catch(() => active && setError('Something went wrong loading resources. Please try again.'))
     return () => {
       active = false
     }
-  }, [type, free, query, isFiltering])
+  }, [type, access, query, isFiltering])
 
   return (
     <div>
       <PageHeader
         eyebrow="Resource Library"
         title="Guides, Workbooks & Toolkits Built for Your Next Move"
-        description="Practical tools from our editors and career coaches — career planning, negotiation, leadership, and business, free and premium."
+        description="Practical tools from our editors and career coaches — career planning, negotiation, leadership, and business, free, WSF Circle, and premium."
       />
       <div className="container-editorial py-10">
         <div className="flex flex-wrap items-center gap-3 border-b border-taupe-200 pb-8">
@@ -90,7 +101,16 @@ export default function ResourcesPage() {
             />
           </div>
           <FilterSelect label="Type" value={type} onChange={setType} options={types} />
-          <FilterSelect label="Access" value={free} onChange={setFree} options={[{ value: 'true', label: 'Free' }, { value: 'false', label: 'Premium' }]} />
+          <FilterSelect
+            label="Access"
+            value={access}
+            onChange={setAccess}
+            options={[
+              { value: 'true', label: 'Free' },
+              { value: 'circle', label: 'WSF Circle' },
+              { value: 'false', label: 'Premium' },
+            ]}
+          />
         </div>
 
         {isFiltering ? (

@@ -35,7 +35,7 @@ export default function AdminCircleMemberships() {
     <div>
       <AdminPageHeader
         title="WSF Circle Memberships"
-        description="Staff-recorded subscriptions — manual, externally-confirmed, or complimentary. No payment gateway is connected."
+        description="Every WSF Circle membership, however it started: paid online through Paystack (source: external), recorded directly by staff (manual), or granted complimentary. Use 'Record subscription' only for a manual or complimentary entry — an online Paystack payment creates its own record automatically."
         actions={
           <Link to="/admin/circle/memberships/new" className="btn-primary !px-4 !py-2 text-xs">
             <Plus size={14} /> Record subscription

@@ -314,9 +314,9 @@ export default function AdminCirclePlanEditor() {
 
           <Section
             title="Checkout / billing"
-            description="No payment gateway is wired up yet. Leave Checkout URL blank to show a professional 'enrollment coming soon' state instead of a broken button."
+            description="Paystack powers checkout for every plan automatically — members always see a working 'Pay securely' button on /circle regardless of this section. Checkout URL is optional: it only adds a secondary 'alternate secure checkout' link for members who prefer a different payment method."
           >
-            <Field label="Checkout URL" hint="external secure checkout — https:// only">
+            <Field label="Alternate checkout URL" hint="optional — external secure checkout — https:// only">
               <input value={form.checkoutUrl} onChange={(e) => updateField('checkoutUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
             <Field label="Manage billing URL" hint="optional — a future payment provider's customer portal">

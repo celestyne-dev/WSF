@@ -240,9 +240,14 @@ def _build_query(user):
         query = query.filter(ResourceModel.author.has(slug=request.args["author"]))
     if request.args.get("featured") == "true":
         query = query.filter(ResourceModel.featured.is_(True))
+    # "Free" must exclude circle_only too — it requires an active, paid
+    # WSF Circle membership, so it is not genuinely free to a visitor who
+    # doesn't have one. ?access_type=circle_only (via apply_equality_filters
+    # above) is the public listing's own, correctly-labeled way to find
+    # WSF Circle resources; "Free" here means truly free/public access.
     free = request.args.get("free")
     if free == "true":
-        query = query.filter(ResourceModel.access_type != "premium")
+        query = query.filter(ResourceModel.access_type.notin_(["premium", "circle_only"]))
     elif free == "false":
         query = query.filter(ResourceModel.access_type == "premium")
 
