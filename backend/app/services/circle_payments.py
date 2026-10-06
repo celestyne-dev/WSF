@@ -39,6 +39,27 @@ LOCKING: two distinct mechanisms, used for two distinct races.
    CirclePayment then CircleSubscription, consistently, across every
    call site here, so there is no path that could deadlock against
    itself.
+
+WEBHOOK RECOVERY (Module 3): api/v1/webhooks.py's Paystack route is the
+ONLY caller of _verify_with_provider_for_webhook/
+process_circle_webhook_charge_success below, and only after it has
+already verified the delivery's HMAC signature and confirmed the event
+is `charge.success` — this module trusts that has already happened and
+never re-derives it. That trust is exactly what lets this module do one
+thing an ordinary request never may: reopen a `failed`/`abandoned`
+CirclePayment (pending/processing-provider delays, a user who abandoned
+checkout and completed it later, etc.) by running a fresh Paystack
+Verify and, if it now says `success` with every invariant matching,
+carrying it through to `verified` -> consumed via the exact same
+consume_verified_circle_payment() used everywhere else. A mismatch on
+that fresh verify still lands in the same verified+reconciliation_required
+quarantine Module 2 established — recovery never bypasses invariant
+checking, it only bypasses the "must start from `pending`" restriction
+that protects ordinary user-facing polling from reopening settled
+payments. An already-`verified`-but-flagged payment is deliberately
+NOT re-verified or auto-cleared by a bare webhook redelivery alone (see
+_verify_with_provider_for_webhook) — Module 3's conservative MVP
+reconciliation policy.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -383,26 +404,53 @@ def _needs_reconciliation(payment):
     return bool(payment.provider_snapshot and payment.provider_snapshot.get("reconciliation_required"))
 
 
+def _apply_provider_verify_result(locked, result, now):
+    """Mutates `locked`'s status/snapshot/verification fields in place
+    from an already-fetched Paystack verify `result` — the exact
+    success/abandoned/failed/pending interpretation Module 2
+    established. Does not commit, and does not touch
+    last_verification_attempt_at — callers own both, since the two
+    callers below (throttled browser polling vs. trusted webhook
+    recovery) manage that timestamp differently. Shared so this mapping
+    is defined in exactly one place rather than risking the two callers
+    drifting apart.
+
+    Returns (reason, mismatches): `reason` is None (clean success),
+    "reconciliation_required", "abandoned", "failed", or "pending" —
+    the same vocabulary _verify_with_provider_if_due has always
+    returned to its own callers.
+    """
+    provider_status = result.get("status")
+
+    if provider_status == "success":
+        mismatches = _invariant_mismatches(locked, result)
+        locked.status = "verified"
+        locked.verified_at = now
+        locked.paid_at = _parse_provider_timestamp(result.get("paid_at"))
+        locked.provider_transaction_id = result.get("provider_transaction_id")
+        locked.provider_channel = result.get("channel")
+        locked.provider_snapshot = _build_provider_snapshot(result, mismatches)
+        return ("reconciliation_required" if mismatches else None), mismatches
+
+    if provider_status == "abandoned":
+        locked.status = "abandoned"
+        return "abandoned", []
+
+    if provider_status == "failed":
+        locked.status = "failed"
+        return "failed", []
+
+    # Paystack's own transaction is still pending/processing — WSF's
+    # status is left exactly as-is so a later check can try again.
+    return "pending", []
+
+
 def _verify_with_provider_if_due(payment):
     """Locks the CirclePayment row, then — only if it's still `pending`
     and wasn't checked within _VERIFY_THROTTLE — calls Paystack's verify
-    API exactly once and interprets the result:
-
-    - provider "success" + every invariant matches -> `verified`
-      (matched); the caller may proceed straight to consumption.
-    - provider "success" + any invariant mismatch -> `verified` too, but
-      flagged reconciliation_required in provider_snapshot and logged
-      prominently; NEVER proceeds to consumption (see
-      consume_verified_circle_payment). Paystack may genuinely have
-      collected money here — this state exists so staff can investigate
-      a real charge safely, not so it quietly disappears as a "failure".
-    - provider "abandoned"/"failed" -> the matching local terminal
-      status.
-    - anything else (Paystack's own transaction is still
-      pending/processing) -> left untouched; only the throttle timestamp
-      advances.
-    - a network/config error talking to Paystack -> left untouched
-      (`pending`); never mistaken for a real failure.
+    API exactly once and interprets the result via
+    _apply_provider_verify_result (see that function for the
+    success/abandoned/failed/pending mapping).
 
     Returns (payment, reason) where `reason` is a short, stable string
     for the API response when the status itself doesn't say enough
@@ -434,42 +482,181 @@ def _verify_with_provider_if_due(payment):
         )
         return locked, "verification_unavailable"
 
-    provider_status = result.get("status")
+    reason, mismatches = _apply_provider_verify_result(locked, result, now)
+    db.session.commit()
 
-    if provider_status == "success":
-        mismatches = _invariant_mismatches(locked, result)
-        locked.status = "verified"
-        locked.verified_at = now
-        locked.paid_at = _parse_provider_timestamp(result.get("paid_at"))
-        locked.provider_transaction_id = result.get("provider_transaction_id")
-        locked.provider_channel = result.get("channel")
-        locked.provider_snapshot = _build_provider_snapshot(result, mismatches)
-        db.session.commit()
-        if mismatches:
-            log_action(
-                locked.user, "circle_payment.verification_mismatch", "CirclePayment", locked.id,
-                changes={"mismatches": sorted(mismatches)},
-            )
-            return locked, "reconciliation_required"
+    if reason == "reconciliation_required":
+        log_action(
+            locked.user, "circle_payment.verification_mismatch", "CirclePayment", locked.id,
+            changes={"mismatches": sorted(mismatches)},
+        )
+        return locked, reason
+    if reason is None:
         log_action(locked.user, "circle_payment.verification_succeeded", "CirclePayment", locked.id)
         return locked, None
-
-    if provider_status == "abandoned":
-        locked.status = "abandoned"
-        db.session.commit()
+    if reason == "abandoned":
         log_action(locked.user, "circle_payment.verification_abandoned", "CirclePayment", locked.id)
-        return locked, "abandoned"
-
-    if provider_status == "failed":
-        locked.status = "failed"
-        db.session.commit()
+        return locked, reason
+    if reason == "failed":
         log_action(locked.user, "circle_payment.verification_failed", "CirclePayment", locked.id)
-        return locked, "failed"
+        return locked, reason
+    return locked, reason  # "pending"
 
-    # Paystack's own transaction is still pending/processing — WSF's
-    # status is left exactly as-is so a later GET can try again.
+
+def _verify_with_provider_for_webhook(payment):
+    """Trusted-webhook-only verification/recovery entry point — see this
+    module's WEBHOOK RECOVERY docstring section. The ONLY place a
+    `failed`/`abandoned` CirclePayment may be reopened, and only because
+    the caller (api/v1/webhooks.py, after HMAC verification) has already
+    established this is a genuine, provider-authenticated `charge.success`
+    delivery. Never call this from an ordinary user-facing endpoint, and
+    never for any other event type.
+
+    Unlike _verify_with_provider_if_due (`pending`-only, always
+    throttled — browser polling), this accepts `pending`, `failed`, or
+    `abandoned` local state and does not apply _VERIFY_THROTTLE: a
+    webhook delivery isn't a loop a user can spam, and Paystack's own
+    retry schedule already spaces deliveries out.
+
+    `consumed` is a pure replay, returned untouched with no new Paystack
+    call. An existing `verified`-but-reconciliation-flagged row is also
+    left exactly as-is — Module 3's deliberately conservative MVP
+    policy: a bare webhook redelivery alone never re-verifies or
+    auto-clears an existing mismatch flag.
+
+    Returns (locked_payment, reason, prior_status). `reason` reuses
+    _apply_provider_verify_result's vocabulary, plus "already_consumed".
+    Raises PaystackAPIError/PaystackNotConfiguredError straight through
+    on a transient provider failure — nothing is mutated or committed
+    on that path, and the caller (the webhook route) must turn the
+    exception into a non-2xx response so Paystack's own retry can safely
+    try again later.
+    """
+    locked = CirclePayment.query.with_for_update().populate_existing().filter_by(id=payment.id).one()
+    prior_status = locked.status
+
+    if prior_status == "consumed":
+        return locked, "already_consumed", prior_status
+
+    if prior_status == "verified":
+        reason = "reconciliation_required" if _needs_reconciliation(locked) else None
+        return locked, reason, prior_status
+
+    # pending / failed / abandoned — all three are eligible for a fresh,
+    # trusted verify; a webhook-authenticated charge.success is exactly
+    # the condition that may reopen the latter two (see module docstring).
+    now = datetime.now(timezone.utc)
+    locked.last_verification_attempt_at = now
+    result = verify_transaction(locked.reference)  # may raise — nothing committed yet, see docstring
+    reason, mismatches = _apply_provider_verify_result(locked, result, now)
     db.session.commit()
-    return locked, "pending"
+
+    if reason == "reconciliation_required":
+        log_action(
+            None, "circle_payment.webhook_reconciliation", "CirclePayment", locked.id,
+            changes={"mismatches": sorted(mismatches), "priorStatus": prior_status},
+        )
+    elif reason is None and prior_status in ("failed", "abandoned"):
+        log_action(
+            None, "circle_payment.webhook_recovered", "CirclePayment", locked.id,
+            changes={"from": prior_status},
+        )
+
+    return locked, reason, prior_status
+
+
+def process_circle_webhook_charge_success(reference):
+    """THE one entry point api/v1/webhooks.py's Paystack route calls for
+    an HMAC-verified `charge.success` event — see this module's WEBHOOK
+    RECOVERY docstring section for the full policy. Starts only once the
+    caller has already confirmed the signature is valid, the event type
+    is `charge.success`, and `reference` was read from the payload's
+    `data.reference` — everything from "look up the matching
+    CirclePayment" onward is this function's job, and it defers to the
+    exact same consume_verified_circle_payment() every other entry point
+    uses — never a second copy of activation logic.
+
+    Returns {"outcome": str, "payment": CirclePayment | None} where
+    outcome is one of:
+
+    - "unknown_reference": no matching CirclePayment exists. Never
+      creates one, never infers a user/plan from webhook metadata — a
+      retry cannot manufacture a missing local WSF payment intent.
+    - "already_consumed": a safe replay of an already-fully-processed
+      payment — no new Paystack call, no new mutation.
+    - "reconciliation_required": Paystack confirmed success (just now,
+      or on a prior check) but at least one invariant doesn't match
+      this CirclePayment's own snapshots — membership is never
+      activated/extended from this state.
+    - "membership_conflict": verified and unflagged, but the account's
+      current membership state no longer matches what this payment was
+      for (see consume_verified_circle_payment) — never activates.
+    - "consumed": a new subscription was created, or an existing one
+      was extended — exactly once, however many times this same
+      webhook is ever redelivered.
+    - "not_yet_confirmed": the event claims `charge.success`, but a
+      fresh Paystack Verify call, performed just now, did NOT return
+      "success" (it said pending/processing, failed, or abandoned
+      instead). This is a genuine inconsistency between what Paystack's
+      webhook claims and what Paystack's own Verify API currently
+      confirms — WSF treats that inconsistency as not yet safely
+      processable, never as "handled": the local payment is left in
+      whatever status _apply_provider_verify_result just computed from
+      that fresh Verify response (unchanged if it still says pending;
+      failed/abandoned if Verify says so) and this outcome signals the
+      caller to respond non-2xx so Paystack retries the delivery later.
+      A later retry whose fresh Verify finally does return "success"
+      follows the ordinary matched/reconciliation path above instead.
+
+    Raises PaystackAPIError/PaystackNotConfiguredError straight through
+    for a transient provider failure, and lets any database error
+    propagate too — the caller must translate both into a non-2xx
+    response so Paystack's own webhook retry schedule gets a chance to
+    succeed later.
+    """
+    payment = CirclePayment.query.filter_by(reference=reference).one_or_none()
+    if payment is None:
+        return {"outcome": "unknown_reference", "payment": None}
+
+    locked, reason, _prior_status = _verify_with_provider_for_webhook(payment)
+
+    if reason == "already_consumed":
+        log_action(None, "circle_payment.webhook_replay", "CirclePayment", locked.id)
+        return {"outcome": "already_consumed", "payment": locked}
+
+    if locked.status == "verified" and not _needs_reconciliation(locked):
+        # Covers both: (a) Paystack's webhook-triggered fresh Verify
+        # just confirmed success cleanly, and (b) crash-recovery — this
+        # payment was already sitting in a clean `verified` state from
+        # an earlier verification (browser poll or a prior webhook) that
+        # never reached consumption (e.g. a process/DB interruption
+        # between marking it verified and activating membership). A
+        # trusted charge.success delivery is exactly the trigger that
+        # should resume that interrupted activation; no second Paystack
+        # call is needed since the existing verified state already
+        # carries the authoritative evidence (see
+        # _verify_with_provider_for_webhook's own docstring).
+        # consume_verified_circle_payment is idempotent and re-locks the
+        # row itself, so this is always safe to call unconditionally,
+        # including on a replay that already consumed it.
+        result = consume_verified_circle_payment(locked.reference, actor_user=None)
+        return {"outcome": result["outcome"], "payment": result["payment"]}
+
+    if locked.status == "verified":
+        # Flagged for reconciliation — either just now, or already
+        # before this delivery arrived (Module 3's conservative MVP
+        # policy: a bare webhook redelivery never re-verifies or
+        # auto-clears an existing mismatch flag on its own).
+        return {"outcome": "reconciliation_required", "payment": locked}
+
+    # pending / failed / abandoned at this point can only mean the fresh
+    # Verify _verify_with_provider_for_webhook just performed did NOT
+    # return "success" (a "success" result would have set locked.status
+    # to "verified" above) — Paystack's webhook claims charge.success
+    # while Paystack's own Verify API disagrees. Never acknowledged as
+    # fully handled; the caller must respond non-2xx so this delivery is
+    # retried once WSF can independently confirm success.
+    return {"outcome": "not_yet_confirmed", "payment": locked}
 
 
 def _create_new_subscription_for_payment(payment, user, plan):

@@ -16,7 +16,17 @@ request-making function calls `_secret_key()` first, which raises
 PaystackNotConfiguredError if Paystack isn't enabled/configured, so the
 app (and its test suite) can load this module freely with Paystack
 disabled.
+
+Module 3 adds one more thing this client is responsible for:
+verify_webhook_signature() below, which authenticates an inbound
+Paystack webhook delivery (HMAC-SHA512 over the exact raw request
+body) — see that function's own docstring. It never makes an outbound
+request itself; it is pure, stdlib-only signature verification, kept
+here because it shares this module's one secret key and its "never
+disclose the secret" discipline.
 """
+import hashlib
+import hmac
 import secrets
 
 import requests
@@ -226,3 +236,46 @@ def verify_transaction(reference):
         # requested via /transaction/verify/<reference>.
         "reference": reference,
     }
+
+
+def verify_webhook_signature(raw_body, supplied_signature):
+    """Authenticates an inbound Paystack webhook delivery: Paystack signs
+    every webhook POST body with HMAC-SHA512, keyed by the same secret
+    key used for API calls, hex-encoded, and sent in the
+    `x-paystack-signature` header. This is the ONLY authentication a
+    webhook delivery has — there is no user/session, no API key header,
+    nothing else to check — so callers must verify this (and only trust
+    the parsed JSON) before doing anything else with the request.
+
+    `raw_body` must be the exact, unmodified request bytes — Paystack
+    signs the literal bytes it sent, not a re-serialized/re-parsed copy,
+    so a semantically-identical but byte-different JSON body (different
+    key order, different whitespace) will legitimately fail to validate
+    against a signature computed for the original bytes. Callers must
+    read `raw_body` before ever calling something like get_json() that
+    might normalize it, and must never build the comparison from a
+    dict that was already parsed and re-dumped.
+
+    Raises PaystackNotConfiguredError if Paystack isn't enabled/
+    configured — the same "this is a configuration problem, not a
+    signature problem" signal every other function in this module
+    raises for the identical condition; callers must treat that case as
+    a safe 5xx failure, never as "the signature was invalid" (which
+    would incorrectly suggest a forged/corrupted delivery).
+
+    Returns True only for an exact, constant-time match against a
+    non-empty, string `supplied_signature` — False for anything else
+    (header missing entirely, non-hex garbage, right shape but wrong
+    value). Never raises for a merely-invalid signature, and never
+    includes the expected signature or the secret key in its return
+    value, in any exception message, or anywhere else a caller might
+    end up logging it — a caller must log only the fact that
+    verification failed, never what was expected or supplied.
+    """
+    secret = _secret_key()
+    if not isinstance(supplied_signature, str) or not supplied_signature:
+        return False
+    if not isinstance(raw_body, bytes):
+        return False
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
+    return hmac.compare_digest(expected, supplied_signature.strip().lower())

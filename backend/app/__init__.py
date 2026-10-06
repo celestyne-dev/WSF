@@ -109,6 +109,7 @@ def create_app(config_name="development"):
     from app.api.v1.sponsors import sponsors_bp
     from app.api.v1.submissions import submissions_bp
     from app.api.v1.taxonomy import categories_bp, series_bp, topics_bp
+    from app.api.v1.webhooks import webhooks_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
@@ -150,6 +151,7 @@ def create_app(config_name="development"):
     app.register_blueprint(learning_enrollments_bp, url_prefix="/api/v1/learning-enrollments")
     app.register_blueprint(notifications_bp, url_prefix="/api/v1/admin/notifications")
     app.register_blueprint(saved_bp, url_prefix="/api/v1/saved")
+    app.register_blueprint(webhooks_bp, url_prefix="/api/v1/webhooks")
 
     @app.get("/api/v1/health")
     def health():

@@ -3,6 +3,9 @@ Module 1 of the Paystack Circle integration. Every test here mocks
 `requests.request`; nothing in this file makes a real network call, and
 nothing here creates a CircleSubscription or changes entitlement.
 """
+import hashlib
+import hmac
+import json
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +16,7 @@ from app.services.paystack import (
     generate_reference,
     initialize_transaction,
     verify_transaction,
+    verify_webhook_signature,
 )
 
 
@@ -385,3 +389,96 @@ class TestVerifyTransaction:
         with app.app_context(), patch("app.services.paystack.requests.request", return_value=fake):
             with pytest.raises(PaystackAPIError):
                 verify_transaction("my-ref-99")
+
+
+def _sign(secret, raw_body):
+    return hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
+
+
+class TestVerifyWebhookSignature:
+    """Module 3: HMAC-SHA512 authentication for inbound Paystack webhook
+    deliveries. Every test here builds the signature itself with stdlib
+    hmac/hashlib against a literal raw body — nothing here makes a
+    network call, and nothing uses a real Paystack secret.
+    """
+
+    def test_valid_signature_accepted(self, app):
+        _enable_paystack(app, secret="sk_test_webhooksecret")
+        raw_body = b'{"event":"charge.success","data":{"reference":"abc"}}'
+        signature = _sign("sk_test_webhooksecret", raw_body)
+        with app.app_context():
+            assert verify_webhook_signature(raw_body, signature) is True
+
+    def test_incorrect_signature_rejected(self, app):
+        _enable_paystack(app, secret="sk_test_webhooksecret")
+        raw_body = b'{"event":"charge.success","data":{"reference":"abc"}}'
+        wrong_signature = _sign("sk_test_a_totally_different_secret", raw_body)
+        with app.app_context():
+            assert verify_webhook_signature(raw_body, wrong_signature) is False
+
+    def test_malformed_signature_rejected(self, app):
+        _enable_paystack(app, secret="sk_test_webhooksecret")
+        raw_body = b'{"event":"charge.success","data":{"reference":"abc"}}'
+        with app.app_context():
+            assert verify_webhook_signature(raw_body, "not-valid-hex-at-all") is False
+
+    def test_missing_signature_rejected(self, app):
+        _enable_paystack(app, secret="sk_test_webhooksecret")
+        raw_body = b'{"event":"charge.success","data":{"reference":"abc"}}'
+        with app.app_context():
+            assert verify_webhook_signature(raw_body, None) is False
+            assert verify_webhook_signature(raw_body, "") is False
+
+    def test_exact_raw_byte_signing(self, app):
+        """A signature computed over one exact byte sequence must not
+        validate against a semantically-identical but byte-different
+        body (different key order / whitespace) — proving this module
+        signs/verifies the literal bytes, never a re-serialized copy.
+        """
+        _enable_paystack(app, secret="sk_test_webhooksecret")
+        original = json.dumps({"event": "charge.success", "data": {"reference": "abc", "amount": 100000}}).encode()
+        signature = _sign("sk_test_webhooksecret", original)
+
+        # Same data, different key order and spacing — a different byte
+        # sequence even though json.loads() would treat them as equal.
+        reordered = json.dumps(
+            {"data": {"amount": 100000, "reference": "abc"}, "event": "charge.success"}, indent=2,
+        ).encode()
+        assert reordered != original
+
+        with app.app_context():
+            assert verify_webhook_signature(original, signature) is True
+            assert verify_webhook_signature(reordered, signature) is False
+
+    def test_disabled_paystack_fails_safely(self, app):
+        app.config["PAYSTACK_ENABLED"] = False
+        app.config["PAYSTACK_SECRET_KEY"] = "sk_test_webhooksecret"
+        raw_body = b'{"event":"charge.success","data":{"reference":"abc"}}'
+        signature = _sign("sk_test_webhooksecret", raw_body)
+        with app.app_context():
+            with pytest.raises(PaystackNotConfiguredError):
+                verify_webhook_signature(raw_body, signature)
+
+    def test_missing_secret_fails_safely(self, app):
+        app.config["PAYSTACK_ENABLED"] = True
+        app.config["PAYSTACK_SECRET_KEY"] = None
+        raw_body = b'{"event":"charge.success","data":{"reference":"abc"}}'
+        with app.app_context():
+            with pytest.raises(PaystackNotConfiguredError):
+                verify_webhook_signature(raw_body, "anything")
+
+    def test_secret_never_appears_in_errors(self, app):
+        app.config["PAYSTACK_ENABLED"] = False
+        app.config["PAYSTACK_SECRET_KEY"] = "sk_test_super_secret_value"
+        raw_body = b'{"event":"charge.success","data":{"reference":"abc"}}'
+        with app.app_context():
+            try:
+                verify_webhook_signature(raw_body, "anything")
+                assert False, "expected PaystackNotConfiguredError"
+            except PaystackNotConfiguredError as exc:
+                assert "sk_test_super_secret_value" not in str(exc)
+
+    def test_non_bytes_raw_body_rejected(self, app):
+        _enable_paystack(app, secret="sk_test_webhooksecret")
+        with app.app_context():
+            assert verify_webhook_signature("not-bytes", "anything") is False
