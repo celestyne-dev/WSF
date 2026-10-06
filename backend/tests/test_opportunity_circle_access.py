@@ -1146,3 +1146,26 @@ def test_95_ordinary_public_apply_behavior_unchanged(client, app):
     access = client.post(f"/api/v1/opportunities/{slug}/access")
     assert access.status_code == 200
     assert access.get_json()["data"]["application_url"] == "https://example.com/ordinary-apply"
+
+
+# ===========================================================================
+# 96-97: ?access_type=circle_only list filter (Module 9 — WSF Circle Member
+# Content Hub needs a way to ask the public list for only circle_only
+# opportunities, the same equality filter Resources/Learning already
+# supported; this never changes entitlement, only which rows are returned).
+# ===========================================================================
+
+
+def test_96_access_type_filter_returns_only_circle_only_opportunities(client, app):
+    _make_opportunity(app, access_type="public", title="Public Filter Opportunity")
+    circle_id = _make_opportunity(app, access_type="circle_only", title="Circle Filter Opportunity")
+    resp = client.get("/api/v1/opportunities?access_type=circle_only")
+    items = resp.get_json()["data"]
+    assert all(item["access_type"] == "circle_only" for item in items)
+    assert any(item["id"] == circle_id for item in items)
+
+
+def test_97_access_type_filter_still_excludes_application_target(client, app):
+    _make_opportunity(app, access_type="circle_only", application_url="https://example.com/filtered-circle-apply")
+    resp = client.get("/api/v1/opportunities?access_type=circle_only")
+    assert "filtered-circle-apply" not in str(resp.get_json())

@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { fetchCirclePlans, fetchMyCircleMembership, requestCircleMembership, startCircleCheckout } from '../api/circle'
+import { fetchLearningPrograms } from '../api/learning'
+import { fetchResources } from '../api/resources'
+import { fetchJobs } from '../api/jobs'
+import { fetchOpportunities } from '../api/opportunities'
+import { fetchEvents } from '../api/events'
 import { getMembershipAction, getCheckoutErrorPresentation } from '../utils/circlePayment'
 import { formatProductPrice } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
@@ -9,6 +14,11 @@ import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import PageLoader from '../components/ui/PageLoader'
 import ArticleContent from '../components/article/ArticleContent'
+import LearningProgramCard from '../components/cards/LearningProgramCard'
+import ResourceCard from '../components/cards/ResourceCard'
+import JobCard from '../components/cards/JobCard'
+import OpportunityCard from '../components/cards/OpportunityCard'
+import EventCard from '../components/cards/EventCard'
 
 const BENEFITS = [
   { title: 'WSF Learning', description: 'Full access to WSF Circle learning programs and courses as the catalog grows.' },
@@ -194,6 +204,25 @@ function PlanCta({ plan, accessToken, membership, hasAccess, loginFrom, checking
   )
 }
 
+// A small, labeled catalog group used by the "Explore what's inside WSF
+// Circle" preview hub below — never the full listing page, just a few
+// real published circle_only items plus a link to see everything of that
+// type (spec: "keep result counts small... this is a preview/discovery
+// hub, not a replacement for the full listing pages").
+function CircleHubGroup({ title, viewAllHref, viewAllLabel, children }) {
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-serif text-xl font-semibold text-charcoal">{title}</h3>
+        <Link to={viewAllHref} className="text-sm font-semibold text-burgundy-600 hover:underline">
+          View all {viewAllLabel} &rarr;
+        </Link>
+      </div>
+      <div className="mt-5">{children}</div>
+    </div>
+  )
+}
+
 export default function CirclePage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
   const location = useLocation()
@@ -202,6 +231,14 @@ export default function CirclePage() {
   const [membership, setMembership] = useState(undefined)
   const [checkingOutSlug, setCheckingOutSlug] = useState(null)
   const [checkoutError, setCheckoutError] = useState(null)
+  // A small preview of real, already-published circle_only content across
+  // the five catalogs — never a second entitlement system (every item here
+  // came back from each catalog's own public list endpoint, which already
+  // withholds protected fields regardless of accessType; see ResourceCard/
+  // LearningProgramCard/JobCard/OpportunityCard/EventCard's own "WSF
+  // Circle" badges and each detail page's existing server-side access
+  // checks). undefined = still loading.
+  const [circleContent, setCircleContent] = useState(undefined)
 
   useSeo({
     title: 'WSF Circle | Women Shaping Futures',
@@ -233,6 +270,34 @@ export default function CirclePage() {
     }
   }, [accessToken])
 
+  // Same small catalog preview for every viewer — anonymous, signed-in
+  // non-member, or active member alike. Each call asks its own public list
+  // endpoint for a few published circle_only items (never a new backend
+  // surface); a failed catalog degrades to an empty section rather than
+  // breaking the page.
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      fetchLearningPrograms({ accessType: 'circle_only', pageSize: 3 }).catch(() => ({ items: [] })),
+      fetchResources({ accessType: 'circle_only', pageSize: 3 }).catch(() => ({ items: [] })),
+      fetchOpportunities({ accessType: 'circle_only', pageSize: 2 }).catch(() => ({ items: [] })),
+      fetchJobs({ accessType: 'circle_only', pageSize: 2 }).catch(() => ({ items: [] })),
+      fetchEvents({ accessType: 'circle_only', when: 'upcoming', pageSize: 3 }).catch(() => ({ items: [] })),
+    ]).then(([learning, resources, opportunities, jobs, events]) => {
+      if (!active) return
+      setCircleContent({
+        learning: learning.items,
+        resources: resources.items,
+        opportunities: opportunities.items,
+        jobs: jobs.items,
+        events: events.items,
+      })
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
   // Backend dedupe (Module 2's _find_reusable_pending_payment) already
   // protects against a genuine double-submission server-side; this local
   // guard just keeps the UI from firing a second request — and from
@@ -260,6 +325,13 @@ export default function CirclePage() {
   if (plans === undefined) return <PageLoader />
 
   const hasAccess = !!membership?.hasAccess
+  const circleIsEmpty =
+    circleContent !== undefined &&
+    circleContent.learning.length === 0 &&
+    circleContent.resources.length === 0 &&
+    circleContent.opportunities.length === 0 &&
+    circleContent.jobs.length === 0 &&
+    circleContent.events.length === 0
 
   return (
     <div>
@@ -344,6 +416,100 @@ export default function CirclePage() {
                   />
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-taupe-200 py-14">
+          <h2 className="font-serif text-3xl font-semibold text-charcoal">Explore what&apos;s inside WSF Circle</h2>
+          <p className="mt-3 max-w-2xl text-sm text-charcoal-600">
+            Practical learning, useful resources, selected opportunities and member experiences designed to help
+            women move forward with clarity and confidence.
+          </p>
+
+          {circleContent === undefined ? (
+            <div className="mt-8">
+              <PageLoader />
+            </div>
+          ) : circleIsEmpty ? (
+            <p className="mt-8 text-sm text-charcoal-600">
+              WSF Circle content is being added to the catalog — check back soon.
+            </p>
+          ) : (
+            <div className="mt-10 space-y-12">
+              {circleContent.learning.length > 0 && (
+                <CircleHubGroup title="Learning" viewAllHref="/learning" viewAllLabel="WSF Learning">
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {circleContent.learning.map((program) => (
+                      <LearningProgramCard key={program.id} program={program} />
+                    ))}
+                  </div>
+                </CircleHubGroup>
+              )}
+
+              {circleContent.resources.length > 0 && (
+                <CircleHubGroup title="Resources" viewAllHref="/resources" viewAllLabel="resources">
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {circleContent.resources.map((resource) => (
+                      <ResourceCard key={resource.id} resource={resource} />
+                    ))}
+                  </div>
+                </CircleHubGroup>
+              )}
+
+              {(circleContent.opportunities.length > 0 || circleContent.jobs.length > 0) && (
+                <div>
+                  <h3 className="font-serif text-xl font-semibold text-charcoal">Opportunities &amp; jobs</h3>
+                  <p className="mt-1 text-sm text-charcoal-600">
+                    A sample of what&apos;s reserved for members — most roles and opportunities on WSF remain open to
+                    everyone.
+                  </p>
+                  <div className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-2">
+                    {circleContent.opportunities.length > 0 && (
+                      <div>
+                        <div className="flex items-baseline justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                            Circle opportunities
+                          </p>
+                          <Link to="/opportunities" className="text-xs font-semibold text-burgundy-600 hover:underline">
+                            View all opportunities &rarr;
+                          </Link>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-4">
+                          {circleContent.opportunities.map((opportunity) => (
+                            <OpportunityCard key={opportunity.id} opportunity={opportunity} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {circleContent.jobs.length > 0 && (
+                      <div>
+                        <div className="flex items-baseline justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Circle jobs</p>
+                          <Link to="/jobs" className="text-xs font-semibold text-burgundy-600 hover:underline">
+                            View all jobs &rarr;
+                          </Link>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-4">
+                          {circleContent.jobs.map((job) => (
+                            <JobCard key={job.id} job={job} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {circleContent.events.length > 0 && (
+                <CircleHubGroup title="Events" viewAllHref="/events" viewAllLabel="events">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {circleContent.events.map((event) => (
+                      <EventCard key={event.id} event={event} />
+                    ))}
+                  </div>
+                </CircleHubGroup>
+              )}
             </div>
           )}
         </div>

@@ -1062,3 +1062,26 @@ def test_83_circle_event_registration_does_not_create_learning_enrollment(client
 
     with app.app_context():
         assert LearningEnrollment.query.count() == 0
+
+
+# ===========================================================================
+# 84-85: ?access_type=circle_only list filter (Module 9 — WSF Circle Member
+# Content Hub needs a way to ask the public list for only circle_only
+# events, the same equality filter Resources/Learning already supported;
+# this never changes entitlement, only which rows are returned).
+# ===========================================================================
+
+
+def test_84_access_type_filter_returns_only_circle_only_events(client, app):
+    _make_event(app, access_type="public", title="Public Filter Event")
+    circle_id = _make_event(app, access_type="circle_only", title="Circle Filter Event")
+    resp = client.get("/api/v1/events?access_type=circle_only")
+    items = resp.get_json()["data"]
+    assert all(e["access_type"] == "circle_only" for e in items)
+    assert any(e["id"] == circle_id for e in items)
+
+
+def test_85_access_type_filter_still_excludes_virtual_link(client, app):
+    _make_event(app, access_type="circle_only", virtual_link="https://meet.example.org/filtered-secret-room")
+    resp = client.get("/api/v1/events?access_type=circle_only")
+    assert "filtered-secret-room" not in str(resp.get_json())

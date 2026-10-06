@@ -273,6 +273,9 @@ class EventListResource(Resource):
         event_type = request.args.get("type")
         if event_type:
             query = query.filter(Event.type == event_type)
+        access_type = request.args.get("access_type")
+        if access_type:
+            query = query.filter(Event.access_type == access_type)
         if request.args.get("organizer"):
             query = query.filter(Event.organizer.has(slug=request.args["organizer"]))
         if request.args.get("featured") == "true":

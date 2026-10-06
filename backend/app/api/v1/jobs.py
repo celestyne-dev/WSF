@@ -300,7 +300,10 @@ class JobListResource(Resource):
 
         query = apply_country_or_region_filter(query, Job, request.args)
         query = apply_equality_filters(
-            query, Job, request.args, ["industry", "employment_type", "career_level", "work_mode", "city"]
+            query,
+            Job,
+            request.args,
+            ["industry", "employment_type", "career_level", "work_mode", "city", "access_type"],
         )
         query = apply_search(query, Job, request.args, ["title", "company_name"], param="query")
         if request.args.get("organization"):

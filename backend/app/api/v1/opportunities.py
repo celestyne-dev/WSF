@@ -254,6 +254,9 @@ class OpportunityListResource(Resource):
         opp_type = request.args.get("type")
         if opp_type:
             query = query.filter(Opportunity.type == opp_type)
+        access_type = request.args.get("access_type")
+        if access_type:
+            query = query.filter(Opportunity.access_type == access_type)
         country = request.args.get("country")
         if country:
             query = query.filter(Opportunity.countries_eligible.any(code=country.upper()))

@@ -1425,3 +1425,26 @@ def test_124_post_access_for_active_circle_still_returns_all_protected_fields(cl
     assert data["application_url"] == "https://example.com/access-endpoint-apply"
     assert data["application_email"] == "access-endpoint@example.com"
     assert data["application_instructions"] == "Access endpoint steps"
+
+
+# ===========================================================================
+# 125-126: ?access_type=circle_only list filter (Module 9 — WSF Circle
+# Member Content Hub needs a way to ask the public list for only
+# circle_only jobs, the same equality filter Resources/Learning already
+# supported; this never changes entitlement, only which rows are returned).
+# ===========================================================================
+
+
+def test_125_access_type_filter_returns_only_circle_only_jobs(client, app):
+    _make_job(app, access_type="public", title="Public Filter Job")
+    circle_id = _make_job(app, access_type="circle_only", title="Circle Filter Job")
+    resp = client.get("/api/v1/jobs?access_type=circle_only")
+    items = resp.get_json()["data"]
+    assert all(item["access_type"] == "circle_only" for item in items)
+    assert any(item["id"] == circle_id for item in items)
+
+
+def test_126_access_type_filter_still_excludes_application_target(client, app):
+    _make_job(app, access_type="circle_only", application_url="https://example.com/filtered-circle-apply")
+    resp = client.get("/api/v1/jobs?access_type=circle_only")
+    assert "filtered-circle-apply" not in str(resp.get_json())
