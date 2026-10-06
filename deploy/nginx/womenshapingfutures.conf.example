@@ -120,9 +120,15 @@ server {
     }
 
     # --- Media: served directly by Nginx, never proxied to Flask -----
-    # MEDIA_ROOT/MEDIA_URL must match backend/.env's values exactly.
+    # MEDIA_ROOT/MEDIA_URL must match backend/.env's values exactly. This
+    # alias deliberately points OUTSIDE /var/www/womenshapingfutures (the
+    # git checkout) — /var/lib/womenshapingfutures/media is one example of
+    # a separate, persistent-data location; any directory outside the
+    # checkout works. backend/config.py's require_production_settings
+    # refuses to start if MEDIA_ROOT resolves inside the checkout, so this
+    # alias and that env var must both point at the same external path.
     location /media/ {
-        alias /var/www/womenshapingfutures/media/;
+        alias /var/lib/womenshapingfutures/media/;
         add_header Cache-Control "public, max-age=604800";
         # Never execute anything here as a script — this directory holds
         # user-uploaded images only (validated/re-encoded to WebP by

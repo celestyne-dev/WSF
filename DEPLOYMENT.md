@@ -44,12 +44,28 @@ manually on the real VPS, in their own shell, after reviewing it.
 ## 3. Filesystem layout (adjust to whatever actually exists on the VPS)
 
 ```
-/var/www/womenshapingfutures/
-├── backend/           # this repo's backend/, with a .venv/ inside it
-├── frontend/
-│   └── dist/          # `npm run build` output — this is what Nginx serves
-└── media/             # MEDIA_ROOT — uploaded files, outside both source trees
+/var/www/womenshapingfutures/        <- the git checkout; replaced wholesale
+├── backend/                            on every redeploy (fresh clone,
+│   └── .venv/                          git clean -fdx, or similar)
+└── frontend/
+    └── dist/           # `npm run build` output — this is what Nginx serves
+
+/var/lib/womenshapingfutures/        <- persistent data; NEVER inside the
+└── media/              # MEDIA_ROOT — uploaded files   checkout above
 ```
+
+Mutable uploaded media lives in its own tree, entirely separate from the
+git checkout — not as a sibling directory alongside `backend/`/`frontend/`.
+`/var/www/womenshapingfutures/` is expected to be disposable: a redeploy
+that does a fresh clone, `git clean -fdx`, or replaces the directory
+outright must never be able to touch real uploads. `config.py`'s
+`require_production_settings` enforces this at startup — it refuses to
+start if `MEDIA_ROOT` resolves anywhere inside the checkout root (the
+parent directory containing both `backend/` and `frontend/`), not just
+inside `backend/` itself. `/var/lib/womenshapingfutures/` above is one
+conventional choice for this kind of persistent, non-checkout data; any
+separate location works equally well — the separation is what matters,
+not the exact path.
 
 Do not assume these directories exist yet — creating them (and setting
 their ownership/permissions) is a manual VPS operation, not something this
@@ -69,7 +85,7 @@ ones that matter most for going to production safely:
 | `JWT_SECRET_KEY` | Required, same rule as `SECRET_KEY`. Use a **different** random value, not the same one. |
 | `DATABASE_URL` | Required. Must point at the real production database — the app refuses to start if it still contains `wsf_dev`/`wsf_test`. |
 | `CORS_ORIGINS` | Required. Comma-separated exact origin(s), e.g. `https://womenshapingfutures.org`. The app refuses to start if this includes `localhost`/`127.0.0.1`. |
-| `MEDIA_ROOT` | Absolute path outside both source trees, e.g. `/var/www/womenshapingfutures/media`. |
+| `MEDIA_ROOT` | Absolute path entirely outside the deployment checkout (not a subdirectory of wherever `backend/`/`frontend/` live), e.g. `/var/lib/womenshapingfutures/media`. The app refuses to start if this resolves inside the checkout root. |
 | `TRUSTED_PROXY_COUNT` | `1` (exactly one Nginx hop in front of Gunicorn). |
 | `LOG_LEVEL` | `INFO` (or `WARNING` once things are stable). |
 | `EMAIL_BACKEND` | Must be `smtp`. The app refuses to start in production with the `console` backend (see §4a) — it would log raw password-reset links. |
@@ -125,16 +141,29 @@ Frontend: copy `frontend/.env.example` to `frontend/.env.production` (or
 set the same variables however your build pipeline reads them) with:
 
 ```
-VITE_API_URL=https://womenshapingfutures.org/api/v1
+VITE_API_URL=/api/v1
 VITE_USE_MOCK=false
-VITE_MEDIA_BASE_URL=https://womenshapingfutures.org/media
+VITE_MEDIA_BASE_URL=/media
 ```
 
-`VITE_USE_MOCK=false` is the production expectation. Every `src/api/*.js`
-module already routes to the real backend when this is false, and never
-substitutes mock data on a failed request — a failed request produces a
-real error/empty state in the UI, not fabricated content (verified as
-part of this task's audit).
+Same-origin, root-relative values — Nginx proxies `/api/v1` and `/media` to
+Flask/the filesystem from the same domain the frontend is served from (see
+§15's route map), so there's no separate backend origin to hard-code, and
+nothing to get wrong if the domain ever changes. `.env.production` is
+loaded automatically by `npm run build` (Vite's "production" mode) and
+takes precedence over a stray `frontend/.env`/`frontend/.env.local` on the
+build machine — **confirm neither of those two files exists on the VPS**
+before building; `.env.local` in particular is loaded in every mode,
+including production builds, and would silently win over `.env.production`
+for any key it also sets.
+
+`VITE_USE_MOCK` is fail-closed by design (`api/client.js`): mock mode only
+turns on for the literal string `"true"`, so leaving it unset would already
+be safe, but setting it explicitly to `false` here removes any ambiguity.
+Every `src/api/*.js` module already routes to the real backend when this is
+false, and never substitutes mock data on a failed request — a failed
+request produces a real error/empty state in the UI, not fabricated
+content (verified as part of this task's audit).
 
 ## 5. Backend setup
 
@@ -278,7 +307,7 @@ live on disk under `MEDIA_ROOT`, not in Postgres. Back it up separately,
 e.g.:
 
 ```bash
-tar czf media-backup-$(date +%Y%m%d-%H%M%S).tar.gz -C /var/www/womenshapingfutures media
+tar czf media-backup-$(date +%Y%m%d-%H%M%S).tar.gz -C /var/lib/womenshapingfutures media
 ```
 
 **Retention** (a policy to configure, not something this repo automates):
@@ -574,9 +603,11 @@ This repository provides code, configuration templates, and this guide —
 it does not and cannot do the following for you:
 
 - Provisioning the VPS itself, installing PostgreSQL/Nginx/Python/Node.
-- Creating the real `/var/www/womenshapingfutures/` directories and
-  setting their ownership (the app's service user needs write access to
-  `MEDIA_ROOT`; Nginx needs read access; never make anything world-writable).
+- Creating the real `/var/www/womenshapingfutures/` (code checkout) and
+  `/var/lib/womenshapingfutures/` (`MEDIA_ROOT`, kept separate from the
+  checkout) directories and setting their ownership — the app's service
+  user needs write access to `MEDIA_ROOT`; Nginx needs read access; never
+  make anything world-writable.
 - Issuing a TLS certificate and pointing DNS at the VPS.
 - Installing the Nginx/systemd example configs from `deploy/` as real
   system files.

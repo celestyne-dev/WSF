@@ -77,10 +77,18 @@ class Config:
     # of seconds.
     JWT_DECODE_LEEWAY = 2
 
-    # Media is stored on the Hostinger VPS filesystem, outside the app's
-    # source tree, and served in production by Nginx directly from
-    # MEDIA_ROOT at the MEDIA_URL path — Flask only handles the
-    # upload/validate/process/authorize side (see app/services/media.py).
+    # Media is stored on the Hostinger VPS filesystem, entirely outside the
+    # application's deployment checkout (not just outside backend/ — see
+    # require_production_settings' repo-root containment check below), and
+    # served in production by Nginx directly from MEDIA_ROOT at the
+    # MEDIA_URL path — Flask only handles the upload/validate/process/
+    # authorize side (see app/services/media.py). The dev-only default
+    # below is deliberately inside the checkout purely for local-dev
+    # convenience (no separate directory to create by hand); production
+    # must override it to a persistent-data location such as
+    # /var/lib/womenshapingfutures/media, kept separate from wherever the
+    # code itself is checked out so a fresh-clone/rm-rf style redeploy can
+    # never touch it.
     MEDIA_ROOT = os.environ.get(
         "MEDIA_ROOT", os.path.join(basedir, "instance", "media")
     )
@@ -278,6 +286,78 @@ def require_production_settings(app):
         problems.append("CORS_ORIGINS (or FRONTEND_URL) is not set.")
     elif any("localhost" in origin or "127.0.0.1" in origin for origin in app.config["CORS_ORIGINS"]):
         problems.append("CORS_ORIGINS includes a localhost/127.0.0.1 origin in production.")
+
+    # FRONTEND_URL feeds the Paystack callback URL, password-reset links,
+    # and Event/Learning confirmation links (see each call site's own
+    # comment) — CORS_ORIGINS being checked above does NOT also cover this:
+    # an operator can fix CORS_ORIGINS and still leave FRONTEND_URL at its
+    # http://localhost:5173 default, and every one of those links would
+    # silently keep pointing at localhost in production.
+    frontend_url = app.config.get("FRONTEND_URL") or ""
+    if "localhost" in frontend_url or "127.0.0.1" in frontend_url:
+        problems.append("FRONTEND_URL must not be localhost/127.0.0.1 in production.")
+    elif not frontend_url.startswith("https://"):
+        problems.append(f"FRONTEND_URL must be an https:// URL in production (got {frontend_url!r}).")
+
+    # PUBLIC_SITE_URL feeds the canonical /sitemap.xml and /robots.txt
+    # output — a wrong value here leaks into search engines, not just a
+    # broken link a person might notice and report.
+    public_site_url = app.config.get("PUBLIC_SITE_URL") or ""
+    if "localhost" in public_site_url or "127.0.0.1" in public_site_url:
+        problems.append("PUBLIC_SITE_URL must not be localhost/127.0.0.1 in production.")
+    elif not public_site_url.startswith("https://"):
+        problems.append(f"PUBLIC_SITE_URL must be an https:// URL in production (got {public_site_url!r}).")
+
+    # Paystack: only checked when WSF has actually opted in. Presence only
+    # — never inspect/log the value itself, and deliberately never reject a
+    # test-mode secret here (the first VPS deployment intentionally runs
+    # Paystack in test mode; distinguishing test vs. live keys is a
+    # separate, later decision, not a startup-safety concern).
+    if app.config.get("PAYSTACK_ENABLED") and not app.config.get("PAYSTACK_SECRET_KEY"):
+        problems.append("PAYSTACK_SECRET_KEY is not set (required when PAYSTACK_ENABLED=true).")
+
+    # MEDIA_ROOT: uploads are persistent, mutable, user-generated data that
+    # must survive every future redeploy. The deployment checkout is
+    # backend/ and frontend/ side by side under one parent directory (e.g.
+    # /var/www/womenshapingfutures/{backend,frontend}) — that whole parent
+    # is "the repo root" for this check, not just backend/, because a
+    # fresh-clone/`git clean -fdx`/`rm -rf`-and-re-clone style redeploy
+    # replaces the ENTIRE checkout, frontend/ included, not only backend/.
+    # MEDIA_ROOT defaults (see above) to a path inside backend/, which is
+    # inside that same checkout, so catching containment anywhere under
+    # the repo root — not just under backend/ — is what actually matches
+    # the real hazard. Mutable media belongs in a separate, persistent-data
+    # location entirely outside wherever the application code is checked
+    # out (e.g. /var/lib/womenshapingfutures/media — any such path is
+    # fine, there is nothing special about that one). This is a pure
+    # path-string comparison (no filesystem access of MEDIA_ROOT itself
+    # required), so it works even before the directory has ever been
+    # created — unlike the existence/writability checks, which must stay
+    # in `flask production-check` since a fresh VPS provisioning may not
+    # have created the directory yet. Uses os.path.commonpath rather than
+    # a naive startswith so a sibling directory that merely shares a
+    # string prefix (e.g. /var/www/womenshapingfutures-backup) is never
+    # mistaken for being inside /var/www/womenshapingfutures.
+    media_root = app.config.get("MEDIA_ROOT") or ""
+    if media_root:
+        repo_root = os.path.dirname(basedir)
+        normalized_media_root = os.path.realpath(media_root)
+        normalized_repo_root = os.path.realpath(repo_root)
+        try:
+            inside_repo_root = os.path.commonpath([normalized_media_root, normalized_repo_root]) == normalized_repo_root
+        except ValueError:
+            # Can't prove containment (e.g. different drives) — never crash
+            # startup over this; treat as "not proven unsafe" rather than
+            # silently passing something we can't actually compare.
+            inside_repo_root = False
+        if inside_repo_root:
+            problems.append(
+                f"MEDIA_ROOT ({media_root!r}) resolves inside the application's deployment "
+                "checkout — uploads would be lost on a fresh-clone/git-clean/rm-rf style "
+                "redeploy. Set it to a path entirely outside the checkout, e.g. "
+                "/var/lib/womenshapingfutures/media (any separate, persistent-data location "
+                "works — this is just an example, not a required literal path)."
+            )
 
     # The "console" email backend logs full email content — including a
     # raw password-reset link — to the application log. That must be

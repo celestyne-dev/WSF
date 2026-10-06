@@ -197,6 +197,16 @@ def register_cli(app):
         problems = []
         warnings = []
 
+        # Proves which config actually loaded (see app/__init__.py's
+        # CONFIG_NAME) rather than leaving an operator to infer it from the
+        # absence of a startup error — the dangerous case this guards
+        # against is FLASK_CONFIG being unset/wrong so the process silently
+        # ran DevelopmentConfig on what was meant to be the production VPS.
+        click.echo(
+            f"Active config: FLASK_CONFIG={current_app.config.get('CONFIG_NAME')!r} "
+            f"-> ENV={current_app.config.get('ENV')!r}, DEBUG={current_app.debug}"
+        )
+
         try:
             require_production_settings(current_app)
         except RuntimeError as exc:

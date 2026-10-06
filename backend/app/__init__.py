@@ -9,8 +9,29 @@ def create_app(config_name="development"):
     """Application factory. Each versioned API namespace registers its own
     Blueprint (app/api/v1/*.py) with its url_prefix here once implemented.
     """
+    try:
+        config_class = config_by_name[config_name]
+    except KeyError:
+        valid = ", ".join(sorted(config_by_name))
+        # An unrecognized FLASK_CONFIG must never be swallowed into some
+        # other config by accident — config_by_name[...] would already
+        # raise a bare KeyError here, which is loud but unhelpful. This is
+        # the same fail-loud behavior with a clear, actionable message. It
+        # deliberately does NOT change run.py's own "development" default
+        # for when FLASK_CONFIG is unset entirely — that stays a normal,
+        # safe local-dev convenience; this only guards against a value that
+        # IS supplied but doesn't match any known config.
+        raise RuntimeError(
+            f"Unknown FLASK_CONFIG {config_name!r} — must be one of: {valid}. "
+            "Refusing to silently fall back to a different configuration."
+        ) from None
+
     app = Flask(__name__)
-    app.config.from_object(config_by_name[config_name])
+    app.config.from_object(config_class)
+    # Lets a deployment PROVE which config actually loaded, rather than
+    # inferring it from the absence of a startup error — see `flask
+    # production-check`, which echoes this back explicitly.
+    app.config["CONFIG_NAME"] = config_name
 
     # Flask-RESTful's Api intercepts every exception raised inside one of
     # its own Resource methods before Flask's own error handlers ever see

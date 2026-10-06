@@ -9,6 +9,8 @@ app.config, so a bare Flask app with hand-set config is enough and keeps
 these tests fast and independent of any database.
 """
 
+import os
+
 import pytest
 from flask import Flask
 
@@ -28,6 +30,15 @@ def _bare_app(**config_overrides):
     app.config["EMAIL_BACKEND"] = "smtp"
     app.config["SMTP_HOST"] = "smtp.example.com"
     app.config["SMTP_FROM_EMAIL"] = "noreply@womenshapingfutures.org"
+    # FRONTEND_URL/PUBLIC_SITE_URL/Paystack/MEDIA_ROOT: a "valid" production
+    # config must satisfy every check, same as the fields above, so every
+    # test that overrides just ONE field below to exercise ITS failure mode
+    # isn't tripped up by one of these instead.
+    app.config["FRONTEND_URL"] = "https://womenshapingfutures.org"
+    app.config["PUBLIC_SITE_URL"] = "https://womenshapingfutures.org"
+    app.config["PAYSTACK_ENABLED"] = False
+    app.config["PAYSTACK_SECRET_KEY"] = None
+    app.config["MEDIA_ROOT"] = "/var/lib/womenshapingfutures/media"
     app.config.update(config_overrides)
     return app
 
@@ -111,6 +122,128 @@ def test_require_production_settings_rejects_missing_smtp_from_email():
         require_production_settings(app)
 
 
+@pytest.mark.parametrize(
+    "frontend_url",
+    ["http://localhost:5173", "http://127.0.0.1:5173"],
+)
+def test_require_production_settings_rejects_localhost_frontend_url(frontend_url):
+    app = _bare_app(FRONTEND_URL=frontend_url)
+    with pytest.raises(RuntimeError, match="FRONTEND_URL must not be localhost"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_rejects_http_frontend_url():
+    app = _bare_app(FRONTEND_URL="http://womenshapingfutures.org")
+    with pytest.raises(RuntimeError, match="FRONTEND_URL must be an https"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_accepts_valid_https_frontend_url():
+    app = _bare_app(FRONTEND_URL="https://womenshapingfutures.org")
+    require_production_settings(app)  # must not raise
+
+
+@pytest.mark.parametrize(
+    "public_site_url",
+    ["http://localhost:5173", "http://127.0.0.1:8000"],
+)
+def test_require_production_settings_rejects_localhost_public_site_url(public_site_url):
+    app = _bare_app(PUBLIC_SITE_URL=public_site_url)
+    with pytest.raises(RuntimeError, match="PUBLIC_SITE_URL must not be localhost"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_rejects_http_public_site_url():
+    app = _bare_app(PUBLIC_SITE_URL="http://womenshapingfutures.org")
+    with pytest.raises(RuntimeError, match="PUBLIC_SITE_URL must be an https"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_accepts_valid_https_public_site_url():
+    app = _bare_app(PUBLIC_SITE_URL="https://womenshapingfutures.org")
+    require_production_settings(app)  # must not raise
+
+
+def test_require_production_settings_accepts_paystack_disabled_with_no_secret():
+    app = _bare_app(PAYSTACK_ENABLED=False, PAYSTACK_SECRET_KEY=None)
+    require_production_settings(app)  # must not raise
+
+
+def test_require_production_settings_rejects_paystack_enabled_with_no_secret():
+    app = _bare_app(PAYSTACK_ENABLED=True, PAYSTACK_SECRET_KEY=None)
+    with pytest.raises(RuntimeError, match="PAYSTACK_SECRET_KEY is not set"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_accepts_paystack_enabled_with_secret_without_exposing_it():
+    # A deliberately neutral, non-key-shaped placeholder — this test exists
+    # specifically to prove a configured secret never ends up in the
+    # exception message, not to assert anything about Paystack's real key
+    # format. Use a neutral dummy value so secret scanners do not mistake
+    # the fixture for a real provider key.
+    app = _bare_app(PAYSTACK_ENABLED=True, PAYSTACK_SECRET_KEY="dummy-paystack-secret")
+    require_production_settings(app)  # must not raise
+    # Re-run a failing case alongside a configured secret to confirm the
+    # secret value itself never appears in any problem message.
+    app = _bare_app(
+        PAYSTACK_ENABLED=True,
+        PAYSTACK_SECRET_KEY="dummy-paystack-secret",
+        SECRET_KEY=None,
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        require_production_settings(app)
+    assert "dummy-paystack-secret" not in str(excinfo.value)
+
+
+def test_require_production_settings_rejects_media_root_inside_backend_subdir():
+    from config import basedir
+
+    app = _bare_app(MEDIA_ROOT=os.path.join(basedir, "instance", "media"))
+    with pytest.raises(RuntimeError, match="resolves inside the application's deployment checkout"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_rejects_media_root_inside_frontend_subdir():
+    # The checkout root is backend/'s PARENT directory (where backend/ and
+    # frontend/ sit side by side) — this proves the check covers frontend/
+    # too, not just backend/, since a fresh-clone/rm-rf redeploy replaces
+    # the whole checkout, not only the backend half of it.
+    from config import basedir
+
+    repo_root = os.path.dirname(basedir)
+    app = _bare_app(MEDIA_ROOT=os.path.join(repo_root, "frontend", "dist", "media"))
+    with pytest.raises(RuntimeError, match="resolves inside the application's deployment checkout"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_rejects_media_root_equal_to_repo_root():
+    from config import basedir
+
+    repo_root = os.path.dirname(basedir)
+    app = _bare_app(MEDIA_ROOT=repo_root)
+    with pytest.raises(RuntimeError, match="resolves inside the application's deployment checkout"):
+        require_production_settings(app)
+
+
+def test_require_production_settings_accepts_media_root_outside_checkout():
+    app = _bare_app(MEDIA_ROOT="/var/lib/womenshapingfutures/media")
+    require_production_settings(app)  # must not raise
+
+
+def test_require_production_settings_accepts_sibling_directory_sharing_a_string_prefix():
+    # Robustness check for the os.path.commonpath-based containment test:
+    # a directory that merely starts with the same characters as the repo
+    # root (e.g. "<repo>-backup") is a SIBLING, not something actually
+    # inside the checkout — a naive string startswith() would wrongly
+    # reject this; real path containment must not.
+    from config import basedir
+
+    repo_root = os.path.dirname(basedir)
+    sibling = repo_root.rstrip("/") + "-media-backup"
+    app = _bare_app(MEDIA_ROOT=sibling)
+    require_production_settings(app)  # must not raise
+
+
 def test_require_production_settings_reports_every_problem_at_once():
     app = Flask(__name__)
     # Nothing set at all — every check should fail together, not just the
@@ -142,12 +275,19 @@ def test_create_app_production_boots_when_config_is_valid(monkeypatch):
     monkeypatch.setattr(ProductionConfig, "EMAIL_BACKEND", "smtp")
     monkeypatch.setattr(ProductionConfig, "SMTP_HOST", "smtp.example.com")
     monkeypatch.setattr(ProductionConfig, "SMTP_FROM_EMAIL", "noreply@womenshapingfutures.org")
+    # FRONTEND_URL/MEDIA_ROOT default (inherited from Config, unpatched) to
+    # http://localhost:5173 and a path inside this backend checkout — both
+    # now rejected by require_production_settings (see above), so a
+    # "boots when valid" test must patch them to real values too.
+    monkeypatch.setattr(ProductionConfig, "FRONTEND_URL", "https://womenshapingfutures.org")
+    monkeypatch.setattr(ProductionConfig, "MEDIA_ROOT", "/var/lib/womenshapingfutures/media")
 
     from app import create_app
 
     app = create_app("production")
     assert app.config["ENV"] == "production"
     assert app.config["DEBUG"] is False
+    assert app.config["CONFIG_NAME"] == "production"
 
 
 def test_create_app_production_refuses_to_boot_with_dev_secret(monkeypatch):
@@ -162,6 +302,35 @@ def test_create_app_production_refuses_to_boot_with_dev_secret(monkeypatch):
 
     with pytest.raises(RuntimeError, match="development placeholder"):
         create_app("production")
+
+
+def test_create_app_rejects_unknown_config_name():
+    # The real danger this guards against: an explicit but invalid
+    # FLASK_CONFIG value (a typo, a stale value from a renamed config) must
+    # never be silently accepted — see app/__init__.py's own config_by_name
+    # lookup, which now raises a clear RuntimeError naming the bad value and
+    # the valid options instead of a bare KeyError.
+    from app import create_app
+
+    with pytest.raises(RuntimeError, match="Unknown FLASK_CONFIG 'staging'"):
+        create_app("staging")
+
+
+def test_create_app_development_still_works_with_no_config_name():
+    # Ordinary local development is explicitly NOT required to set
+    # FLASK_CONFIG — create_app()'s own default ("development") is
+    # unchanged by this module's hardening. This only guards against an
+    # explicit-but-wrong value, never against omitting it entirely.
+    from app import create_app
+
+    app = create_app()
+    assert app.config["ENV"] == "development"
+    assert app.config["CONFIG_NAME"] == "development"
+    # DevelopmentConfig's own dev-only secret fallbacks (never valid in
+    # production — see require_production_settings) are fine here, and
+    # require_production_settings is never even invoked for this config
+    # name, exactly as before.
+    assert app.config["DEBUG"] is True
 
 
 def test_security_headers_present_on_response(client):

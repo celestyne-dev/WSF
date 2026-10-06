@@ -2,10 +2,9 @@ import axios from 'axios'
 
 // Real backend base URL. Every endpoint below is namespaced to mirror the
 // eventual Flask API exactly (e.g. GET /api/v1/articles/{slug}), even though
-// the mock implementations don't hit the network yet. When USE_MOCK is
-// flipped to false (or VITE_USE_MOCK=false is set), each resource module
-// swaps its mock branch for a call through this client with zero changes
-// to the components that consume it.
+// the mock implementations don't hit the network yet. When USE_MOCK is false
+// (the default — see below), each resource module calls through this
+// client with zero changes to the components that consume it.
 // No hard-coded Content-Type default: axios's own request transform sets
 // application/json for a plain-object body automatically, and a hard-coded
 // default here would otherwise survive untouched through a FormData upload
@@ -189,4 +188,12 @@ async function handleUnauthorized(error) {
   }
 }
 
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
+// Fail-closed by design: mock mode is an explicit opt-in (VITE_USE_MOCK must
+// be exactly the string "true"), never the default. An unset, misspelled,
+// or empty VITE_USE_MOCK — e.g. a production build whose .env was never
+// updated — resolves to `false` and talks to the real backend, rather than
+// silently serving fake data and (per api/auth.js) disabling account
+// management with a "not available in demo mode" message. Local development
+// still opts into mock mode the same way it always has: set
+// VITE_USE_MOCK=true in frontend/.env (see .env.example).
+export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'

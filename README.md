@@ -131,8 +131,9 @@ dropdown rather than a full scheduling calendar) but is a direct drop-in for
 **Mock API layer, not mock components.** Every piece of content flows
 through `src/api/*.js` — `fetchArticles()`, `fetchJobBySlug()`,
 `globalSearch()`, etc. Each function checks a `USE_MOCK` flag
-(`VITE_USE_MOCK`, default `true`) and either reads from `src/mock/*.js` or
-calls the real endpoint via the shared `axios` instance in `api/client.js`.
+(`VITE_USE_MOCK === 'true'`, fail-closed — unset/anything else means the real
+backend) and either reads from `src/mock/*.js` or calls the real endpoint via
+the shared `axios` instance in `api/client.js`.
 **No component imports mock data directly through the API layer's public
 functions** — flipping `VITE_USE_MOCK=false` and pointing `VITE_API_URL` at
 a running Flask API is the entire migration path.
