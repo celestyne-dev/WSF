@@ -524,8 +524,23 @@ def _verify_with_provider_for_webhook(payment):
     policy: a bare webhook redelivery alone never re-verifies or
     auto-clears an existing mismatch flag.
 
-    Returns (locked_payment, reason, prior_status). `reason` reuses
+    Returns (locked_payment, reason, status). `reason` reuses
     _apply_provider_verify_result's vocabulary, plus "already_consumed".
+    `status` is the CirclePayment's status as of the moment this call
+    itself determined it — captured in a local variable rather than
+    read back off `locked` after any commit this call makes. Flask-
+    SQLAlchemy's default `expire_on_commit=True` marks every attribute
+    on `locked` (including `.status`) as needing a fresh, unlocked
+    reload the instant this function's own `db.session.commit()` below
+    returns. On a genuinely simultaneous duplicate `charge.success`
+    delivery, a concurrent sibling call can — in the gap between that
+    commit and this function returning — race ahead, consume the
+    payment, and commit `consumed` itself; a later bare `locked.status`
+    read would then reload *that* value instead of the one this call
+    just established, even though this call is the one reporting the
+    result. Callers must branch on the returned `status`/`reason`, never
+    on `locked.status`, for exactly this reason — see this module's own
+    concurrency test.
     Raises PaystackAPIError/PaystackNotConfiguredError straight through
     on a transient provider failure — nothing is mutated or committed
     on that path, and the caller (the webhook route) must turn the
@@ -539,6 +554,10 @@ def _verify_with_provider_for_webhook(payment):
         return locked, "already_consumed", prior_status
 
     if prior_status == "verified":
+        # No commit happens on this branch, so `locked.status` is never
+        # expired here — reading it again below would still be safe, but
+        # returning the already-known value keeps this function's
+        # contract uniform across all three branches.
         reason = "reconciliation_required" if _needs_reconciliation(locked) else None
         return locked, reason, prior_status
 
@@ -549,6 +568,10 @@ def _verify_with_provider_for_webhook(payment):
     locked.last_verification_attempt_at = now
     result = verify_transaction(locked.reference)  # may raise — nothing committed yet, see docstring
     reason, mismatches = _apply_provider_verify_result(locked, result, now)
+    # Captured BEFORE commit — see the "status" paragraph in this
+    # function's own docstring for exactly why this must not be read
+    # from `locked.status` after the commit below instead.
+    status = locked.status
     db.session.commit()
 
     if reason == "reconciliation_required":
@@ -562,7 +585,7 @@ def _verify_with_provider_for_webhook(payment):
             changes={"from": prior_status},
         )
 
-    return locked, reason, prior_status
+    return locked, reason, status
 
 
 def process_circle_webhook_charge_success(reference):
@@ -618,13 +641,21 @@ def process_circle_webhook_charge_success(reference):
     if payment is None:
         return {"outcome": "unknown_reference", "payment": None}
 
-    locked, reason, _prior_status = _verify_with_provider_for_webhook(payment)
+    # Branch on the `status`/`reason` _verify_with_provider_for_webhook
+    # itself determined — never re-read `locked.status` or re-call
+    # _needs_reconciliation(locked) here. Either would, once that call's
+    # own commit has run, trigger a fresh unlocked reload of `locked`'s
+    # expired attributes that can observe a concurrent sibling webhook
+    # delivery's LATER write (e.g. "consumed") instead of the outcome
+    # this call is reporting. See _verify_with_provider_for_webhook's
+    # own docstring and this module's concurrency test.
+    locked, reason, status = _verify_with_provider_for_webhook(payment)
 
     if reason == "already_consumed":
         log_action(None, "circle_payment.webhook_replay", "CirclePayment", locked.id)
         return {"outcome": "already_consumed", "payment": locked}
 
-    if locked.status == "verified" and not _needs_reconciliation(locked):
+    if status == "verified" and reason != "reconciliation_required":
         # Covers both: (a) Paystack's webhook-triggered fresh Verify
         # just confirmed success cleanly, and (b) crash-recovery — this
         # payment was already sitting in a clean `verified` state from
@@ -642,19 +673,20 @@ def process_circle_webhook_charge_success(reference):
         result = consume_verified_circle_payment(locked.reference, actor_user=None)
         return {"outcome": result["outcome"], "payment": result["payment"]}
 
-    if locked.status == "verified":
-        # Flagged for reconciliation — either just now, or already
-        # before this delivery arrived (Module 3's conservative MVP
-        # policy: a bare webhook redelivery never re-verifies or
-        # auto-clears an existing mismatch flag on its own).
+    if status == "verified":
+        # reason == "reconciliation_required" — flagged, either just now
+        # or already before this delivery arrived (Module 3's
+        # deliberately conservative MVP policy: a bare webhook
+        # redelivery alone never re-verifies or auto-clears an existing
+        # mismatch flag).
         return {"outcome": "reconciliation_required", "payment": locked}
 
     # pending / failed / abandoned at this point can only mean the fresh
     # Verify _verify_with_provider_for_webhook just performed did NOT
-    # return "success" (a "success" result would have set locked.status
-    # to "verified" above) — Paystack's webhook claims charge.success
-    # while Paystack's own Verify API disagrees. Never acknowledged as
-    # fully handled; the caller must respond non-2xx so this delivery is
+    # return "success" (a "success" result would have made `status`
+    # "verified" above) — Paystack's webhook claims charge.success while
+    # Paystack's own Verify API disagrees. Never acknowledged as fully
+    # handled; the caller must respond non-2xx so this delivery is
     # retried once WSF can independently confirm success.
     return {"outcome": "not_yet_confirmed", "payment": locked}
 

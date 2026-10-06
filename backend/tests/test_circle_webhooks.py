@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.extensions import db
 from tests.conftest import auth_headers
 
 USER1 = {
@@ -551,6 +552,106 @@ class TestWebhookReplay:
         assert results["a"] == 200
         assert results["b"] == 200
         assert _count_subscriptions(app, user.id) == 1
+
+    def test_simultaneous_webhooks_deterministic_expired_status_race_still_returns_200(self, app):
+        """Deterministically forces the exact interleaving that used to
+        make this 503: thread A wins the row lock, flips the payment to
+        `verified`, and commits — releasing the lock; thread B then
+        acquires it, consumes the payment, and commits `consumed`. The
+        bug was that A's own post-commit code read `locked.status` (an
+        attribute SQLAlchemy's `expire_on_commit=True` had just marked
+        stale) *after* B's commit landed, observing `consumed` instead
+        of the `verified` outcome A itself had just established, and
+        fell through to `not_yet_confirmed` (503).
+
+        Unlike the test above — which relies on real OS thread
+        scheduling to occasionally produce this interleaving — this test
+        pins it down with a `threading.Event`-gated wrapper around
+        `db.session.commit`, so the race is exercised every run rather
+        than ~1-in-5. No production code is touched; only the ordering
+        of two already-concurrent requests is pinned.
+        """
+        _enable_paystack(app)
+        plan_id, slug = _make_plan(app, price=1000, currency="USD", billing_interval="monthly")
+
+        payload = dict(USER1, email="circlewebhook-race-deterministic@example.com")
+        with app.test_client() as setup_client:
+            setup_client.post("/api/v1/auth/register", json=payload)
+        user = _get_user(app, payload["email"])
+
+        _id, reference = _make_payment(
+            app, user.id, plan_id, amount_subunits=100000, currency="USD", customer_email=user.email,
+        )
+        payment = _get_payment(app, reference)
+        body = _charge_success_body(reference)
+        signature = _sign(_WEBHOOK_SECRET, body)
+
+        results = {}
+        commit_count = {"n": 0}
+        count_lock = threading.Lock()
+        b_consumed = threading.Event()
+        # scoped_session methods are defined on the class and dispatch to
+        # whichever thread's Session is current when called — capturing
+        # the unbound original here and invoking it as `original(self)`
+        # inside the wrapper preserves that per-thread dispatch instead
+        # of pinning every call to one thread's session.
+        original_commit = type(db.session).commit
+
+        def _wrapped_commit(self, *args, **kwargs):
+            result = original_commit(self, *args, **kwargs)
+            with count_lock:
+                commit_count["n"] += 1
+                n = commit_count["n"]
+            if n == 1:
+                # This is always the verify-and-flip-to-"verified" commit
+                # inside _verify_with_provider_for_webhook — whichever
+                # thread won the row lock first. The real commit above
+                # already released that row lock, so the sibling thread's
+                # blocked FOR UPDATE can now proceed; hold this thread
+                # here until that sibling has fully consumed the payment
+                # (commit #3: consume_verified_circle_payment's own
+                # status="consumed" commit, then a second commit from
+                # log_action's internal db.session.commit() for the
+                # resulting audit entry), so this thread's post-commit
+                # code runs exactly when the original bug required.
+                assert b_consumed.wait(timeout=5), "sibling never reached its consume commit"
+            elif n == 3:
+                b_consumed.set()
+            return result
+
+        def _deliver(name):
+            with app.test_client() as thread_client:
+                resp = thread_client.post(_WEBHOOK_URL, data=body, headers={
+                    "Content-Type": "application/json", "x-paystack-signature": signature,
+                })
+                results[name] = resp.status_code
+
+        with patch("app.services.circle_payments.verify_transaction", return_value=_success_result(payment)), \
+                patch.object(type(db.session), "commit", _wrapped_commit):
+            t1 = threading.Thread(target=_deliver, args=("a",))
+            t2 = threading.Thread(target=_deliver, args=("b",))
+            t1.start()
+            t2.start()
+            t1.join(timeout=10)
+            t2.join(timeout=10)
+
+        assert not t1.is_alive() and not t2.is_alive(), "a worker thread never finished"
+        # The two real correctness checks this test exists for — assert
+        # these first so a regression fails here, clearly, rather than
+        # on the commit-count sanity check below.
+        assert results["a"] == 200
+        assert results["b"] == 200
+        assert _count_subscriptions(app, user.id) == 1
+        payment = _get_payment(app, reference)
+        assert payment.status == "consumed"
+        assert _count_audit(app, "circle_payment.consumed_new_membership", payment.subscription_id) == 1
+        # Sanity check that the synchronization point was actually
+        # reached (not e.g. skipped because b_consumed was never waited
+        # on) — at least the 3 commits consume_verified_circle_payment's
+        # success path always produces (the fresh-verify commit, the
+        # status="consumed" commit, and log_action's own commit for the
+        # audit entry).
+        assert commit_count["n"] >= 3
 
 
 class TestWebhookFailedRecovery:
