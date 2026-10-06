@@ -265,7 +265,10 @@ class TestVerifyTransaction:
         _enable_paystack(app)
         fake = _FakeResponse(json_body={
             "status": True,
-            "data": {"status": "success", "amount": 100000, "currency": "KES", "customer": {"email": "a@example.com"}},
+            "data": {
+                "status": "success", "amount": 100000, "currency": "KES",
+                "customer": {"email": "a@example.com"}, "reference": "my-ref-99",
+            },
         })
         with app.app_context(), patch("app.services.paystack.requests.request", return_value=fake) as mock_request:
             verify_transaction("my-ref-99")
@@ -286,6 +289,7 @@ class TestVerifyTransaction:
                 "channel": "card",
                 "paid_at": "2026-10-05T12:00:00.000Z",
                 "gateway_response": "Successful",
+                "reference": "my-ref-99",
             },
         })
         with app.app_context(), patch("app.services.paystack.requests.request", return_value=fake):
@@ -297,6 +301,35 @@ class TestVerifyTransaction:
             assert result["channel"] == "card"
             assert result["paid_at"] == "2026-10-05T12:00:00.000Z"
             assert result["gateway_response"] == "Successful"
+            assert result["reference"] == "my-ref-99"
+
+    def test_verify_response_reference_is_providers_own_not_assumed(self, app):
+        """The returned `reference` must be read from the provider's
+        response body, not assumed equal to the reference that was
+        requested via the URL path — callers depend on this to catch a
+        provider that reports back a different transaction.
+        """
+        _enable_paystack(app)
+        fake = _FakeResponse(json_body={
+            "status": True,
+            "data": {
+                "status": "success", "amount": 100000, "currency": "KES",
+                "customer": {"email": "a@example.com"}, "reference": "some-other-ref",
+            },
+        })
+        with app.app_context(), patch("app.services.paystack.requests.request", return_value=fake):
+            result = verify_transaction("my-ref-99")
+            assert result["reference"] == "some-other-ref"
+
+    def test_verify_response_missing_reference_raises(self, app):
+        _enable_paystack(app)
+        fake = _FakeResponse(json_body={
+            "status": True,
+            "data": {"status": "success", "amount": 100000, "currency": "KES", "customer": {"email": "a@example.com"}},
+        })
+        with app.app_context(), patch("app.services.paystack.requests.request", return_value=fake):
+            with pytest.raises(PaystackAPIError):
+                verify_transaction("my-ref-99")
 
     def test_provider_transaction_id_returned_as_string(self, app):
         _enable_paystack(app)
@@ -306,7 +339,7 @@ class TestVerifyTransaction:
         # in a way that could get truncated downstream.
         fake = _FakeResponse(json_body={
             "status": True,
-            "data": {"status": "success", "amount": 100000, "currency": "KES", "customer": {}, "id": 18446744073709551615},
+            "data": {"status": "success", "amount": 100000, "currency": "KES", "customer": {}, "id": 18446744073709551615, "reference": "my-ref-99"},
         })
         with app.app_context(), patch("app.services.paystack.requests.request", return_value=fake):
             result = verify_transaction("my-ref-99")
@@ -318,7 +351,7 @@ class TestVerifyTransaction:
         for raw_status in ("failed", "abandoned", "pending"):
             fake = _FakeResponse(json_body={
                 "status": True,
-                "data": {"status": raw_status, "amount": 100000, "currency": "KES", "customer": {}},
+                "data": {"status": raw_status, "amount": 100000, "currency": "KES", "customer": {}, "reference": "my-ref-99"},
             })
             with app.app_context(), patch("app.services.paystack.requests.request", return_value=fake):
                 result = verify_transaction("my-ref-99")

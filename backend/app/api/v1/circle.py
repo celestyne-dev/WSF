@@ -4,11 +4,16 @@ app/models/circle.py for the CirclePlan/CircleSubscription architecture
 and app/services/circle.py for the one authoritative entitlement rule
 this module's /circle/me route calls rather than re-deriving.
 
-No payment gateway is wired up (see app/models/commerce.py's Order for
-the same stance) and no webhook route exists here on purpose — only an
-authorized circle.manage staff member may ever activate/modify a
+Module 2 of the Paystack integration added CircleCheckoutResource/
+CirclePaymentStatusResource below — a signed-in member may now initialize
+and poll their own Paystack checkout. That is still the only self-service
+path to membership: there is still no webhook route here, and only an
+authorized circle.manage staff member may directly activate/modify a
 subscription (see CircleSubscriptionListResource.post/
-CircleSubscriptionDetailResource.patch below).
+CircleSubscriptionDetailResource.patch below). All payment-triggered
+entitlement changes instead run through
+app/services/circle_payments.py's consume_verified_circle_payment() —
+never through those staff-only routes, and never duplicated here.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -17,7 +22,7 @@ from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 
 from app.auth.decorators import active_user_required, permission_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models.circle import CirclePlan, CIRCLE_PLAN_STATUSES, CircleSubscription
 from app.models.contact import ContactInquiry
 from app.models.user import User
@@ -36,6 +41,7 @@ from app.services.circle import (
     get_circle_entitlement,
     validate_subscription_status_transition,
 )
+from app.services.circle_payments import get_payment_status, start_circle_checkout
 from app.services.contact import generate_contact_reference
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.notifications import notify_contact_received
@@ -348,6 +354,47 @@ class CircleMembershipRequestResource(Resource):
         return success_response({"reference": inquiry.reference, "status": "received"}, status=201)
 
 
+class CircleCheckoutResource(Resource):
+    """Module 2: start a Paystack hosted checkout for an active plan. The
+    request body is never read — amount/currency/billing interval/
+    customer email all come from the database and the authenticated
+    session (see app/services/circle_payments.py's start_circle_checkout
+    docstring) — so there is nothing in the body that could influence
+    checkout terms even if a client sent one.
+    """
+
+    @limiter.limit("10 per minute")
+    @active_user_required
+    def post(self, slug):
+        plan = _get_plan_or_404(slug)
+        result = start_circle_checkout(current_user, plan)
+        return success_response(
+            {"reference": result["reference"], "authorizationUrl": result["authorization_url"]}, status=201
+        )
+
+
+class CirclePaymentStatusResource(Resource):
+    """Module 2: owner-only payment status/verification — the function a
+    future /circle/checkout/callback page will poll. Never accepts or
+    trusts anything from the query string; verification against Paystack
+    happens server-side only (see app/services/circle_payments.py).
+    """
+
+    @limiter.limit("30 per minute")
+    @active_user_required
+    def get(self, reference):
+        status = get_payment_status(current_user, reference)
+        return success_response(
+            {
+                "reference": status["reference"],
+                "status": status["status"],
+                "membershipActivated": status["membership_activated"],
+                "reconciliationRequired": status["reconciliation_required"],
+                "reason": status["reason"],
+            }
+        )
+
+
 def _build_subscription_query():
     query = CircleSubscription.query.order_by(CircleSubscription.created_at.desc())
     query = apply_equality_filters(query, CircleSubscription, request.args, ["status", "plan_id", "source"])
@@ -439,7 +486,9 @@ class CircleSubscriptionDetailResource(Resource):
 
 api.add_resource(CirclePlanListResource, "/plans")
 api.add_resource(CirclePlanDetailResource, "/plans/<string:slug>")
+api.add_resource(CircleCheckoutResource, "/plans/<string:slug>/checkout")
 api.add_resource(CircleMeResource, "/me")
 api.add_resource(CircleMembershipRequestResource, "/membership-requests")
+api.add_resource(CirclePaymentStatusResource, "/payments/<string:reference>")
 api.add_resource(CircleSubscriptionListResource, "/subscriptions")
 api.add_resource(CircleSubscriptionDetailResource, "/subscriptions/<int:subscription_id>")

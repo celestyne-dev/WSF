@@ -176,7 +176,14 @@ def initialize_transaction(*, amount_subunits, email, reference, currency, callb
 def verify_transaction(reference):
     """Calls GET /transaction/verify/{reference}. Returns a normalized
     dict: {"status", "amount", "currency", "customer_email",
-    "provider_transaction_id", "channel", "paid_at", "gateway_response"}.
+    "provider_transaction_id", "channel", "paid_at", "gateway_response",
+    "reference"}.
+
+    The returned `reference` is Paystack's own reported value for this
+    transaction, read from the response body — callers must never assume
+    it equals the `reference` argument just because that's the value
+    used to build the request URL; a mismatch here is this function's
+    caller's problem to detect, not this function's to paper over.
 
     `status` is Paystack's own raw transaction status string (e.g.
     "success"/"failed"/"abandoned") — this function does not map it onto
@@ -197,7 +204,8 @@ def verify_transaction(reference):
 
     status = data.get("status")
     amount = data.get("amount")
-    if status is None or amount is None:
+    reference = data.get("reference")
+    if status is None or amount is None or reference is None:
         raise PaystackAPIError("Paystack verify response was missing required fields.")
 
     customer = data.get("customer") if isinstance(data.get("customer"), dict) else {}
@@ -212,4 +220,9 @@ def verify_transaction(reference):
         "channel": data.get("channel"),
         "paid_at": data.get("paid_at"),
         "gateway_response": data.get("gateway_response"),
+        # Paystack's own reported reference for this transaction — callers
+        # must compare this against the locally-stored CirclePayment
+        # reference rather than assuming it matches the value that was
+        # requested via /transaction/verify/<reference>.
+        "reference": reference,
     }
