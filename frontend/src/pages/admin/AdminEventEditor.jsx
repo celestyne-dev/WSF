@@ -517,6 +517,8 @@ export default function AdminEventEditor() {
   const circleOnlyNotRequired = form && form.accessType === 'circle_only' && !form.registrationRequired
   const circleOnlyNotWsf = form && form.accessType === 'circle_only' && form.registrationRequired && form.registrationMode !== 'wsf'
   const circleOnlyLinkPublic = form && form.accessType === 'circle_only' && form.virtualLinkPublic
+  const circleOnlyVirtualMissing =
+    form && form.accessType === 'circle_only' && (form.format === 'virtual' || form.format === 'hybrid') && !form.virtualLink
 
   async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
@@ -572,6 +574,10 @@ export default function AdminEventEditor() {
       }
       if (circleOnlyLinkPublic) {
         toast.error('A Circle-only event cannot expose its virtual joining link publicly.')
+        return
+      }
+      if (circleOnlyVirtualMissing) {
+        toast.error('A virtual or hybrid Circle-only event needs a private joining link before publishing.')
         return
       }
     }

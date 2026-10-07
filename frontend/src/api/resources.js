@@ -60,6 +60,11 @@ export function mapResource(r) {
     // a staff-authenticated response is expected, not a bug.
     fileUrl: r.file_url || r.fileUrl || null,
     externalUrl: r.external_url || r.externalUrl || null,
+    // Admin/staff dump only — never present in the public-safe payload
+    // (see app/services/resource_downloads.py). The real circle_only
+    // download target is always the short-lived token URL POST /access
+    // returns, never this raw path.
+    protectedFilePath: r.protected_file_path || r.protectedFilePath || null,
     fileFormat: r.file_format || r.fileFormat || null,
     fileSize: r.file_size ?? r.fileSize ?? null,
     pageCount: r.page_count ?? r.pageCount ?? null,
@@ -155,6 +160,7 @@ function toApiPayload(form) {
     accessType: form.accessType || 'direct_download',
     fileUrl: form.fileUrl || undefined,
     externalUrl: form.externalUrl || undefined,
+    protectedFilePath: form.protectedFilePath || undefined,
     fileFormat: form.fileFormat || undefined,
     fileSize: form.fileSize === '' || form.fileSize == null ? undefined : Number(form.fileSize),
     pageCount: form.pageCount === '' || form.pageCount == null ? undefined : Number(form.pageCount),

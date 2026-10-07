@@ -1085,10 +1085,28 @@ def test_73_resource_access_authoritative_for_linked_lesson(client, app, user_a_
 
 
 def test_74_curriculum_id_preservation_intact_for_circle_only(client, app, manager_token):
+    # Lessons carry real text content so this still satisfies the
+    # circle_only "needs meaningful content" publish guard re-checked on
+    # every curriculum PUT to an already-published program (see
+    # app/api/v1/learning.py's _is_meaningful_lesson) — this test is only
+    # about ID preservation across edits, not content validation.
     program_id, _ = _make_program(app, lesson_count=0, access_type="circle_only")
     create = client.put(
         f"/api/v1/learning/admin/programs/{program_id}/curriculum",
-        json={"modules": [{"title": "Module A", "lessons": [{"title": "Lesson A", "lessonType": "text"}]}]},
+        json={
+            "modules": [
+                {
+                    "title": "Module A",
+                    "lessons": [
+                        {
+                            "title": "Lesson A",
+                            "lessonType": "text",
+                            "content": [{"type": "paragraph", "text": "Real content."}],
+                        }
+                    ],
+                }
+            ]
+        },
         headers=auth_headers(manager_token),
     )
     module = create.get_json()["data"]["modules"][0]
@@ -1096,7 +1114,22 @@ def test_74_curriculum_id_preservation_intact_for_circle_only(client, app, manag
 
     edit = client.put(
         f"/api/v1/learning/admin/programs/{program_id}/curriculum",
-        json={"modules": [{"id": module["id"], "title": "Module A", "lessons": [{"id": lesson_id, "title": "Lesson A Renamed", "lessonType": "text"}]}]},
+        json={
+            "modules": [
+                {
+                    "id": module["id"],
+                    "title": "Module A",
+                    "lessons": [
+                        {
+                            "id": lesson_id,
+                            "title": "Lesson A Renamed",
+                            "lessonType": "text",
+                            "content": [{"type": "paragraph", "text": "Real content."}],
+                        }
+                    ],
+                }
+            ]
+        },
         headers=auth_headers(manager_token),
     )
     assert edit.get_json()["data"]["modules"][0]["id"] == module["id"]

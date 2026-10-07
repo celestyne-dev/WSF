@@ -156,11 +156,44 @@ def _apply_program_fields(program, data, relations):
     ]
 
 
+def _is_meaningful_lesson(lesson):
+    """True iff `lesson` actually carries the content its own lesson_type
+    promises — never requires video/audio (Module 10, part B: "do not
+    force video"), and a pure-text program satisfies this through
+    text/activity lessons alone. Same "real content, not an empty shell"
+    check Resource/Job/Event already apply to their own body fields.
+    """
+    if lesson.lesson_type in ("text", "activity"):
+        return bool(
+            lesson.content
+            and any(
+                (block.get("text") or block.get("items")) for block in lesson.content if isinstance(block, dict)
+            )
+        )
+    if lesson.lesson_type == "article":
+        return lesson.article_id is not None
+    if lesson.lesson_type == "resource":
+        return lesson.resource_id is not None
+    # external_link and video both resolve through external_url (see
+    # app/models/learning.py's LearningLesson docstring) — video is never
+    # required, but a video lesson an editor did add is just as
+    # "meaningful" as an external_link one once its URL is set.
+    return bool(lesson.external_url)
+
+
 def _validate_for_publish(program):
     """Enforced only when a program's effective status is "published" — a
     draft may stay incomplete indefinitely, but the public CTA a published
     program promises must actually work (spec: "no fake course gating",
     "public CTA uses Product relationship").
+
+    circle_only additionally requires a real curriculum (Module 10, part
+    B) — at least one module containing at least one meaningful lesson —
+    so a paid-member program can never be published as an empty shell.
+    Entirely satisfied by plain text/activity lessons; video/audio is
+    never required. Normal workflow is unaffected: a draft may still
+    carry zero modules indefinitely (this only runs when status is
+    actually "published").
     """
     errors = []
     if program.access_type == "product" and program.product_id is None:
@@ -175,6 +208,11 @@ def _validate_for_publish(program):
                 errors.append("The external URL is not a safe http(s) link.")
     if program.primary_instructor_id is None:
         errors.append("An instructor is required before publishing.")
+    if program.access_type == "circle_only":
+        if not program.modules:
+            errors.append("A WSF Circle program needs at least one curriculum module before publishing.")
+        elif not any(_is_meaningful_lesson(lesson) for module in program.modules for lesson in module.lessons):
+            errors.append("A WSF Circle program needs at least one lesson with real content before publishing.")
     if errors:
         raise ApiError(errors[0], 422, code="publish_validation_failed", errors=errors)
 
@@ -470,6 +508,15 @@ class AdminLearningCurriculumResource(Resource):
         # progress is safely removed"), while every reused object above
         # keeps its existing id and is updated, not recreated.
         program.modules = new_modules
+        # Closes the obvious loophole in "a circle_only program needs real
+        # curriculum before it can be published" (Module 10, part B): this
+        # is the one other place a published program's modules/lessons
+        # can change, so an already-published program must satisfy the
+        # same check here, not only at the moment status first flips to
+        # "published" (_apply_program_fields's/the detail PATCH's own
+        # call site above).
+        if program.status == "published":
+            _validate_for_publish(program)
         db.session.commit()
 
         log_action(

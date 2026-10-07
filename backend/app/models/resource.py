@@ -141,6 +141,16 @@ class Resource(db.Model):
     # after the resource's access_type rule succeeds, ever hands this back.
     file_url = db.Column(db.String(500))
     external_url = db.Column(db.String(500))
+    # Only meaningful for access_type == "circle_only" (see
+    # app/services/resource_downloads.py) — a filename/relative path
+    # resolved against config.PROTECTED_MEDIA_ROOT, a directory outside
+    # both the deployment checkout AND the publicly-served MEDIA_ROOT
+    # tree. A circle_only resource's real file never lives at a public
+    # URL; POST /resources/{slug}/access hands back a short-lived,
+    # resource-bound download token instead of this path (see
+    # ResourceDownloadResource) — file_url/external_url stay unused for
+    # circle_only going forward (existing access types are unaffected).
+    protected_file_path = db.Column(db.String(500))
     file_format = db.Column(db.String(20))  # see FILE_FORMATS
     file_size = db.Column(db.Integer)  # bytes
     page_count = db.Column(db.Integer)
@@ -207,3 +217,35 @@ class ResourceLead(db.Model):
 
     resource = db.relationship("Resource", foreign_keys=[resource_id])
     country = db.relationship("Country", foreign_keys=[country_code])
+
+
+class ResourceDownloadToken(db.Model):
+    """A short-lived, resource-bound bearer credential for a circle_only
+    Resource's protected file — see app/services/resource_downloads.py.
+    Same convention as PasswordResetToken (app/models/password_reset.py):
+    only a SHA-256 digest of the raw token is ever stored; the raw token
+    exists only in POST /resources/{slug}/access's one-time JSON response
+    and the resulting download URL, never in Postgres or a log line.
+
+    Deliberately reusable (no `used_at`/single-use semantics) within its
+    TTL — unlike a password reset, a download link may legitimately be
+    opened more than once (retried, reopened in a new tab) before it
+    expires; the short TTL alone bounds how long a leaked link stays
+    useful. `user_id` records who it was issued to for audit purposes
+    only — redemption (GET /resources/downloads/{token}) never re-checks
+    current Circle entitlement, only the token's own hash/expiry/resource
+    binding, exactly like the Circle access check already performed,
+    moments earlier, by the same request that issued it.
+    """
+
+    __tablename__ = "resource_download_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(db.Integer, db.ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    resource = db.relationship("Resource", foreign_keys=[resource_id])
+    user = db.relationship("User", foreign_keys=[user_id])

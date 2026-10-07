@@ -204,6 +204,13 @@ def _validate_for_publish(event):
     intentionally public. A draft/review circle_only event may still
     carry an incomplete combination; only publishing/scheduling rejects
     it.
+
+    A circle_only event whose format is virtual or hybrid additionally
+    needs a real virtual_link before publishing (Module 10, part C) —
+    WSF Circle is virtual-first (WSF operates from Kenya, its audience
+    is global), so a Circle event promising online attendance must
+    actually have a joining link behind it; an in-person circle_only
+    event is never required to have one.
     """
     errors = []
     if not event.description:
@@ -222,6 +229,8 @@ def _validate_for_publish(event):
             errors.append("Circle-only events must use WSF-managed registration.")
         if event.virtual_link_public:
             errors.append("A Circle-only event cannot expose its virtual joining link publicly.")
+        if event.format in ("virtual", "hybrid") and not event.virtual_link:
+            errors.append("A virtual or hybrid Circle-only event needs a private joining link before publishing.")
     if errors:
         raise ApiError(errors[0], 422, code="publish_validation_failed", errors=errors)
 

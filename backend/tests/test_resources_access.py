@@ -685,13 +685,16 @@ class TestUrlSafety:
 class TestAdminEditor:
     # 62. admin can create circle_only resource
     def test_admin_can_create_circle_only(self, client, manager_token):
+        # A circle_only resource's real file is never a public MEDIA_ROOT
+        # URL (see app/services/resource_downloads.py) — it needs a
+        # protectedFilePath (or an external_url) instead of fileUrl.
         resp = client.post(
             "/api/v1/resources",
             json={
                 "name": "Circle Exclusive Guide",
                 "description": [{"type": "paragraph", "text": "Body."}],
                 "accessType": "circle_only",
-                "fileUrl": "https://cdn.example.com/circle-guide.pdf",
+                "protectedFilePath": "circle-guide.pdf",
                 "status": "published",
             },
             headers=auth_headers(manager_token),
@@ -708,7 +711,7 @@ class TestAdminEditor:
                 "name": "Now Circle Exclusive",
                 "description": [{"type": "paragraph", "text": "Body."}],
                 "accessType": "circle_only",
-                "fileUrl": "https://cdn.example.com/now-circle.pdf",
+                "protectedFilePath": "now-circle.pdf",
                 "status": "published",
             },
             headers=auth_headers(manager_token),

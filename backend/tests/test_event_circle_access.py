@@ -342,6 +342,52 @@ def test_12_valid_circle_only_configuration_publishes(client, manager_token):
 
 
 # ===========================================================================
+# 12a-12d: Virtual-first Circle events need a private joining link
+# ===========================================================================
+
+
+def test_12a_circle_only_virtual_without_link_rejected(client, manager_token):
+    payload = _base_event_payload(
+        status="published", format="virtual", accessType="circle_only", registrationRequired=True,
+        registrationMode="wsf", virtualLink=None,
+    )
+    resp = client.post("/api/v1/events", json=payload, headers=auth_headers(manager_token))
+    assert resp.status_code == 422
+    assert "needs a private joining link" in resp.get_json()["error"]["message"]
+
+
+def test_12b_circle_only_hybrid_without_link_rejected(client, manager_token):
+    payload = _base_event_payload(
+        status="published", format="hybrid", accessType="circle_only", registrationRequired=True,
+        registrationMode="wsf", virtualLink=None,
+    )
+    resp = client.post("/api/v1/events", json=payload, headers=auth_headers(manager_token))
+    assert resp.status_code == 422
+    assert "needs a private joining link" in resp.get_json()["error"]["message"]
+
+
+def test_12c_circle_only_virtual_with_link_publishes(client, manager_token):
+    payload = _base_event_payload(
+        status="published", format="virtual", accessType="circle_only", registrationRequired=True,
+        registrationMode="wsf", virtualLink="https://meet.example.org/circle-room", virtualLinkPublic=False,
+    )
+    resp = client.post("/api/v1/events", json=payload, headers=auth_headers(manager_token))
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["format"] == "virtual"
+
+
+def test_12d_circle_only_in_person_without_link_still_publishes(client, manager_token):
+    # In-person events never need a virtual joining link.
+    payload = _base_event_payload(
+        status="published", format="in-person", accessType="circle_only", registrationRequired=True,
+        registrationMode="wsf", virtualLink=None,
+    )
+    resp = client.post("/api/v1/events", json=payload, headers=auth_headers(manager_token))
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["format"] == "in-person"
+
+
+# ===========================================================================
 # 13-19: Public visibility
 # ===========================================================================
 

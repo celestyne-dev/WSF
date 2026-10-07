@@ -103,6 +103,7 @@ function blankForm() {
     accessType: 'direct_download',
     fileUrl: '',
     externalUrl: '',
+    protectedFilePath: '',
     fileFormat: '',
     fileSize: '',
     pageCount: '',
@@ -136,6 +137,7 @@ function toForm(resource) {
     accessType: resource.accessType || 'direct_download',
     fileUrl: resource.fileUrl || '',
     externalUrl: resource.externalUrl || '',
+    protectedFilePath: resource.protectedFilePath || '',
     fileFormat: resource.fileFormat || '',
     fileSize: resource.fileSize ?? '',
     pageCount: resource.pageCount ?? '',
@@ -238,11 +240,17 @@ export default function AdminResourceEditor() {
     return null
   }
 
+  // circle_only never satisfies this through fileUrl (a publicly-served
+  // /media/ path) — only protectedFilePath (served through the
+  // short-lived download token) or an explicit externalUrl count, same
+  // rule the backend's _validate_publish enforces (Module 10, part A).
   const needsFileOrExternalUrl =
     form &&
-    ['direct_download', 'email_gate', 'member_only', 'circle_only', 'external_link'].includes(form.accessType) &&
-    !form.fileUrl &&
-    !form.externalUrl
+    (['direct_download', 'email_gate', 'member_only', 'external_link'].includes(form.accessType)
+      ? !form.fileUrl && !form.externalUrl
+      : form.accessType === 'circle_only'
+        ? !form.protectedFilePath && !form.externalUrl
+        : false)
 
   async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
@@ -284,6 +292,7 @@ export default function AdminResourceEditor() {
       accessType: form.accessType,
       fileUrl: form.fileUrl || null,
       externalUrl: form.externalUrl || null,
+      protectedFilePath: form.protectedFilePath || null,
       fileFormat: form.fileFormat || null,
       fileSize: form.fileSize,
       pageCount: form.pageCount,
@@ -402,12 +411,35 @@ export default function AdminResourceEditor() {
               <Field label="External URL">
                 <input value={form.externalUrl} onChange={(e) => updateField('externalUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
+            ) : form.accessType === 'circle_only' ? (
+              <>
+                <Field
+                  label="Protected file path"
+                  hint="filename only, placed on the server's protected storage (not /media/) — never a public URL. Staff upload the actual file outside this editor; see DEPLOYMENT.md."
+                >
+                  <input
+                    value={form.protectedFilePath}
+                    onChange={(e) => updateField('protectedFilePath', e.target.value)}
+                    placeholder="career-reset-workbook.pdf"
+                    className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                  />
+                </Field>
+                <Field label="…or an external URL instead" hint="only if this file is intentionally hosted off-site, not by WSF">
+                  <input value={form.externalUrl} onChange={(e) => updateField('externalUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                </Field>
+              </>
             ) : (
               <Field label="File URL" hint="link to the hosted download file">
                 <input value={form.fileUrl} onChange={(e) => updateField('fileUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
             )}
-            {needsFileOrExternalUrl && <p className="text-xs text-rose-600">A file URL or external URL is required before publishing.</p>}
+            {needsFileOrExternalUrl && (
+              <p className="text-xs text-rose-600">
+                {form.accessType === 'circle_only'
+                  ? 'A protected file path or external URL is required before publishing.'
+                  : 'A file URL or external URL is required before publishing.'}
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="File format" hint="optional">
                 <select value={form.fileFormat} onChange={(e) => updateField('fileFormat', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">

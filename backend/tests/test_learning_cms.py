@@ -683,3 +683,168 @@ def test_audit_log_records_create_publish_and_curriculum_change(client, editor_t
             entity_type="LearningProgram", entity_id=str(program_id), action="learning.curriculum_update"
         ).first()
         assert "content" not in curriculum_entry.changes
+
+
+# ---------------------------------------------------------------------------
+# WSF Circle publish validation — a circle_only program must have real,
+# written curriculum before it can go live (no empty paid-member shells).
+# Video is never required: a pure-text curriculum is sufficient.
+# ---------------------------------------------------------------------------
+
+
+def test_circle_only_program_with_no_modules_cannot_publish(client, editor_token, instructor_slug):
+    program_id = _create_program(client, editor_token, instructor_slug)
+    publish = client.patch(
+        f"/api/v1/learning/admin/programs/{program_id}",
+        json=_base_payload(instructor_slug, accessType="circle_only", status="published"),
+        headers=auth_headers(editor_token),
+    )
+    assert publish.status_code == 422
+    assert publish.get_json()["error"]["code"] == "publish_validation_failed"
+
+
+def test_circle_only_program_with_only_empty_lessons_cannot_publish(client, editor_token, instructor_slug):
+    program_id = _create_program(client, editor_token, instructor_slug)
+    client.put(
+        f"/api/v1/learning/admin/programs/{program_id}/curriculum",
+        json={"modules": [{"title": "M1", "lessons": [{"title": "Empty text lesson", "lessonType": "text"}]}]},
+        headers=auth_headers(editor_token),
+    )
+    publish = client.patch(
+        f"/api/v1/learning/admin/programs/{program_id}",
+        json=_base_payload(instructor_slug, accessType="circle_only", status="published"),
+        headers=auth_headers(editor_token),
+    )
+    assert publish.status_code == 422
+    assert publish.get_json()["error"]["code"] == "publish_validation_failed"
+
+
+def test_circle_only_program_with_written_text_lesson_can_publish(client, editor_token, instructor_slug):
+    program_id = _create_program(client, editor_token, instructor_slug)
+    client.put(
+        f"/api/v1/learning/admin/programs/{program_id}/curriculum",
+        json={
+            "modules": [
+                {
+                    "title": "Module One",
+                    "lessons": [
+                        {
+                            "title": "Written lesson",
+                            "lessonType": "text",
+                            "content": [{"type": "paragraph", "text": "Real written content."}],
+                        }
+                    ],
+                }
+            ]
+        },
+        headers=auth_headers(editor_token),
+    )
+    publish = client.patch(
+        f"/api/v1/learning/admin/programs/{program_id}",
+        json=_base_payload(instructor_slug, accessType="circle_only", status="published"),
+        headers=auth_headers(editor_token),
+    )
+    assert publish.status_code == 200
+    assert publish.get_json()["data"]["status"] == "published"
+
+
+def test_circle_only_program_with_activity_lesson_can_publish_without_video(client, editor_token, instructor_slug):
+    program_id = _create_program(client, editor_token, instructor_slug)
+    client.put(
+        f"/api/v1/learning/admin/programs/{program_id}/curriculum",
+        json={
+            "modules": [
+                {
+                    "title": "Module One",
+                    "lessons": [
+                        {
+                            "title": "Reflection exercise",
+                            "lessonType": "activity",
+                            "content": [{"type": "activity", "items": ["Write down three goals."]}],
+                        }
+                    ],
+                }
+            ]
+        },
+        headers=auth_headers(editor_token),
+    )
+    publish = client.patch(
+        f"/api/v1/learning/admin/programs/{program_id}",
+        json=_base_payload(instructor_slug, accessType="circle_only", status="published"),
+        headers=auth_headers(editor_token),
+    )
+    assert publish.status_code == 200
+    assert publish.get_json()["data"]["status"] == "published"
+
+
+def test_circle_only_program_with_resource_linked_lesson_can_publish(
+    client, editor_token, instructor_slug, published_resource_slug
+):
+    program_id = _create_program(client, editor_token, instructor_slug)
+    client.put(
+        f"/api/v1/learning/admin/programs/{program_id}/curriculum",
+        json={
+            "modules": [
+                {
+                    "title": "Module One",
+                    "lessons": [
+                        {"title": "Worksheet", "lessonType": "resource", "resourceSlug": published_resource_slug}
+                    ],
+                }
+            ]
+        },
+        headers=auth_headers(editor_token),
+    )
+    publish = client.patch(
+        f"/api/v1/learning/admin/programs/{program_id}",
+        json=_base_payload(instructor_slug, accessType="circle_only", status="published"),
+        headers=auth_headers(editor_token),
+    )
+    assert publish.status_code == 200
+    assert publish.get_json()["data"]["status"] == "published"
+
+
+def test_free_program_with_no_curriculum_still_publishes(client, editor_token, instructor_slug):
+    # Confirms the new circle_only guard is scoped only to circle_only —
+    # Free/external/product publish behavior is unchanged.
+    program_id = _create_program(client, editor_token, instructor_slug)
+    publish = client.patch(
+        f"/api/v1/learning/admin/programs/{program_id}",
+        json=_base_payload(instructor_slug, accessType="free", status="published"),
+        headers=auth_headers(editor_token),
+    )
+    assert publish.status_code == 200
+    assert publish.get_json()["data"]["status"] == "published"
+
+
+def test_published_circle_only_curriculum_cannot_be_emptied_via_curriculum_endpoint(
+    client, editor_token, instructor_slug
+):
+    program_id = _create_program(client, editor_token, instructor_slug)
+    client.put(
+        f"/api/v1/learning/admin/programs/{program_id}/curriculum",
+        json={
+            "modules": [
+                {
+                    "title": "Module One",
+                    "lessons": [
+                        {"title": "Written lesson", "lessonType": "text", "content": [{"type": "paragraph", "text": "Real content."}]}
+                    ],
+                }
+            ]
+        },
+        headers=auth_headers(editor_token),
+    )
+    publish = client.patch(
+        f"/api/v1/learning/admin/programs/{program_id}",
+        json=_base_payload(instructor_slug, accessType="circle_only", status="published"),
+        headers=auth_headers(editor_token),
+    )
+    assert publish.status_code == 200
+
+    empty_attempt = client.put(
+        f"/api/v1/learning/admin/programs/{program_id}/curriculum",
+        json={"modules": []},
+        headers=auth_headers(editor_token),
+    )
+    assert empty_attempt.status_code == 422

@@ -13,6 +13,7 @@ from app.models.resource import (
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema
 from app.schemas.taxonomy import TagSchema, TopicSchema
+from app.services.resource_downloads import is_safe_protected_path
 from app.utils.urls import is_safe_http_url, is_safe_resource_target
 
 
@@ -24,6 +25,11 @@ def _validate_external_url(value):
 def _validate_file_url(value):
     if value and not is_safe_resource_target(value):
         raise ValidationError("Must be a valid http(s) URL or an internal /media/ path.")
+
+
+def _validate_protected_file_path(value):
+    if value and not is_safe_protected_path(value):
+        raise ValidationError("Must be a bare relative filename/path with no '..' or leading '/'.")
 
 
 class ResourceImageSchema(ma.SQLAlchemyAutoSchema):
@@ -108,6 +114,12 @@ class ResourceInputSchema(ma.Schema):
     access_type = fields.String(required=False, load_default="direct_download", data_key="accessType", validate=validate.OneOf(ACCESS_TYPES))
     file_url = fields.String(required=False, allow_none=True, data_key="fileUrl", validate=_validate_file_url)
     external_url = fields.String(required=False, allow_none=True, data_key="externalUrl", validate=_validate_external_url)
+    # Only meaningful for access_type == "circle_only" — see
+    # app/models/resource.py's Resource.protected_file_path and
+    # app/services/resource_downloads.py.
+    protected_file_path = fields.String(
+        required=False, allow_none=True, data_key="protectedFilePath", validate=_validate_protected_file_path
+    )
     file_format = fields.String(required=False, allow_none=True, data_key="fileFormat", validate=validate.OneOf(FILE_FORMATS))
     file_size = fields.Integer(required=False, allow_none=True, data_key="fileSize", validate=validate.Range(min=0))
     page_count = fields.Integer(required=False, allow_none=True, data_key="pageCount", validate=validate.Range(min=0))

@@ -14,7 +14,7 @@ edit the resource.
 """
 from datetime import date
 
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request, send_from_directory
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 from sqlalchemy import or_
@@ -32,6 +32,11 @@ from app.schemas.taxonomy import TagSchema, TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.newsletter import upsert_subscriber
 from app.services.resource_access import check_resource_access, viewer_can_access
+from app.services.resource_downloads import (
+    is_safe_protected_path,
+    issue_download_token,
+    resolve_download_token,
+)
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.slugs import slugify
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -152,6 +157,17 @@ def _validate_publish(resource):
     premium, which has no real target yet) must have one configured
     before it can go live — including circle_only, so a Circle member
     can never reach a published resource with nothing behind it.
+
+    circle_only deliberately does NOT accept `file_url` here (Module 10,
+    part A) — that field points into the publicly-served MEDIA_ROOT tree,
+    which is exactly the "a Circle file must not rely on a publicly
+    accessible raw URL" problem this module closes. A circle_only
+    resource needs either `protected_file_path` (served only through the
+    short-lived token in ResourceDownloadResource below) or an
+    `external_url` (an explicit, staff-chosen non-WSF-hosted link — still
+    gated by check_resource_access() before it's ever handed back, same
+    as before). Every other access type's file_url behavior is
+    unchanged.
     """
     if resource.status not in ("published", "scheduled"):
         return
@@ -161,10 +177,16 @@ def _validate_publish(resource):
         raise ApiError("A published resource needs a description.", 422, code="validation_error")
     if resource.access_type == "external_link" and not resource.external_url:
         raise ApiError("A published external-link resource needs an external URL.", 422, code="validation_error")
-    if resource.access_type in ("direct_download", "email_gate", "member_only", "circle_only") and not (
+    if resource.access_type in ("direct_download", "email_gate", "member_only") and not (
         resource.file_url or resource.external_url
     ):
         raise ApiError("A published resource needs a file URL or external URL.", 422, code="validation_error")
+    if resource.access_type == "circle_only" and not (resource.protected_file_path or resource.external_url):
+        raise ApiError(
+            "A published WSF Circle resource needs a protected file or an external URL.",
+            422,
+            code="validation_error",
+        )
 
 
 def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images):
@@ -193,6 +215,7 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     resource.is_downloadable = resource.access_type in ("direct_download", "email_gate", "member_only", "circle_only")
     resource.file_url = data.get("file_url")
     resource.external_url = data.get("external_url")
+    resource.protected_file_path = data.get("protected_file_path")
     resource.file_format = data.get("file_format")
     resource.file_size = data.get("file_size")
     resource.page_count = data.get("page_count")
@@ -397,18 +420,33 @@ class ResourceDetailResource(Resource):
         return success_response({"deleted": True})
 
 
-def _resolve_target_url(resource):
+def _resolve_target_url(resource, viewer):
     """The one place a real target is ever computed — only ever called
     after check_resource_access() has already succeeded. Re-validates
     safety at resolution time too (not just at save time), so a row
     saved before this validation existed can never hand back an unsafe
     scheme or a raw filesystem path.
+
+    circle_only with a protected_file_path never hands back a raw
+    filesystem path or public URL — it issues a short-lived,
+    resource-bound download token (Module 10, part A) and returns the
+    path to ResourceDownloadResource below instead. A circle_only
+    resource configured with only an external_url (no protected file)
+    still returns that URL directly, same as before — an explicit,
+    staff-chosen non-WSF-hosted link, already gated by
+    check_resource_access() having just succeeded.
     """
     if resource.access_type == "external_link":
         candidate = resource.external_url
         if not candidate or not is_safe_http_url(candidate):
             raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
         return candidate
+
+    if resource.access_type == "circle_only" and resource.protected_file_path:
+        if not is_safe_protected_path(resource.protected_file_path):
+            raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
+        raw_token = issue_download_token(resource, viewer)
+        return f"/api/v1/resources/downloads/{raw_token}"
 
     candidate = resource.file_url or resource.external_url
     if not candidate or not is_safe_resource_target(candidate):
@@ -435,7 +473,7 @@ class ResourceAccessResource(Resource):
         # happens for a denied request of any kind.
         check_resource_access(resource, viewer)
 
-        target_url = _resolve_target_url(resource)
+        target_url = _resolve_target_url(resource, viewer)
 
         lead = None
         if resource.access_type == "email_gate":
@@ -472,6 +510,34 @@ class ResourceAccessResource(Resource):
         return success_response(response, status=201 if lead else 200)
 
 
+class ResourceDownloadResource(Resource):
+    """Redeems a short-lived download token issued by
+    ResourceAccessResource above and streams the protected file. The
+    token alone is the credential — no JWT/session is checked here, and
+    Circle entitlement is NOT re-verified (see
+    app/services/resource_downloads.py's module docstring for why that's
+    the correct, deliberate design, not an oversight).
+
+    Served by Flask/Gunicorn directly (send_from_directory), never by
+    Nginx — see the final report's "Flask streaming vs X-Accel-Redirect"
+    comparison for why that's the right choice at WSF's current scale.
+    send_from_directory() itself refuses any `..` traversal attempt
+    inside `filename`; resolve_download_token() additionally refuses to
+    return a resource at all unless its stored protected_file_path is
+    independently judged safe by the same is_safe_protected_path() check
+    applied at save time.
+    """
+
+    def get(self, token):
+        resource = resolve_download_token(token)
+        return send_from_directory(
+            current_app.config["PROTECTED_MEDIA_ROOT"],
+            resource.protected_file_path,
+            as_attachment=True,
+        )
+
+
 api.add_resource(ResourceListResource, "")
 api.add_resource(ResourceDetailResource, "/<string:slug>")
 api.add_resource(ResourceAccessResource, "/<string:slug>/access")
+api.add_resource(ResourceDownloadResource, "/downloads/<string:token>")

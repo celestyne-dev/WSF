@@ -93,6 +93,24 @@ class Config:
         "MEDIA_ROOT", os.path.join(basedir, "instance", "media")
     )
     MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
+
+    # A SEPARATE filesystem location for circle_only Resource files (see
+    # app/services/resource_downloads.py) — never served by Nginx and
+    # never aliased under MEDIA_URL; the only path to a file here is
+    # GET /api/v1/resources/downloads/<token> after a Circle entitlement
+    # check has already issued that token. Same outside-the-checkout
+    # requirement as MEDIA_ROOT (see require_production_settings below),
+    # plus it must not be MEDIA_ROOT itself or a path inside it — that
+    # would put a "protected" file right back under Nginx's public alias.
+    PROTECTED_MEDIA_ROOT = os.environ.get(
+        "PROTECTED_MEDIA_ROOT", os.path.join(basedir, "instance", "protected_media")
+    )
+    # How long a download token issued by POST /resources/{slug}/access
+    # stays redeemable — long enough to start even a slow download right
+    # after clicking, short enough that a leaked link stops working soon.
+    RESOURCE_DOWNLOAD_TOKEN_TTL_MINUTES = int(
+        os.environ.get("RESOURCE_DOWNLOAD_TOKEN_TTL_MINUTES", 10)
+    )
     MAX_UPLOAD_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10MB
     ALLOWED_IMAGE_EXTENSIONS = set(
         os.environ.get("ALLOWED_IMAGE_EXTENSIONS", "jpg,jpeg,png,webp").split(",")
@@ -256,6 +274,25 @@ config_by_name = {
 }
 
 
+def _path_resolves_inside(candidate, container):
+    """True iff `candidate` resolves to a path inside (or equal to)
+    `container`. Shared by the MEDIA_ROOT and PROTECTED_MEDIA_ROOT
+    containment checks below — a pure path-string comparison (no
+    filesystem access required), using os.path.commonpath rather than a
+    naive startswith so a sibling directory that merely shares a string
+    prefix is never mistaken for being inside `container`.
+    """
+    normalized_candidate = os.path.realpath(candidate)
+    normalized_container = os.path.realpath(container)
+    try:
+        return os.path.commonpath([normalized_candidate, normalized_container]) == normalized_container
+    except ValueError:
+        # Can't prove containment (e.g. different drives) — never crash
+        # startup over this; treat as "not proven unsafe" rather than
+        # silently passing something we can't actually compare.
+        return False
+
+
 def require_production_settings(app):
     """Fail fast at startup if ProductionConfig is missing something that
     must never be allowed to run with an insecure/absent value. Called
@@ -339,24 +376,41 @@ def require_production_settings(app):
     # string prefix (e.g. /var/www/womenshapingfutures-backup) is never
     # mistaken for being inside /var/www/womenshapingfutures.
     media_root = app.config.get("MEDIA_ROOT") or ""
-    if media_root:
-        repo_root = os.path.dirname(basedir)
-        normalized_media_root = os.path.realpath(media_root)
-        normalized_repo_root = os.path.realpath(repo_root)
-        try:
-            inside_repo_root = os.path.commonpath([normalized_media_root, normalized_repo_root]) == normalized_repo_root
-        except ValueError:
-            # Can't prove containment (e.g. different drives) — never crash
-            # startup over this; treat as "not proven unsafe" rather than
-            # silently passing something we can't actually compare.
-            inside_repo_root = False
-        if inside_repo_root:
+    repo_root = os.path.dirname(basedir)
+    if media_root and _path_resolves_inside(media_root, repo_root):
+        problems.append(
+            f"MEDIA_ROOT ({media_root!r}) resolves inside the application's deployment "
+            "checkout — uploads would be lost on a fresh-clone/git-clean/rm-rf style "
+            "redeploy. Set it to a path entirely outside the checkout, e.g. "
+            "/var/lib/womenshapingfutures/media (any separate, persistent-data location "
+            "works — this is just an example, not a required literal path)."
+        )
+
+    # PROTECTED_MEDIA_ROOT: same "outside the checkout" hazard as
+    # MEDIA_ROOT (a redeploy must never lose a Circle resource's file),
+    # plus its own, distinct hazard: it must not be MEDIA_ROOT, and must
+    # not resolve inside it — that would put a "protected" file right
+    # back under Nginx's public /media/ alias, defeating the entire
+    # point (see app/services/resource_downloads.py).
+    protected_media_root = app.config.get("PROTECTED_MEDIA_ROOT") or ""
+    if protected_media_root:
+        if _path_resolves_inside(protected_media_root, repo_root):
             problems.append(
-                f"MEDIA_ROOT ({media_root!r}) resolves inside the application's deployment "
-                "checkout — uploads would be lost on a fresh-clone/git-clean/rm-rf style "
-                "redeploy. Set it to a path entirely outside the checkout, e.g. "
-                "/var/lib/womenshapingfutures/media (any separate, persistent-data location "
-                "works — this is just an example, not a required literal path)."
+                f"PROTECTED_MEDIA_ROOT ({protected_media_root!r}) resolves inside the "
+                "application's deployment checkout — protected Resource files would be lost "
+                "on a fresh-clone/git-clean/rm-rf style redeploy. Set it to a path entirely "
+                "outside the checkout, e.g. /var/lib/womenshapingfutures/protected_media "
+                "(any separate, persistent-data location works — this is just an example, "
+                "not a required literal path)."
+            )
+        if media_root and (
+            os.path.realpath(protected_media_root) == os.path.realpath(media_root)
+            or _path_resolves_inside(protected_media_root, media_root)
+        ):
+            problems.append(
+                f"PROTECTED_MEDIA_ROOT ({protected_media_root!r}) must not be MEDIA_ROOT or a "
+                "path inside it — Nginx serves MEDIA_ROOT publicly, so a protected Resource "
+                "file placed there would no longer be protected."
             )
 
     # The "console" email backend logs full email content — including a
