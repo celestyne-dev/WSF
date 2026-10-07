@@ -166,14 +166,14 @@ export default function PartnershipsPage() {
           </div>
         </div>
 
-        <div id="media-kit" className="grid grid-cols-1 gap-10 border-t border-taupe-200 py-14 lg:grid-cols-2">
-          <div>
+        <div id="media-kit" className="grid grid-cols-1 gap-10 border-t border-taupe-200 py-14 lg:grid-cols-8">
+          <div className="lg:col-span-3">
             <h2 className="font-serif text-2xl font-semibold text-charcoal">Let's talk</h2>
             <p className="mt-3 text-base text-charcoal-600">
               Tell us about your organization and what you have in mind. Our team reviews every partnership inquiry and will follow up from there.
             </p>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <form onSubmit={handleSubmit} className="space-y-4 border border-taupe-200 bg-white p-6 sm:p-8 lg:col-span-5" noValidate>
             <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Contact</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="sr-only" htmlFor="pf-contactName">Contact name</label>

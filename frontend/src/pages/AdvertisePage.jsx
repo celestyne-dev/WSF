@@ -224,8 +224,8 @@ export default function AdvertisePage() {
           Advertising and sponsored content on Women Shaping Futures is always clearly disclosed and never presented as independent editorial coverage.
         </p>
 
-        <div id="advertise-inquiry" className="grid grid-cols-1 gap-10 border-t border-taupe-200 py-14 lg:grid-cols-2">
-          <div>
+        <div id="advertise-inquiry" className="grid grid-cols-1 gap-10 border-t border-taupe-200 py-14 lg:grid-cols-8">
+          <div className="lg:col-span-3">
             <h2 className="font-serif text-2xl font-semibold text-charcoal">{page.ctaHeading || "Let's talk"}</h2>
             <p className="mt-3 text-base text-charcoal-600">{page.ctaDescription || 'Tell us about your goals and our team will follow up.'}</p>
             {(page.contactEmail || page.contactNote) && (
@@ -242,7 +242,7 @@ export default function AdvertisePage() {
               </div>
             )}
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <form onSubmit={handleSubmit} className="space-y-4 border border-taupe-200 bg-white p-6 sm:p-8 lg:col-span-5" noValidate>
             <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Contact</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="sr-only" htmlFor="af-contactName">Contact name</label>

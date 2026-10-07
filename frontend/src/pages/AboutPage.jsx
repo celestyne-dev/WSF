@@ -55,7 +55,7 @@ export default function AboutPage() {
             />
           </div>
         )}
-        <div className="mx-auto max-w-reading">
+        <div className="mx-auto max-w-reading lg:max-w-3xl xl:max-w-4xl">
           <ArticleContent blocks={page.content} />
         </div>
       </div>
