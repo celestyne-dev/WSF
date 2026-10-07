@@ -21,10 +21,28 @@ USER_B = {
     "email": "resdl-user-b@example.com", "password": "supersecret1",
     "first_name": "Beatrice", "last_name": "Mwangi", "country_code": "NG",
 }
+MANAGER_PAYLOAD = {
+    "email": "resdl-manager@example.com", "password": "supersecret1",
+    "first_name": "Amara", "last_name": "Nwosu", "country_code": "KE",
+}
 
 
 def _register(client, payload):
     client.post("/api/v1/auth/register", json=payload)
+    login = client.post("/api/v1/auth/login", json={"email": payload["email"], "password": payload["password"]})
+    return login.get_json()["data"]["access_token"]
+
+
+def _register_with_role(client, app, payload, role_name):
+    from app.extensions import db
+    from app.models.user import Role, User
+
+    client.post("/api/v1/auth/register", json=payload)
+    with app.app_context():
+        user = User.query.filter_by(email=payload["email"]).first()
+        role = Role.query.filter_by(name=role_name).first()
+        user.roles.append(role)
+        db.session.commit()
     login = client.post("/api/v1/auth/login", json={"email": payload["email"], "password": payload["password"]})
     return login.get_json()["data"]["access_token"]
 
@@ -37,6 +55,11 @@ def user_a_token(client):
 @pytest.fixture()
 def user_b_token(client):
     return _register(client, USER_B)
+
+
+@pytest.fixture()
+def manager_token(client, app):
+    return _register_with_role(client, app, MANAGER_PAYLOAD, "resources_manager")
 
 
 def _resolve_user(email):
@@ -340,12 +363,32 @@ def test_10_direct_download_resource_still_returns_raw_file_url(app, client):
     assert data["accessType"] == "direct_download"
 
 
-def test_11_circle_only_with_only_external_url_still_returns_it_directly(app, client, user_a_token):
-    """A circle_only resource that intentionally has no protected_file_path
-    — only an explicit external_url — keeps working exactly as before
-    this module (spec: "existing genuinely public resource modes remain
-    public unless a change is technically required" + an explicit
-    non-WSF-hosted link is still a legitimate circle_only configuration).
+def test_11_circle_only_with_only_external_url_cannot_publish(client, manager_token):
+    """Module 10.1: external_url no longer satisfies circle_only publish
+    validation at all — a permanent third-party link could be copied and
+    reused forever outside any Circle entitlement check, which defeats
+    the point of a protected Circle download. Only protected_file_path
+    (resolving to a real file) is accepted now.
+    """
+    resp = client.post(
+        "/api/v1/resources",
+        json={
+            "name": "Circle External Resource", "accessType": "circle_only",
+            "externalUrl": "https://partner.example.com/circle-only-guide",
+            "description": [{"type": "paragraph", "text": "Body."}], "status": "published",
+        },
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 422
+
+
+def test_11b_legacy_circle_only_row_with_only_external_url_never_returns_it(app, client, protected_root, user_a_token):
+    """A pre-existing/legacy row that somehow has access_type=circle_only,
+    status=published, and only an external_url (no protected_file_path)
+    — created by bypassing the API/validation entirely, representing data
+    from before this hardening pass — must still never have /access fall
+    back to that external_url. It should 409 rather than ever return a
+    permanently-reusable external link for a Circle resource.
     """
     from app.extensions import db
     from app.models.resource import Resource
@@ -353,7 +396,7 @@ def test_11_circle_only_with_only_external_url_still_returns_it_directly(app, cl
     _give_active_circle(app, USER_A["email"])
     with app.app_context():
         resource = Resource(
-            slug=_slug("circle-external"), name="Circle External Resource", access_type="circle_only",
+            slug=_slug("circle-external-legacy"), name="Legacy Circle External Resource", access_type="circle_only",
             external_url="https://partner.example.com/circle-only-guide", status="published",
             published_date=date.today(), description=[{"type": "paragraph", "text": "Body."}],
             price=0, currency="USD",
@@ -363,9 +406,8 @@ def test_11_circle_only_with_only_external_url_still_returns_it_directly(app, cl
         slug = resource.slug
 
     resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user_a_token))
-    assert resp.status_code == 200
-    data = resp.get_json()["data"]
-    assert data["url"] == "https://partner.example.com/circle-only-guide"
+    assert resp.status_code == 409
+    assert "partner.example.com" not in resp.get_data(as_text=True)
 
 
 def test_12_circle_only_file_url_alone_no_longer_satisfies_publish(app, client, user_a_token):
@@ -393,3 +435,121 @@ def test_12_circle_only_file_url_alone_no_longer_satisfies_publish(app, client, 
         headers=auth_headers(manager_token),
     )
     assert resp.status_code == 422
+
+
+# ===========================================================================
+# 13-14: publish/schedule requires the protected file to actually exist
+# (Module 10.1, item 2)
+# ===========================================================================
+
+
+def test_13_valid_existing_protected_file_can_publish(client, manager_token, protected_root):
+    (protected_root / "career-reset-workbook.pdf").write_bytes(b"%PDF-1.4 real workbook bytes")
+
+    resp = client.post(
+        "/api/v1/resources",
+        json={
+            "name": "Career Reset Workbook", "accessType": "circle_only",
+            "protectedFilePath": "career-reset-workbook.pdf",
+            "description": [{"type": "paragraph", "text": "Body."}], "status": "published",
+        },
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["status"] == "published"
+
+
+def test_14_nonexistent_protected_file_cannot_publish(client, manager_token, protected_root):
+    # Deliberately never written to protected_root — a typo'd filename
+    # (e.g. "carer-reset-workbook.pdf" from the task spec) must behave
+    # identically: reject with a clear 422, not a silently-broken publish.
+    resp = client.post(
+        "/api/v1/resources",
+        json={
+            "name": "Typo'd Workbook", "accessType": "circle_only",
+            "protectedFilePath": "carer-reset-workbook.pdf",
+            "description": [{"type": "paragraph", "text": "Body."}], "status": "published",
+        },
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 422
+
+
+def test_14b_draft_with_nonexistent_protected_file_still_saves(client, manager_token, protected_root):
+    # Draft/review resources must still be saveable before the real file
+    # is uploaded — _validate_publish() only runs for published/scheduled.
+    resp = client.post(
+        "/api/v1/resources",
+        json={
+            "name": "Not Yet Uploaded", "accessType": "circle_only",
+            "protectedFilePath": "not-uploaded-yet.pdf",
+            "description": [{"type": "paragraph", "text": "Body."}], "status": "draft",
+        },
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["status"] == "draft"
+
+
+def test_14c_protected_file_deleted_after_publish_blocks_republish(client, manager_token, protected_root):
+    # Publishing an update to an already-published resource re-validates
+    # too — if the file on disk vanishes (moved/deleted), a subsequent
+    # publish-status save must be rejected, not silently accepted.
+    (protected_root / "workbook.pdf").write_bytes(b"content")
+    create = client.post(
+        "/api/v1/resources",
+        json={
+            "name": "Workbook", "accessType": "circle_only", "protectedFilePath": "workbook.pdf",
+            "description": [{"type": "paragraph", "text": "Body."}], "status": "published",
+        },
+        headers=auth_headers(manager_token),
+    )
+    assert create.status_code == 201
+    slug = create.get_json()["data"]["slug"]
+
+    (protected_root / "workbook.pdf").unlink()
+
+    resp = client.put(
+        f"/api/v1/resources/{slug}",
+        json={
+            "name": "Workbook", "accessType": "circle_only", "protectedFilePath": "workbook.pdf",
+            "description": [{"type": "paragraph", "text": "Body."}], "status": "published",
+        },
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 422
+
+
+# ===========================================================================
+# 15: real-filesystem containment — a symlink inside PROTECTED_MEDIA_ROOT
+# pointing outside it must not be downloadable (Module 10.1, item 3)
+# ===========================================================================
+
+
+def test_15_symlink_inside_protected_root_pointing_outside_cannot_be_downloaded(
+    app, client, protected_root, user_a_token
+):
+    import os
+
+    _give_active_circle(app, USER_A["email"])
+
+    outside_secret = protected_root.parent / "outside_secret.txt"
+    outside_secret.write_text("should never be served")
+
+    symlink_path = protected_root / "escape-link.pdf"
+    os.symlink(str(outside_secret), str(symlink_path))
+    assert symlink_path.is_symlink()
+
+    resource_id, _ = _make_circle_resource(app, protected_root, "unused.pdf")
+    with app.app_context():
+        from app.extensions import db
+        from app.models.resource import Resource
+
+        resource = Resource.query.get(resource_id)
+        resource.protected_file_path = "escape-link.pdf"
+        db.session.commit()
+
+    token = _issue_token_for(app, resource_id, USER_A["email"])
+    resp = client.get(f"/api/v1/resources/downloads/{token}")
+    assert resp.status_code == 404
+    assert b"should never be served" not in resp.data

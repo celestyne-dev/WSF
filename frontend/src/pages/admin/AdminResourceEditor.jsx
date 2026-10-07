@@ -241,15 +241,17 @@ export default function AdminResourceEditor() {
   }
 
   // circle_only never satisfies this through fileUrl (a publicly-served
-  // /media/ path) — only protectedFilePath (served through the
-  // short-lived download token) or an explicit externalUrl count, same
-  // rule the backend's _validate_publish enforces (Module 10, part A).
+  // /media/ path) or externalUrl (a permanent third-party link that
+  // could be copied and reused outside Circle) — only protectedFilePath,
+  // served exclusively through the short-lived download token, counts.
+  // Same rule the backend's _validate_publish enforces (Module 10, part
+  // A; hardened in Module 10.1).
   const needsFileOrExternalUrl =
     form &&
     (['direct_download', 'email_gate', 'member_only', 'external_link'].includes(form.accessType)
       ? !form.fileUrl && !form.externalUrl
       : form.accessType === 'circle_only'
-        ? !form.protectedFilePath && !form.externalUrl
+        ? !form.protectedFilePath
         : false)
 
   async function handleSave(nextStatus) {
@@ -268,7 +270,11 @@ export default function AdminResourceEditor() {
       return
     }
     if ((nextStatus === 'published' || nextStatus === 'scheduled') && needsFileOrExternalUrl) {
-      toast.error('Add a file URL or external URL before publishing.')
+      toast.error(
+        form.accessType === 'circle_only'
+          ? 'Add a protected file path before publishing.'
+          : 'Add a file URL or external URL before publishing.'
+      )
       return
     }
     setErrors({})
@@ -412,22 +418,17 @@ export default function AdminResourceEditor() {
                 <input value={form.externalUrl} onChange={(e) => updateField('externalUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
             ) : form.accessType === 'circle_only' ? (
-              <>
-                <Field
-                  label="Protected file path"
-                  hint="filename only, placed on the server's protected storage (not /media/) — never a public URL. Staff upload the actual file outside this editor; see DEPLOYMENT.md."
-                >
-                  <input
-                    value={form.protectedFilePath}
-                    onChange={(e) => updateField('protectedFilePath', e.target.value)}
-                    placeholder="career-reset-workbook.pdf"
-                    className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
-                  />
-                </Field>
-                <Field label="…or an external URL instead" hint="only if this file is intentionally hosted off-site, not by WSF">
-                  <input value={form.externalUrl} onChange={(e) => updateField('externalUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-                </Field>
-              </>
+              <Field
+                label="Protected file path"
+                hint="filename only, placed on the server's protected storage (not /media/) — never a public URL or external link. Staff upload the actual file outside this editor; see DEPLOYMENT.md."
+              >
+                <input
+                  value={form.protectedFilePath}
+                  onChange={(e) => updateField('protectedFilePath', e.target.value)}
+                  placeholder="career-reset-workbook.pdf"
+                  className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+              </Field>
             ) : (
               <Field label="File URL" hint="link to the hosted download file">
                 <input value={form.fileUrl} onChange={(e) => updateField('fileUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
@@ -436,7 +437,7 @@ export default function AdminResourceEditor() {
             {needsFileOrExternalUrl && (
               <p className="text-xs text-rose-600">
                 {form.accessType === 'circle_only'
-                  ? 'A protected file path or external URL is required before publishing.'
+                  ? 'A protected file path is required before publishing.'
                   : 'A file URL or external URL is required before publishing.'}
               </p>
             )}

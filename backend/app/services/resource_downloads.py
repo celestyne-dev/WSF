@@ -25,6 +25,7 @@ response and the resulting download URL, never in Postgres or a log
 line.
 """
 import hashlib
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -61,6 +62,50 @@ def is_safe_protected_path(path):
     if "\\" in path:
         return False
     return True
+
+
+def resolve_real_protected_path(protected_file_path):
+    """Resolves `protected_file_path` against PROTECTED_MEDIA_ROOT using
+    canonical, symlink-resolved filesystem paths (os.path.realpath on
+    both sides), and returns the resolved absolute path only if it:
+
+      1. passes the lexical is_safe_protected_path() check above;
+      2. still resolves to somewhere inside the real PROTECTED_MEDIA_ROOT
+         after symlinks are followed (a symlink stored inside the root
+         but pointing outside it is rejected here — send_from_directory's
+         own traversal guard is lexical-only and would not catch this);
+      3. exists on disk as a regular file (not a directory, not a
+         device/socket/etc).
+
+    Returns None for any failure — this function never raises, so it
+    can be used both to gate publish/schedule (a missing or escaping
+    file should produce a normal 422, not a 500) and to gate the actual
+    download stream (a 404-equivalent there).
+    """
+    if not is_safe_protected_path(protected_file_path):
+        return None
+    root = current_app.config["PROTECTED_MEDIA_ROOT"]
+    real_root = os.path.realpath(root)
+    real_candidate = os.path.realpath(os.path.join(real_root, protected_file_path))
+    try:
+        if os.path.commonpath([real_candidate, real_root]) != real_root:
+            return None
+    except ValueError:
+        # Different drives on Windows, or an otherwise non-comparable pair.
+        return None
+    if not os.path.isfile(real_candidate):
+        return None
+    return real_candidate
+
+
+def protected_file_exists(protected_file_path):
+    """True only if `protected_file_path` resolves, via
+    resolve_real_protected_path(), to an existing regular file inside
+    PROTECTED_MEDIA_ROOT. Used at publish/schedule validation time so a
+    typo'd or not-yet-uploaded filename can never go live — see
+    app/api/v1/resources.py's _validate_publish().
+    """
+    return resolve_real_protected_path(protected_file_path) is not None
 
 
 def issue_download_token(resource, user):
@@ -109,3 +154,20 @@ def resolve_download_token(raw_token):
     ):
         raise ApiError(_GENERIC_INVALID_DOWNLOAD_MESSAGE, 404, code="not_found")
     return resource
+
+
+def resolve_download_target(raw_token):
+    """Full redemption path for GET /resources/downloads/<token>: resolves
+    the token (see resolve_download_token()) and then re-resolves the
+    bound resource's protected_file_path against the real filesystem
+    (see resolve_real_protected_path()) — rejecting a stale token whose
+    file has since been removed, moved, or was ever a symlink escaping
+    PROTECTED_MEDIA_ROOT. Returns (resource, real_absolute_path). Raises
+    the same generic 404 ApiError as resolve_download_token() for every
+    failure mode, so none are distinguishable to the caller.
+    """
+    resource = resolve_download_token(raw_token)
+    real_path = resolve_real_protected_path(resource.protected_file_path)
+    if real_path is None:
+        raise ApiError(_GENERIC_INVALID_DOWNLOAD_MESSAGE, 404, code="not_found")
+    return resource, real_path

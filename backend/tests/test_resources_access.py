@@ -61,6 +61,20 @@ def manager_token(client, app):
     return _register_with_role(client, app, MANAGER_PAYLOAD, "resources_manager")
 
 
+@pytest.fixture()
+def protected_root(app, tmp_path):
+    # Module 10.1: a circle_only resource's protected_file_path must now
+    # resolve to a real, existing file inside PROTECTED_MEDIA_ROOT before
+    # it can publish or be downloaded — see
+    # app/services/resource_downloads.py's protected_file_exists()/
+    # resolve_real_protected_path(). Any circle_only test that expects a
+    # 200/201 success must write its file here first.
+    root = tmp_path / "protected_media"
+    root.mkdir()
+    app.config["PROTECTED_MEDIA_ROOT"] = str(root)
+    return root
+
+
 def _resolve_user(email):
     from app.models.user import User
 
@@ -474,30 +488,33 @@ class TestCircleOnly:
         assert resp.status_code == 403
 
     # 44. valid active Circle subscription -> succeeds
-    def test_active_circle_subscription_succeeds(self, app, client, user1_token):
+    def test_active_circle_subscription_succeeds(self, app, client, user1_token, protected_root):
+        (protected_root / "workbook.pdf").write_bytes(b"content")
         plan_id = _make_plan(app)
         _make_subscription(app, USER1["email"], plan_id, status="active")
-        _, slug = _make_resource(app, access_type="circle_only")
+        _, slug = _make_resource(app, access_type="circle_only", file_url=None, protected_file_path="workbook.pdf")
         resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
         assert resp.status_code == 200
         assert resp.get_json()["data"]["url"]
 
     # 45. active cancel_at_period_end with future period end -> succeeds
-    def test_cancel_at_period_end_with_future_end_succeeds(self, app, client, user1_token):
+    def test_cancel_at_period_end_with_future_end_succeeds(self, app, client, user1_token, protected_root):
+        (protected_root / "workbook.pdf").write_bytes(b"content")
         plan_id = _make_plan(app)
         _make_subscription(
             app, USER1["email"], plan_id, status="active",
             cancel_at_period_end=True, current_period_end=_now() + timedelta(days=10),
         )
-        _, slug = _make_resource(app, access_type="circle_only")
+        _, slug = _make_resource(app, access_type="circle_only", file_url=None, protected_file_path="workbook.pdf")
         resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
         assert resp.status_code == 200
 
     # 46. successful Circle access increments count
-    def test_circle_success_increments_count(self, app, client, user1_token):
+    def test_circle_success_increments_count(self, app, client, user1_token, protected_root):
+        (protected_root / "workbook.pdf").write_bytes(b"content")
         plan_id = _make_plan(app)
         _make_subscription(app, USER1["email"], plan_id, status="active")
-        resource_id, slug = _make_resource(app, access_type="circle_only")
+        resource_id, slug = _make_resource(app, access_type="circle_only", file_url=None, protected_file_path="workbook.pdf")
         client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
         assert _get_resource(app, resource_id).download_count == 1
 
@@ -684,10 +701,12 @@ class TestUrlSafety:
 
 class TestAdminEditor:
     # 62. admin can create circle_only resource
-    def test_admin_can_create_circle_only(self, client, manager_token):
+    def test_admin_can_create_circle_only(self, client, manager_token, protected_root):
         # A circle_only resource's real file is never a public MEDIA_ROOT
         # URL (see app/services/resource_downloads.py) — it needs a
-        # protectedFilePath (or an external_url) instead of fileUrl.
+        # protectedFilePath that resolves to a real file on disk (Module
+        # 10.1); external_url no longer satisfies circle_only at all.
+        (protected_root / "circle-guide.pdf").write_bytes(b"content")
         resp = client.post(
             "/api/v1/resources",
             json={
@@ -703,7 +722,8 @@ class TestAdminEditor:
         assert resp.get_json()["data"]["access_type"] == "circle_only"
 
     # 63. admin can edit circle_only resource
-    def test_admin_can_edit_circle_only(self, app, client, manager_token):
+    def test_admin_can_edit_circle_only(self, app, client, manager_token, protected_root):
+        (protected_root / "now-circle.pdf").write_bytes(b"content")
         _, slug = _make_resource(app, access_type="direct_download")
         resp = client.put(
             f"/api/v1/resources/{slug}",
