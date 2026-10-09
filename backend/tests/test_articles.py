@@ -338,6 +338,66 @@ def test_ai_editorial_notes_excluded_from_public_article(client, editor_token, a
     assert "ai_editorial_notes" not in summary.get_json()["data"][0]
 
 
+def test_seo_og_image_resolves_to_real_media_url(client, app, editor_token, author_slug):
+    """Article.seo is a free-form JSON blob storing `ogImageMediaId` (an
+    integer), which has no FK/relationship for marshmallow-sqlalchemy to
+    auto-resolve — unlike hero_media_id. ArticleSchema.get_seo() must inject
+    a resolved `ogImage` (the Media's real public_url) and `ogImageAlt`
+    (only when the Media actually has alt text) without dropping the
+    original ogImageMediaId the admin editor round-trips on.
+    """
+    from app.extensions import db
+    from app.models.media import Media
+
+    with app.app_context():
+        media = Media(
+            original_filename="og-social.jpg",
+            stored_filename="og-social.jpg",
+            file_path="/tmp/og-social.jpg",
+            public_url="/media/originals/og-social.jpg",
+            mime_type="image/jpeg",
+            alt_text="A panel of women speaking on stage",
+        )
+        db.session.add(media)
+        db.session.commit()
+        media_id = media.id
+
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "SEO Image Resolution Check",
+            "authorSlug": author_slug,
+            "content": [{"type": "paragraph", "text": "Body."}],
+            "seo": {"title": "Custom SEO title", "ogImageMediaId": media_id},
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    seo = create.get_json()["data"]["seo"]
+    assert seo["ogImageMediaId"] == media_id
+    assert seo["ogImage"] == "/media/originals/og-social.jpg"
+    assert seo["ogImageAlt"] == "A panel of women speaking on stage"
+    assert seo["title"] == "Custom SEO title"
+
+
+def test_seo_without_og_image_media_id_has_no_fabricated_image(client, editor_token, author_slug):
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "No SEO Image Set",
+            "authorSlug": author_slug,
+            "content": [{"type": "paragraph", "text": "Body."}],
+            "seo": {"title": "Just a title"},
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    seo = create.get_json()["data"]["seo"]
+    assert "ogImage" not in seo
+    assert "ogImageAlt" not in seo
+    assert seo["title"] == "Just a title"
+
+
 def test_publish_requires_content(client, editor_token, author_slug):
     create = client.post(
         "/api/v1/articles",

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import { Clock, Sparkles } from 'lucide-react'
 import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles } from '../api/articles'
 import { fetchPersonBySlug } from '../api/people'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveMediaImage } from '../utils/media'
+import { buildArticleStructuredData } from '../utils/articleStructuredData'
 import { formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -17,6 +19,8 @@ import ArticleCard from '../components/cards/ArticleCard'
 import SaveButton from '../components/account/SaveButton'
 import PersonCard from '../components/cards/PersonCard'
 import NotFoundPage from './NotFoundPage'
+
+const SITE_ORIGIN = 'https://womenshapingfutures.org'
 
 // Subtle, non-alarming editorial transparency notice — shown only when an
 // editor has explicitly enabled it (article.aiDisclosureRequired) and
@@ -33,6 +37,40 @@ function AiDisclosureNotice({ text }) {
       </p>
     </div>
   )
+}
+
+// Valid schema.org Article structured data for a published public article —
+// same script[data-X-structured-data] create/update/cleanup-on-unmount
+// pattern as useEventStructuredData/useResourceStructuredData/
+// useJobStructuredData. The actual data shape lives in the pure, DOM-free
+// buildArticleStructuredData() (utils/articleStructuredData.js) so it can
+// be unit-tested without a DOM; this hook only owns the <script> mechanics.
+function useArticleStructuredData(article, canonicalUrl, imageUrl) {
+  const siteName = useSelector((s) => s.site.settings?.site?.name) || 'Women Shaping Futures'
+  const siteUrl = useSelector((s) => s.site.settings?.site?.url)
+  const siteLogo = useSelector((s) => s.site.settings?.branding?.logo)
+  const siteLogoUrl = siteLogo ? resolveMediaImage(siteLogo, { variant: 'card', width: 512, height: 512 }).src : undefined
+
+  useEffect(() => {
+    const data = buildArticleStructuredData(article, canonicalUrl, {
+      imageUrl,
+      siteName,
+      siteUrl,
+      siteLogoUrl,
+      authorBaseUrl: `${SITE_ORIGIN}/authors`,
+    })
+    if (!data) return
+
+    let el = document.head.querySelector('script[data-article-structured-data]')
+    if (!el) {
+      el = document.createElement('script')
+      el.type = 'application/ld+json'
+      el.setAttribute('data-article-structured-data', 'true')
+      document.head.appendChild(el)
+    }
+    el.textContent = JSON.stringify(data)
+    return () => el?.remove()
+  }, [article, canonicalUrl, imageUrl, siteName, siteUrl, siteLogoUrl])
 }
 
 export default function ArticlePage() {
@@ -95,19 +133,41 @@ export default function ArticlePage() {
     }
   }, [slug])
 
-  const canonicalUrl = `https://womenshapingfutures.org/${slug}`
+  const canonicalUrl = `${SITE_ORIGIN}/${slug}`
+  // The single effective canonical this page commits to everywhere it
+  // appears (the <link rel="canonical">, og:url, and the JSON-LD url/
+  // mainEntityOfPage.@id below) — an editor-supplied CMS canonical
+  // override always wins over the womenshapingfutures.org/{slug}
+  // fallback, and every one of those four places must agree.
+  const effectiveCanonicalUrl = article?.seo?.canonical || canonicalUrl
+
+  // Priority for the social-share image: an explicit SEO/OG image the
+  // editor picked (article.seo.ogImage, resolved server-side from
+  // seo.ogImageMediaId — see ArticleSchema.get_seo) wins over the hero
+  // image — and its alt text must come from that SAME image, never
+  // cross-matched with the hero's alt text when the explicit image has
+  // none of its own (an editor leaving alt blank on the OG image is a
+  // real "no alt" case, not a reason to borrow an unrelated photo's alt).
+  const hasExplicitOgImage = !!article?.seo?.ogImage
+  const socialImagePath = hasExplicitOgImage ? article.seo.ogImage : article?.heroImage || null
+  const socialImageAlt = hasExplicitOgImage ? article.seo.ogImageAlt || undefined : article?.heroImageAlt || undefined
+  const socialImageUrl = socialImagePath ? resolveImage(socialImagePath, { width: 1200, height: 630 }) : undefined
 
   useSeo(
     article
       ? {
           title: article.seo?.title || article.title,
           description: article.seo?.description || article.excerpt,
-          canonical: article.seo?.canonical || canonicalUrl,
-          image: resolveImage(article.seo?.ogImage || article.heroImage, { width: 1200, height: 630 }),
+          canonical: effectiveCanonicalUrl,
+          image: socialImageUrl,
+          imageAlt: socialImageAlt,
           robots: article.seo?.robots,
+          type: 'article',
         }
       : {},
   )
+
+  useArticleStructuredData(article, effectiveCanonicalUrl, socialImageUrl)
 
   useEffect(() => {
     if (article) trackEvent('article_view', { articleSlug: article.slug, topicSlugs: article.topicSlugs })

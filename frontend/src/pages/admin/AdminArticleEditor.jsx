@@ -112,7 +112,13 @@ function toForm(article) {
     seoTitle: article.seo?.title || '',
     seoDescription: article.seo?.description || '',
     seoCanonical: article.seo?.canonical || '',
-    seoOgMedia: article.seo?.ogImageMediaId ? { id: article.seo.ogImageMediaId } : null,
+    // article.seo.ogImage/ogImageAlt are resolved server-side from
+    // seo.ogImageMediaId (see ArticleSchema.get_seo) — reconstructed here
+    // the same way heroMedia is above, so MediaPicker has a real
+    // mediaPath/altText to render instead of just a bare id.
+    seoOgMedia: article.seo?.ogImageMediaId
+      ? { id: article.seo.ogImageMediaId, mediaPath: article.seo.ogImage, altText: article.seo.ogImageAlt || '' }
+      : null,
     aiInvolvement: article.aiInvolvement || 'none',
     humanReviewed: !!article.humanReviewed,
     aiDisclosureRequired: !!article.aiDisclosureRequired,

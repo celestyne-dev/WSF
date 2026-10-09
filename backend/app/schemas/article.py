@@ -1,7 +1,8 @@
 from marshmallow import fields, validate
 
-from app.extensions import ma
+from app.extensions import db, ma
 from app.models.article import AI_INVOLVEMENT_VALUES, ARTICLE_STATUSES, Article
+from app.models.media import Media
 from app.schemas.commerce import SponsorSchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema, PersonSchema
@@ -59,10 +60,29 @@ class ArticleSchema(ma.SQLAlchemyAutoSchema):
     # public_article_schema()/article_summary_schema() below), but useful
     # on the authenticated editor-detail view and the admin list/calendar.
     approved_by = fields.Nested(_STAFF_ONLY, dump_only=True)
+    # `seo` is a free-form JSON column (see Article.seo's own comment:
+    # {title, description, ogImageMediaId, canonical, robots}) — unlike
+    # hero_media_id above, ogImageMediaId has no FK/relationship for
+    # marshmallow-sqlalchemy to auto-resolve, so the auto-generated field
+    # would just dump the bare stored dict (ogImageMediaId as an integer,
+    # never a usable image URL). Declared explicitly to override that
+    # auto field and inject the resolved image alongside it.
+    seo = fields.Method("get_seo", dump_only=True)
 
     class Meta:
         model = Article
         load_instance = False
+
+    def get_seo(self, obj):
+        seo = dict(obj.seo or {})
+        media_id = seo.get("ogImageMediaId")
+        if media_id:
+            media = db.session.get(Media, media_id)
+            if media:
+                seo["ogImage"] = media.public_url
+                if media.alt_text:
+                    seo["ogImageAlt"] = media.alt_text
+        return seo
 
 
 # ai_editorial_notes is an internal CMS-only field (an editor's private notes
