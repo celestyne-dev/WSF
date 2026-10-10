@@ -41,7 +41,7 @@ def _validate_protected_original_filename(value):
     # Display/Content-Disposition metadata only — this never resolves to
     # a filesystem path (see protected_original_filename below), so this
     # checks shape only, not containment like _validate_protected_file_path.
-    if not value:
+    if value is None:
         return
     if not value.strip():
         raise ValidationError("Must not be blank.")
