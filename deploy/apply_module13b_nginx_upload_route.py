@@ -31,16 +31,23 @@ EXPECTED_LINES = [
     "proxy_set_header X-Forwarded-Proto $scheme;",
 ]
 
-OPEN_RE = re.compile(r"^\s*location\s*=\s*/api/v1/resources/uploads/protected\s*\{\s*$")
+# Matches the exact-match Module 13B syntax only — used to confirm a
+# found block is syntactically the correct one, not just the same URI.
+EXACT_OPEN_RE = re.compile(r"^\s*location\s*=\s*/api/v1/resources/uploads/protected\s*\{\s*$")
+# Matches ANY location block for this URI, exact-match or prefix — used
+# for conflict detection so a differently-declared block for the same
+# route is never missed and silently duplicated.
+ANY_OPEN_RE = re.compile(r"^\s*location\s*(?:=\s*)?/api/v1/resources/uploads/protected\s*\{\s*$")
 ANCHOR_RE = re.compile(r"^\s*location\s+/api/\s*\{\s*$")
 
 
 def find_block(lines):
-    """Returns (open_index, close_index) of the protected-upload block,
-    brace-counted so it doesn't assume the closing '}' sits alone on its
-    own line. None if no such block exists."""
+    """Returns (open_index, close_index) of any existing location block
+    for the protected-upload URI (exact-match or prefix), brace-counted
+    so it doesn't assume the closing '}' sits alone on its own line.
+    None if no such block exists."""
     for i, line in enumerate(lines):
-        if OPEN_RE.match(line):
+        if ANY_OPEN_RE.match(line):
             depth = line.count("{") - line.count("}")
             j = i
             while depth > 0:
@@ -67,6 +74,9 @@ def main():
     group.add_argument("--apply", action="store_true", help="apply the edit (requires root)")
     args = parser.parse_args()
 
+    if args.apply and os.geteuid() != 0:
+        sys.exit("ERROR: --apply must be run as root.")
+
     if not os.path.isfile(CONFIG_PATH):
         sys.exit(f"ERROR: {CONFIG_PATH} not found.")
 
@@ -77,7 +87,8 @@ def main():
     if existing is not None:
         open_i, close_i = existing
         body = [l.strip() for l in lines[open_i + 1:close_i] if l.strip()]
-        if body == EXPECTED_LINES:
+        is_exact_syntax = bool(EXACT_OPEN_RE.match(lines[open_i]))
+        if is_exact_syntax and body == EXPECTED_LINES:
             print("OK: protected-upload block already present and correct — no change needed.")
             print("\n".join(lines[open_i:close_i + 1]))
             return 0
@@ -100,10 +111,7 @@ def main():
         print("\n".join(new_block))
         return 0
 
-    # --apply from here on.
-    if os.geteuid() != 0:
-        sys.exit("ERROR: --apply must be run as root.")
-
+    # --apply from here on (root already confirmed above).
     os.makedirs(BACKUP_DIR, exist_ok=True)
     backup_path = os.path.join(BACKUP_DIR, f"womenshapingfutures.conf.{time.strftime('%Y%m%d%H%M%S')}.bak")
     shutil.copy2(CONFIG_PATH, backup_path)
