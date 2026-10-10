@@ -115,7 +115,26 @@ class Config:
     ALLOWED_IMAGE_EXTENSIONS = set(
         os.environ.get("ALLOWED_IMAGE_EXTENSIONS", "jpg,jpeg,png,webp").split(",")
     )
-    MAX_CONTENT_LENGTH = MAX_UPLOAD_SIZE
+    # Protected circle_only Resource files (documents, not images — see
+    # app/services/resource_downloads.py's save_protected_upload()) are
+    # typically larger than an image (a workbook/deck can legitimately be
+    # several MB), so this is its own, separate ceiling rather than reusing
+    # MAX_UPLOAD_SIZE — MediaService.validate() still enforces that 10MB
+    # limit on its own, independent of whatever this is set to.
+    MAX_PROTECTED_UPLOAD_SIZE = int(
+        os.environ.get("MAX_PROTECTED_UPLOAD_SIZE", 50 * 1024 * 1024)  # 50MB
+    )
+    ALLOWED_PROTECTED_RESOURCE_EXTENSIONS = set(
+        os.environ.get("ALLOWED_PROTECTED_RESOURCE_EXTENSIONS", "pdf,docx,xlsx,pptx,zip").split(",")
+    )
+    # Flask/Werkzeug refuses any request body above this before either
+    # upload endpoint's own validation ever runs — it must be at least as
+    # large as the bigger of the two per-endpoint ceilings above, or a
+    # legitimate protected-file upload would be rejected at the WSGI layer
+    # before MediaService vs. the protected-upload path even gets a say.
+    # Each endpoint's own service still separately enforces its own
+    # (smaller, for images) limit — this is only the outer ceiling.
+    MAX_CONTENT_LENGTH = max(MAX_UPLOAD_SIZE, MAX_PROTECTED_UPLOAD_SIZE)
     # (max_width, max_height) per generated responsive WebP variant.
     MEDIA_VARIANTS = {
         "thumbnail": (200, 200),

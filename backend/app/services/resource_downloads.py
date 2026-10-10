@@ -26,7 +26,10 @@ line.
 """
 import hashlib
 import os
+import re
 import secrets
+import uuid as uuid_lib
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 from flask import current_app
@@ -171,3 +174,210 @@ def resolve_download_target(raw_token):
     if real_path is None:
         raise ApiError(_GENERIC_INVALID_DOWNLOAD_MESSAGE, 404, code="not_found")
     return resource, real_path
+
+
+# ---------------------------------------------------------------------------
+# Protected Resource file upload (Module 13B) — lets staff upload a
+# circle_only Resource's downloadable file directly from WSF Studio instead
+# of placing it on the server by hand. Writes INTO the architecture above
+# (same PROTECTED_MEDIA_ROOT, same is_safe_protected_path()/
+# resolve_real_protected_path() containment); nothing here bypasses or
+# re-derives either check. The browser never chooses a filesystem path —
+# every accepted upload is stored under a fresh server-generated UUID
+# filename; the client's own filename is kept only as sanitized display/
+# download metadata (Resource.protected_original_filename), never as any
+# part of the on-disk identity.
+# ---------------------------------------------------------------------------
+
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+# Each OOXML format (docx/xlsx/pptx) is a ZIP container with a predictable
+# minimal set of internal entries — checking for these (without ever
+# extracting them to disk) is enough to tell a real Word/Excel/PowerPoint
+# file apart from an arbitrary ZIP or a renamed file of a different OOXML
+# type, using only the stdlib zipfile module (no new dependency).
+_OOXML_REQUIRED_ENTRIES = {
+    "docx": ("[Content_Types].xml", "word/document.xml"),
+    "xlsx": ("[Content_Types].xml", "xl/workbook.xml"),
+    "pptx": ("[Content_Types].xml", "ppt/presentation.xml"),
+}
+
+# Not a strict allowlist — real browsers/OSes report several legitimate
+# MIME strings for the same document format, and some correctly report an
+# OOXML file as generic application/zip. Used only to catch an obviously
+# wrong value (see _mime_is_contradictory below), never to accept/reject
+# on its own.
+_EXPECTED_MIME_VALUES = {
+    "pdf": {"application/pdf", "application/x-pdf"},
+    "docx": {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/zip",
+    },
+    "xlsx": {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip",
+    },
+    "pptx": {
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/zip",
+    },
+    "zip": {"application/zip", "application/x-zip-compressed", "application/x-zip"},
+}
+_CONTRADICTORY_MIME_PREFIXES = ("image/", "video/", "audio/", "text/", "font/")
+_NEUTRAL_MIMES = {None, "", "application/octet-stream", "binary/octet-stream"}
+
+
+def _extract_extension(filename):
+    if not filename or "." not in filename:
+        return None
+    return filename.rsplit(".", 1)[-1].lower()
+
+
+def _sanitize_original_filename(raw_filename, fallback):
+    """Display/download metadata only — never used to build a filesystem
+    path (save_protected_upload() below always generates the on-disk name
+    itself, before this value is even looked at, so no client filename —
+    however crafted — can ever influence where a file is written). Strips
+    any directory component a path-like client filename might carry (e.g.
+    "C:\\fakepath\\../../etc/passwd.pdf") down to its basename, then any
+    control character (which could otherwise corrupt the Content-
+    Disposition header on download). Unicode is otherwise preserved
+    rather than stripped — unlike werkzeug.secure_filename(), which would
+    mangle a legitimate non-ASCII name for no reason here, since this is
+    never a real path.
+    """
+    if not raw_filename:
+        return fallback
+    name = raw_filename.replace("\\", "/").rsplit("/", 1)[-1]
+    name = _CONTROL_CHARS_RE.sub("", name).strip()
+    name = name[:255]
+    return name or fallback
+
+
+def _mime_is_contradictory(ext, mime):
+    """True only for a MIME type that is clearly, obviously wrong for
+    `ext` (a different top-level media category entirely, e.g. image/png
+    on a .pdf) — never a strict allowlist. application/octet-stream and
+    similar "I don't know" values are always treated as neutral, matching
+    real-world upload behavior across browsers/OSes.
+    """
+    if not mime:
+        return False
+    normalized = mime.split(";", 1)[0].strip().lower()
+    if normalized in _NEUTRAL_MIMES or normalized in _EXPECTED_MIME_VALUES.get(ext, ()):
+        return False
+    return normalized.startswith(_CONTRADICTORY_MIME_PREFIXES)
+
+
+def _looks_like_pdf(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
+def _zip_entry_names(path):
+    try:
+        with zipfile.ZipFile(path) as zf:
+            return set(zf.namelist())
+    except zipfile.BadZipFile:
+        return None
+
+
+def _validate_protected_file_contents(path, ext):
+    """Validates the temp file already written to disk actually is what
+    its extension claims — never trusts the extension or the client's
+    reported MIME alone. Returns True/False; never raises. ZIP contents
+    are inspected via zipfile's in-memory directory listing only — never
+    extracted to disk.
+    """
+    if ext == "pdf":
+        return _looks_like_pdf(path)
+    if ext == "zip":
+        return zipfile.is_zipfile(path)
+    if ext in _OOXML_REQUIRED_ENTRIES:
+        if not zipfile.is_zipfile(path):
+            return False
+        names = _zip_entry_names(path)
+        if names is None:
+            return False
+        return all(required in names for required in _OOXML_REQUIRED_ENTRIES[ext])
+    return False
+
+
+def save_protected_upload(file_storage):
+    """Validates and stores an uploaded circle_only Resource file under
+    PROTECTED_MEDIA_ROOT. Returns a dict of safe metadata only — never a
+    filesystem path, never PROTECTED_MEDIA_ROOT's own value:
+
+        {protected_file_path, protected_original_filename,
+         file_format, file_size}
+
+    `protected_file_path` is a fresh, server-generated, root-relative
+    storage identity ("resource_<uuid>.<ext>") — never derived from the
+    client's filename, so no client-controlled input can influence where
+    the file is actually written. The temp-write-then-os.replace() below
+    is atomic: a file that fails content validation is never visible
+    under its final name, and resolve_real_protected_path() (used by
+    every read path) would never resolve to a stray temp file anyway,
+    since nothing ever stores a ".{uuid}.part" name on a Resource row.
+
+    Raises ApiError for any rejected upload; any temp file written is
+    always cleaned up before raising. Does not touch any Resource row —
+    callers attach the returned protected_file_path to a Resource via the
+    ordinary create/update flow.
+    """
+    if not file_storage or not file_storage.filename:
+        raise ApiError("No file provided.", 400, code="no_file")
+
+    allowed_extensions = current_app.config["ALLOWED_PROTECTED_RESOURCE_EXTENSIONS"]
+    ext = _extract_extension(file_storage.filename)
+    if ext not in allowed_extensions:
+        raise ApiError(f"File type .{ext or ''} is not allowed.", 415, code="unsupported_media_type")
+
+    # Same seek/tell size check MediaService.validate() already uses —
+    # cheap (no read into memory) for the SpooledTemporaryFile/BytesIO
+    # werkzeug already buffered the upload into.
+    file_storage.stream.seek(0, os.SEEK_END)
+    size = file_storage.stream.tell()
+    file_storage.stream.seek(0)
+    max_size = current_app.config["MAX_PROTECTED_UPLOAD_SIZE"]
+    if size > max_size:
+        raise ApiError("File exceeds the maximum upload size.", 413, code="file_too_large")
+
+    if _mime_is_contradictory(ext, file_storage.mimetype):
+        raise ApiError("File content does not match its reported type.", 415, code="invalid_file")
+
+    root = current_app.config["PROTECTED_MEDIA_ROOT"]
+    os.makedirs(root, exist_ok=True)
+    file_uuid = str(uuid_lib.uuid4())
+    temp_path = os.path.join(root, f".{file_uuid}.part")
+    final_name = f"resource_{file_uuid}.{ext}"
+    final_path = os.path.join(root, final_name)
+
+    # file_storage.save() streams to disk in chunks (same call
+    # MediaService.save() already uses for the original image upload) —
+    # never materializes the whole upload in memory at once.
+    file_storage.save(temp_path)
+    try:
+        if not _validate_protected_file_contents(temp_path, ext):
+            raise ApiError(
+                "File content does not match its extension — the upload may be corrupted or mislabeled.",
+                415,
+                code="invalid_file",
+            )
+        os.replace(temp_path, final_path)
+    except Exception:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
+
+    original_filename = _sanitize_original_filename(file_storage.filename, fallback=final_name)
+
+    return {
+        "protected_file_path": final_name,
+        "protected_original_filename": original_filename,
+        "file_format": ext.upper(),
+        "file_size": os.path.getsize(final_path),
+    }

@@ -120,6 +120,12 @@ class ResourceInputSchema(ma.Schema):
     protected_file_path = fields.String(
         required=False, allow_none=True, data_key="protectedFilePath", validate=_validate_protected_file_path
     )
+    # Display/download metadata only (see app/models/resource.py's column
+    # docstring) — never consulted for any path-safety/containment
+    # decision, so it carries no is_safe_protected_path-style validation.
+    protected_original_filename = fields.String(
+        required=False, allow_none=True, data_key="protectedOriginalFilename", validate=validate.Length(max=255)
+    )
     file_format = fields.String(required=False, allow_none=True, data_key="fileFormat", validate=validate.OneOf(FILE_FORMATS))
     file_size = fields.Integer(required=False, allow_none=True, data_key="fileSize", validate=validate.Range(min=0))
     page_count = fields.Integer(required=False, allow_none=True, data_key="pageCount", validate=validate.Range(min=0))

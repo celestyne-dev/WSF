@@ -12,9 +12,10 @@ succeeds, ever hands back a real target URL. Staff holding
 resources.manage still receive the full ResourceSchema dump they need to
 edit the resource.
 """
+import os
 from datetime import date
 
-from flask import Blueprint, request, send_file
+from flask import Blueprint, current_app, request, send_file
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 from sqlalchemy import or_
@@ -37,6 +38,8 @@ from app.services.resource_downloads import (
     issue_download_token,
     protected_file_exists,
     resolve_download_target,
+    resolve_real_protected_path,
+    save_protected_upload,
 )
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.slugs import slugify
@@ -232,6 +235,7 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     resource.file_url = data.get("file_url")
     resource.external_url = data.get("external_url")
     resource.protected_file_path = data.get("protected_file_path")
+    resource.protected_original_filename = data.get("protected_original_filename")
     resource.file_format = data.get("file_format")
     resource.file_size = data.get("file_size")
     resource.page_count = data.get("page_count")
@@ -249,6 +253,41 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
 
 def _is_referenced(resource):
     return Product.query.filter_by(resource_id=resource.id).first() is not None
+
+
+def _protected_path_still_referenced(path):
+    """True if any Resource row still has `path` as its protected_file_path
+    — legacy data may have several Resources sharing one manually-typed
+    path, so a cleanup must never assume one path belongs to exactly one
+    Resource. Called only after the row that stopped referencing `path`
+    has itself already been committed, so that row's own (now different,
+    or deleted) state never spuriously counts as "still referenced" here.
+    """
+    return ResourceModel.query.filter_by(protected_file_path=path).first() is not None
+
+
+def _cleanup_orphaned_protected_file(old_path):
+    """Removes `old_path`'s real file from PROTECTED_MEDIA_ROOT only if no
+    Resource row references it anymore. Must only ever be called AFTER
+    the DB change that stopped referencing it has already committed
+    successfully (Module 13B) — never before, and never as part of the
+    same transaction: deleting the old file first and then failing to
+    save would destroy data a still-valid Resource needed, and deleting
+    it only after a confirmed commit means a failed save never touches
+    the old file at all. A filesystem failure here is logged and
+    swallowed, never surfaced as a save error — the Resource change
+    already succeeded and must be reported as such regardless of whether
+    this best-effort cleanup lands.
+    """
+    if not old_path or _protected_path_still_referenced(old_path):
+        return
+    real_path = resolve_real_protected_path(old_path)
+    if real_path is None:
+        return
+    try:
+        os.remove(real_path)
+    except OSError:
+        current_app.logger.warning("Failed to remove orphaned protected resource file: %s", old_path)
 
 
 def _build_query(user):
@@ -413,8 +452,18 @@ class ResourceDetailResource(Resource):
         if data.get("slug") and data["slug"] != resource.slug:
             resource.slug = validate_explicit_slug(ResourceModel, data["slug"], current_id=resource.id)
 
+        # Captured before _apply_fields() mutates the row — if it (or
+        # _validate_publish within it) raises, the DB is never touched
+        # (Flask-SQLAlchemy's per-request session is torn down unsaved),
+        # so the old file must stay untouched too; cleanup below only
+        # ever runs after a successful commit.
+        old_protected_path = resource.protected_file_path
         _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
         db.session.commit()
+
+        if old_protected_path and old_protected_path != resource.protected_file_path:
+            _cleanup_orphaned_protected_file(old_protected_path)
+
         return success_response(resource_schema.dump(resource))
 
     def delete(self, slug):
@@ -431,8 +480,13 @@ class ResourceDetailResource(Resource):
                 code="reference_conflict",
             )
 
+        protected_path = resource.protected_file_path
         db.session.delete(resource)
         db.session.commit()
+
+        if protected_path:
+            _cleanup_orphaned_protected_file(protected_path)
+
         return success_response({"deleted": True})
 
 
@@ -553,11 +607,47 @@ class ResourceDownloadResource(Resource):
     """
 
     def get(self, token):
-        _resource, real_path = resolve_download_target(token)
-        return send_file(real_path, as_attachment=True)
+        resource, real_path = resolve_download_target(token)
+        # Never the real disk path (a server-generated UUID name) as the
+        # user-facing filename unless it's the only thing available — a
+        # legacy row saved before this field existed has no
+        # protected_original_filename, so NULL falls back to the stored
+        # name's own basename (still safe: real_path is already the
+        # fully-resolved, containment-checked path, not client input).
+        download_name = resource.protected_original_filename or os.path.basename(resource.protected_file_path)
+        return send_file(real_path, as_attachment=True, download_name=download_name)
+
+
+class ResourceProtectedUploadResource(Resource):
+    """Uploads a circle_only Resource's downloadable file into
+    PROTECTED_MEDIA_ROOT (see app/services/resource_downloads.py's
+    save_protected_upload()) and returns safe metadata only — never a
+    filesystem path, never PROTECTED_MEDIA_ROOT's own value. Does not
+    require (or create/modify) any Resource row: staff attach the
+    returned protectedFilePath/protectedOriginalFilename to a Resource
+    via the ordinary create/update flow afterwards, the same
+    upload-then-attach shape the CMS Media Library already uses for
+    images (see app/api/v1/media.py's MediaUploadResource +
+    MediaPicker.jsx on the frontend) — just writing into a different,
+    non-public storage root.
+    """
+
+    def post(self):
+        _require_manage()
+        metadata = save_protected_upload(request.files.get("file"))
+        return success_response(
+            {
+                "protectedFilePath": metadata["protected_file_path"],
+                "protectedOriginalFilename": metadata["protected_original_filename"],
+                "fileFormat": metadata["file_format"],
+                "fileSize": metadata["file_size"],
+            },
+            status=201,
+        )
 
 
 api.add_resource(ResourceListResource, "")
 api.add_resource(ResourceDetailResource, "/<string:slug>")
 api.add_resource(ResourceAccessResource, "/<string:slug>/access")
 api.add_resource(ResourceDownloadResource, "/downloads/<string:token>")
+api.add_resource(ResourceProtectedUploadResource, "/uploads/protected")

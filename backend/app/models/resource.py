@@ -151,6 +151,15 @@ class Resource(db.Model):
     # ResourceDownloadResource) — file_url/external_url stay unused for
     # circle_only going forward (existing access types are unaffected).
     protected_file_path = db.Column(db.String(500))
+    # The original filename staff uploaded (e.g. "Career Reset Workbook.pdf"),
+    # kept purely as display/download metadata — protected_file_path above
+    # is always the server-generated storage identity and never derived
+    # from this. NULL for a legacy row whose protected_file_path was typed
+    # in by hand before the upload endpoint existed (Module 13B); such a
+    # row falls back to os.path.basename(protected_file_path) wherever
+    # this is used (CMS display, Content-Disposition on download) — see
+    # app/services/resource_downloads.py.
+    protected_original_filename = db.Column(db.String(255))
     file_format = db.Column(db.String(20))  # see FILE_FORMATS
     file_size = db.Column(db.Integer)  # bytes
     page_count = db.Column(db.Integer)
