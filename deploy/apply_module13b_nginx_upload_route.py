@@ -34,10 +34,11 @@ EXPECTED_LINES = [
 # Matches the exact-match Module 13B syntax only — used to confirm a
 # found block is syntactically the correct one, not just the same URI.
 EXACT_OPEN_RE = re.compile(r"^\s*location\s*=\s*/api/v1/resources/uploads/protected\s*\{\s*$")
-# Matches ANY location block for this URI, exact-match or prefix — used
-# for conflict detection so a differently-declared block for the same
-# route is never missed and silently duplicated.
-ANY_OPEN_RE = re.compile(r"^\s*location\s*(?:=\s*)?/api/v1/resources/uploads/protected\s*\{\s*$")
+# Matches ANY location block for this URI — exact-match (=), plain
+# prefix, or prefix-priority (^~) — used for conflict detection so a
+# differently-declared block for the same route is never missed and
+# silently duplicated.
+ANY_OPEN_RE = re.compile(r"^\s*location\s*(?:(?:=|\^~)\s*)?/api/v1/resources/uploads/protected\s*\{\s*$")
 ANCHOR_RE = re.compile(r"^\s*location\s+/api/\s*\{\s*$")
 
 
