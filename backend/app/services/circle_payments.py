@@ -218,13 +218,24 @@ def _build_callback_url():
 def _find_reusable_pending_payment(user, plan):
     """Within _PENDING_REUSE_WINDOW, for this exact user+plan: reuse the
     most recent `pending` row that actually has a usable
-    authorization_url. Any other recent `pending` row is, by definition,
-    one whose Paystack initialize call never completed (e.g. the process
-    died between the local insert and the provider response) — it can
-    never become usable, so it's marked `failed` here rather than ever
-    being handed back as a checkout destination, and a fresh attempt
-    proceeds normally. Does not commit — the caller holds the advisory
-    lock for the whole decision (see module docstring) and commits once.
+    authorization_url AND whose snapshotted amount/currency/billing_interval
+    still match the plan's CURRENT terms. A plan's price/currency/interval
+    can change between when a pending checkout was created and now (e.g.
+    a plan repriced from KES to USD) — reusing a stale checkout would
+    hand the browser an authorization_url for terms that no longer match
+    what the plan now charges, with nothing re-validating that at
+    verification time (see _invariant_mismatches, which only ever
+    compares against the PAYMENT's own snapshot, never the plan's
+    current fields).
+
+    Any other recent `pending` row — one with no usable
+    authorization_url (its Paystack initialize call never completed,
+    e.g. the process died between the local insert and the provider
+    response), or one whose terms no longer match the plan — can never
+    be returned, so it's marked `failed` here rather than ever being
+    handed back as a checkout destination, and a fresh attempt proceeds
+    normally. Does not commit — the caller holds the advisory lock for
+    the whole decision (see module docstring) and commits once.
     """
     window_start = datetime.now(timezone.utc) - _PENDING_REUSE_WINDOW
     candidates = (
@@ -237,12 +248,23 @@ def _find_reusable_pending_payment(user, plan):
         .order_by(CirclePayment.created_at.desc())
         .all()
     )
+    expected_amount_subunits = plan.price * 100
+    expected_currency = plan.currency.strip().upper()
     reusable = None
     for candidate in candidates:
-        if candidate.authorization_url and reusable is None:
-            reusable = candidate
-        elif not candidate.authorization_url:
+        if not candidate.authorization_url:
             candidate.status = "failed"
+            continue
+        matches_current_terms = (
+            candidate.amount_subunits == expected_amount_subunits
+            and candidate.currency.strip().upper() == expected_currency
+            and candidate.billing_interval == plan.billing_interval
+        )
+        if not matches_current_terms:
+            candidate.status = "failed"
+            continue
+        if reusable is None:
+            reusable = candidate
     return reusable
 
 

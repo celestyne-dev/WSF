@@ -390,6 +390,110 @@ class TestCheckoutDedupe:
         assert resp.get_json()["data"]["reference"] not in references
 
 
+class TestCheckoutDedupeRespectsCurrentPlanTerms:
+    """Regression coverage: a plan's price/currency/billing_interval can
+    change after a pending checkout was created (e.g. a monthly plan
+    repriced from KES 1000 to USD 10) — a stale pending checkout must
+    never be reused once it no longer matches the plan's CURRENT terms,
+    even though its authorization_url is still technically usable.
+    """
+
+    def test_same_terms_reusable(self, client, app, user1_token):
+        _enable_paystack(app)
+        plan_id, slug = _make_plan(app, price=1000, currency="USD", billing_interval="monthly")
+        user_id = _get_user_id(app, USER1["email"])
+        _, stale_reference = _make_payment(
+            app, user_id, plan_id,
+            amount_subunits=100000, currency="USD", billing_interval="monthly",
+            authorization_url="https://checkout.paystack.com/same-terms",
+        )
+        with patch("app.services.circle_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
+            resp = client.post(f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 201
+        mock_init.assert_not_called()
+        assert resp.get_json()["data"]["reference"] == stale_reference
+        assert _get_payment(app, stale_reference).status == "pending"
+
+    def test_price_changed_stale_payment_not_reused(self, client, app, user1_token):
+        _enable_paystack(app)
+        plan_id, slug = _make_plan(app, price=1000, currency="USD", billing_interval="monthly")
+        user_id = _get_user_id(app, USER1["email"])
+        _, stale_reference = _make_payment(
+            app, user_id, plan_id,
+            amount_subunits=50000, currency="USD", billing_interval="monthly",  # old $500 price
+            authorization_url="https://checkout.paystack.com/old-price",
+        )
+        with patch("app.services.circle_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
+            resp = client.post(f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 201
+        mock_init.assert_called_once()
+        assert resp.get_json()["data"]["reference"] != stale_reference
+
+    def test_currency_changed_kes_to_usd_stale_payment_not_reused(self, client, app, user1_token):
+        _enable_paystack(app)  # USD-only, matching the plan's new currency
+        plan_id, slug = _make_plan(app, price=10, currency="USD", billing_interval="monthly")
+        user_id = _get_user_id(app, USER1["email"])
+        _, stale_reference = _make_payment(
+            app, user_id, plan_id,
+            amount_subunits=100000, currency="KES", billing_interval="monthly",  # old KES 1,000 price
+            authorization_url="https://checkout.paystack.com/old-kes",
+        )
+        with patch("app.services.circle_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
+            resp = client.post(f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 201
+        mock_init.assert_called_once()
+        _, kwargs = mock_init.call_args
+        assert kwargs["currency"] == "USD"
+        assert kwargs["amount_subunits"] == 1000
+        assert resp.get_json()["data"]["reference"] != stale_reference
+
+    def test_billing_interval_changed_stale_payment_not_reused(self, client, app, user1_token):
+        _enable_paystack(app)
+        plan_id, slug = _make_plan(app, price=9000, currency="USD", billing_interval="yearly")
+        user_id = _get_user_id(app, USER1["email"])
+        _, stale_reference = _make_payment(
+            app, user_id, plan_id,
+            amount_subunits=900000, currency="USD", billing_interval="monthly",  # old monthly terms
+            authorization_url="https://checkout.paystack.com/old-interval",
+        )
+        with patch("app.services.circle_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
+            resp = client.post(f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 201
+        mock_init.assert_called_once()
+        assert resp.get_json()["data"]["reference"] != stale_reference
+
+    def test_stale_mismatched_row_marked_failed(self, client, app, user1_token):
+        _enable_paystack(app)
+        plan_id, slug = _make_plan(app, price=1000, currency="USD", billing_interval="monthly")
+        user_id = _get_user_id(app, USER1["email"])
+        _, stale_reference = _make_payment(
+            app, user_id, plan_id,
+            amount_subunits=50000, currency="USD", billing_interval="monthly",
+            authorization_url="https://checkout.paystack.com/old-price",
+        )
+        with patch("app.services.circle_payments.initialize_transaction", side_effect=_mock_init):
+            client.post(f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token))
+        assert _get_payment(app, stale_reference).status == "failed"
+
+    def test_new_checkout_snapshots_current_plan_terms(self, client, app, user1_token):
+        _enable_paystack(app)
+        plan_id, slug = _make_plan(app, price=1000, currency="USD", billing_interval="monthly")
+        user_id = _get_user_id(app, USER1["email"])
+        _make_payment(
+            app, user_id, plan_id,
+            amount_subunits=50000, currency="USD", billing_interval="monthly",
+            authorization_url="https://checkout.paystack.com/old-price",
+        )
+        with patch("app.services.circle_payments.initialize_transaction", side_effect=_mock_init):
+            resp = client.post(f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token))
+        reference = resp.get_json()["data"]["reference"]
+        fresh = _get_payment(app, reference)
+        assert fresh.amount_subunits == 100000
+        assert fresh.currency == "USD"
+        assert fresh.billing_interval == "monthly"
+        assert fresh.status == "pending"
+
+
 class TestCheckoutMembershipEligibility:
     def test_different_plan_active_member_blocked(self, client, app, user1_token):
         _enable_paystack(app)
