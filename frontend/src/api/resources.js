@@ -65,6 +65,10 @@ export function mapResource(r) {
     // download target is always the short-lived token URL POST /access
     // returns, never this raw path.
     protectedFilePath: r.protected_file_path || r.protectedFilePath || null,
+    // Display/download metadata only — absent on a legacy row whose
+    // protected_file_path was typed in by hand before this upload flow
+    // existed (see backend/app/models/resource.py's column docstring).
+    protectedOriginalFilename: r.protected_original_filename || r.protectedOriginalFilename || null,
     fileFormat: r.file_format || r.fileFormat || null,
     fileSize: r.file_size ?? r.fileSize ?? null,
     pageCount: r.page_count ?? r.pageCount ?? null,
@@ -141,6 +145,34 @@ export async function requestResourceAccess(slug, payload = {}) {
   return { url: data.url, accessType: data.accessType }
 }
 
+// POST /api/v1/resources/uploads/protected — multipart. Axios sets the
+// multipart boundary itself when given a FormData body; never set
+// Content-Type manually here (mirrors uploadMedia() in api/media.js).
+// Does not touch any Resource row — the caller attaches the returned
+// protectedFilePath to a Resource via the ordinary create/update flow.
+export async function uploadProtectedResourceFile(file) {
+  if (!USE_MOCK) {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await apiClient.post('/resources/uploads/protected', formData)
+    return {
+      protectedFilePath: data.protectedFilePath,
+      protectedOriginalFilename: data.protectedOriginalFilename,
+      fileFormat: data.fileFormat,
+      fileSize: data.fileSize,
+    }
+  }
+  return delay(
+    {
+      protectedFilePath: `mock-protected-${Date.now()}-${file.name}`,
+      protectedOriginalFilename: file.name,
+      fileFormat: (file.name.split('.').pop() || '').toUpperCase(),
+      fileSize: file.size,
+    },
+    600,
+  )
+}
+
 function toApiPayload(form) {
   return {
     name: form.name,
@@ -161,6 +193,7 @@ function toApiPayload(form) {
     fileUrl: form.fileUrl || undefined,
     externalUrl: form.externalUrl || undefined,
     protectedFilePath: form.protectedFilePath || undefined,
+    protectedOriginalFilename: form.protectedOriginalFilename || undefined,
     fileFormat: form.fileFormat || undefined,
     fileSize: form.fileSize === '' || form.fileSize == null ? undefined : Number(form.fileSize),
     pageCount: form.pageCount === '' || form.pageCount == null ? undefined : Number(form.pageCount),

@@ -7,6 +7,7 @@ import {
   createResource,
   updateResource,
   deleteResource,
+  uploadProtectedResourceFile,
 } from '../../api/resources'
 import { fetchAuthors, fetchTopics, fetchOrganizations } from '../../api/taxonomies'
 import { RESERVED_SLUGS } from '../../constants/routes'
@@ -41,6 +42,21 @@ const ACCESS_TYPES = [
   { value: 'external_link', label: 'External link — hosted elsewhere' },
 ]
 const FILE_FORMATS = ['PDF', 'DOCX', 'XLSX', 'PPTX', 'ZIP', 'Image', 'Video', 'Other']
+// Soft client-side hint only — the backend is the real authority on
+// which extensions/content a circle_only upload accepts.
+const PROTECTED_FILE_ACCEPT = '.pdf,.docx,.xlsx,.pptx,.zip'
+
+function formatFileSize(bytes) {
+  if (!bytes) return '—'
+  const units = ['B', 'KB', 'MB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
+}
 
 function TagInput({ value, onChange }) {
   const [draft, setDraft] = useState('')
@@ -104,6 +120,7 @@ function blankForm() {
     fileUrl: '',
     externalUrl: '',
     protectedFilePath: '',
+    protectedOriginalFilename: '',
     fileFormat: '',
     fileSize: '',
     pageCount: '',
@@ -138,6 +155,7 @@ function toForm(resource) {
     fileUrl: resource.fileUrl || '',
     externalUrl: resource.externalUrl || '',
     protectedFilePath: resource.protectedFilePath || '',
+    protectedOriginalFilename: resource.protectedOriginalFilename || '',
     fileFormat: resource.fileFormat || '',
     fileSize: resource.fileSize ?? '',
     pageCount: resource.pageCount ?? '',
@@ -188,6 +206,12 @@ export default function AdminResourceEditor() {
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState(null)
+  // Protected (circle_only) file upload — local/transient until a
+  // successful upload sets the four form fields together; never
+  // auto-saves the Resource and never re-uploads during Save.
+  const [protectedFile, setProtectedFile] = useState(null)
+  const [uploadingProtectedFile, setUploadingProtectedFile] = useState(false)
+  const [protectedUploadError, setProtectedUploadError] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -234,6 +258,49 @@ export default function AdminResourceEditor() {
     }))
   }
 
+  function handleProtectedFileChosen(e) {
+    const file = e.target.files?.[0] || null
+    setProtectedFile(file)
+    setProtectedUploadError(null)
+    e.target.value = '' // allow re-choosing the same filename later
+  }
+
+  function cancelProtectedFileChoice() {
+    setProtectedFile(null)
+    setProtectedUploadError(null)
+  }
+
+  async function handleUploadProtectedFile() {
+    if (!protectedFile) return
+    setUploadingProtectedFile(true)
+    setProtectedUploadError(null)
+    try {
+      const result = await uploadProtectedResourceFile(protectedFile)
+      // Set together, per the backend's own upload response — never
+      // mix a new path with stale format/size from a previous file.
+      setForm((prev) => ({
+        ...prev,
+        protectedFilePath: result.protectedFilePath,
+        protectedOriginalFilename: result.protectedOriginalFilename,
+        fileFormat: result.fileFormat,
+        fileSize: result.fileSize,
+      }))
+      setProtectedFile(null)
+    } catch (err) {
+      setProtectedUploadError(
+        err?.response?.data?.error?.message || err?.apiError?.message || 'Something went wrong uploading this file. Please try again.'
+      )
+    } finally {
+      setUploadingProtectedFile(false)
+    }
+  }
+
+  function handleRemoveProtectedFile() {
+    setForm((prev) => ({ ...prev, protectedFilePath: '', protectedOriginalFilename: '', fileFormat: '', fileSize: '' }))
+    setProtectedFile(null)
+    setProtectedUploadError(null)
+  }
+
   function validateSlug(slug) {
     if (!slug) return 'Slug is required.'
     if (RESERVED_SLUGS.includes(slug)) return `"${slug}" is a reserved system route and cannot be used as a resource slug.`
@@ -272,7 +339,7 @@ export default function AdminResourceEditor() {
     if ((nextStatus === 'published' || nextStatus === 'scheduled') && needsFileOrExternalUrl) {
       toast.error(
         form.accessType === 'circle_only'
-          ? 'Add a protected file path before publishing.'
+          ? 'Upload a protected file before publishing.'
           : 'Add a file URL or external URL before publishing.'
       )
       return
@@ -299,6 +366,7 @@ export default function AdminResourceEditor() {
       fileUrl: form.fileUrl || null,
       externalUrl: form.externalUrl || null,
       protectedFilePath: form.protectedFilePath || null,
+      protectedOriginalFilename: form.protectedOriginalFilename || null,
       fileFormat: form.fileFormat || null,
       fileSize: form.fileSize,
       pageCount: form.pageCount,
@@ -418,16 +486,59 @@ export default function AdminResourceEditor() {
                 <input value={form.externalUrl} onChange={(e) => updateField('externalUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
             ) : form.accessType === 'circle_only' ? (
-              <Field
-                label="Protected file path"
-                hint="filename only, placed on the server's protected storage (not /media/) — never a public URL or external link. Staff upload the actual file outside this editor; see DEPLOYMENT.md."
-              >
-                <input
-                  value={form.protectedFilePath}
-                  onChange={(e) => updateField('protectedFilePath', e.target.value)}
-                  placeholder="career-reset-workbook.pdf"
-                  className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
-                />
+              <Field label="Protected file" hint="PDF, DOCX, XLSX, PPTX, or ZIP — uploaded directly, never a public URL or external link">
+                {form.protectedFilePath && !protectedFile ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border border-taupe-300 bg-taupe-50 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-charcoal">
+                        {form.protectedOriginalFilename || 'Existing protected file (uploaded before this filename was tracked)'}
+                      </p>
+                      <p className="text-xs text-charcoal-600/70">
+                        {form.fileFormat || 'Unknown format'} · {formatFileSize(form.fileSize)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <label className="btn-secondary cursor-pointer !px-3 !py-1.5 text-xs">
+                        Replace
+                        <input type="file" accept={PROTECTED_FILE_ACCEPT} onChange={handleProtectedFileChosen} className="hidden" />
+                      </label>
+                      <button type="button" onClick={handleRemoveProtectedFile} className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600">
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="btn-secondary cursor-pointer !px-3 !py-2 text-xs">
+                        Choose file
+                        <input type="file" accept={PROTECTED_FILE_ACCEPT} onChange={handleProtectedFileChosen} className="hidden" />
+                      </label>
+                      {protectedFile && <span className="truncate text-xs text-charcoal-600">{protectedFile.name}</span>}
+                      <button
+                        type="button"
+                        onClick={handleUploadProtectedFile}
+                        disabled={!protectedFile || uploadingProtectedFile}
+                        className="btn-primary !px-3 !py-2 text-xs disabled:opacity-60"
+                      >
+                        {uploadingProtectedFile ? 'Uploading…' : 'Upload'}
+                      </button>
+                      {form.protectedFilePath && (
+                        <button type="button" onClick={cancelProtectedFileChoice} className="text-xs font-semibold text-charcoal-600 hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                    {protectedUploadError && (
+                      <p className="text-xs text-rose-600">
+                        {protectedUploadError}{' '}
+                        <button type="button" onClick={() => setProtectedUploadError(null)} className="font-semibold underline">
+                          Dismiss
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                )}
               </Field>
             ) : (
               <Field label="File URL" hint="link to the hosted download file">
@@ -437,24 +548,37 @@ export default function AdminResourceEditor() {
             {needsFileOrExternalUrl && (
               <p className="text-xs text-rose-600">
                 {form.accessType === 'circle_only'
-                  ? 'A protected file path is required before publishing.'
+                  ? 'A protected file must be uploaded before publishing.'
                   : 'A file URL or external URL is required before publishing.'}
               </p>
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field label="File format" hint="optional">
-                <select value={form.fileFormat} onChange={(e) => updateField('fileFormat', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
-                  <option value="">— None —</option>
-                  {FILE_FORMATS.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="File size (bytes)" hint="optional">
-                <input type="number" min="0" value={form.fileSize} onChange={(e) => updateField('fileSize', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-              </Field>
+              {form.accessType === 'circle_only' ? (
+                <>
+                  <Field label="File format" hint="set automatically from the uploaded file">
+                    <p className="px-3 py-2.5 text-sm text-charcoal-600">{form.fileFormat || '—'}</p>
+                  </Field>
+                  <Field label="File size" hint="set automatically from the uploaded file">
+                    <p className="px-3 py-2.5 text-sm text-charcoal-600">{formatFileSize(form.fileSize)}</p>
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field label="File format" hint="optional">
+                    <select value={form.fileFormat} onChange={(e) => updateField('fileFormat', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                      <option value="">— None —</option>
+                      {FILE_FORMATS.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="File size (bytes)" hint="optional">
+                    <input type="number" min="0" value={form.fileSize} onChange={(e) => updateField('fileSize', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                  </Field>
+                </>
+              )}
               <Field label="Page count" hint="optional">
                 <input type="number" min="0" value={form.pageCount} onChange={(e) => updateField('pageCount', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
@@ -566,14 +690,14 @@ export default function AdminResourceEditor() {
             </select>
 
             <div className="mt-4 space-y-2">
-              <button type="button" onClick={() => handleSave('draft')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
+              <button type="button" onClick={() => handleSave('draft')} disabled={saving || uploadingProtectedFile} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
                 <Save size={13} /> {saving ? 'Saving…' : 'Save draft'}
               </button>
-              <button type="button" onClick={() => handleSave('published')} disabled={saving} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
+              <button type="button" onClick={() => handleSave('published')} disabled={saving || uploadingProtectedFile} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
                 Publish
               </button>
               {!isNew && form.status !== 'archived' && (
-                <button type="button" onClick={() => handleSave('archived')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
+                <button type="button" onClick={() => handleSave('archived')} disabled={saving || uploadingProtectedFile} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
                   <Archive size={13} /> Archive
                 </button>
               )}
