@@ -358,9 +358,11 @@ def save_protected_upload(file_storage):
 
     # file_storage.save() streams to disk in chunks (same call
     # MediaService.save() already uses for the original image upload) —
-    # never materializes the whole upload in memory at once.
-    file_storage.save(temp_path)
+    # never materializes the whole upload in memory at once. It's inside
+    # this try so a failure during the write itself (not just validation
+    # or the rename) still cleans up any partial .part file.
     try:
+        file_storage.save(temp_path)
         if not _validate_protected_file_contents(temp_path, ext):
             raise ApiError(
                 "File content does not match its extension — the upload may be corrupted or mislabeled.",
@@ -369,8 +371,14 @@ def save_protected_upload(file_storage):
             )
         os.replace(temp_path, final_path)
     except Exception:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        # os.replace() above is atomic, so temp_path only still exists
+        # here if the failure happened before or during the rename —
+        # the final file, once renamed, is never touched by this cleanup.
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass  # don't let a cleanup failure mask the original error
         raise
 
     original_filename = _sanitize_original_filename(file_storage.filename, fallback=final_name)

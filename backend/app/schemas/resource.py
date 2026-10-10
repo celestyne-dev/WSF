@@ -1,3 +1,5 @@
+import re
+
 from marshmallow import fields, validate, ValidationError
 
 from app.extensions import ma
@@ -30,6 +32,23 @@ def _validate_file_url(value):
 def _validate_protected_file_path(value):
     if value and not is_safe_protected_path(value):
         raise ValidationError("Must be a bare relative filename/path with no '..' or leading '/'.")
+
+
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _validate_protected_original_filename(value):
+    # Display/Content-Disposition metadata only — this never resolves to
+    # a filesystem path (see protected_original_filename below), so this
+    # checks shape only, not containment like _validate_protected_file_path.
+    if not value:
+        return
+    if not value.strip():
+        raise ValidationError("Must not be blank.")
+    if "/" in value or "\\" in value:
+        raise ValidationError("Must be a filename only, not a path.")
+    if _CONTROL_CHARS_RE.search(value):
+        raise ValidationError("Must not contain control characters.")
 
 
 class ResourceImageSchema(ma.SQLAlchemyAutoSchema):
@@ -122,9 +141,13 @@ class ResourceInputSchema(ma.Schema):
     )
     # Display/download metadata only (see app/models/resource.py's column
     # docstring) — never consulted for any path-safety/containment
-    # decision, so it carries no is_safe_protected_path-style validation.
+    # decision, so validation below checks shape only (filename, not a
+    # path), not containment like _validate_protected_file_path.
     protected_original_filename = fields.String(
-        required=False, allow_none=True, data_key="protectedOriginalFilename", validate=validate.Length(max=255)
+        required=False,
+        allow_none=True,
+        data_key="protectedOriginalFilename",
+        validate=[validate.Length(max=255), _validate_protected_original_filename],
     )
     file_format = fields.String(required=False, allow_none=True, data_key="fileFormat", validate=validate.OneOf(FILE_FORMATS))
     file_size = fields.Integer(required=False, allow_none=True, data_key="fileSize", validate=validate.Range(min=0))
