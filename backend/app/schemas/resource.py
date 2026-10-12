@@ -133,8 +133,9 @@ class ResourceInputSchema(ma.Schema):
     access_type = fields.String(required=False, load_default="direct_download", data_key="accessType", validate=validate.OneOf(ACCESS_TYPES))
     file_url = fields.String(required=False, allow_none=True, data_key="fileUrl", validate=_validate_file_url)
     external_url = fields.String(required=False, allow_none=True, data_key="externalUrl", validate=_validate_external_url)
-    # Only meaningful for access_type == "circle_only" — see
-    # app/models/resource.py's Resource.protected_file_path and
+    # A WSF-hosted private resource file — usable by direct_download,
+    # email_gate, member_only, and circle_only (mandatory for the last);
+    # see app/models/resource.py's Resource.protected_file_path and
     # app/services/resource_downloads.py.
     protected_file_path = fields.String(
         required=False, allow_none=True, data_key="protectedFilePath", validate=_validate_protected_file_path

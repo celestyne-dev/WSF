@@ -1,22 +1,29 @@
-"""Protected-file delivery for circle_only Resources (Module 10, part A).
+"""Protected-file delivery for Resources (originally Module 10, part A for
+circle_only; generalized to direct_download/email_gate/member_only too —
+see app/models/resource.py's PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES and the
+`protected_file_path` column docstring).
 
-A circle_only Resource's real file is never reachable by a public URL —
-it lives under config.PROTECTED_MEDIA_ROOT, a filesystem location Nginx
-never serves (see deploy/nginx/womenshapingfutures.conf.example, which
-only aliases MEDIA_URL -> MEDIA_ROOT, a different, genuinely-public
-directory). The only way to it is:
+A Resource's protected file is never reachable by a public URL — it lives
+under config.PROTECTED_MEDIA_ROOT, a filesystem location Nginx never
+serves (see deploy/nginx/womenshapingfutures.conf.example, which only
+aliases MEDIA_URL -> MEDIA_ROOT, a different, genuinely-public directory).
+The only way to it is:
 
   1. POST /resources/{slug}/access succeeds (app/services/resource_access
-     .py's check_resource_access() has already confirmed current Circle
-     entitlement) and calls issue_download_token() here, which returns a
-     short-lived, resource-bound, opaque token.
+     .py's check_resource_access() has already confirmed whatever that
+     resource's access_type requires — nothing, an account, or active
+     Circle entitlement) and calls issue_download_token() here, which
+     returns a short-lived, resource-bound, opaque token. `user` is None
+     for an anonymous grant (direct_download, or an email_gate submission
+     from a visitor with no account) — see issue_download_token() below.
   2. GET /resources/downloads/{token} (ResourceDownloadResource in
      app/api/v1/resources.py) calls resolve_download_token(), which
      verifies the token's hash/expiry/resource binding and nothing else
-     — Circle entitlement is deliberately NOT re-checked at this step,
-     exactly like a password-reset token's redemption never re-checks
-     "is this really their email" (see app/services/password_reset.py);
-     that was already established, moments earlier, by step 1.
+     — the originating access_type's own rule is deliberately NOT
+     re-checked at this step, exactly like a password-reset token's
+     redemption never re-checks "is this really their email" (see
+     app/services/password_reset.py); that was already established,
+     moments earlier, by step 1.
 
 Same storage convention as app/services/password_reset.py: only a
 SHA-256 digest of the raw token is ever persisted (ResourceDownloadToken
@@ -35,7 +42,7 @@ from datetime import datetime, timedelta, timezone
 from flask import current_app
 
 from app.extensions import db
-from app.models.resource import ResourceDownloadToken
+from app.models.resource import PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES, ResourceDownloadToken
 from app.utils.responses import ApiError
 
 _GENERIC_INVALID_DOWNLOAD_MESSAGE = "This download link is invalid or has expired."
@@ -112,31 +119,44 @@ def protected_file_exists(protected_file_path):
 
 
 def issue_download_token(resource, user):
-    """Called only after the caller has already confirmed `user` may
-    access `resource` right now (see check_resource_access()). Returns
-    the raw token string — store it nowhere; it belongs only in the
-    caller's one-time JSON response.
+    """Called only after the caller has already confirmed `user` (None
+    for an anonymous visitor — e.g. a direct_download grant, or an
+    email_gate submission from someone with no account) may access
+    `resource` right now (see check_resource_access()). Returns the raw
+    token string — store it nowhere; it belongs only in the caller's
+    one-time JSON response.
+
+    Only adds the row to the session — it deliberately does NOT commit.
+    The caller (ResourceAccessResource) commits once, together with
+    whatever else that same grant needs to persist (a ResourceLead,
+    download_count), so a token is never left behind by a request that
+    fails or is rejected after this point but before that single commit.
     """
     ttl_minutes = current_app.config.get("RESOURCE_DOWNLOAD_TOKEN_TTL_MINUTES", 10)
     raw_token = secrets.token_urlsafe(32)
     token = ResourceDownloadToken(
         resource_id=resource.id,
-        user_id=user.id,
+        user_id=user.id if user else None,
         token_hash=_hash_token(raw_token),
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes),
     )
     db.session.add(token)
-    db.session.commit()
     return raw_token
 
 
 def resolve_download_token(raw_token):
     """Returns the bound Resource for a valid, unexpired token. Raises
     ApiError(404) for anything else — unknown token, expired token, or a
-    resource that's since stopped being circle_only/publicly visible —
-    with the same generic message in every case, so a tampered token and
-    an expired one are indistinguishable to the caller (same posture as
+    resource that's since stopped being eligible/publicly visible — with
+    the same generic message in every case, so a tampered token and an
+    expired one are indistinguishable to the caller (same posture as
     password_reset.py's _find_usable_token/_GENERIC_INVALID_TOKEN_MESSAGE).
+
+    `resource.access_type` must still be one of
+    PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES at redemption time — not just at
+    issuance — so a resource edited to premium/external_link between
+    grant and redemption (a narrow window, given the token's short TTL)
+    can never still be downloaded via a token minted under its old type.
     """
     if not raw_token or not isinstance(raw_token, str):
         raise ApiError(_GENERIC_INVALID_DOWNLOAD_MESSAGE, 404, code="not_found")
@@ -150,7 +170,7 @@ def resolve_download_token(raw_token):
     resource = token.resource
     if (
         resource is None
-        or resource.access_type != "circle_only"
+        or resource.access_type not in PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES
         or not resource.is_publicly_visible()
         or not resource.protected_file_path
         or not is_safe_protected_path(resource.protected_file_path)
@@ -177,9 +197,11 @@ def resolve_download_target(raw_token):
 
 
 # ---------------------------------------------------------------------------
-# Protected Resource file upload (Module 13B) — lets staff upload a
-# circle_only Resource's downloadable file directly from WSF Studio instead
-# of placing it on the server by hand. Writes INTO the architecture above
+# Protected Resource file upload (Module 13B; generalized beyond
+# circle_only) — lets staff upload a Resource's downloadable file
+# directly from WSF Studio instead of placing it on the server by hand,
+# for any of PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES (and, in advance of
+# checkout existing, premium too). Writes INTO the architecture above
 # (same PROTECTED_MEDIA_ROOT, same is_safe_protected_path()/
 # resolve_real_protected_path() containment); nothing here bypasses or
 # re-derives either check. The browser never chooses a filesystem path —
@@ -307,7 +329,7 @@ def _validate_protected_file_contents(path, ext):
 
 
 def save_protected_upload(file_storage):
-    """Validates and stores an uploaded circle_only Resource file under
+    """Validates and stores an uploaded Resource file under
     PROTECTED_MEDIA_ROOT. Returns a dict of safe metadata only — never a
     filesystem path, never PROTECTED_MEDIA_ROOT's own value:
 

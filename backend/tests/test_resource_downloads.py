@@ -142,15 +142,23 @@ def _issue_token_for(app, resource_id, email):
     service — used only by the tamper/expiry/cross-resource tests below,
     which need to manipulate the token or its row in ways a real client
     never could. Every "real" grant test goes through POST /access.
+
+    issue_download_token() only adds the row to the session and
+    deliberately does not commit (the real caller, ResourceAccessResource,
+    commits once together with the lead/download_count it may also be
+    writing) — this bypass is its own "request", so it must commit for
+    itself, exactly as that real caller would.
     """
     from app.extensions import db
     from app.models.resource import Resource
     from app.services.resource_downloads import issue_download_token
 
     with app.app_context():
-        resource = Resource.query.get(resource_id)
+        resource = db.session.get(Resource, resource_id)
         user = _resolve_user(email)
-        return issue_download_token(resource, user)
+        raw_token = issue_download_token(resource, user)
+        db.session.commit()
+        return raw_token
 
 
 @pytest.fixture()

@@ -52,6 +52,17 @@ _RESOURCE_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in RESOURC
 ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "circle_only", "premium", "external_link")
 _ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in ACCESS_TYPES) + ")"
 
+# Access types whose `protected_file_path` (see Resource below) may
+# actually be served through a short-lived download token —
+# app/services/resource_downloads.py's resolve_download_token() and
+# app/api/v1/resources.py's _resolve_target_url() both import this rather
+# than re-listing it. external_link never has a protected file to serve
+# (its whole point is an off-site URL); premium is deliberately excluded
+# even though a file may already be uploaded/stored for it, because
+# check_resource_access() blocks all premium access until checkout exists
+# — a token must never be mintable for a resource no one can access yet.
+PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "circle_only")
+
 FILE_FORMATS = ("PDF", "DOCX", "XLSX", "PPTX", "ZIP", "Image", "Video", "Other")
 _FILE_FORMAT_CHECK_SQL = "file_format IS NULL OR file_format IN (" + ", ".join(f"'{f}'" for f in FILE_FORMATS) + ")"
 
@@ -128,28 +139,33 @@ class Resource(db.Model):
     is_external = db.Column(db.Boolean, nullable=False, default=False)
 
     access_type = db.Column(db.String(20), nullable=False, default="direct_download")
-    # The downloadable asset itself isn't run through the image Media
-    # pipeline (it's usually a PDF/doc, not an image) — just this app's
-    # own MEDIA_URL-rooted path or an http(s) URL, whichever `is_external`
-    # says to use (see app/utils/urls.py's is_safe_resource_target, the
-    # one place both are validated — never a raw filesystem path, never
-    # javascript:/data:/file:). No generic binary-file upload/storage
-    # pipeline exists yet (Media only handles images); building one is out
-    # of this task's scope — see the final report. Never serialized to an
-    # anonymous/public caller directly (see app/schemas/resource.py's
+    # A legacy/external target: this app's own MEDIA_URL-rooted path or an
+    # http(s) URL, whichever `is_external` says to use (see
+    # app/utils/urls.py's is_safe_resource_target, the one place both are
+    # validated — never a raw filesystem path, never javascript:/data:/
+    # file:). Kept for backward compatibility with every Resource created
+    # before protected_file_path below existed/generalized — a new upload
+    # should prefer that instead. Never serialized to an anonymous/public
+    # caller directly (see app/schemas/resource.py's
     # build_public_resource_payload) — only POST /resources/{slug}/access,
     # after the resource's access_type rule succeeds, ever hands this back.
     file_url = db.Column(db.String(500))
     external_url = db.Column(db.String(500))
-    # Only meaningful for access_type == "circle_only" (see
-    # app/services/resource_downloads.py) — a filename/relative path
-    # resolved against config.PROTECTED_MEDIA_ROOT, a directory outside
-    # both the deployment checkout AND the publicly-served MEDIA_ROOT
-    # tree. A circle_only resource's real file never lives at a public
-    # URL; POST /resources/{slug}/access hands back a short-lived,
-    # resource-bound download token instead of this path (see
-    # ResourceDownloadResource) — file_url/external_url stay unused for
-    # circle_only going forward (existing access types are unaffected).
+    # A WSF-hosted private resource file stored outside the public media
+    # tree (see app/services/resource_downloads.py) — a filename/relative
+    # path resolved against config.PROTECTED_MEDIA_ROOT, a directory
+    # outside both the deployment checkout AND the publicly-served
+    # MEDIA_ROOT tree. Usable by direct_download, email_gate, member_only,
+    # and circle_only (PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES below); a
+    # premium resource may also have one prepared ahead of checkout going
+    # live, though nothing serves it yet (see check_resource_access).
+    # Whenever this is set and resolves to a real file, POST
+    # /resources/{slug}/access hands back a short-lived, resource-bound
+    # download token (see ResourceDownloadResource) instead of file_url/
+    # external_url — circle_only alone never falls back to either of
+    # those, even if also present (see _resolve_target_url). Every other
+    # access type keeps file_url/external_url working exactly as before
+    # for a Resource that has no protected_file_path at all.
     protected_file_path = db.Column(db.String(500))
     # The original filename staff uploaded (e.g. "Career Reset Workbook.pdf"),
     # kept purely as display/download metadata — protected_file_path above
@@ -229,12 +245,13 @@ class ResourceLead(db.Model):
 
 
 class ResourceDownloadToken(db.Model):
-    """A short-lived, resource-bound bearer credential for a circle_only
-    Resource's protected file — see app/services/resource_downloads.py.
-    Same convention as PasswordResetToken (app/models/password_reset.py):
-    only a SHA-256 digest of the raw token is ever stored; the raw token
-    exists only in POST /resources/{slug}/access's one-time JSON response
-    and the resulting download URL, never in Postgres or a log line.
+    """A short-lived, resource-bound bearer credential for a Resource's
+    protected file (see PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES above and
+    app/services/resource_downloads.py). Same convention as
+    PasswordResetToken (app/models/password_reset.py): only a SHA-256
+    digest of the raw token is ever stored; the raw token exists only in
+    POST /resources/{slug}/access's one-time JSON response and the
+    resulting download URL, never in Postgres or a log line.
 
     Deliberately reusable (no `used_at`/single-use semantics) within its
     TTL — unlike a password reset, a download link may legitimately be
@@ -242,16 +259,20 @@ class ResourceDownloadToken(db.Model):
     expires; the short TTL alone bounds how long a leaked link stays
     useful. `user_id` records who it was issued to for audit purposes
     only — redemption (GET /resources/downloads/{token}) never re-checks
-    current Circle entitlement, only the token's own hash/expiry/resource
-    binding, exactly like the Circle access check already performed,
-    moments earlier, by the same request that issued it.
+    current entitlement (Circle, account, or otherwise), only the
+    token's own hash/expiry/resource binding, exactly like whichever
+    access_type rule was already evaluated, moments earlier, by the same
+    request that issued it. Nullable because a direct_download or
+    email_gate resource's protected file may be requested by an
+    anonymous visitor who was never asked to sign in at all — unlike
+    member_only/circle_only, which always have a real `user` to record.
     """
 
     __tablename__ = "resource_download_tokens"
 
     id = db.Column(db.Integer, primary_key=True)
     resource_id = db.Column(db.Integer, db.ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)

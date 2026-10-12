@@ -24,7 +24,12 @@ from app.extensions import db
 from app.models.commerce import Product
 from app.models.media import Media
 from app.models.people import Author, Organization
-from app.models.resource import Resource as ResourceModel, ResourceImage, ResourceLead
+from app.models.resource import (
+    PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES,
+    Resource as ResourceModel,
+    ResourceImage,
+    ResourceLead,
+)
 from app.models.taxonomy import Tag, Topic
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema
@@ -158,27 +163,37 @@ def _validate_publish(resource):
     real way to actually get it — same "don't let an empty shell go live"
     guard already applied to Job/Event/Product. Every access type whose
     target the /access endpoint would need to resolve (everything except
-    premium, which has no real target yet) must have one configured
-    before it can go live — including circle_only, so a Circle member
-    can never reach a published resource with nothing behind it.
+    premium, which has no real target yet — purchasing isn't connected)
+    must have one configured before it can go live — including
+    circle_only, so a Circle member can never reach a published resource
+    with nothing behind it.
+
+    direct_download/email_gate/member_only accept any of
+    protected_file_path, file_url, or external_url — an uploaded WSF-
+    hosted file is the normal path going forward, but a Resource created
+    before it existed (or one an editor still prefers to host elsewhere)
+    keeps working unchanged. If `protected_file_path` IS set, though, it
+    must resolve to a real file (see protected_file_exists()) — a typo'd
+    filename, or one for a file staff haven't uploaded yet, is rejected
+    outright rather than silently falling back to file_url/external_url
+    even when one happens to also be present; an editor who explicitly
+    configured an uploaded file almost certainly intends to serve that
+    file, not a stale legacy URL left over from before.
 
     circle_only deliberately does NOT accept `file_url` OR `external_url`
-    here (Module 10, part A; hardened in Module 10.1) — either field
+    at all (Module 10, part A; hardened in Module 10.1) — either field
     points to a permanent, publicly reachable location (WSF's own
     MEDIA_ROOT tree, or a third-party host like Drive/S3/Dropbox) that,
     once handed out by /access, can be copied and reused forever outside
     any Circle entitlement check. That defeats the entire point of a
     protected Circle download, so a circle_only resource's ONLY valid
     target is `protected_file_path`, served exclusively through the
-    short-lived token in ResourceDownloadResource below. Every other
-    access type's file_url/external_url behavior is unchanged.
+    short-lived token in ResourceDownloadResource below — and, same as
+    the other access types above, it must resolve to a real, existing
+    regular file inside PROTECTED_MEDIA_ROOT.
 
-    A circle_only resource must also have a `protected_file_path` that
-    actually resolves to a real, existing regular file inside
-    PROTECTED_MEDIA_ROOT (see protected_file_exists()) — a typo'd
-    filename, or one for a file staff haven't uploaded yet, must not be
-    allowed to go live. Draft/review resources are unaffected: this
-    whole function only runs for status in (published, scheduled).
+    Draft/review resources are unaffected: this whole function only runs
+    for status in (published, scheduled).
     """
     if resource.status not in ("published", "scheduled"):
         return
@@ -186,12 +201,12 @@ def _validate_publish(resource):
         (block.get("text") or block.get("items")) for block in resource.description if isinstance(block, dict)
     ):
         raise ApiError("A published resource needs a description.", 422, code="validation_error")
-    if resource.access_type == "external_link" and not resource.external_url:
-        raise ApiError("A published external-link resource needs an external URL.", 422, code="validation_error")
-    if resource.access_type in ("direct_download", "email_gate", "member_only") and not (
-        resource.file_url or resource.external_url
-    ):
-        raise ApiError("A published resource needs a file URL or external URL.", 422, code="validation_error")
+
+    if resource.access_type == "external_link":
+        if not resource.external_url:
+            raise ApiError("A published external-link resource needs an external URL.", 422, code="validation_error")
+        return
+
     if resource.access_type == "circle_only":
         if not resource.protected_file_path:
             raise ApiError(
@@ -206,6 +221,27 @@ def _validate_publish(resource):
                 422,
                 code="validation_error",
             )
+        return
+
+    if resource.access_type in ("direct_download", "email_gate", "member_only"):
+        if resource.protected_file_path:
+            if not protected_file_exists(resource.protected_file_path):
+                raise ApiError(
+                    "This resource's uploaded file could not be found on the server. "
+                    "Check the uploaded file and confirm it has been uploaded.",
+                    422,
+                    code="validation_error",
+                )
+            return
+        if not (resource.file_url or resource.external_url):
+            raise ApiError("A published resource needs a file URL or external URL.", 422, code="validation_error")
+        return
+
+    # premium: unchanged for now — no file requirement yet, since
+    # check_resource_access() blocks all premium access until checkout
+    # exists. An uploaded protected file may already be stored in
+    # preparation for that (see PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES'
+    # docstring), but nothing requires or serves it yet.
 
 
 def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images):
@@ -497,35 +533,53 @@ def _resolve_target_url(resource, viewer):
     saved before this validation existed can never hand back an unsafe
     scheme or a raw filesystem path.
 
-    circle_only NEVER hands back a raw filesystem path or a public/
-    external URL (Module 10.1) — it issues a short-lived, resource-bound
-    download token (Module 10, part A) and returns the path to
-    ResourceDownloadResource below instead, or raises if no protected
-    file is configured/resolvable. file_url and external_url are
-    deliberately never consulted for circle_only here, matching
-    _validate_publish()'s rule that circle_only publish validation no
-    longer accepts either field either.
-    """
-    if resource.access_type == "circle_only":
-        if (
-            not resource.protected_file_path
-            or not is_safe_protected_path(resource.protected_file_path)
-            or not protected_file_exists(resource.protected_file_path)
-        ):
-            raise ApiError("This resource has no file configured yet.", 409, code="not_configured")
-        raw_token = issue_download_token(resource, viewer)
-        return f"/api/v1/resources/downloads/{raw_token}"
+    For every PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES member (direct_
+    download/email_gate/member_only/circle_only), a configured
+    `protected_file_path` always wins: it never hands back a raw
+    filesystem path or a public/external URL (Module 10.1) — it issues a
+    short-lived, resource-bound download token (Module 10, part A;
+    generalized beyond circle_only) and returns the path to
+    ResourceDownloadResource below instead, or raises if the configured
+    path doesn't resolve to a real file. This deliberately does NOT fall
+    back to file_url/external_url in that case, even if one is also
+    present — matching _validate_publish()'s same "don't silently fall
+    back to a legacy URL when a broken protected file is explicitly
+    configured" rule.
 
+    circle_only has no further fallback at all: file_url/external_url
+    are never consulted for it, matching _validate_publish()'s rule that
+    circle_only publish validation doesn't accept either field either.
+    direct_download/email_gate/member_only DO fall back to file_url/
+    external_url when no protected_file_path is configured at all — the
+    legacy behavior every Resource created before this upload flow
+    existed still relies on.
+    """
     if resource.access_type == "external_link":
         candidate = resource.external_url
         if not candidate or not is_safe_http_url(candidate):
             raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
         return candidate
 
-    candidate = resource.file_url or resource.external_url
-    if not candidate or not is_safe_resource_target(candidate):
-        raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
-    return candidate
+    if resource.access_type in PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES:
+        if resource.protected_file_path:
+            if not is_safe_protected_path(resource.protected_file_path) or not protected_file_exists(
+                resource.protected_file_path
+            ):
+                raise ApiError("This resource has no file configured yet.", 409, code="not_configured")
+            raw_token = issue_download_token(resource, viewer)
+            return f"/api/v1/resources/downloads/{raw_token}"
+
+        if resource.access_type == "circle_only":
+            raise ApiError("This resource has no file configured yet.", 409, code="not_configured")
+
+        candidate = resource.file_url or resource.external_url
+        if not candidate or not is_safe_resource_target(candidate):
+            raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
+        return candidate
+
+    # premium: check_resource_access() already raised before we got here
+    # (purchasing isn't connected) — unreachable in practice.
+    raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
 
 
 class ResourceAccessResource(Resource):
@@ -547,19 +601,30 @@ class ResourceAccessResource(Resource):
         # happens for a denied request of any kind.
         check_resource_access(resource, viewer)
 
+        # email_gate's submitted data is validated BEFORE _resolve_target_url()
+        # runs — that call is what actually mints a download token for a
+        # resource with an uploaded file (see issue_download_token(), which
+        # only adds the row to this request's session rather than
+        # committing it independently). Validating first means an invalid/
+        # missing email never gets as far as having a token pending in the
+        # session at all, rather than relying on the later rollback-on-
+        # error to discard an already-minted one.
+        lead_data = None
+        if resource.access_type == "email_gate":
+            lead_data = ResourceLeadInputSchema().load(request.get_json(silent=True) or {})
+
         target_url = _resolve_target_url(resource, viewer)
 
         lead = None
         if resource.access_type == "email_gate":
-            data = ResourceLeadInputSchema().load(request.get_json(silent=True) or {})
-            email = data["email"].lower()
+            email = lead_data["email"].lower()
             lead = ResourceLead(
                 resource_id=resource.id,
                 email=email,
-                first_name=data.get("first_name"),
-                country_code=data.get("country_code"),
-                newsletter_consent=data.get("newsletter_consent", False),
-                acquisition=data.get("acquisition"),
+                first_name=lead_data.get("first_name"),
+                country_code=lead_data.get("country_code"),
+                newsletter_consent=lead_data.get("newsletter_consent", False),
+                acquisition=lead_data.get("acquisition"),
             )
             db.session.add(lead)
 
@@ -568,15 +633,19 @@ class ResourceAccessResource(Resource):
             # one shared newsletter consent function so suppression/
             # resubscribe rules stay consistent with every other signup
             # surface on the site.
-            if data.get("newsletter_consent"):
+            if lead_data.get("newsletter_consent"):
                 upsert_subscriber(
                     email,
-                    first_name=data.get("first_name"),
-                    country_code=data.get("country_code"),
+                    first_name=lead_data.get("first_name"),
+                    country_code=lead_data.get("country_code"),
                     placement="resource_download",
-                    acquisition=data.get("acquisition"),
+                    acquisition=lead_data.get("acquisition"),
                 )
 
+        # One commit for the whole grant — the token _resolve_target_url()
+        # may have added to the session above, the lead, and the
+        # download_count increment all land together, or (on any earlier
+        # raise) none of them do.
         resource.download_count = (resource.download_count or 0) + 1
         db.session.commit()
 
@@ -588,7 +657,8 @@ class ResourceDownloadResource(Resource):
     """Redeems a short-lived download token issued by
     ResourceAccessResource above and streams the protected file. The
     token alone is the credential — no JWT/session is checked here, and
-    Circle entitlement is NOT re-verified (see
+    whichever access_type rule originally applied (nothing, an account,
+    or Circle entitlement) is NOT re-verified (see
     app/services/resource_downloads.py's module docstring for why that's
     the correct, deliberate design, not an oversight).
 
@@ -619,17 +689,23 @@ class ResourceDownloadResource(Resource):
 
 
 class ResourceProtectedUploadResource(Resource):
-    """Uploads a circle_only Resource's downloadable file into
-    PROTECTED_MEDIA_ROOT (see app/services/resource_downloads.py's
-    save_protected_upload()) and returns safe metadata only — never a
-    filesystem path, never PROTECTED_MEDIA_ROOT's own value. Does not
-    require (or create/modify) any Resource row: staff attach the
-    returned protectedFilePath/protectedOriginalFilename to a Resource
-    via the ordinary create/update flow afterwards, the same
-    upload-then-attach shape the CMS Media Library already uses for
-    images (see app/api/v1/media.py's MediaUploadResource +
-    MediaPicker.jsx on the frontend) — just writing into a different,
-    non-public storage root.
+    """Uploads a Resource's downloadable file into PROTECTED_MEDIA_ROOT
+    (see app/services/resource_downloads.py's save_protected_upload())
+    and returns safe metadata only — never a filesystem path, never
+    PROTECTED_MEDIA_ROOT's own value. Usable for any access type an
+    editor is preparing a WSF-hosted file for (direct_download,
+    email_gate, member_only, circle_only, or premium ahead of checkout —
+    see PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES for which of those an
+    uploaded file actually serves today). Does not require (or create/
+    modify) any Resource row: staff attach the returned
+    protectedFilePath/protectedOriginalFilename to a Resource via the
+    ordinary create/update flow afterwards, the same upload-then-attach
+    shape the CMS Media Library already uses for images (see
+    app/api/v1/media.py's MediaUploadResource + MediaPicker.jsx on the
+    frontend) — just writing into a different, non-public storage root.
+    Kept at this same URL (/resources/uploads/protected) for backward
+    compatibility — Nginx already gives it its own upload size limit —
+    even though "protected" now undersells what it's for.
     """
 
     def post(self):

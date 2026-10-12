@@ -307,19 +307,25 @@ export default function AdminResourceEditor() {
     return null
   }
 
-  // circle_only never satisfies this through fileUrl (a publicly-served
-  // /media/ path) or externalUrl (a permanent third-party link that
-  // could be copied and reused outside Circle) — only protectedFilePath,
-  // served exclusively through the short-lived download token, counts.
-  // Same rule the backend's _validate_publish enforces (Module 10, part
-  // A; hardened in Module 10.1).
+  // A WSF-hosted resource file (protectedFilePath) now satisfies
+  // direct_download/email_gate/member_only too, alongside the legacy
+  // fileUrl/externalUrl — any one of the three is enough. circle_only
+  // never satisfies this through fileUrl (a publicly-served /media/
+  // path) or externalUrl (a permanent third-party link that could be
+  // copied and reused outside Circle) — only protectedFilePath, served
+  // exclusively through the short-lived download token, counts.
+  // external_link needs its own externalUrl specifically. premium has
+  // no requirement yet (purchasing isn't connected). Same rules the
+  // backend's _validate_publish enforces.
   const needsFileOrExternalUrl =
     form &&
-    (['direct_download', 'email_gate', 'member_only', 'external_link'].includes(form.accessType)
-      ? !form.fileUrl && !form.externalUrl
-      : form.accessType === 'circle_only'
-        ? !form.protectedFilePath
-        : false)
+    (form.accessType === 'external_link'
+      ? !form.externalUrl
+      : ['direct_download', 'email_gate', 'member_only'].includes(form.accessType)
+        ? !form.fileUrl && !form.externalUrl && !form.protectedFilePath
+        : form.accessType === 'circle_only'
+          ? !form.protectedFilePath
+          : false)
 
   async function handleSave(nextStatus) {
     const slugError = validateSlug(form.slug)
@@ -339,8 +345,10 @@ export default function AdminResourceEditor() {
     if ((nextStatus === 'published' || nextStatus === 'scheduled') && needsFileOrExternalUrl) {
       toast.error(
         form.accessType === 'circle_only'
-          ? 'Upload a protected file before publishing.'
-          : 'Add a file URL or external URL before publishing.'
+          ? 'Upload a resource file before publishing.'
+          : form.accessType === 'external_link'
+            ? 'Add an external URL before publishing.'
+            : 'Upload a resource file, or add a file URL, before publishing.'
       )
       return
     }
@@ -485,75 +493,96 @@ export default function AdminResourceEditor() {
               <Field label="External URL">
                 <input value={form.externalUrl} onChange={(e) => updateField('externalUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
-            ) : form.accessType === 'circle_only' ? (
-              <Field label="Protected file" hint="PDF, DOCX, XLSX, PPTX, or ZIP — uploaded directly, never a public URL or external link">
-                {form.protectedFilePath && !protectedFile ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 border border-taupe-300 bg-taupe-50 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm text-charcoal">
-                        {form.protectedOriginalFilename || 'Existing protected file (uploaded before this filename was tracked)'}
-                      </p>
-                      <p className="text-xs text-charcoal-600/70">
-                        {form.fileFormat || 'Unknown format'} · {formatFileSize(form.fileSize)}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 gap-2">
-                      <label className="btn-secondary cursor-pointer !px-3 !py-1.5 text-xs">
-                        Replace
-                        <input type="file" accept={PROTECTED_FILE_ACCEPT} onChange={handleProtectedFileChosen} className="hidden" />
-                      </label>
-                      <button type="button" onClick={handleRemoveProtectedFile} className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600">
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="btn-secondary cursor-pointer !px-3 !py-2 text-xs">
-                        Choose file
-                        <input type="file" accept={PROTECTED_FILE_ACCEPT} onChange={handleProtectedFileChosen} className="hidden" />
-                      </label>
-                      {protectedFile && <span className="truncate text-xs text-charcoal-600">{protectedFile.name}</span>}
-                      <button
-                        type="button"
-                        onClick={handleUploadProtectedFile}
-                        disabled={!protectedFile || uploadingProtectedFile}
-                        className="btn-primary !px-3 !py-2 text-xs disabled:opacity-60"
-                      >
-                        {uploadingProtectedFile ? 'Uploading…' : 'Upload'}
-                      </button>
-                      {form.protectedFilePath && (
-                        <button type="button" onClick={cancelProtectedFileChoice} className="text-xs font-semibold text-charcoal-600 hover:underline">
-                          Cancel
+            ) : (
+              <>
+                <Field
+                  label="Resource file"
+                  hint={
+                    form.accessType === 'circle_only'
+                      ? 'PDF, DOCX, XLSX, PPTX, or ZIP — delivered only after WSF Circle access is verified, never a public URL'
+                      : 'PDF, DOCX, XLSX, PPTX, or ZIP — uploaded directly'
+                  }
+                >
+                  {form.protectedFilePath && !protectedFile ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border border-taupe-300 bg-taupe-50 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-charcoal">
+                          {form.protectedOriginalFilename || 'Existing resource file (uploaded before this filename was tracked)'}
+                        </p>
+                        <p className="text-xs text-charcoal-600/70">
+                          {form.fileFormat || 'Unknown format'} · {formatFileSize(form.fileSize)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <label className="btn-secondary cursor-pointer !px-3 !py-1.5 text-xs">
+                          Replace
+                          <input type="file" accept={PROTECTED_FILE_ACCEPT} onChange={handleProtectedFileChosen} className="hidden" />
+                        </label>
+                        <button type="button" onClick={handleRemoveProtectedFile} className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600">
+                          Remove
                         </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="btn-secondary cursor-pointer !px-3 !py-2 text-xs">
+                          Choose file
+                          <input type="file" accept={PROTECTED_FILE_ACCEPT} onChange={handleProtectedFileChosen} className="hidden" />
+                        </label>
+                        {protectedFile && <span className="truncate text-xs text-charcoal-600">{protectedFile.name}</span>}
+                        <button
+                          type="button"
+                          onClick={handleUploadProtectedFile}
+                          disabled={!protectedFile || uploadingProtectedFile}
+                          className="btn-primary !px-3 !py-2 text-xs disabled:opacity-60"
+                        >
+                          {uploadingProtectedFile ? 'Uploading…' : 'Upload'}
+                        </button>
+                        {form.protectedFilePath && (
+                          <button type="button" onClick={cancelProtectedFileChoice} className="text-xs font-semibold text-charcoal-600 hover:underline">
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                      {protectedUploadError && (
+                        <p className="text-xs text-rose-600">
+                          {protectedUploadError}{' '}
+                          <button type="button" onClick={() => setProtectedUploadError(null)} className="font-semibold underline">
+                            Dismiss
+                          </button>
+                        </p>
                       )}
                     </div>
-                    {protectedUploadError && (
-                      <p className="text-xs text-rose-600">
-                        {protectedUploadError}{' '}
-                        <button type="button" onClick={() => setProtectedUploadError(null)} className="font-semibold underline">
-                          Dismiss
-                        </button>
-                      </p>
-                    )}
-                  </div>
+                  )}
+                </Field>
+
+                {form.accessType === 'circle_only' ? (
+                  <p className="text-xs text-charcoal-600/70">
+                    Delivered only after WSF Circle access is verified — this resource never falls back to a public file URL or external link.
+                  </p>
+                ) : form.accessType === 'premium' ? (
+                  <p className="text-xs text-charcoal-600/70">
+                    Purchasing isn&rsquo;t available yet — the file can be prepared now and will be ready once checkout is connected.
+                  </p>
+                ) : (
+                  <Field label="File URL instead" hint="optional — for an existing externally-hosted file, kept for backward compatibility">
+                    <input value={form.fileUrl} onChange={(e) => updateField('fileUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                  </Field>
                 )}
-              </Field>
-            ) : (
-              <Field label="File URL" hint="link to the hosted download file">
-                <input value={form.fileUrl} onChange={(e) => updateField('fileUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-              </Field>
+              </>
             )}
             {needsFileOrExternalUrl && (
               <p className="text-xs text-rose-600">
                 {form.accessType === 'circle_only'
-                  ? 'A protected file must be uploaded before publishing.'
-                  : 'A file URL or external URL is required before publishing.'}
+                  ? 'A resource file must be uploaded before publishing.'
+                  : form.accessType === 'external_link'
+                    ? 'An external URL is required before publishing.'
+                    : 'A resource file or a file URL is required before publishing.'}
               </p>
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {form.accessType === 'circle_only' ? (
+              {form.protectedFilePath ? (
                 <>
                   <Field label="File format" hint="set automatically from the uploaded file">
                     <p className="px-3 py-2.5 text-sm text-charcoal-600">{form.fileFormat || '—'}</p>
