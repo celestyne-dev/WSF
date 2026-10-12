@@ -47,6 +47,25 @@ function AiDisclosureNotice({ text }) {
   )
 }
 
+// The detail-page hero must show the complete uploaded image (no crop),
+// unlike card/thumbnail presentations which are allowed to crop to a fixed
+// ratio for grid consistency. Backend variants are generated with Pillow's
+// thumbnail() (see utils/media.js), which preserves the source aspect
+// ratio, so the real ratio to render at is whichever generated variant's
+// dimensions we can read — largest/most-hero-like first — falling back to
+// 3:2 only when no variant metadata is available at all (e.g. mock mode).
+function getMediaAspect(media) {
+  const preferred = [
+    media?.variants?.hero,
+    media?.variants?.large,
+    media?.variants?.medium,
+    media?.variants?.card,
+    ...Object.values(media?.variants || {}),
+  ].find((variant) => variant?.width > 0 && variant?.height > 0)
+
+  return preferred ? preferred.width / preferred.height : 3 / 2
+}
+
 // Valid schema.org Article structured data for a published public article —
 // same script[data-X-structured-data] create/update/cleanup-on-unmount
 // pattern as useEventStructuredData/useResourceStructuredData/
@@ -193,6 +212,7 @@ export default function ArticlePage() {
   const coAuthors = article.coAuthors || []
   const topic = article.topic
   const hasSidebar = popular.length > 0 || hasSponsorSidebar
+  const heroAspect = getMediaAspect(article.heroMedia)
 
   return (
     <article>
@@ -293,10 +313,10 @@ export default function ArticlePage() {
             mediaPath={article.heroImage}
             alt={article.heroImageAlt}
             width={1600}
-            height={900}
-            aspect={16 / 9}
+            height={Math.round(1600 / heroAspect)}
+            aspect={heroAspect}
             priority
-            className="aspect-[16/9] max-h-[260px] w-full object-cover sm:max-h-[380px] lg:max-h-[480px]"
+            className="h-auto w-full object-contain"
           />
           {(article.heroImageCaption || article.heroImageCredit) && (
             <p className="mt-3 text-sm text-charcoal-600">
