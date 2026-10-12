@@ -212,6 +212,34 @@ def create_app(config_name="development"):
 
         return Response(build_robots_txt(app.config["PUBLIC_SITE_URL"]), mimetype="text/plain")
 
+    @app.get("/")
+    def spa_shell_root():
+        # Module 12B: the bare root is always the generic SPA shell —
+        # there's no article slug to resolve here — but it must still go
+        # through the same fresh-read-of-the-built-index.html path as
+        # every other route below, not some separately maintained copy.
+        from app.services.spa_shell import render_generic_shell
+
+        return render_generic_shell()
+
+    @app.get("/<path:subpath>")
+    def spa_shell_fallback(subpath):
+        # Module 12B: in production this is only ever reached via Nginx's
+        # `@spa_shell` named location (see deploy/nginx/*.conf.example),
+        # i.e. only for a request that already missed every real static
+        # file/asset. Here in Flask directly (as in tests, or a dev
+        # server with no Nginx in front of it) Werkzeug still always
+        # prefers a more specific registered route — a blueprint's
+        # /api/v1/... prefix, /sitemap.xml, /robots.txt — over this
+        # catch-all regardless of registration order, but resolve_spa_
+        # response() still re-checks reserved prefixes itself so a path
+        # with no dedicated route (bare /media/..., /assets/... when not
+        # in debug mode) 404s instead of incorrectly getting an HTML
+        # page back.
+        from app.services.spa_shell import resolve_spa_response
+
+        return resolve_spa_response(subpath)
+
     @app.after_request
     def set_security_headers(response):
         # A conservative, framework-agnostic baseline that doesn't risk

@@ -184,6 +184,19 @@ class Config:
     # production-readiness audit rather than invented ad hoc later).
     PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://womenshapingfutures.org")
 
+    # Module 12B: the built frontend/dist/index.html the SPA-shell
+    # fallback (app/services/spa_shell.py) reads fresh on every request
+    # and injects crawler-readable metadata into for a published
+    # Article's flat /<slug> route. Overridden in tests to point at a
+    # small fixture file instead of requiring a real `npm run build` —
+    # the default here is the real repo path so production needs no
+    # extra configuration beyond building the frontend as already
+    # documented. Never read once and cached: a later `npm run build`
+    # must be picked up with no backend restart or code change.
+    SPA_INDEX_PATH = os.environ.get(
+        "SPA_INDEX_PATH", os.path.join(basedir, "..", "frontend", "dist", "index.html")
+    )
+
     # Comma-separated list of exact origins allowed to call the API with
     # credentials, e.g. "https://womenshapingfutures.org,https://www.womenshapingfutures.org".
     # Falls back to FRONTEND_URL (a single origin) when unset, which keeps
