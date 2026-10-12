@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { X, ChevronDown } from 'lucide-react'
 import { toggleMobileNav } from '../../features/navigation/uiSlice'
 import { logoutUser } from '../../features/auth/authSlice'
+import { hasCmsAccess, getDefaultCmsRoute } from '../../utils/permissions'
 
 function isExternal(url) {
   return !!url && /^https?:\/\//i.test(url)
@@ -41,6 +42,10 @@ export default function MobileNav() {
   // this menu doesn't flash "Sign in"/"Create account" for a session
   // that's actually still there (same reasoning as Header.jsx).
   const isAuthenticated = Boolean(user || accessToken)
+  // Same "don't guess during restoreSession" rule as Header.jsx — only
+  // keyed off `user` itself, never the accessToken-only fallback above.
+  const hasStudioAccess = user ? hasCmsAccess(user) : false
+  const studioHref = hasStudioAccess ? getDefaultCmsRoute(user) : null
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState(null)
@@ -111,6 +116,13 @@ export default function MobileNav() {
           ))}
           {isAuthenticated ? (
             <>
+              {hasStudioAccess && (
+                <li>
+                  <Link to={studioHref} onClick={close} className="block py-2 text-sm font-semibold text-burgundy-600 hover:text-burgundy-700">
+                    WSF Studio
+                  </Link>
+                </li>
+              )}
               <li>
                 <Link to="/account" onClick={close} className="block py-2 text-sm font-medium text-charcoal-600 hover:text-burgundy-600">
                   My account

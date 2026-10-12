@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Search, Menu, User } from 'lucide-react'
 import Logo from './Logo'
 import { toggleMobileNav, toggleSearch } from '../../features/navigation/uiSlice'
+import { hasCmsAccess, getDefaultCmsRoute } from '../../utils/permissions'
 
 function isExternal(url) {
   return !!url && /^https?:\/\//i.test(url)
@@ -78,6 +79,14 @@ export default function Header() {
   const isAuthenticated = Boolean(user || accessToken)
   const accountHref = isAuthenticated ? '/account' : '/login'
   const accountLabel = isAuthenticated ? 'My account' : 'Sign in'
+
+  // Separate from the account icon above: a return path into WSF Studio
+  // for CMS staff only. Deliberately keyed off `user` directly (not the
+  // accessToken-while-restoring fallback isAuthenticated uses) — while
+  // restoreSession() is still in flight there's no permissions list yet to
+  // check, so this simply waits rather than guessing CMS access.
+  const hasStudioAccess = user ? hasCmsAccess(user) : false
+  const studioHref = hasStudioAccess ? getDefaultCmsRoute(user) : null
 
   const primary = navigation?.primary || []
   const secondary = navigation?.secondary || []
@@ -207,6 +216,15 @@ export default function Header() {
             >
               <Search size={20} />
             </button>
+            {hasStudioAccess && (
+              <Link
+                to={studioHref}
+                aria-label="Go to WSF Studio"
+                className="hidden items-center border border-burgundy-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-burgundy-600 transition-colors hover:border-burgundy-400 hover:bg-blush-50 sm:inline-flex"
+              >
+                WSF Studio
+              </Link>
+            )}
             <Link to={accountHref} aria-label={accountLabel} className="hidden p-2 text-charcoal transition-colors hover:text-burgundy-600 sm:block">
               <User size={20} />
             </Link>
