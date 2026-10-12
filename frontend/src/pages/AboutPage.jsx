@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { fetchPublicPage } from '../api/pages'
 import { resolveMediaImage } from '../utils/media'
 import useSeo from '../hooks/useSeo'
-import PageHeader from '../components/ui/PageHeader'
-import MediaImage from '../components/ui/MediaImage'
+import InstitutionalPageHero from '../components/pages/InstitutionalPageHero'
+import InstitutionalPageShell from '../components/pages/InstitutionalPageShell'
 import ArticleContent from '../components/article/ArticleContent'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
@@ -40,25 +40,10 @@ export default function AboutPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="About Us" title={page.title} description={page.subtitle} />
-
-      <div className="container-editorial py-14">
-        {page.heroMedia && (
-          <div className="mb-14 flex justify-center bg-cream">
-            <MediaImage
-              media={page.heroMedia}
-              variant="large"
-              width={1200}
-              height={800}
-              priority
-              className="h-auto max-h-[480px] w-full object-contain"
-            />
-          </div>
-        )}
-        <div className="mx-auto max-w-reading lg:max-w-3xl xl:max-w-4xl">
-          <ArticleContent blocks={page.content} />
-        </div>
-      </div>
+      <InstitutionalPageHero eyebrow="About Us" title={page.title} description={page.subtitle} />
+      <InstitutionalPageShell heroMedia={page.heroMedia}>
+        <ArticleContent blocks={page.content} />
+      </InstitutionalPageShell>
     </div>
   )
 }

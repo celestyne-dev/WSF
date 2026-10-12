@@ -13,10 +13,22 @@ function InlineHtml({ as: Tag = 'span', html, className }) {
   return <Tag className={className} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-function Heading({ block }) {
+function Heading({ block, headingId }) {
   const Tag = block.level === 4 ? 'h4' : block.level === 3 ? 'h3' : 'h2'
   const sizes = { 2: 'text-2xl sm:text-3xl', 3: 'text-xl sm:text-2xl', 4: 'text-lg sm:text-xl' }
-  return <Tag className={`mt-10 font-serif font-semibold text-charcoal ${sizes[block.level] || sizes[2]}`}>{block.text}</Tag>
+  // `headingId`, when supplied by a caller (e.g. LegalPageLayout's "On
+  // this page" nav), gives this heading a stable anchor; scroll-mt-28
+  // keeps the sticky site header from covering it when a TOC link or
+  // in-page hash jumps here. Absent any id, this renders exactly as
+  // before — no behavior change for ArticlePage or any other caller.
+  return (
+    <Tag
+      id={headingId || undefined}
+      className={`mt-10 font-serif font-semibold text-charcoal ${sizes[block.level] || sizes[2]} ${headingId ? 'scroll-mt-28' : ''}`}
+    >
+      {block.text}
+    </Tag>
+  )
 }
 
 function Paragraph({ block }) {
@@ -239,13 +251,25 @@ const RENDERERS = {
   footerNote: FooterNoteBlock,
 }
 
-export default function ArticleContent({ blocks = [], relatedArticlesBySlug }) {
+// `headingIdForBlock(block, index)` is optional — when a caller supplies
+// it, each heading block's rendered <h2-4> gets the id it returns (see
+// Heading() above); every other block type ignores the prop entirely.
+// Omit it (as every existing caller does) and rendering is byte-for-byte
+// what it was before this prop existed.
+export default function ArticleContent({ blocks = [], relatedArticlesBySlug, headingIdForBlock }) {
   return (
     <div>
       {blocks.map((block, i) => {
         const Renderer = RENDERERS[block.type]
         if (!Renderer) return null
-        return <Renderer key={i} block={block} articlesBySlug={relatedArticlesBySlug} />
+        return (
+          <Renderer
+            key={i}
+            block={block}
+            articlesBySlug={relatedArticlesBySlug}
+            headingId={headingIdForBlock ? headingIdForBlock(block, i) : undefined}
+          />
+        )
       })}
     </div>
   )

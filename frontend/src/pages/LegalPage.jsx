@@ -1,12 +1,41 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { fetchPublicPage } from '../api/pages'
-import { formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
-import PageHeader from '../components/ui/PageHeader'
-import MediaImage from '../components/ui/MediaImage'
-import ArticleContent from '../components/article/ArticleContent'
+import InstitutionalPageHero from '../components/pages/InstitutionalPageHero'
+import InstitutionalPageShell from '../components/pages/InstitutionalPageShell'
+import LegalPageLayout from '../components/pages/LegalPageLayout'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
+
+// "On this page" anchor ids are derived purely from each heading
+// block's own text — never a separate CMS field, and never an API
+// call — so an editor renaming a heading in AdminPageEditor just works
+// with no extra step. Duplicate headings (two sections both titled
+// "Overview", say) get a stable "-2", "-3", ... suffix in document
+// order so every anchor is still unique.
+function slugifyHeading(text) {
+  const base = (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 60)
+  return base || 'section'
+}
+
+function buildHeadingToc(blocks) {
+  const seenCounts = new Map()
+  const headings = []
+  for (const block of blocks || []) {
+    if (block.type !== 'heading') continue
+    const base = slugifyHeading(block.text)
+    const seen = seenCounts.get(base) || 0
+    seenCounts.set(base, seen + 1)
+    const id = seen === 0 ? base : `${base}-${seen + 1}`
+    headings.push({ id, text: block.text, level: block.level || 2 })
+  }
+  return headings
+}
 
 // Backs /privacy, /terms, /cookies, /editorial-policy — each a fixed
 // system Page identified by `docKey` (== its stable backend `key`, see
@@ -39,32 +68,17 @@ export default function LegalPage({ docKey }) {
     canonical: `https://womenshapingfutures.org/${docKey}`,
   })
 
+  const headings = useMemo(() => buildHeadingToc(page?.content), [page?.content])
+
   if (page === undefined) return <PageLoader />
   if (page === null) return <EmptyState title="This page isn't available right now" description="Please check back shortly." />
 
   return (
     <div>
-      <PageHeader title={page.title} description={page.subtitle} />
-      <div className="container-editorial py-14">
-        {page.heroMedia && (
-          <div className="mb-14 flex justify-center bg-cream">
-            <MediaImage
-              media={page.heroMedia}
-              variant="large"
-              width={1200}
-              height={800}
-              priority
-              className="h-auto max-h-[480px] w-full object-contain"
-            />
-          </div>
-        )}
-        <div className="mx-auto max-w-reading">
-          {page.effectiveDate && (
-            <p className="mb-8 text-sm text-charcoal-600">Last updated: {formatDate(page.effectiveDate)}</p>
-          )}
-          <ArticleContent blocks={page.content} />
-        </div>
-      </div>
+      <InstitutionalPageHero title={page.title} description={page.subtitle} />
+      <InstitutionalPageShell heroMedia={page.heroMedia} maxWidthClassName="">
+        <LegalPageLayout headings={headings} effectiveDate={page.effectiveDate} content={page.content} />
+      </InstitutionalPageShell>
     </div>
   )
 }
