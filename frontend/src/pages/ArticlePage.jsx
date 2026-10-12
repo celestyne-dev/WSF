@@ -200,81 +200,85 @@ export default function ArticlePage() {
         <Breadcrumb items={topic ? [{ label: 'Stories', to: '/topics' }, { label: topic.name, to: `/topics/${topic.slug}` }, { label: article.title }] : [{ label: article.title }]} />
       </div>
 
-      {/* A centered editorial header container — wider than the 720px
-          reading column below (so the headline can breathe) but still
-          narrower than the full 1280px site container. */}
+      {/* Aligned to the same centered max-w-[1064px] composition the
+          article body/sidebar group below uses, so the header's left
+          edge lines up with the body's left edge on desktop — the inner
+          920px wrapper controls content width only and is no longer
+          separately centered. */}
       <header className="container-editorial mt-8">
-        <div className="mx-auto max-w-[920px]">
-          {topic && (
-            <Link to={`/topics/${topic.slug}`} className="eyebrow">
-              {topic.name}
-            </Link>
-          )}
-          <h1 className="mt-4 max-w-[820px] font-serif text-[2.75rem] font-semibold leading-[1.05] text-charcoal sm:text-[3.5rem] lg:text-[3.75rem]">
-            {article.title}
-          </h1>
-          {article.subtitle && (
-            <p className="mt-5 max-w-[640px] font-serif text-xl italic leading-relaxed text-charcoal-600 sm:text-2xl">{article.subtitle}</p>
-          )}
+        <div className="mx-auto max-w-[1064px]">
+          <div className="max-w-[920px]">
+            {topic && (
+              <Link to={`/topics/${topic.slug}`} className="eyebrow">
+                {topic.name}
+              </Link>
+            )}
+            <h1 className="mt-4 max-w-[820px] font-serif text-[2.75rem] font-semibold leading-[1.05] text-charcoal sm:text-[3.5rem] lg:text-[3.75rem]">
+              {article.title}
+            </h1>
+            {article.subtitle && (
+              <p className="mt-5 max-w-[640px] font-serif text-xl italic leading-relaxed text-charcoal-600 sm:text-2xl">{article.subtitle}</p>
+            )}
 
-          {article.isSponsored && (article.sponsorRecord || article.sponsor) && (
-            <div className="mt-5 flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
-              <span className="font-semibold uppercase tracking-wide text-burgundy-600">
-                {article.sponsorRecord?.disclosureLabel || 'Sponsored'}
-              </span>
-              <span>
-                {article.sponsorRecord
-                  ? article.sponsorRecord.publicName || article.sponsorRecord.organization?.name
-                  : article.sponsor?.disclosure}
-              </span>
-            </div>
-          )}
+            {article.isSponsored && (article.sponsorRecord || article.sponsor) && (
+              <div className="mt-5 flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
+                <span className="font-semibold uppercase tracking-wide text-burgundy-600">
+                  {article.sponsorRecord?.disclosureLabel || 'Sponsored'}
+                </span>
+                <span>
+                  {article.sponsorRecord
+                    ? article.sponsorRecord.publicName || article.sponsorRecord.organization?.name
+                    : article.sponsor?.disclosure}
+                </span>
+              </div>
+            )}
 
-          {/* Byline + actions — a single light rule above and below, never
-              a filled "toolbar" box. Author info first on every
-              breakpoint; actions sit opposite on desktop and move
-              cleanly beneath on mobile instead of compressing. */}
-          <div className="mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              {author && (
-                <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={author.name} width={96} height={96} aspect={1} className="h-12 w-12 rounded-full object-cover" />
-              )}
-              <div className="text-sm">
-                <p className="font-semibold text-charcoal">
-                  By{' '}
-                  {author && (
-                    <Link to={`/authors/${author.slug}`} className="hover:text-burgundy-600">
-                      {author.name}
-                    </Link>
-                  )}
-                  {coAuthors.map((c) => (
-                    <span key={c.slug}>
-                      {' '}
-                      &amp;{' '}
-                      <Link to={`/authors/${c.slug}`} className="hover:text-burgundy-600">
-                        {c.name}
+            {/* Byline + actions — a single light rule above and below, never
+                a filled "toolbar" box. Author info first on every
+                breakpoint; actions sit opposite on desktop and move
+                cleanly beneath on mobile instead of compressing. */}
+            <div className="mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                {author && (
+                  <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={author.name} width={96} height={96} aspect={1} className="h-12 w-12 rounded-full object-cover" />
+                )}
+                <div className="text-sm">
+                  <p className="font-semibold text-charcoal">
+                    By{' '}
+                    {author && (
+                      <Link to={`/authors/${author.slug}`} className="hover:text-burgundy-600">
+                        {author.name}
                       </Link>
+                    )}
+                    {coAuthors.map((c) => (
+                      <span key={c.slug}>
+                        {' '}
+                        &amp;{' '}
+                        <Link to={`/authors/${c.slug}`} className="hover:text-burgundy-600">
+                          {c.name}
+                        </Link>
+                      </span>
+                    ))}
+                  </p>
+                  {author?.role && <p className="text-xs text-charcoal-600/70">{author.role}</p>}
+                  <p className="mt-0.5 flex items-center gap-2 text-charcoal-600">
+                    <span>{formatDate(article.publishDate)}</span>
+                    <span aria-hidden="true">&middot;</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={13} /> {resolveReadingTime(article)} min read
                     </span>
-                  ))}
-                </p>
-                {author?.role && <p className="text-xs text-charcoal-600/70">{author.role}</p>}
-                <p className="mt-0.5 flex items-center gap-2 text-charcoal-600">
-                  <span>{formatDate(article.publishDate)}</span>
-                  <span aria-hidden="true">&middot;</span>
-                  <span className="inline-flex items-center gap-1">
-                    <Clock size={13} /> {resolveReadingTime(article)} min read
-                  </span>
-                </p>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <SaveButton contentType="article" contentId={article.id} className={BYLINE_SAVE_BUTTON_CLASS} />
+                <span aria-hidden="true" className="hidden h-5 w-px bg-taupe-300 sm:block" />
+                <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
               </div>
             </div>
-            <div className="flex items-center gap-4">
-              <SaveButton contentType="article" contentId={article.id} className={BYLINE_SAVE_BUTTON_CLASS} />
-              <span aria-hidden="true" className="hidden h-5 w-px bg-taupe-300 sm:block" />
-              <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
-            </div>
-          </div>
 
-          {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}
+            {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}
+          </div>
         </div>
       </header>
 
