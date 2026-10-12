@@ -63,35 +63,41 @@ def _insert_before_head_close(html_doc, fragment):
 
 
 def _set_title(html_doc, title):
-    tag = f"<title>{_escape(title, quote=True)}</title>"
-    if _TITLE_RE.search(html_doc):
-        return _TITLE_RE.sub(tag, html_doc, count=1)
-    return _insert_before_head_close(html_doc, tag + "\n")
+    # Strip EVERY existing <title> first (re.sub with no count removes
+    # all matches, not just the first) so a baseline index.html that
+    # already carries duplicates — or ever acquires one from a bad prior
+    # build — always collapses to exactly one managed tag, never a
+    # leftover extra.
+    html_doc = _TITLE_RE.sub("", html_doc)
+    if title:
+        tag = f"<title>{_escape(title, quote=True)}</title>"
+        html_doc = _insert_before_head_close(html_doc, tag + "\n")
+    return html_doc
 
 
 def _set_meta(html_doc, attr, key, content):
-    """Finds an existing <meta attr="key" ...> tag (any attribute order)
-    and updates it in place, or inserts a fresh one before </head> when
-    absent — never both, so the same key is never left duplicated. A
-    falsy `content` removes an existing tag instead of writing an empty
-    one, matching useSeo.js's own clear-when-absent behavior.
+    """Removes EVERY existing <meta attr="key" ...> tag (any attribute
+    order, any number of duplicates) and, when `content` is truthy,
+    inserts exactly one fresh tag before </head> — so the result always
+    has exactly one managed tag for this key when a value is set, and
+    zero when it's absent, regardless of how many (if any) the baseline
+    index.html started with. A falsy `content` leaves the key removed
+    entirely, matching useSeo.js's own clear-when-absent behavior.
     """
     pattern = _meta_re(attr, key)
-    if not content:
-        return pattern.sub("", html_doc, count=1) if pattern.search(html_doc) else html_doc
-    tag = f'<meta {attr}="{_escape(key, quote=True)}" content="{_escape(str(content), quote=True)}">'
-    if pattern.search(html_doc):
-        return pattern.sub(tag, html_doc, count=1)
-    return _insert_before_head_close(html_doc, tag + "\n")
+    html_doc = pattern.sub("", html_doc)
+    if content:
+        tag = f'<meta {attr}="{_escape(key, quote=True)}" content="{_escape(str(content), quote=True)}">'
+        html_doc = _insert_before_head_close(html_doc, tag + "\n")
+    return html_doc
 
 
 def _set_canonical(html_doc, href):
-    if not href:
-        return _CANONICAL_RE.sub("", html_doc, count=1) if _CANONICAL_RE.search(html_doc) else html_doc
-    tag = f'<link rel="canonical" href="{_escape(href, quote=True)}">'
-    if _CANONICAL_RE.search(html_doc):
-        return _CANONICAL_RE.sub(tag, html_doc, count=1)
-    return _insert_before_head_close(html_doc, tag + "\n")
+    html_doc = _CANONICAL_RE.sub("", html_doc)
+    if href:
+        tag = f'<link rel="canonical" href="{_escape(href, quote=True)}">'
+        html_doc = _insert_before_head_close(html_doc, tag + "\n")
+    return html_doc
 
 
 def _safe_json_ld(data):
@@ -105,12 +111,11 @@ def _safe_json_ld(data):
 
 
 def _set_structured_data(html_doc, data):
-    if not data:
-        return _STRUCTURED_DATA_RE.sub("", html_doc, count=1) if _STRUCTURED_DATA_RE.search(html_doc) else html_doc
-    tag = f'<script type="application/ld+json" data-article-structured-data="true">{_safe_json_ld(data)}</script>'
-    if _STRUCTURED_DATA_RE.search(html_doc):
-        return _STRUCTURED_DATA_RE.sub(tag, html_doc, count=1)
-    return _insert_before_head_close(html_doc, tag + "\n")
+    html_doc = _STRUCTURED_DATA_RE.sub("", html_doc)
+    if data:
+        tag = f'<script type="application/ld+json" data-article-structured-data="true">{_safe_json_ld(data)}</script>'
+        html_doc = _insert_before_head_close(html_doc, tag + "\n")
+    return html_doc
 
 
 def _read_index_html():
@@ -160,6 +165,14 @@ def _resolve_social_image(article, site_identity, public_site_url):
     carries an alt either, matching useSeo.js's own resolvedImage
     computation, which only ever pulls a URL from seoDefaults.defaultOgImage,
     never its alt text (even though the underlying Media row has one).
+
+    The explicit article OG image and the hero image both use the
+    original/public_url straight off the Media row — unchanged from
+    before. Only the GLOBAL default image follows useSeo.js's own
+    resolveMediaImage(..., {variant: 'large'}) call for
+    seoDefaults.defaultOgImage: the generated `large` MediaVariant when
+    one exists, falling back to public_url when it doesn't (e.g. an
+    older upload from before variant generation existed).
     """
     og_image_media_id = (article.seo or {}).get("ogImageMediaId")
     if og_image_media_id:
@@ -172,7 +185,8 @@ def _resolve_social_image(article, site_identity, public_site_url):
 
     default_image = site_identity.get("og_image")
     if default_image is not None:
-        return _absolute_url(default_image.public_url, public_site_url), None
+        image_path = default_image.variant_url("large") or default_image.public_url
+        return _absolute_url(image_path, public_site_url), None
 
     return None, None
 
@@ -223,7 +237,11 @@ def _build_article_json_ld(article, canonical_url, image_url, site_identity, pub
     }
     logo = site_identity.get("logo")
     if logo is not None:
-        logo_url = _absolute_url(logo.public_url, public_site_url)
+        # The generated `card` MediaVariant when one exists, falling back
+        # to public_url when it doesn't — matches the frontend's own
+        # resolveMediaImage() variant resolution for the site logo.
+        logo_path = logo.variant_url("card") or logo.public_url
+        logo_url = _absolute_url(logo_path, public_site_url)
         if logo_url:
             publisher["logo"] = {"@type": "ImageObject", "url": logo_url}
     data["publisher"] = publisher
@@ -248,8 +266,7 @@ def render_article_shell(article):
     image_url, image_alt = _resolve_social_image(article, site_identity, public_site_url)
 
     html_doc = _read_index_html()
-    if title:
-        html_doc = _set_title(html_doc, title)
+    html_doc = _set_title(html_doc, title)
     html_doc = _set_meta(html_doc, "name", "description", meta_description)
     html_doc = _set_meta(html_doc, "name", "robots", robots)
     html_doc = _set_canonical(html_doc, canonical_url)

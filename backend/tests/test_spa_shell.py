@@ -16,10 +16,19 @@ import re
 from app.extensions import db
 
 FIXTURE_INDEX_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "spa_index.html")
+DUPLICATES_FIXTURE_INDEX_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "spa_index_duplicates.html")
 
 
 def _use_fixture_index(app):
     app.config["SPA_INDEX_PATH"] = FIXTURE_INDEX_PATH
+
+
+def _use_duplicates_fixture_index(app):
+    # A baseline index.html that already carries two of every managed
+    # tag (two <title>s, two canonicals, two of each OG/Twitter tag, two
+    # structured-data scripts) — proves dedup collapses pre-existing
+    # duplicates, not just the clean single-tag fixture used elsewhere.
+    app.config["SPA_INDEX_PATH"] = DUPLICATES_FIXTURE_INDEX_PATH
 
 
 def _make_author(app, slug="wsf-editorial", name="WSF Editorial", status="active"):
@@ -47,6 +56,21 @@ def _make_media(app, alt_text="A group of women at a conference.", public_url="/
         db.session.add(media)
         db.session.commit()
         return media.id
+
+
+def _add_variant(app, media_id, variant_name, public_url):
+    from app.models.media import MediaVariant
+
+    with app.app_context():
+        variant = MediaVariant(
+            media_id=media_id,
+            variant=variant_name,
+            file_path=f"/tmp/{variant_name}.webp",
+            public_url=public_url,
+        )
+        db.session.add(variant)
+        db.session.commit()
+        return variant.id
 
 
 def _make_article(app, slug, title="A Story", status="published", author_id=None, **overrides):
@@ -223,6 +247,87 @@ class TestSocialImagePriority:
         # Media row has one.
         assert "og:image:alt" not in html
         assert "twitter:image:alt" not in html
+        # No `large` MediaVariant row exists for this Media — proves the
+        # safe fallback to the original public_url when one is unavailable.
+
+    def test_global_default_og_image_uses_large_variant_when_available(self, client, app):
+        _use_fixture_index(app)
+        default_media_id = _make_media(app, alt_text="Must never surface.", public_url="/media/originals/default-og.jpg")
+        _add_variant(app, default_media_id, "large", "/media/large/default-og.webp")
+        _add_variant(app, default_media_id, "thumbnail", "/media/thumbnail/default-og.webp")
+        _set_site_identity(app, og_image_media_id=default_media_id)
+        _make_article(app, slug="variant-og-story", title="Variant OG Story")
+
+        resp = client.get("/variant-og-story")
+        html = resp.get_data(as_text=True)
+
+        # Uses the generated `large` variant, not the original public_url
+        # and not any other variant that happens to exist.
+        assert _meta_content(html, "property", "og:image") == "https://womenshapingfutures.org/media/large/default-og.webp"
+        assert _meta_content(html, "name", "twitter:image") == "https://womenshapingfutures.org/media/large/default-og.webp"
+        data = _structured_data_json(html)
+        assert data["image"] == "https://womenshapingfutures.org/media/large/default-og.webp"
+
+    def test_explicit_og_image_ignores_variants_and_uses_public_url(self, client, app):
+        # Explicit article OG-image behavior is unchanged: it must keep
+        # using the Media row's own public_url even when a `large`
+        # variant also exists for it.
+        _use_fixture_index(app)
+        explicit_media_id = _make_media(app, alt_text="Explicit alt.", public_url="/media/originals/og.jpg")
+        _add_variant(app, explicit_media_id, "large", "/media/large/og.webp")
+        _make_article(
+            app,
+            slug="explicit-image-with-variant-story",
+            title="Explicit Image With Variant",
+            seo={"ogImageMediaId": explicit_media_id},
+        )
+
+        resp = client.get("/explicit-image-with-variant-story")
+        html = resp.get_data(as_text=True)
+        assert _meta_content(html, "property", "og:image") == "https://womenshapingfutures.org/media/originals/og.jpg"
+
+    def test_hero_image_ignores_variants_and_uses_public_url(self, client, app):
+        # Article hero-image behavior is unchanged too.
+        _use_fixture_index(app)
+        hero_media_id = _make_media(app, alt_text="Hero alt.", public_url="/media/originals/hero3.jpg")
+        _add_variant(app, hero_media_id, "large", "/media/large/hero3.webp")
+        _make_article(app, slug="hero-with-variant-story", title="Hero With Variant", hero_media_id=hero_media_id)
+
+        resp = client.get("/hero-with-variant-story")
+        html = resp.get_data(as_text=True)
+        assert _meta_content(html, "property", "og:image") == "https://womenshapingfutures.org/media/originals/hero3.jpg"
+
+
+class TestPublisherLogoVariant:
+    def test_publisher_logo_uses_card_variant_when_available(self, client, app):
+        _use_fixture_index(app)
+        logo_media_id = _make_media(app, alt_text="WSF logo.", public_url="/media/originals/logo.png")
+        _add_variant(app, logo_media_id, "card", "/media/card/logo.webp")
+        _add_variant(app, logo_media_id, "large", "/media/large/logo.webp")
+        _set_site_identity(app, logo_media_id=logo_media_id)
+        _make_article(app, slug="logo-card-variant-story", title="Logo Card Variant Story")
+
+        resp = client.get("/logo-card-variant-story")
+        html = resp.get_data(as_text=True)
+        data = _structured_data_json(html)
+
+        # Uses the generated `card` variant, not the original public_url
+        # and not any other variant that happens to exist.
+        assert data["publisher"]["logo"]["url"] == "https://womenshapingfutures.org/media/card/logo.webp"
+
+    def test_publisher_logo_falls_back_to_public_url_without_card_variant(self, client, app):
+        _use_fixture_index(app)
+        logo_media_id = _make_media(app, alt_text="WSF logo.", public_url="/media/originals/logo2.png")
+        _set_site_identity(app, logo_media_id=logo_media_id)
+        _make_article(app, slug="logo-no-variant-story", title="Logo No Variant Story")
+
+        resp = client.get("/logo-no-variant-story")
+        html = resp.get_data(as_text=True)
+        data = _structured_data_json(html)
+
+        # No `card` MediaVariant row exists — falls back safely to the
+        # Media row's own public_url.
+        assert data["publisher"]["logo"]["url"] == "https://womenshapingfutures.org/media/originals/logo2.png"
 
 
 class TestVisibilityAndRedirects:
@@ -334,6 +439,55 @@ class TestNoDuplicateTags:
         assert _count(r'<meta\s+(?:[^>]*?\s)?property=["\']og:type["\']', html) == 1
         assert _count(r'<meta\s+(?:[^>]*?\s)?name=["\']twitter:card["\']', html) == 1
         assert _count(r"data-article-structured-data", html) == 1
+
+    def test_dedupes_pre_existing_duplicate_tags_in_baseline_index_html(self, client, app):
+        # Unlike the clean fixture above, this baseline index.html already
+        # has two of every managed tag before the shell ever touches it
+        # (see fixtures/spa_index_duplicates.html) — proves the dedup
+        # logic actually collapses real duplicates rather than merely
+        # never introducing new ones.
+        _use_duplicates_fixture_index(app)
+        _make_article(
+            app,
+            slug="dedupe-story",
+            title="Dedupe Story",
+            excerpt="Collapsed to exactly one of each tag.",
+        )
+
+        resp = client.get("/dedupe-story")
+        html = resp.get_data(as_text=True)
+
+        assert _count(r"<title\b", html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?name=["\']description["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?name=["\']robots["\']', html) == 1
+        assert _count(r'<link\s+rel=["\']canonical["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?property=["\']og:title["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?property=["\']og:description["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?property=["\']og:url["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?property=["\']og:type["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?name=["\']twitter:card["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?name=["\']twitter:title["\']', html) == 1
+        assert _count(r'<meta\s+(?:[^>]*?\s)?name=["\']twitter:description["\']', html) == 1
+        assert _count(r"data-article-structured-data", html) == 1
+
+        # The single surviving tag must be the freshly injected value, not
+        # either stale duplicate the baseline fixture started with.
+        assert "<title>Dedupe Story</title>" in html
+        assert "Old Stale Title" not in html
+        assert _meta_content(html, "name", "description") == "Collapsed to exactly one of each tag."
+        assert "stale duplicate" not in html
+        assert _meta_content(html, "name", "robots") == "index, follow"
+        assert "noindex" not in html
+        assert _canonical_href(html) == "https://womenshapingfutures.org/dedupe-story"
+        assert "example.com/stale" not in html
+        assert _meta_content(html, "property", "og:title") == "Dedupe Story"
+        assert "Stale OG Title" not in html
+        assert _meta_content(html, "property", "og:type") == "article"
+        assert _meta_content(html, "name", "twitter:card") == "summary_large_image"
+        assert "Stale Twitter Title" not in html
+        data = _structured_data_json(html)
+        assert data["headline"] == "Dedupe Story"
+        assert "stale" not in html
 
 
 class TestGenericShellAndReservedPrefixes:
