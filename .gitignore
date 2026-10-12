@@ -13,6 +13,9 @@ backend/venv/
 backend/*.egg-info/
 backend/instance/
 backend/.pytest_cache/
+deploy/__pycache__/
+deploy/**/__pycache__/
+deploy/.pytest_cache/
 
 # Env files
 .env

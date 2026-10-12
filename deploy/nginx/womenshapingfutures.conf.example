@@ -12,7 +12,7 @@
 #   https://womenshapingfutures.org/media/...    -> media files on disk (Nginx serves directly, Flask never in this path)
 #   https://womenshapingfutures.org/sitemap.xml  -> Gunicorn (Flask) on 127.0.0.1:8000 (must be exactly this path — see app/__init__.py's /sitemap.xml route docstring for why it can't live under /api/)
 #   https://womenshapingfutures.org/robots.txt   -> Gunicorn (Flask) on 127.0.0.1:8000 (so its Sitemap: line reads the real configured PUBLIC_SITE_URL — see app/__init__.py's /robots.txt route)
-#   everything else under a client-side route    -> index.html when the file exists on disk, otherwise Gunicorn (Flask) on 127.0.0.1:8000 (Module 12B SPA shell — see app/services/spa_shell.py; a published Article's own flat /<slug> gets crawler-readable metadata injected, everything else gets the same index.html back untouched)
+#   everything else under a client-side route    -> index.html when the file exists on disk, otherwise Gunicorn (Flask) on 127.0.0.1:8020 (Module 12B SPA shell — see app/services/spa_shell.py; a published Article's own flat /<slug> gets crawler-readable metadata injected, everything else gets the same index.html back untouched)
 
 # ---------------------------------------------------------------------
 # HTTP -> HTTPS redirect. Only add this server block once a real TLS
@@ -183,7 +183,7 @@ server {
     }
 
     location @spa_shell {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8020;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
