@@ -7,6 +7,7 @@ import { fetchPersonBySlug } from '../api/people'
 import { resolveImage, resolveMediaImage } from '../utils/media'
 import { buildArticleStructuredData } from '../utils/articleStructuredData'
 import { formatDate } from '../utils/format'
+import { resolveReadingTime } from '../utils/readingTime'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
@@ -261,7 +262,7 @@ export default function ArticlePage() {
                   <span>{formatDate(article.publishDate)}</span>
                   <span aria-hidden="true">&middot;</span>
                   <span className="inline-flex items-center gap-1">
-                    <Clock size={13} /> {article.readingTime} min read
+                    <Clock size={13} /> {resolveReadingTime(article)} min read
                   </span>
                 </p>
               </div>
@@ -347,7 +348,7 @@ export default function ArticlePage() {
             <SponsorPlacementStrip placementKey="article_sidebar" layout="stack" onAvailabilityChange={setHasSponsorSidebar} />
             {popular.length > 0 && (
               <div>
-                <p className="eyebrow mb-4">Popular on WSF</p>
+                <p className="eyebrow mb-4">More on WSF</p>
                 {/* ArticleCard's own "compact" variant already supplies
                     the subtle divider between items (border-t, with
                     first:border-t-0 on the true first child) — rendered

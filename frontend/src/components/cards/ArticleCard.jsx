@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
 import { formatShortDate } from '../../utils/format'
+import { resolveReadingTime } from '../../utils/readingTime'
 
 /**
  * variant: 'lead' | 'secondary' | 'horizontal' | 'compact' | 'grid'
@@ -48,7 +49,7 @@ export default function ArticleCard({ article, variant = 'grid' }) {
             <span aria-hidden="true">&middot;</span>
             <span>{formatShortDate(article.publishDate)}</span>
             <span aria-hidden="true">&middot;</span>
-            <span>{article.readingTime} min read</span>
+            <span>{resolveReadingTime(article)} min read</span>
           </div>
         </div>
       </article>
