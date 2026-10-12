@@ -191,6 +191,50 @@ def build_new_lines(lines, root_open, root_close):
     return lines[:root_open] + replacement + lines[root_close + 1 :]
 
 
+def _detect_newline_style(raw_text):
+    """"\\r\\n" if that sequence appears anywhere in the file, else
+    "\\n" — this file is expected to use one consistent line-ending
+    style throughout, matching ordinary editor/Git behavior."""
+    return "\r\n" if "\r\n" in raw_text else "\n"
+
+
+def _line_terminator(line_with_end):
+    """The exact terminator substring `line_with_end` (one element of
+    str.splitlines(keepends=True)) ends with — "\\r\\n", "\\n", "\\r",
+    or "" when the line is the file's last and carries no final
+    newline at all."""
+    if line_with_end.endswith("\r\n"):
+        return "\r\n"
+    if line_with_end.endswith("\n") or line_with_end.endswith("\r"):
+        return line_with_end[-1]
+    return ""
+
+
+def replace_root_block_bytes(raw_text, root_open, root_close, replacement_lines):
+    """Returns the new file content as a single string, built directly
+    from `raw_text` rather than from a plain join of logical lines, so
+    every byte outside the [root_open, root_close] line span — including
+    the file's own newline style (LF vs CRLF) and whether it ends with a
+    final newline at all — survives completely untouched. Only the
+    `root_open`..`root_close` span (inclusive) is replaced, by
+    `replacement_lines` (a plain list of lines with no terminators, as
+    returned by build_replacement_block()).
+    """
+    lines_with_ends = raw_text.splitlines(keepends=True)
+    newline = _detect_newline_style(raw_text)
+    # The replaced span's own last line dictates what terminator the new
+    # block's own last line gets: "\r\n"/"\n" when more content follows
+    # it (as it must, for that original line to have had a terminator at
+    # all), or "" when this span was the file's final line and the file
+    # itself has no trailing newline — preserving that absence exactly.
+    last_terminator = _line_terminator(lines_with_ends[root_close])
+
+    before_text = "".join(lines_with_ends[:root_open])
+    after_text = "".join(lines_with_ends[root_close + 1 :])
+    middle_text = newline.join(replacement_lines) + last_terminator
+    return before_text + middle_text + after_text
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -204,8 +248,18 @@ def main():
     if not os.path.isfile(CONFIG_PATH):
         sys.exit(f"ERROR: {CONFIG_PATH} not found.")
 
-    with open(CONFIG_PATH) as f:
-        lines = f.read().splitlines()
+    # newline="" disables universal-newline translation on read (which
+    # would otherwise silently rewrite a CRLF file's line endings to LF
+    # the moment it's read) — raw_text is the file's exact text, byte
+    # for byte. `lines` (no terminators) is still fine to derive from it
+    # for the existing line-index-based classify()/indent_for() logic:
+    # str.splitlines() treats "\r\n"/"\n"/"\r" as equivalent boundaries
+    # regardless of how the string was read, so detection behavior here
+    # is unchanged either way — only the final write (below) depends on
+    # raw_text having been read untranslated.
+    with open(CONFIG_PATH, "r", newline="") as f:
+        raw_text = f.read()
+    lines = raw_text.splitlines()
 
     try:
         state, root_block, spa_block = classify(lines)
@@ -240,10 +294,13 @@ def main():
         sys.exit(f"ERROR: backup verification failed ({backup_path} does not match live config).")
     print(f"Backup created: {backup_path}")
 
-    new_lines = build_new_lines(lines, root_open, root_close)
+    new_text = replace_root_block_bytes(raw_text, root_open, root_close, replacement)
     tmp_path = CONFIG_PATH + ".tmp12b"
-    with open(tmp_path, "w") as f:
-        f.write("\n".join(new_lines) + "\n")
+    # newline="" on write too, so a CRLF sequence already embedded in
+    # new_text (from replace_root_block_bytes's own newline-style
+    # detection) is written exactly as-is, never re-translated.
+    with open(tmp_path, "w", newline="") as f:
+        f.write(new_text)
     st = os.stat(CONFIG_PATH)
     os.chown(tmp_path, st.st_uid, st.st_gid)
     os.chmod(tmp_path, st.st_mode)

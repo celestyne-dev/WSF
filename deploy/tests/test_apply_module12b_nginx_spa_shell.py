@@ -242,3 +242,102 @@ class TestIndentAndBuild:
         state, _root_block, spa_block = mod.classify(new_lines)
         assert state == "already_applied"
         assert spa_block is not None
+
+
+def _rewrite(raw_text):
+    """Runs raw_text through the exact same open-file-free pipeline
+    main() uses for the actual on-disk write: classify() (via
+    find_blocks/ROOT_OPEN_RE) + indent_for() + build_replacement_block()
+    + replace_root_block_bytes()."""
+    lines = raw_text.splitlines()
+    root_open, root_close = mod.find_blocks(lines, mod.ROOT_OPEN_RE)[0]
+    outer_indent, inner_indent = mod.indent_for(lines, root_open, root_close)
+    replacement = mod.build_replacement_block(outer_indent, inner_indent)
+    return mod.replace_root_block_bytes(raw_text, root_open, root_close, replacement)
+
+
+class TestByteExactRewrite:
+    """replace_root_block_bytes() is what main() actually writes to disk
+    (see the Module 12B hardening task: the previous implementation
+    rebuilt the whole file via "\\n".join(lines) + "\\n", silently
+    normalizing CRLF to LF and always forcing a final newline — neither
+    of which byte-exactly preserves the live file outside the one block
+    this script is allowed to touch).
+    """
+
+    def test_crlf_input_preserves_crlf_outside_and_in_replacement(self):
+        crlf_text = OLD_SERVER_BLOCK.replace("\n", "\r\n")
+        new_text = _rewrite(crlf_text)
+
+        # Every line ending in the output is "\r\n" — never a bare "\n".
+        assert mod.re.search(r"(?<!\r)\n", new_text) is None
+        assert "\r\n" in new_text
+
+        assert "server {\r\n" in new_text
+        assert "    location /api/ {\r\n" in new_text
+        assert "    location / {\r\n        try_files $uri $uri/ @spa_shell;\r\n    }\r\n" in new_text
+        assert "    location @spa_shell {\r\n        proxy_pass http://127.0.0.1:8020;\r\n" in new_text
+        assert "    location ~ /\\.(?!well-known) {\r\n        deny all;\r\n    }\r\n}\r\n" in new_text
+        assert "/index.html" not in new_text
+
+    def test_lf_input_preserves_lf(self):
+        new_text = _rewrite(OLD_SERVER_BLOCK)
+
+        # No CRLF anywhere in the output — the input was pure LF.
+        assert "\r" not in new_text
+
+        assert "server {\n" in new_text
+        assert "    location / {\n        try_files $uri $uri/ @spa_shell;\n    }\n" in new_text
+        assert "    location @spa_shell {\n        proxy_pass http://127.0.0.1:8020;\n" in new_text
+        assert "    location ~ /\\.(?!well-known) {\n        deny all;\n    }\n}\n" in new_text
+        assert "/index.html" not in new_text
+
+    def test_file_with_no_final_newline_stays_without_one(self):
+        # The root block's own closing '}' is deliberately the file's
+        # very last byte, with no trailing newline at all — this is the
+        # one case where the replaced span's own last line (not merely
+        # untouched trailing content) must carry that missing terminator
+        # forward onto the NEW block's own last line.
+        no_final_newline_text = "server {\n    location / {\n        try_files $uri $uri/ /index.html;\n    }"
+        assert not no_final_newline_text.endswith("\n")
+
+        new_text = _rewrite(no_final_newline_text)
+
+        assert not new_text.endswith("\n")
+        assert new_text.endswith("}")
+        assert new_text.startswith("server {\n")
+        assert "try_files $uri $uri/ @spa_shell;" in new_text
+        assert "location @spa_shell {" in new_text
+        assert "/index.html" not in new_text
+
+    def test_unrelated_prefix_and_suffix_are_byte_for_byte_unchanged(self):
+        prefix = (
+            "# unrelated prefix comment — ünïcödé, trailing spaces   \n"
+            "upstream backend_pool {\n"
+            "    server 127.0.0.1:8000;\n"
+            "}\n"
+            "\n"
+        )
+        suffix = "\n# unrelated suffix — a\ttab, trailing ws   \n"
+        full_text = prefix + OLD_SERVER_BLOCK + suffix
+
+        new_text = _rewrite(full_text)
+
+        assert new_text.startswith(prefix)
+        assert new_text.endswith(suffix)
+        # Nothing about the untouched regions changed length/content —
+        # only the known, intentional substitution happened in between.
+        assert new_text.count("upstream backend_pool {") == 1
+        assert "/index.html" not in new_text
+        assert "location @spa_shell {" in new_text
+
+    def test_reclassify_after_byte_exact_rewrite_reports_already_applied(self):
+        # The byte-exact write path must still produce output that
+        # classify() itself recognizes as correctly applied — proving
+        # replace_root_block_bytes()'s output is line-for-line identical
+        # in content to build_replacement_block()'s own lines, not just
+        # visually similar.
+        new_text = _rewrite(OLD_SERVER_BLOCK)
+        state, _root_block, spa_block = mod.classify(new_text.splitlines())
+        assert state == "already_applied"
+        assert spa_block is not None
