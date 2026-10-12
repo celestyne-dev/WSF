@@ -22,6 +22,13 @@ import NotFoundPage from './NotFoundPage'
 
 const SITE_ORIGIN = 'https://womenshapingfutures.org'
 
+// A ghost/text-only Save control for the lighter article byline row —
+// same SaveButton component/behavior underneath, just restyled via its
+// optional `className` prop so it reads as a lightweight action next to
+// ShareBar rather than a bordered toolbar button.
+const BYLINE_SAVE_BUTTON_CLASS =
+  'inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-charcoal-600 transition-colors hover:text-burgundy-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-burgundy-500 disabled:cursor-not-allowed disabled:opacity-60'
+
 // Subtle, non-alarming editorial transparency notice — shown only when an
 // editor has explicitly enabled it (article.aiDisclosureRequired) and
 // written the disclosure copy themselves. Never generated automatically;
@@ -29,7 +36,7 @@ const SITE_ORIGIN = 'https://womenshapingfutures.org'
 function AiDisclosureNotice({ text }) {
   if (!text) return null
   return (
-    <div className="mt-4 flex items-start gap-2 border border-taupe-200 bg-taupe-100/50 px-4 py-2.5 text-xs text-charcoal-600">
+    <div className="mt-6 flex max-w-[720px] items-start gap-2 border border-taupe-200 bg-taupe-100/50 px-4 py-2.5 text-xs text-charcoal-600">
       <Sparkles size={14} className="mt-0.5 shrink-0 text-charcoal-600/60" />
       <p>
         <span className="font-semibold text-charcoal-600/90">Generative AI disclosure. </span>
@@ -81,6 +88,11 @@ export default function ArticlePage() {
   const [relatedArticlesBySlug, setRelatedArticlesBySlug] = useState({})
   const [nextArticle, setNextArticle] = useState(null)
   const [popular, setPopular] = useState([])
+  // Reported by SponsorPlacementStrip itself (see its own
+  // onAvailabilityChange docstring) — never independently re-fetched or
+  // re-derived here. Used only to decide whether the sidebar column is
+  // worth reserving layout space for at all.
+  const [hasSponsorSidebar, setHasSponsorSidebar] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -179,6 +191,7 @@ export default function ArticlePage() {
   const author = article.author
   const coAuthors = article.coAuthors || []
   const topic = article.topic
+  const hasSidebar = popular.length > 0 || hasSponsorSidebar
 
   return (
     <article>
@@ -186,133 +199,172 @@ export default function ArticlePage() {
         <Breadcrumb items={topic ? [{ label: 'Stories', to: '/topics' }, { label: topic.name, to: `/topics/${topic.slug}` }, { label: article.title }] : [{ label: article.title }]} />
       </div>
 
-      <header className="container-editorial mt-6 max-w-reading">
-        {topic && (
-          <Link to={`/topics/${topic.slug}`} className="eyebrow">
-            {topic.name}
-          </Link>
-        )}
-        <h1 className="mt-3 font-serif text-4xl font-semibold leading-[1.1] text-charcoal sm:text-5xl">{article.title}</h1>
-        {article.subtitle && <p className="mt-4 font-serif text-xl italic leading-snug text-charcoal-600">{article.subtitle}</p>}
+      {/* A centered editorial header container — wider than the 720px
+          reading column below (so the headline can breathe) but still
+          narrower than the full 1280px site container. */}
+      <header className="container-editorial mt-8">
+        <div className="mx-auto max-w-[920px]">
+          {topic && (
+            <Link to={`/topics/${topic.slug}`} className="eyebrow">
+              {topic.name}
+            </Link>
+          )}
+          <h1 className="mt-4 max-w-[820px] font-serif text-[2.75rem] font-semibold leading-[1.05] text-charcoal sm:text-[3.5rem] lg:text-[3.75rem]">
+            {article.title}
+          </h1>
+          {article.subtitle && (
+            <p className="mt-5 max-w-[640px] font-serif text-xl italic leading-relaxed text-charcoal-600 sm:text-2xl">{article.subtitle}</p>
+          )}
 
-        {article.isSponsored && (article.sponsorRecord || article.sponsor) && (
-          <div className="mt-5 flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
-            <span className="font-semibold uppercase tracking-wide text-burgundy-600">
-              {article.sponsorRecord?.disclosureLabel || 'Sponsored'}
-            </span>
-            <span>
-              {article.sponsorRecord
-                ? article.sponsorRecord.publicName || article.sponsorRecord.organization?.name
-                : article.sponsor?.disclosure}
-            </span>
-          </div>
-        )}
-
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-y border-taupe-200 py-4">
-          <div className="flex items-center gap-3">
-            {author && (
-              <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={author.name} width={96} height={96} aspect={1} className="h-11 w-11 rounded-full object-cover" />
-            )}
-            <div className="text-sm">
-              <p className="font-semibold text-charcoal">
-                By{' '}
-                {author && (
-                  <Link to={`/authors/${author.slug}`} className="hover:text-burgundy-600">
-                    {author.name}
-                  </Link>
-                )}
-                {coAuthors.map((c) => (
-                  <span key={c.slug}>
-                    {' '}
-                    &amp;{' '}
-                    <Link to={`/authors/${c.slug}`} className="hover:text-burgundy-600">
-                      {c.name}
-                    </Link>
-                  </span>
-                ))}
-              </p>
-              {author?.role && <p className="text-xs text-charcoal-600/70">{author.role}</p>}
-              <p className="mt-0.5 flex items-center gap-2 text-charcoal-600">
-                <span>{formatDate(article.publishDate)}</span>
-                <span aria-hidden="true">&middot;</span>
-                <span className="inline-flex items-center gap-1">
-                  <Clock size={13} /> {article.readingTime} min read
-                </span>
-              </p>
+          {article.isSponsored && (article.sponsorRecord || article.sponsor) && (
+            <div className="mt-5 flex items-center gap-2 border border-dashed border-taupe-300 bg-blush-50 px-4 py-2 text-xs text-charcoal-600">
+              <span className="font-semibold uppercase tracking-wide text-burgundy-600">
+                {article.sponsorRecord?.disclosureLabel || 'Sponsored'}
+              </span>
+              <span>
+                {article.sponsorRecord
+                  ? article.sponsorRecord.publicName || article.sponsorRecord.organization?.name
+                  : article.sponsor?.disclosure}
+              </span>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <SaveButton contentType="article" contentId={article.id} />
-            <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
-          </div>
-        </div>
+          )}
 
-        {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}
-      </header>
-
-      <div className="container-editorial mt-8">
-        {/* Fixed 16:9 editorial aspect ratio + a max-height clamp per
-            breakpoint — object-cover crops whatever aspect ratio the
-            source upload actually is, so the hero can never balloon to an
-            arbitrary height (previously derived purely from the source
-            image's own dimensions, which could occupy ~90% of a laptop
-            viewport's height). Still the container-editorial width
-            (1280px cap) — a deliberately wider "bleed" than the 720px
-            reading column, not full viewport width. */}
-        <MediaImage
-          media={article.heroMedia}
-          variant="hero"
-          mediaPath={article.heroImage}
-          alt={article.heroImageAlt}
-          width={1600}
-          height={900}
-          aspect={16 / 9}
-          priority
-          className="aspect-[16/9] max-h-[280px] w-full object-cover sm:max-h-[400px] lg:max-h-[540px]"
-        />
-        {(article.heroImageCaption || article.heroImageCredit) && (
-          <p className="mt-2 text-sm text-charcoal-600">
-            {article.heroImageCaption} {article.heroImageCredit && <span className="text-charcoal-600/70">— {article.heroImageCredit}</span>}
-          </p>
-        )}
-      </div>
-
-      <div className="container-editorial mt-10 grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="max-w-reading">
-          <ArticleContent blocks={article.content} relatedArticlesBySlug={relatedArticlesBySlug} />
-
-          {relatedPerson && (
-            <div className="my-10 border border-taupe-200 p-5">
-              <p className="eyebrow mb-3">Featured in this story</p>
-              <div className="max-w-[220px]">
-                <PersonCard person={relatedPerson} />
+          {/* Byline + actions — a single light rule above and below, never
+              a filled "toolbar" box. Author info first on every
+              breakpoint; actions sit opposite on desktop and move
+              cleanly beneath on mobile instead of compressing. */}
+          <div className="mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              {author && (
+                <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={author.name} width={96} height={96} aspect={1} className="h-12 w-12 rounded-full object-cover" />
+              )}
+              <div className="text-sm">
+                <p className="font-semibold text-charcoal">
+                  By{' '}
+                  {author && (
+                    <Link to={`/authors/${author.slug}`} className="hover:text-burgundy-600">
+                      {author.name}
+                    </Link>
+                  )}
+                  {coAuthors.map((c) => (
+                    <span key={c.slug}>
+                      {' '}
+                      &amp;{' '}
+                      <Link to={`/authors/${c.slug}`} className="hover:text-burgundy-600">
+                        {c.name}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
+                {author?.role && <p className="text-xs text-charcoal-600/70">{author.role}</p>}
+                <p className="mt-0.5 flex items-center gap-2 text-charcoal-600">
+                  <span>{formatDate(article.publishDate)}</span>
+                  <span aria-hidden="true">&middot;</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Clock size={13} /> {article.readingTime} min read
+                  </span>
+                </p>
               </div>
             </div>
-          )}
-
-          {nextArticle && (
-            <div className="mt-12 border-t border-taupe-200 pt-8">
-              <p className="eyebrow mb-2">Up next</p>
-              <Link to={`/${nextArticle.slug}`} className="font-serif text-2xl font-semibold text-charcoal transition-colors hover:text-burgundy-600">
-                {nextArticle.title} &rarr;
-              </Link>
+            <div className="flex items-center gap-4">
+              <SaveButton contentType="article" contentId={article.id} className={BYLINE_SAVE_BUTTON_CLASS} />
+              <span aria-hidden="true" className="hidden h-5 w-px bg-taupe-300 sm:block" />
+              <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
             </div>
+          </div>
+
+          {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}
+        </div>
+      </header>
+
+      {/* Hero — wider than the reading column but deliberately capped
+          well short of the full container, so it reads as a considered
+          editorial image rather than a dominating banner. */}
+      <div className="container-editorial mt-10">
+        <div className="mx-auto max-w-[1120px]">
+          <MediaImage
+            media={article.heroMedia}
+            variant="hero"
+            mediaPath={article.heroImage}
+            alt={article.heroImageAlt}
+            width={1600}
+            height={900}
+            aspect={16 / 9}
+            priority
+            className="aspect-[16/9] max-h-[260px] w-full object-cover sm:max-h-[380px] lg:max-h-[480px]"
+          />
+          {(article.heroImageCaption || article.heroImageCredit) && (
+            <p className="mt-3 text-sm text-charcoal-600">
+              {article.heroImageCaption}
+              {article.heroImageCredit && <span className="ml-1 text-charcoal-600/60">— {article.heroImageCredit}</span>}
+            </p>
           )}
         </div>
+      </div>
 
-        <aside className="space-y-10">
-          <SponsorPlacementStrip placementKey="article_sidebar" layout="stack" />
+      {/* Reading column + sidebar, centered as one group within the site
+          container. The `minmax(0,720px)` track caps the body at 720px
+          even inside the wider container, so it never grows to fill the
+          leftover width the way a plain two-column grid would — that
+          leftover is exactly what used to read as "pushed left." When
+          there's no sidebar content at all, this collapses to a single
+          centered reading column with nothing reserved on the right; the
+          `<aside>` itself stays mounted in both cases (SponsorPlacementStrip
+          is never unmounted/remounted by this toggle) so its own fetch
+          only ever runs once. */}
+      <div className="container-editorial mt-12">
+        <div className={hasSidebar ? 'mx-auto max-w-[1064px] lg:grid lg:grid-cols-[minmax(0,720px)_280px] lg:gap-16' : 'mx-auto max-w-reading'}>
           <div>
-            <p className="eyebrow mb-4">Popular on WSF</p>
-            {popular.map((a) => (
-              <ArticleCard key={a.id} article={a} variant="compact" />
-            ))}
+            <ArticleContent variant="article" blocks={article.content} relatedArticlesBySlug={relatedArticlesBySlug} />
+
+            {relatedPerson && (
+              <div className="my-14 border border-taupe-200 bg-ivory p-6 sm:p-7">
+                <p className="eyebrow mb-3">Featured in this story</p>
+                <div className="max-w-[220px]">
+                  <PersonCard person={relatedPerson} />
+                </div>
+              </div>
+            )}
+
+            {nextArticle && (
+              <div className="mt-16 border-t-2 border-charcoal pt-8">
+                <p className="eyebrow mb-3">Up next</p>
+                <Link to={`/${nextArticle.slug}`} className="font-serif text-2xl font-semibold leading-snug text-charcoal transition-colors hover:text-burgundy-600 sm:text-3xl">
+                  {nextArticle.title} &rarr;
+                </Link>
+                {(nextArticle.topic?.name || nextArticle.publishDate) && (
+                  <p className="mt-3 text-sm text-charcoal-600">
+                    {nextArticle.topic?.name}
+                    {nextArticle.topic?.name && nextArticle.publishDate && <span aria-hidden="true"> &middot; </span>}
+                    {nextArticle.publishDate && formatDate(nextArticle.publishDate)}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
-        </aside>
+
+          <aside className={hasSidebar ? 'mt-14 space-y-10 lg:mt-0 lg:self-start lg:sticky lg:top-28' : 'mt-14 space-y-10'}>
+            <SponsorPlacementStrip placementKey="article_sidebar" layout="stack" onAvailabilityChange={setHasSponsorSidebar} />
+            {popular.length > 0 && (
+              <div>
+                <p className="eyebrow mb-4">Popular on WSF</p>
+                {/* ArticleCard's own "compact" variant already supplies
+                    the subtle divider between items (border-t, with
+                    first:border-t-0 on the true first child) — rendered
+                    as direct siblings here, unwrapped, so that first-child
+                    rule still resolves against the real list position
+                    rather than a single-item wrapper. */}
+                {popular.map((a) => (
+                  <ArticleCard key={a.id} article={a} variant="compact" />
+                ))}
+              </div>
+            )}
+          </aside>
+        </div>
       </div>
 
       {related.length > 0 && (
-        <div className="container-editorial mt-16 border-t border-taupe-200 py-14">
+        <div className="container-editorial mt-20 border-t border-taupe-200 py-16">
           <p className="eyebrow mb-6">More stories you’ll like</p>
           <div className="grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-3">
             {related.map((a) => (

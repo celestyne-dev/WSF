@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
 import NewsletterForm from '../ui/NewsletterForm'
-import { Quote } from 'lucide-react'
+import { ArrowRight, Quote } from 'lucide-react'
 
 // Block text (paragraph/list-item/quote/callout) may contain a small
 // allow-listed set of inline tags (b/strong/i/em/u/a/br) — sanitized
@@ -13,9 +13,32 @@ function InlineHtml({ as: Tag = 'span', html, className }) {
   return <Tag className={className} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-function Heading({ block, headingId }) {
+// Inline-link styling for variant="article" — applied via a Tailwind
+// arbitrary-descendant selector since CMS links arrive as raw `<a>`
+// markup inside dangerouslySetInnerHTML, never as React elements this
+// component could style directly. Focus visibility already comes from
+// index.css's global `*:focus-visible` rule, so only color/underline are
+// set here.
+const ARTICLE_LINK_CLASSES =
+  '[&_a]:text-burgundy-600 [&_a]:underline [&_a]:decoration-burgundy-300 [&_a]:underline-offset-2 hover:[&_a]:decoration-burgundy-600'
+
+function Heading({ block, headingId, variant }) {
   const Tag = block.level === 4 ? 'h4' : block.level === 3 ? 'h3' : 'h2'
   const sizes = { 2: 'text-2xl sm:text-3xl', 3: 'text-xl sm:text-2xl', 4: 'text-lg sm:text-xl' }
+  // variant="article" (ArticlePage only): stronger serif scale and
+  // vertical rhythm so H2 reads as a real section break rather than
+  // standard document text; H3/H4 keep their relative size so the
+  // hierarchy beneath the now-larger H2 stays clear. Every other caller
+  // (Legal/About/Contact pages) omits `variant`, so this renders exactly
+  // as before.
+  const articleSizes = {
+    2: 'text-[1.75rem] leading-[1.15] sm:text-3xl lg:text-[2.125rem]',
+    3: 'text-xl leading-snug sm:text-2xl',
+    4: 'text-lg leading-snug sm:text-xl',
+  }
+  const isArticle = variant === 'article'
+  const sizeClass = (isArticle ? articleSizes : sizes)[block.level] || (isArticle ? articleSizes[2] : sizes[2])
+  const spacingClass = isArticle && block.level === 2 ? 'mt-14' : 'mt-10'
   // `headingId`, when supplied by a caller (e.g. LegalPageLayout's "On
   // this page" nav), gives this heading a stable anchor; scroll-mt-28
   // keeps the sticky site header from covering it when a TOC link or
@@ -24,22 +47,36 @@ function Heading({ block, headingId }) {
   return (
     <Tag
       id={headingId || undefined}
-      className={`mt-10 font-serif font-semibold text-charcoal ${sizes[block.level] || sizes[2]} ${headingId ? 'scroll-mt-28' : ''}`}
+      className={`${spacingClass} font-serif font-semibold text-charcoal ${sizeClass} ${headingId ? 'scroll-mt-28' : ''}`}
     >
       {block.text}
     </Tag>
   )
 }
 
-function Paragraph({ block }) {
+function Paragraph({ block, variant, isLeadParagraph }) {
+  if (variant === 'article') {
+    // The first paragraph in the article gets a subtly larger, darker
+    // introductory treatment (no drop cap) — everything after reads at
+    // the same comfortable long-form size/line-height.
+    const sizeClass = isLeadParagraph ? 'text-xl leading-[1.75]' : 'text-[1.1875rem] leading-[1.8]'
+    return (
+      <InlineHtml
+        as="p"
+        html={block.text}
+        className={`mt-6 font-sans ${sizeClass} text-charcoal ${ARTICLE_LINK_CLASSES}`}
+      />
+    )
+  }
   return <InlineHtml as="p" html={block.text} className="mt-5 font-sans text-lg leading-[1.85] text-charcoal-600" />
 }
 
-function ImageBlock({ block }) {
+function ImageBlock({ block, variant }) {
   // `media` is the normalized reference the block editor saves (with real
   // generated WebP variants); `mediaPath` is the legacy/mock-mode fallback.
+  const isArticle = variant === 'article'
   return (
-    <figure className="my-10">
+    <figure className={isArticle ? 'my-12' : 'my-10'}>
       <MediaImage
         media={block.media}
         variant="large"
@@ -51,15 +88,24 @@ function ImageBlock({ block }) {
         className="aspect-[3/2] w-full object-cover"
       />
       {(block.caption || block.credit) && (
-        <figcaption className="mt-2 text-sm text-charcoal-600">
-          {block.caption} {block.credit && <span className="text-charcoal-600/70">— {block.credit}</span>}
+        <figcaption className={isArticle ? 'mt-3 text-sm leading-relaxed text-charcoal-600' : 'mt-2 text-sm text-charcoal-600'}>
+          {block.caption} {block.credit && <span className={isArticle ? 'text-charcoal-600/60' : 'text-charcoal-600/70'}>— {block.credit}</span>}
         </figcaption>
       )}
     </figure>
   )
 }
 
-function PullQuote({ block }) {
+function PullQuote({ block, variant }) {
+  if (variant === 'article') {
+    return (
+      <blockquote className="relative my-14 border-y border-taupe-200 py-10 text-center">
+        <Quote className="mx-auto mb-4 text-burgundy-500/40" size={22} aria-hidden="true" />
+        <InlineHtml as="p" html={block.text} className="font-serif text-2xl italic leading-snug text-charcoal sm:text-3xl" />
+        {block.attribution && <cite className="mt-5 block font-sans text-sm not-italic text-charcoal-600">{block.attribution}</cite>}
+      </blockquote>
+    )
+  }
   return (
     <blockquote className="relative my-10 border-y border-taupe-200 py-8 text-center">
       <Quote className="mx-auto mb-3 text-burgundy-500/50" size={28} />
@@ -69,7 +115,15 @@ function PullQuote({ block }) {
   )
 }
 
-function BlockQuote({ block }) {
+function BlockQuote({ block, variant }) {
+  if (variant === 'article') {
+    return (
+      <blockquote className="my-10 border-l-[3px] border-burgundy-500 py-1 pl-8">
+        <InlineHtml as="p" html={block.text} className="font-serif text-2xl italic leading-snug text-charcoal" />
+        {block.attribution && <cite className="mt-3 block font-sans text-sm not-italic text-charcoal-600">{block.attribution}</cite>}
+      </blockquote>
+    )
+  }
   return (
     <blockquote className="my-8 border-l-2 border-burgundy-500 pl-6">
       <InlineHtml as="p" html={block.text} className="font-serif text-xl italic leading-snug text-charcoal" />
@@ -78,8 +132,19 @@ function BlockQuote({ block }) {
   )
 }
 
-function ListBlock({ block }) {
+function ListBlock({ block, variant }) {
   const Tag = block.style === 'number' ? 'ol' : 'ul'
+  if (variant === 'article') {
+    return (
+      <Tag
+        className={`mt-6 space-y-3 pl-5 font-sans text-[1.1875rem] leading-[1.8] text-charcoal ${ARTICLE_LINK_CLASSES} ${block.style === 'number' ? 'list-decimal' : 'list-disc'}`}
+      >
+        {block.items.map((item, i) => (
+          <InlineHtml key={i} as="li" html={item} />
+        ))}
+      </Tag>
+    )
+  }
   return (
     <Tag className={`mt-5 space-y-2 pl-5 font-sans text-lg leading-relaxed text-charcoal-600 ${block.style === 'number' ? 'list-decimal' : 'list-disc'}`}>
       {block.items.map((item, i) => (
@@ -89,7 +154,15 @@ function ListBlock({ block }) {
   )
 }
 
-function Highlight({ block }) {
+function Highlight({ block, variant }) {
+  if (variant === 'article') {
+    return (
+      <div className="my-10 border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6 sm:p-8">
+        {block.title && <p className="eyebrow mb-2">{block.title}</p>}
+        <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal sm:text-xl" />
+      </div>
+    )
+  }
   return (
     <div className="my-8 border border-taupe-200 bg-cream p-6">
       {block.title && <p className="eyebrow mb-2">{block.title}</p>}
@@ -110,7 +183,7 @@ function NewsletterCta({ block }) {
   )
 }
 
-function RelatedBlock({ block, articlesBySlug = {} }) {
+function RelatedBlock({ block, articlesBySlug = {}, variant }) {
   // ArticlePage pre-resolves every referenced slug through
   // api/articles.js (fetchRelatedArticles) and passes the result down as
   // articlesBySlug. This component never looks up article content itself;
@@ -118,6 +191,26 @@ function RelatedBlock({ block, articlesBySlug = {} }) {
   // backend) is simply omitted, never independently looked up here.
   const related = (block.articleSlugs || []).map((s) => articlesBySlug[s]).filter(Boolean)
   if (!related.length) return null
+  if (variant === 'article') {
+    return (
+      <div className="my-12 border-y border-taupe-200 py-8">
+        <p className="eyebrow mb-5">{block.heading || 'Related reading'}</p>
+        <ul className="divide-y divide-taupe-200">
+          {related.map((a) => (
+            <li key={a.slug}>
+              <Link
+                to={`/${a.slug}`}
+                className="group flex items-center justify-between gap-4 py-3 font-serif text-lg font-medium text-charcoal transition-colors hover:text-burgundy-600"
+              >
+                {a.title}
+                <ArrowRight size={16} className="shrink-0 text-charcoal-600/40 transition-colors group-hover:text-burgundy-600" aria-hidden="true" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
   return (
     <div className="my-10 border-y border-taupe-200 py-6">
       <p className="eyebrow mb-4">{block.heading || 'Related reading'}</p>
@@ -227,7 +320,10 @@ function FaqBlock({ block }) {
   )
 }
 
-function Divider() {
+function Divider({ variant }) {
+  if (variant === 'article') {
+    return <hr className="mx-auto my-16 w-16 border-t border-taupe-300" />
+  }
   return <hr className="my-10 border-t border-taupe-300" />
 }
 
@@ -256,7 +352,19 @@ const RENDERERS = {
 // Heading() above); every other block type ignores the prop entirely.
 // Omit it (as every existing caller does) and rendering is byte-for-byte
 // what it was before this prop existed.
-export default function ArticleContent({ blocks = [], relatedArticlesBySlug, headingIdForBlock }) {
+//
+// `variant="article"` is likewise optional, used only by ArticlePage for
+// a more premium long-form reading treatment (larger serif headings,
+// richer paragraph color/line-height, a stronger first paragraph, more
+// editorial block styling). Every renderer above falls through to its
+// original, unchanged markup/classes whenever `variant` is omitted, so
+// LegalPageLayout/AboutEditorialSections/ContactPage and any other
+// existing caller render exactly as before.
+export default function ArticleContent({ blocks = [], relatedArticlesBySlug, headingIdForBlock, variant }) {
+  // -1 whenever variant isn't "article" (every existing caller), so
+  // `i === firstParagraphIndex` below is never true for them — no lead-
+  // paragraph behavior change outside the new article treatment.
+  const firstParagraphIndex = variant === 'article' ? blocks.findIndex((b) => b.type === 'paragraph') : -1
   return (
     <div>
       {blocks.map((block, i) => {
@@ -268,6 +376,8 @@ export default function ArticleContent({ blocks = [], relatedArticlesBySlug, hea
             block={block}
             articlesBySlug={relatedArticlesBySlug}
             headingId={headingIdForBlock ? headingIdForBlock(block, i) : undefined}
+            variant={variant}
+            isLeadParagraph={i === firstParagraphIndex}
           />
         )
       })}

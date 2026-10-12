@@ -16,7 +16,7 @@ import MediaImage from '../ui/MediaImage'
  * impression fires once per mount (a ref-tracked set), not on every
  * re-render.
  */
-export default function SponsorPlacementStrip({ placementKey, heading, className = '', layout = 'grid' }) {
+export default function SponsorPlacementStrip({ placementKey, heading, className = '', layout = 'grid', onAvailabilityChange }) {
   const [sponsors, setSponsors] = useState([])
   const trackedImpressions = useRef(new Set())
 
@@ -37,6 +37,15 @@ export default function SponsorPlacementStrip({ placementKey, heading, className
       trackEvent('sponsor_impression', { placement: placementKey }, { entityType: 'Sponsor', entityId: String(s.id) })
     })
   }, [sponsors, placementKey])
+
+  // Optional: lets a caller (e.g. ArticlePage's sidebar) know whether this
+  // placement actually has content, so IT can decide whether to reserve
+  // layout space for a sidebar — this component never makes that layout
+  // decision itself, only reports the fact. Existing callers that don't
+  // pass it are completely unaffected.
+  useEffect(() => {
+    onAvailabilityChange?.(sponsors.length > 0)
+  }, [sponsors, onAvailabilityChange])
 
   if (sponsors.length === 0) return null
 
