@@ -37,6 +37,15 @@ class HomepageModuleSchema(ma.SQLAlchemyAutoSchema):
     unlike Page/Article which need a separate PublicSchema.
     """
 
+    # marshmallow-sqlalchemy's SQLAlchemyAutoSchema excludes foreign-key
+    # columns from its auto-generated fields by default (include_fk is
+    # False), so media_id must be declared explicitly or it silently
+    # never appears in the dump — exactly the pattern AdvertisePageSchema
+    # already follows for hero_media_id/hero_media below. Kept as
+    # snake_case `media_id` (not camelCase) because the existing frontend
+    # (mapHomepageModuleAdmin in frontend/src/api/admin.js) reads
+    # `m.media_id` directly from this response.
+    media_id = fields.Integer(dump_only=True)
     media = fields.Nested(MediaSchema, dump_only=True)
 
     class Meta:

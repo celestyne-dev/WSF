@@ -389,6 +389,126 @@ class TestSeedIdempotency:
             assert reloaded.heading == "Admin Edited This Heading"
 
 
+def _make_media(app, filename="hero.png", alt_text="Homepage hero image."):
+    from app.extensions import db
+    from app.models.media import Media
+
+    with app.app_context():
+        media = Media(
+            original_filename=filename,
+            stored_filename=f"{filename}-stored",
+            file_path=f"/tmp/{filename}-stored",
+            public_url=f"https://cdn.example.com/{filename}-stored",
+            mime_type="image/png",
+            alt_text=alt_text,
+        )
+        db.session.add(media)
+        db.session.commit()
+        return media.id
+
+
+class TestMediaPersistence:
+    """Regression coverage for HomepageModuleSchema never serializing
+    media_id (see schemas/cms.py): the column was always persisted
+    correctly by replace_homepage_modules, but the dumped response never
+    carried media_id back to the frontend, so AdminHomepageBuilder's
+    local module state silently lost it and a later save (which
+    round-trips whatever media_id the previous response gave it — see
+    frontend/src/api/admin.js's mapHomepageModuleAdmin/saveAdminHomepage)
+    sent mediaId: null, clearing the image the admin had just set.
+    """
+
+    def test_put_with_media_id_stores_it(self, client, admin_token, app):
+        media_id = _make_media(app, filename="put-stores.png")
+        resp = client.put(
+            "/api/v1/admin/homepage",
+            json={"modules": [{"type": "hero", "mediaId": media_id}]},
+            headers=auth_headers(admin_token),
+        )
+        assert resp.status_code == 200
+        with app.app_context():
+            from app.models.cms import HomepageModule
+
+            module = HomepageModule.query.first()
+            assert module.media_id == media_id
+
+    def test_put_response_includes_media_id_and_nested_media(self, client, admin_token, app):
+        media_id = _make_media(app, filename="put-response.png", alt_text="Put response alt.")
+        resp = client.put(
+            "/api/v1/admin/homepage",
+            json={"modules": [{"type": "hero", "mediaId": media_id}]},
+            headers=auth_headers(admin_token),
+        )
+        row = resp.get_json()["data"][0]
+        assert row["media_id"] == media_id
+        assert row["media"] is not None
+        assert row["media"]["id"] == media_id
+        assert row["media"]["alt_text"] == "Put response alt."
+
+    def test_get_after_save_still_includes_media_id_and_nested_media(self, client, admin_token, app):
+        media_id = _make_media(app, filename="get-after-save.png")
+        client.put(
+            "/api/v1/admin/homepage",
+            json={"modules": [{"type": "hero", "mediaId": media_id}]},
+            headers=auth_headers(admin_token),
+        )
+        resp = client.get("/api/v1/admin/homepage", headers=auth_headers(admin_token))
+        assert resp.status_code == 200
+        row = resp.get_json()["data"][0]
+        assert row["media_id"] == media_id
+        assert row["media"] is not None
+        assert row["media"]["id"] == media_id
+
+    def test_public_homepage_includes_attached_media(self, client, admin_token, app):
+        media_id = _make_media(app, filename="public-homepage.png")
+        client.put(
+            "/api/v1/admin/homepage",
+            json={"modules": [{"type": "hero", "mediaId": media_id}]},
+            headers=auth_headers(admin_token),
+        )
+        resp = client.get("/api/v1/public/homepage")
+        assert resp.status_code == 200
+        row = resp.get_json()["data"][0]
+        assert row["media_id"] == media_id
+        assert row["media"] is not None
+        assert row["media"]["id"] == media_id
+
+    def test_second_save_with_returned_media_id_does_not_clear_image(self, client, admin_token, app):
+        # The exact regression: round-trip the media_id the FIRST
+        # response returns (as the real admin UI does) into a SECOND,
+        # otherwise-unrelated save, and prove the image survives.
+        media_id = _make_media(app, filename="second-save.png")
+        first_resp = client.put(
+            "/api/v1/admin/homepage",
+            json={"modules": [{"type": "hero", "mediaId": media_id}]},
+            headers=auth_headers(admin_token),
+        )
+        returned_media_id = first_resp.get_json()["data"][0]["media_id"]
+        assert returned_media_id == media_id
+
+        second_resp = client.put(
+            "/api/v1/admin/homepage",
+            json={
+                "modules": [
+                    {"type": "hero", "mediaId": returned_media_id, "heading": "Updated on second save"}
+                ]
+            },
+            headers=auth_headers(admin_token),
+        )
+        assert second_resp.status_code == 200
+        second_row = second_resp.get_json()["data"][0]
+        assert second_row["media_id"] == media_id
+        assert second_row["media"] is not None
+        assert second_row["media"]["id"] == media_id
+        assert second_row["heading"] == "Updated on second save"
+
+        with app.app_context():
+            from app.models.cms import HomepageModule
+
+            module = HomepageModule.query.first()
+            assert module.media_id == media_id
+
+
 class TestMediaDeletionProtection:
     def test_media_referenced_by_homepage_module_cannot_be_deleted(self, client, admin_token, app):
         from app.extensions import db
