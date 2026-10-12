@@ -9,11 +9,7 @@ export default function TopicCollectionModule({ module }) {
   const [items, setItems] = useState([])
 
   useEffect(() => {
-    if (!module.topicSlug) {
-      setTopic(null)
-      setItems([])
-      return
-    }
+    if (!module.topicSlug) return
     let active = true
     fetchTopicBySlug(module.topicSlug)
       .then((data) => {
@@ -30,7 +26,7 @@ export default function TopicCollectionModule({ module }) {
     }
   }, [module.topicSlug, module.itemCount])
 
-  if (!topic || !items.length) return null
+  if (!module.topicSlug || !topic || !items.length) return null
 
   return (
     <section className="py-14 sm:py-16">

@@ -8,10 +8,7 @@ export default function FeaturedWomanModule({ module }) {
   const [person, setPerson] = useState(undefined)
 
   useEffect(() => {
-    if (!module.personSlug) {
-      setPerson(null)
-      return
-    }
+    if (!module.personSlug) return
     let active = true
     fetchPersonBySlug(module.personSlug)
       .then((data) => active && setPerson(data))
@@ -21,7 +18,7 @@ export default function FeaturedWomanModule({ module }) {
     }
   }, [module.personSlug])
 
-  if (!person) return null
+  if (!module.personSlug || !person) return null
 
   return (
     <section className="bg-plum-600 py-16 text-ivory sm:py-20">

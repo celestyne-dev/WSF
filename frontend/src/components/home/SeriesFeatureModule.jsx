@@ -9,11 +9,7 @@ export default function SeriesFeatureModule({ module }) {
   const [items, setItems] = useState([])
 
   useEffect(() => {
-    if (!module.seriesSlug) {
-      setSeriesItem(null)
-      setItems([])
-      return
-    }
+    if (!module.seriesSlug) return
     let active = true
     fetchSeriesBySlug(module.seriesSlug)
       .then((data) => {
@@ -30,7 +26,7 @@ export default function SeriesFeatureModule({ module }) {
     }
   }, [module.seriesSlug, module.itemCount])
 
-  if (!seriesItem) return null
+  if (!module.seriesSlug || !seriesItem) return null
 
   return (
     <section className="border-t border-taupe-200 bg-cream py-14 sm:py-16">
