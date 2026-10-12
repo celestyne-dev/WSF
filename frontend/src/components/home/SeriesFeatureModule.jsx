@@ -9,6 +9,11 @@ export default function SeriesFeatureModule({ module }) {
   const [items, setItems] = useState([])
 
   useEffect(() => {
+    if (!module.seriesSlug) {
+      setSeriesItem(null)
+      setItems([])
+      return
+    }
     let active = true
     fetchSeriesBySlug(module.seriesSlug)
       .then((data) => {

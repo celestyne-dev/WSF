@@ -8,6 +8,10 @@ export default function FeaturedWomanModule({ module }) {
   const [person, setPerson] = useState(undefined)
 
   useEffect(() => {
+    if (!module.personSlug) {
+      setPerson(null)
+      return
+    }
     let active = true
     fetchPersonBySlug(module.personSlug)
       .then((data) => active && setPerson(data))

@@ -9,6 +9,11 @@ export default function TopicCollectionModule({ module }) {
   const [items, setItems] = useState([])
 
   useEffect(() => {
+    if (!module.topicSlug) {
+      setTopic(null)
+      setItems([])
+      return
+    }
     let active = true
     fetchTopicBySlug(module.topicSlug)
       .then((data) => {
