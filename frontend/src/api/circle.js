@@ -29,7 +29,7 @@ export function mapCirclePlan(p) {
     description: Array.isArray(p.description) ? p.description : [],
     billingInterval: p.billing_interval || p.billingInterval || 'monthly',
     price: p.price ?? 0,
-    currency: p.currency || 'USD',
+    currency: p.currency || 'KES',
     status: p.status || 'active',
     featured: !!p.featured,
     displayOrder: p.display_order ?? p.displayOrder ?? 0,

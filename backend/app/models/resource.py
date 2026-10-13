@@ -133,7 +133,13 @@ class Resource(db.Model):
     author_name = db.Column(db.String(200))  # denormalized fallback when no Author is linked
 
     price = db.Column(db.Integer, nullable=False, default=0)  # whole currency units, paired with `currency`
-    currency = db.Column(db.String(3), nullable=False, default="USD")
+    # Python-side ORM default only (no server_default) — reached whenever a
+    # Resource is constructed without an explicit currency (e.g. a direct
+    # `Resource()` call that bypasses ResourceInputSchema's own
+    # load_default). WSF currently transacts in KES; existing rows already
+    # have their own stored currency and are never touched by this. Same
+    # reasoning as Product.currency in app/models/commerce.py.
+    currency = db.Column(db.String(3), nullable=False, default="KES")
     is_premium = db.Column(db.Boolean, nullable=False, default=False)
     is_downloadable = db.Column(db.Boolean, nullable=False, default=True)
     is_external = db.Column(db.Boolean, nullable=False, default=False)

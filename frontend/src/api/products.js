@@ -39,7 +39,7 @@ export function mapProduct(p) {
     resourceSlug: p.resource?.slug || null,
     price: p.price,
     salePrice: p.sale_price ?? p.salePrice ?? null,
-    currency: p.currency || 'USD',
+    currency: p.currency || 'KES',
     priceVisible: p.price_visible ?? p.priceVisible ?? true,
     trackInventory: p.track_inventory ?? p.trackInventory ?? false,
     stockQuantity: p.stock_quantity ?? p.stockQuantity ?? null,

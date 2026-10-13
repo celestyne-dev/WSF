@@ -42,7 +42,7 @@ export function mapResource(r) {
     authorSlug: r.author?.slug || r.authorSlug || null,
     authorName: r.author_name || r.authorName || r.author?.name || null,
     price: r.price,
-    currency: r.currency || 'USD',
+    currency: r.currency || 'KES',
     accessType: r.access_type || r.accessType || 'direct_download',
     isPremium: r.is_premium ?? r.isPremium ?? false,
     isDownloadable: r.is_downloadable ?? r.isDownloadable ?? true,

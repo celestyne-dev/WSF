@@ -1,10 +1,12 @@
 """Focused tests for the KES-default commercial currency change.
 
 Scope: ResourceInputSchema/ProductInputSchema now default a missing
-currency to KES instead of USD (schemas/resource.py, schemas/commerce.py).
-Circle's "currency is required, no implicit default" rule is intentionally
-NOT re-tested here — it's already covered in depth by test_circle.py's
-TestPlans currency.1-currency.5 tests, which this change does not touch.
+currency to KES instead of USD (schemas/resource.py, schemas/commerce.py),
+and the Resource/Product model columns carry the same KES default for any
+creation path that bypasses those schemas entirely. Circle's "currency is
+required, no implicit default" rule is intentionally NOT re-tested here —
+it's already covered in depth by test_circle.py's TestPlans
+currency.1-currency.5 tests, which this change does not touch.
 """
 
 import pytest
@@ -12,6 +14,22 @@ from marshmallow import ValidationError
 
 from app.schemas.commerce import ProductInputSchema
 from app.schemas.resource import ResourceInputSchema
+
+
+def test_resource_model_defaults_currency_to_kes_when_persisted(app):
+    """A Resource created without an explicit currency — bypassing
+    ResourceInputSchema entirely, the same way test_search.py's/
+    test_sitemap.py's `_make_resource` helpers do — must pick up the
+    model's own Python-side default once actually persisted.
+    """
+    from app.extensions import db
+    from app.models.resource import Resource
+
+    with app.app_context():
+        resource = Resource(slug="a-kes-default-resource", name="A Resource", status="draft", description=[])
+        db.session.add(resource)
+        db.session.commit()
+        assert resource.currency == "KES"
 
 
 def test_resource_input_schema_defaults_missing_currency_to_kes():
