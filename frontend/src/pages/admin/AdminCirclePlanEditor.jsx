@@ -33,7 +33,11 @@ function blankForm() {
     description: [],
     billingInterval: 'monthly',
     price: '',
-    currency: '',
+    // Only this NEW-plan initial state defaults to KES — backend
+    // CirclePlanInputSchema still requires an explicit currency (no
+    // implicit default there), and editing an existing plan loads its own
+    // stored currency via toForm() below, untouched.
+    currency: 'KES',
     status: 'draft',
     featured: false,
     displayOrder: 0,
@@ -303,13 +307,17 @@ export default function AdminCirclePlanEditor() {
                   ))}
                 </select>
               </Field>
-              <Field label="Price" hint="whole currency units — enter 10 for USD 10, 1000 for KES 1,000">
+              <Field label="Price" hint="whole currency units — enter 1000 for KES 1,000">
                 <input type="number" min="0" value={form.price} onChange={(e) => updateField('price', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
-              <Field label="Currency" hint="ISO code, e.g. USD, KES, EUR">
+              <Field label="Currency" hint="ISO currency code — KES for current WSF payments">
                 <input value={form.currency} onChange={(e) => updateField('currency', e.target.value.toUpperCase().slice(0, 3))} className="w-full border border-taupe-300 px-3 py-2.5 text-sm uppercase focus:border-burgundy-500 focus:outline-none" />
               </Field>
             </div>
+            <p className="text-xs text-charcoal-600/70">
+              WSF online payments currently use KES. A plan in another currency may not be available for Paystack
+              checkout until that currency is enabled.
+            </p>
           </Section>
 
           <Section

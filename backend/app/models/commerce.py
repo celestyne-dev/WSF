@@ -436,7 +436,14 @@ class Product(db.Model):
 
     price = db.Column(db.Integer, nullable=False, default=0)  # whole currency units, paired with `currency`
     sale_price = db.Column(db.Integer)
-    currency = db.Column(db.String(3), nullable=False, default="USD")
+    # Python-side ORM default only (no server_default) — reached whenever a
+    # Product is constructed without an explicit currency (e.g. a direct
+    # `Product()` call that bypasses ProductInputSchema's own load_default).
+    # WSF currently transacts in KES; existing rows already have their own
+    # stored currency and are never touched by this. Changing it back (or to
+    # a config-driven value) once USD is enabled needs no migration, since
+    # it's never a SQL-level DEFAULT.
+    currency = db.Column(db.String(3), nullable=False, default="KES")
     price_visible = db.Column(db.Boolean, nullable=False, default=True)
 
     track_inventory = db.Column(db.Boolean, nullable=False, default=False)

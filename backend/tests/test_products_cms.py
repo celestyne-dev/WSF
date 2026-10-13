@@ -90,6 +90,22 @@ def test_product_create_requires_permission_even_with_account(client, no_permiss
     assert resp.status_code == 403
 
 
+def test_product_create_defaults_currency_to_kes(client, manager_token):
+    payload = _base_payload()
+    del payload["currency"]
+    resp = client.post("/api/v1/products", json=payload, headers=auth_headers(manager_token))
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["currency"] == "KES"
+
+
+def test_product_create_preserves_explicit_usd(client, manager_token):
+    resp = client.post(
+        "/api/v1/products", json=_base_payload(currency="USD"), headers=auth_headers(manager_token)
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["currency"] == "USD"
+
+
 def test_product_create_update_and_slug_uniqueness(client, manager_token):
     create = client.post("/api/v1/products", json=_base_payload(), headers=auth_headers(manager_token))
     assert create.status_code == 201

@@ -108,7 +108,7 @@ def _apply_fields(product, data, resource, category, gallery_images):
     product.sku = data.get("sku")
     product.price = data.get("price", 0)
     product.sale_price = data.get("sale_price")
-    product.currency = data.get("currency", "USD")
+    product.currency = data.get("currency", "KES")
     product.price_visible = data.get("price_visible", True)
     product.track_inventory = data.get("track_inventory", False)
     product.stock_quantity = data.get("stock_quantity")

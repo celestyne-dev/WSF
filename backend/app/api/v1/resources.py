@@ -257,7 +257,7 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     resource.author = author
     resource.author_name = data.get("author_name")
     resource.price = data.get("price", 0)
-    resource.currency = data.get("currency", "USD")
+    resource.currency = data.get("currency", "KES")
     resource.access_type = data.get("access_type", "direct_download")
     # is_premium/is_downloadable/is_external are legacy stored booleans kept
     # for existing call sites (Product-resource linkage, old mock parity);

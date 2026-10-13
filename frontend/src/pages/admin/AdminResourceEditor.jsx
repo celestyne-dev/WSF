@@ -115,7 +115,7 @@ function blankForm() {
     authorSlug: '',
     authorName: '',
     price: '',
-    currency: 'USD',
+    currency: 'KES',
     accessType: 'direct_download',
     fileUrl: '',
     externalUrl: '',
@@ -150,7 +150,7 @@ function toForm(resource) {
     authorSlug: resource.authorSlug || '',
     authorName: resource.authorName || '',
     price: resource.price ?? '',
-    currency: resource.currency || 'USD',
+    currency: resource.currency || 'KES',
     accessType: resource.accessType || 'direct_download',
     fileUrl: resource.fileUrl || '',
     externalUrl: resource.externalUrl || '',
@@ -619,7 +619,7 @@ export default function AdminResourceEditor() {
               <Field label="Price" hint="0 for a free resource">
                 <input type="number" min="0" value={form.price} onChange={(e) => updateField('price', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
-              <Field label="Currency" hint="ISO code, e.g. USD, KES, EUR">
+              <Field label="Currency" hint="ISO currency code — KES for current WSF pricing">
                 <input value={form.currency} onChange={(e) => updateField('currency', e.target.value.toUpperCase().slice(0, 3))} className="w-full border border-taupe-300 px-3 py-2.5 text-sm uppercase focus:border-burgundy-500 focus:outline-none" />
               </Field>
             </div>

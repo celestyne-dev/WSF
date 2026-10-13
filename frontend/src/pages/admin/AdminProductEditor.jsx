@@ -45,7 +45,7 @@ function blankForm() {
     images: [],
     price: '',
     salePrice: '',
-    currency: 'USD',
+    currency: 'KES',
     priceVisible: true,
     trackInventory: false,
     stockQuantity: '',
@@ -74,7 +74,7 @@ function toForm(product) {
     images: product.images || [],
     price: product.price ?? '',
     salePrice: product.salePrice ?? '',
-    currency: product.currency || 'USD',
+    currency: product.currency || 'KES',
     priceVisible: product.priceVisible !== false,
     trackInventory: !!product.trackInventory,
     stockQuantity: product.stockQuantity ?? '',
@@ -374,7 +374,7 @@ export default function AdminProductEditor() {
               <Field label="Sale price" hint="optional">
                 <input type="number" min="0" value={form.salePrice} onChange={(e) => updateField('salePrice', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
-              <Field label="Currency" hint="ISO code, e.g. USD, KES, EUR">
+              <Field label="Currency" hint="ISO currency code — KES for current WSF pricing">
                 <input value={form.currency} onChange={(e) => updateField('currency', e.target.value.toUpperCase().slice(0, 3))} className="w-full border border-taupe-300 px-3 py-2.5 text-sm uppercase focus:border-burgundy-500 focus:outline-none" />
               </Field>
             </div>

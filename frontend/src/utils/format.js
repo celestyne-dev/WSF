@@ -55,7 +55,7 @@ export function formatCurrency(amount, currency = 'KES') {
 // real currency symbol/code is rendered via Intl.NumberFormat instead of
 // manually concatenating one, so USD/GBP/EUR get their native symbol and a
 // currency without one (KES) falls back to its ISO code automatically.
-export function formatProductPrice(amount, currency = 'USD') {
+export function formatProductPrice(amount, currency = 'KES') {
   if (amount === null || amount === undefined) return null
   if (amount === 0) return 'Free'
   try {

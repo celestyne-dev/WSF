@@ -128,7 +128,11 @@ class ResourceInputSchema(ma.Schema):
     author_name = fields.String(required=False, allow_none=True, data_key="authorName")
 
     price = fields.Integer(required=False, load_default=0, validate=validate.Range(min=0))
-    currency = fields.String(required=False, load_default="USD", validate=validate.Length(equal=3))
+    # WSF currently transacts in KES (Paystack USD is pending business/
+    # merchant setup) — this is only the fallback for a payload that omits
+    # currency entirely; an editor can still supply any ISO-4217 code
+    # explicitly (see validate below), and this never touches existing rows.
+    currency = fields.String(required=False, load_default="KES", validate=validate.Length(equal=3))
 
     access_type = fields.String(required=False, load_default="direct_download", data_key="accessType", validate=validate.OneOf(ACCESS_TYPES))
     file_url = fields.String(required=False, allow_none=True, data_key="fileUrl", validate=_validate_file_url)

@@ -342,7 +342,11 @@ class ProductInputSchema(ma.Schema):
     sku = fields.String(required=False, allow_none=True, validate=validate.Length(max=64))
     price = fields.Integer(required=True, validate=validate.Range(min=0))
     sale_price = fields.Integer(required=False, allow_none=True, data_key="salePrice", validate=validate.Range(min=0))
-    currency = fields.String(required=False, load_default="USD", validate=validate.Length(equal=3))
+    # WSF currently transacts in KES (Paystack USD is pending business/
+    # merchant setup) — this is only the fallback for a payload that omits
+    # currency entirely; an editor can still supply any ISO-4217 code
+    # explicitly (see validate below), and this never touches existing rows.
+    currency = fields.String(required=False, load_default="KES", validate=validate.Length(equal=3))
     price_visible = fields.Boolean(required=False, load_default=True, data_key="priceVisible")
     track_inventory = fields.Boolean(required=False, load_default=False, data_key="trackInventory")
     stock_quantity = fields.Integer(required=False, allow_none=True, data_key="stockQuantity", validate=validate.Range(min=0))
