@@ -160,11 +160,14 @@ function AccessCta({ resource, accessToken, requesting, onAccessClick, onEmailGa
 
   if (resource.accessType === 'premium') {
     return (
-      <div className="mt-5">
-        <p className="inline-flex items-center gap-2 border border-taupe-300 bg-taupe-50 px-4 py-2.5 text-sm font-semibold text-charcoal-600">
-          <Lock size={16} /> Premium resource
+      <div className="mt-5 border border-taupe-300 bg-taupe-50 px-4 py-3">
+        <p className="inline-flex items-center gap-2 text-sm font-semibold text-charcoal">
+          <Lock size={16} className="text-burgundy-600" />
+          Premium access <span className="text-burgundy-600">— coming soon</span>
         </p>
-        <p className="mt-2 text-xs text-charcoal-600/70">Purchasing isn't available yet — check back soon.</p>
+        <p className="mt-1.5 text-xs text-charcoal-600/70">
+          This premium resource isn't available to purchase yet. Check back soon.
+        </p>
       </div>
     )
   }
@@ -354,9 +357,11 @@ export default function ResourceDetailPage() {
           <p className="mt-4 font-serif text-2xl font-semibold text-charcoal">
             {resource.accessType === 'circle_only'
               ? 'Included with WSF Circle'
-              : resource.isFree
-                ? 'Free'
-                : formatCurrency(resource.price, resource.currency)}
+              : resource.accessType === 'premium'
+                ? 'Premium access'
+                : resource.isFree
+                  ? 'Free'
+                  : formatCurrency(resource.price, resource.currency)}
           </p>
 
           <AccessCta

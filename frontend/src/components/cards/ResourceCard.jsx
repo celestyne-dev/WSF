@@ -48,9 +48,11 @@ export default function ResourceCard({ resource }) {
           <span>
             {resource.accessType === 'circle_only'
               ? 'WSF Circle'
-              : resource.isFree
-                ? 'Free'
-                : formatCurrency(resource.price, resource.currency)}
+              : resource.accessType === 'premium'
+                ? 'Coming soon'
+                : resource.isFree
+                  ? 'Free'
+                  : formatCurrency(resource.price, resource.currency)}
           </span>
         </div>
       </div>
