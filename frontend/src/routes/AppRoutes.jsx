@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import PublicLayout from '../layouts/PublicLayout'
+import AccountLayout from '../layouts/AccountLayout'
 import AdminLayout from '../layouts/AdminLayout'
 import PageLoader from '../components/ui/PageLoader'
 
@@ -40,11 +41,13 @@ const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'))
 const ChangePasswordPage = lazy(() => import('../pages/ChangePasswordPage'))
 const AccountPage = lazy(() => import('../pages/AccountPage'))
+const AccountProfilePage = lazy(() => import('../pages/AccountProfilePage'))
 const AccountSavedPage = lazy(() => import('../pages/AccountSavedPage'))
 const AccountEventsPage = lazy(() => import('../pages/AccountEventsPage'))
 const AccountLearningPage = lazy(() => import('../pages/AccountLearningPage'))
 const AccountCommunityPage = lazy(() => import('../pages/AccountCommunityPage'))
 const AccountMembershipPage = lazy(() => import('../pages/AccountMembershipPage'))
+const AccountSecurityPage = lazy(() => import('../pages/AccountSecurityPage'))
 const CirclePage = lazy(() => import('../pages/CirclePage'))
 const CircleCheckoutCallbackPage = lazy(() => import('../pages/CircleCheckoutCallbackPage'))
 const SubmitStoryPage = lazy(() => import('../pages/SubmitStoryPage'))
@@ -208,12 +211,16 @@ export default function AppRoutes() {
               see ResetPasswordPage.jsx's own comment. */}
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
-          <Route path="/account" element={<AccountPage />} />
-          <Route path="/account/saved" element={<AccountSavedPage />} />
-          <Route path="/account/events" element={<AccountEventsPage />} />
-          <Route path="/account/learning" element={<AccountLearningPage />} />
-          <Route path="/account/community" element={<AccountCommunityPage />} />
-          <Route path="/account/membership" element={<AccountMembershipPage />} />
+          <Route path="/account" element={<AccountLayout />}>
+            <Route index element={<AccountPage />} />
+            <Route path="profile" element={<AccountProfilePage />} />
+            <Route path="saved" element={<AccountSavedPage />} />
+            <Route path="events" element={<AccountEventsPage />} />
+            <Route path="learning" element={<AccountLearningPage />} />
+            <Route path="community" element={<AccountCommunityPage />} />
+            <Route path="membership" element={<AccountMembershipPage />} />
+            <Route path="security" element={<AccountSecurityPage />} />
+          </Route>
           <Route path="/submit" element={<SubmitStoryPage />} />
           <Route path="/nominate" element={<NominatePage />} />
           <Route path="/mentorship" element={<MentorshipPage />} />

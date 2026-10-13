@@ -1,24 +1,49 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Link, useNavigate } from 'react-router-dom'
-import { useDispatch, useSelector } from 'react-redux'
-import { toast } from 'react-toastify'
-import { updateProfile } from '../api/auth'
+import { Link } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import { fetchSavedItems } from '../api/saved'
 import { fetchMyEventRegistrations } from '../api/eventRegistrations'
 import { fetchMyLearningEnrollments } from '../api/learningEnrollments'
 import { fetchMyCommunityMembership } from '../api/community'
 import { fetchMyCircleMembership } from '../api/circle'
-import { logoutUser, setUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import useSeo from '../hooks/useSeo'
-import CountrySelect from '../components/ui/CountrySelect'
-import PageLoader from '../components/ui/PageLoader'
+
+const SAVED_TYPE_LABEL = {
+  article: 'stories',
+  job: 'jobs',
+  opportunity: 'opportunities',
+  resource: 'resources',
+  event: 'events',
+  learning_program: 'learning',
+}
+
+// A compact editorial summary tile — the overview's unit of composition.
+// Deliberately plain (one border, no shadow, no icon) so a 2-column grid
+// of these doesn't read as a stack of SaaS dashboard cards.
+function OverviewTile({ title, children, action }) {
+  return (
+    <section className="border border-taupe-200 bg-white p-5">
+      <h3 className="font-serif text-lg font-semibold text-charcoal">{title}</h3>
+      <div className="mt-2 text-sm text-charcoal-600">{children}</div>
+      {action && <div className="mt-3">{action}</div>}
+    </section>
+  )
+}
+
+function TileLink({ to, children }) {
+  return (
+    <Link to={to} className="text-sm font-semibold text-burgundy-600 hover:underline">
+      {children}
+    </Link>
+  )
+}
 
 // Deliberately a tiny summary, not the full collection (spec: "do NOT
 // overload /account with the entire Saved collection") — one count fetch,
 // perPage: 1 so the items payload stays minimal since only `counts` and
 // `pagination.totalItems` are used here.
-function SavedSummarySection() {
+function SavedTile() {
   const [totalSaved, setTotalSaved] = useState(null)
   const [typeCounts, setTypeCounts] = useState({})
 
@@ -39,13 +64,9 @@ function SavedSummarySection() {
     .slice(0, 3)
 
   return (
-    <section className="mt-8 border border-taupe-200 p-6">
-      <h2 className="font-serif text-xl font-semibold text-charcoal">Saved for later</h2>
-      <p className="mt-2 text-sm text-charcoal-600">
-        Keep stories, jobs, opportunities, resources, events and learning programs you want to return to.
-      </p>
-      {totalSaved !== null && totalSaved > 0 && (
-        <p className="mt-3 text-sm text-charcoal-600">
+    <OverviewTile title="Saved for later" action={<TileLink to="/account/saved">View saved →</TileLink>}>
+      {totalSaved !== null && totalSaved > 0 ? (
+        <p>
           <span className="font-semibold text-charcoal">{totalSaved}</span> saved item{totalSaved === 1 ? '' : 's'}
           {topTypeCounts.length > 0 && (
             <span className="text-charcoal-600/70">
@@ -54,27 +75,17 @@ function SavedSummarySection() {
             </span>
           )}
         </p>
+      ) : (
+        <p>Keep stories, jobs, opportunities, resources, events and learning programs you want to return to.</p>
       )}
-      <Link to="/account/saved" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-        View saved items
-      </Link>
-    </section>
+    </OverviewTile>
   )
 }
 
-const SAVED_TYPE_LABEL = {
-  article: 'stories',
-  job: 'jobs',
-  opportunity: 'opportunities',
-  resource: 'resources',
-  event: 'events',
-  learning_program: 'learning',
-}
-
-// Same "tiny summary, not the full collection" principle as
-// SavedSummarySection above — one count fetch (perPage: 1), only
-// `pagination.totalItems` is actually used here.
-function MyEventsSummarySection() {
+// Same "tiny summary, not the full collection" principle as SavedTile
+// above — one count fetch (perPage: 1), only `pagination.totalItems` is
+// actually used here.
+function EventsTile() {
   const [upcomingCount, setUpcomingCount] = useState(null)
 
   useEffect(() => {
@@ -88,26 +99,23 @@ function MyEventsSummarySection() {
   }, [])
 
   return (
-    <section className="mt-8 border border-taupe-200 p-6">
-      <h2 className="font-serif text-xl font-semibold text-charcoal">My Events</h2>
-      <p className="mt-2 text-sm text-charcoal-600">Events you've registered for with Women Shaping Futures.</p>
-      {upcomingCount !== null && upcomingCount > 0 && (
-        <p className="mt-3 text-sm text-charcoal-600">
+    <OverviewTile title="My Events" action={<TileLink to="/account/events">View events →</TileLink>}>
+      {upcomingCount !== null && upcomingCount > 0 ? (
+        <p>
           <span className="font-semibold text-charcoal">{upcomingCount}</span> upcoming registration
           {upcomingCount === 1 ? '' : 's'}
         </p>
+      ) : (
+        <p>Events you've registered for with Women Shaping Futures.</p>
       )}
-      <Link to="/account/events" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-        View my events
-      </Link>
-    </section>
+    </OverviewTile>
   )
 }
 
-// Same "tiny summary, not the full collection" principle as the sections
+// Same "tiny summary, not the full collection" principle as the tiles
 // above — two count-only fetches (perPage: 1, one per state), only
 // `pagination.totalItems` from each is used.
-function MyLearningSummarySection() {
+function LearningTile() {
   const [counts, setCounts] = useState(null)
 
   useEffect(() => {
@@ -128,11 +136,9 @@ function MyLearningSummarySection() {
   }, [])
 
   return (
-    <section className="mt-8 border border-taupe-200 p-6">
-      <h2 className="font-serif text-xl font-semibold text-charcoal">My Learning</h2>
-      <p className="mt-2 text-sm text-charcoal-600">Programs you're learning with Women Shaping Futures.</p>
-      {counts && (counts.inProgress > 0 || counts.completed > 0) && (
-        <p className="mt-3 text-sm text-charcoal-600">
+    <OverviewTile title="My Learning" action={<TileLink to="/account/learning">View learning →</TileLink>}>
+      {counts && (counts.inProgress > 0 || counts.completed > 0) ? (
+        <p>
           <span className="font-semibold text-charcoal">{counts.inProgress}</span> in progress
           {counts.completed > 0 && (
             <>
@@ -141,19 +147,18 @@ function MyLearningSummarySection() {
             </>
           )}
         </p>
+      ) : (
+        <p>Programs you're learning with Women Shaping Futures.</p>
       )}
-      <Link to="/account/learning" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-        View my learning
-      </Link>
-    </section>
+    </OverviewTile>
   )
 }
 
-// Same "tiny summary" principle as the sections above, plus the spec's
+// Same "tiny summary" principle as the tiles above, plus the spec's
 // explicit "handle API failure quietly and resiliently — no unhandled
 // promise rejection" requirement: a failed fetch falls back to the same
 // safe "not joined" copy rather than throwing or blanking the page.
-function MyCommunitySummarySection() {
+function CommunityTile() {
   const [membership, setMembership] = useState(undefined)
 
   useEffect(() => {
@@ -175,53 +180,43 @@ function MyCommunitySummarySection() {
   const isInactive = member && ['left', 'inactive'].includes(member.status)
   const isOtherState = member && !isActive && !isInactive
 
+  if (isActive) {
+    return (
+      <OverviewTile title="WSF Community" action={<TileLink to="/account/community">Manage profile →</TileLink>}>
+        <p>
+          You're a <span className="font-semibold text-charcoal">{member.membershipType}</span>.
+        </p>
+      </OverviewTile>
+    )
+  }
+  if (isInactive) {
+    return (
+      <OverviewTile title="WSF Community" action={<TileLink to="/account/community">Rejoin →</TileLink>}>
+        <p>You're not currently an active Community member.</p>
+      </OverviewTile>
+    )
+  }
+  if (isOtherState) {
+    return (
+      <OverviewTile title="WSF Community" action={<TileLink to="/account/community">View details →</TileLink>}>
+        <p>Your Community membership is managed by our team.</p>
+      </OverviewTile>
+    )
+  }
   return (
-    <section className="mt-8 border border-taupe-200 p-6">
-      <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Community</h2>
-      {isActive ? (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">
-            You're a <span className="font-semibold text-charcoal">{member.membershipType}</span>.
-            {member.directoryOptIn && ' Your Community profile is visible in the public member directory.'}
-          </p>
-          <Link to="/account/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            Manage Community profile
-          </Link>
-        </>
-      ) : isInactive ? (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">You're not currently an active Community member.</p>
-          <Link to="/account/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            Rejoin Community
-          </Link>
-        </>
-      ) : isOtherState ? (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">Your Community membership is managed by our team.</p>
-          <Link to="/account/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            View details
-          </Link>
-        </>
-      ) : (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">
-            A WSF account and WSF Community membership are separate. Having an account here doesn't automatically
-            make you a Community member — joining is a short, separate step whenever you're ready.
-          </p>
-          <Link to="/community" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            {membership?.joined === false ? 'Join the WSF Community' : 'Explore the WSF Community'}
-          </Link>
-        </>
-      )}
-    </section>
+    <OverviewTile
+      title="WSF Community"
+      action={<TileLink to="/community">{membership?.joined === false ? 'Join the WSF Community →' : 'Explore the WSF Community →'}</TileLink>}
+    >
+      <p>A WSF account and WSF Community membership are separate.</p>
+    </OverviewTile>
   )
 }
 
-// Same "tiny summary + resilient failure" principle as
-// MyCommunitySummarySection above — GET /circle/me, falls back to the
-// safe "no membership" copy on any fetch failure rather than throwing or
-// blanking the page.
-function MyCircleSummarySection() {
+// Same "tiny summary + resilient failure" principle as CommunityTile
+// above — GET /circle/me, falls back to the safe "no membership" copy on
+// any fetch failure rather than throwing or blanking the page.
+function CircleTile() {
   const [membership, setMembership] = useState(undefined)
 
   useEffect(() => {
@@ -241,222 +236,63 @@ function MyCircleSummarySection() {
   const subscription = membership?.subscription
   const status = subscription?.status
 
+  if (status === 'active') {
+    return (
+      <OverviewTile title="WSF Circle" action={<TileLink to="/account/membership">Manage membership →</TileLink>}>
+        <p>
+          <span className="font-semibold text-burgundy-600">Active</span>
+          {subscription.plan?.name && <> &middot; {subscription.plan.name}</>}
+        </p>
+      </OverviewTile>
+    )
+  }
+  if (status === 'pending') {
+    return (
+      <OverviewTile title="WSF Circle" action={<TileLink to="/account/membership">View details →</TileLink>}>
+        <p>Membership pending.</p>
+      </OverviewTile>
+    )
+  }
+  if (status === 'past_due') {
+    return (
+      <OverviewTile title="WSF Circle" action={<TileLink to="/account/membership">View details →</TileLink>}>
+        <p>Membership needs attention.</p>
+      </OverviewTile>
+    )
+  }
+  if (status === 'cancelled' || status === 'expired' || status === 'revoked') {
+    return (
+      <OverviewTile title="WSF Circle" action={<TileLink to="/circle">Explore membership options →</TileLink>}>
+        <p>Not currently active.</p>
+      </OverviewTile>
+    )
+  }
   return (
-    <section className="mt-8 border border-taupe-200 p-6">
-      <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Circle</h2>
-      {status === 'active' ? (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">
-            <span className="font-semibold text-burgundy-600">WSF Circle — Active</span>
-            {subscription.plan?.name && <> &middot; {subscription.plan.name}</>}
-          </p>
-          <Link to="/account/membership" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            Manage membership
-          </Link>
-        </>
-      ) : status === 'pending' ? (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">Membership pending.</p>
-          <Link to="/account/membership" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            View details
-          </Link>
-        </>
-      ) : status === 'past_due' ? (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">Membership needs attention.</p>
-          <Link to="/account/membership" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            View details
-          </Link>
-        </>
-      ) : status === 'cancelled' || status === 'expired' || status === 'revoked' ? (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">Not currently active.</p>
-          <Link to="/circle" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            Explore membership options
-          </Link>
-        </>
-      ) : (
-        <>
-          <p className="mt-2 text-sm text-charcoal-600">You are not currently a WSF Circle member.</p>
-          <Link to="/circle" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-            Explore WSF Circle
-          </Link>
-        </>
-      )}
-    </section>
+    <OverviewTile title="WSF Circle" action={<TileLink to="/circle">Explore WSF Circle →</TileLink>}>
+      <p>You are not currently a WSF Circle member.</p>
+    </OverviewTile>
   )
 }
 
-function formFromUser(user) {
-  return {
-    firstName: user?.firstName || '',
-    lastName: user?.lastName || '',
-    displayName: user?.displayName || '',
-    bio: user?.bio || '',
-    countryCode: user?.countryCode || '',
-  }
-}
-
-// Mounted only once AccountPage's own guards confirm `user` exists (see
-// below), so its initial state can read `user` directly with no
-// synchronizing effect. The one time this form's data needs to change out
-// from under itself — a successful save — happens inside this
-// component's own event handler, which already has the fresh value from
-// the response; that's a direct setForm() call, not an effect watching a
-// prop (see the "update it from the event that caused the change" guidance
-// behind the react(set-state-in-effect) lint rule).
-function ProfileForm({ user }) {
-  const dispatch = useDispatch()
-  const [form, setForm] = useState(() => formFromUser(user))
-  const [saving, setSaving] = useState(false)
-  const [fieldError, setFieldError] = useState(null)
-
-  function update(field) {
-    return (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
-  }
-
-  async function handleSave(e) {
-    e.preventDefault()
-    setFieldError(null)
-    setSaving(true)
-    const result = await updateProfile(form)
-    setSaving(false)
-
-    if (!result.success) {
-      setFieldError(result.message)
-      return
-    }
-    dispatch(setUser(result.user))
-    setForm(formFromUser(result.user))
-    toast.success('Your profile has been updated.')
-  }
-
-  return (
-    <form onSubmit={handleSave} className="mt-4 space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <label htmlFor="acct-first-name" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-            First name
-          </label>
-          <input
-            id="acct-first-name"
-            type="text"
-            required
-            autoComplete="given-name"
-            value={form.firstName}
-            onChange={update('firstName')}
-            className="mt-1.5 w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="acct-last-name" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-            Last name
-          </label>
-          <input
-            id="acct-last-name"
-            type="text"
-            required
-            autoComplete="family-name"
-            value={form.lastName}
-            onChange={update('lastName')}
-            className="mt-1.5 w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none"
-          />
-        </div>
-      </div>
-      <div>
-        <label htmlFor="acct-display-name" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-          Display name <span className="font-normal text-charcoal-400">(optional)</span>
-        </label>
-        <input
-          id="acct-display-name"
-          type="text"
-          autoComplete="nickname"
-          value={form.displayName}
-          onChange={update('displayName')}
-          className="mt-1.5 w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none"
-        />
-      </div>
-      <div>
-        <label htmlFor="acct-bio" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-          Short bio <span className="font-normal text-charcoal-400">(optional)</span>
-        </label>
-        <textarea
-          id="acct-bio"
-          rows={3}
-          value={form.bio}
-          onChange={update('bio')}
-          className="mt-1.5 w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none"
-        />
-      </div>
-      <div>
-        <label htmlFor="acct-country" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-          Country <span className="font-normal text-charcoal-400">(optional)</span>
-        </label>
-        <div className="mt-1.5">
-          <CountrySelect
-            id="acct-country"
-            value={form.countryCode}
-            onChange={(v) => setForm((f) => ({ ...f, countryCode: v }))}
-          />
-        </div>
-      </div>
-
-      {fieldError && <p className="text-sm text-burgundy-600">{fieldError}</p>}
-
-      <button type="submit" disabled={saving} className="btn-primary disabled:opacity-60">
-        {saving ? 'Saving…' : 'Save changes'}
-      </button>
-    </form>
-  )
-}
-
-// /account — a public-layout page (no CMS sidebar) for self-service
-// profile editing. Works for any authenticated account, staff included
-// (see spec: "do NOT give them any extra admin powers here"); the page
-// below never reads or branches on CMS permissions.
+// /account (index) — the account workspace's overview/dashboard. Profile
+// editing and password changes now live on their own dedicated pages
+// (/account/profile, /account/security); this page only shows a compact
+// account-details summary plus activity/membership tiles that link out to
+// their own full pages (spec: "do NOT overload /account").
 export default function AccountPage() {
-  const accessToken = useSelector((s) => s.auth.accessToken)
   const user = useSelector((s) => s.auth.user)
   const countries = useSelector((s) => s.site.countries)
-  const dispatch = useDispatch()
-  const navigate = useNavigate()
-
-  const [signingOut, setSigningOut] = useState(false)
-
-  // Session restoration itself is centralized in PublicLayout (which wraps
-  // every public route, this one included) — dispatching restoreSession()
-  // again here too would race it for no benefit, so this page just waits
-  // on `user` via the loader guard below.
 
   useSeo({ title: 'My Account | Women Shaping Futures', robots: 'noindex, nofollow' })
 
-  // Signing out is a deliberate exit, not a session loss: once requested,
-  // render a loader instead of the normal guards below, so a lingering
-  // render of this page (e.g. while the next route's chunk loads) can't
-  // see the now-cleared accessToken and race the "/" we're navigating to
-  // with its own redirect to /login.
-  if (signingOut) return <PageLoader />
-  if (!accessToken) return <Navigate to="/login" replace />
-  if (!user) return <PageLoader />
-  if (user.mustChangePassword) return <Navigate to="/change-password" replace />
-
   const countryName = countries.find((c) => c.code === user.countryCode)?.name
 
-  function handleSignOut() {
-    setSigningOut(true)
-    dispatch(logoutUser())
-    navigate('/', { replace: true })
-  }
-
   return (
-    <div className="container-editorial max-w-3xl py-14">
-      <p className="eyebrow">My WSF Account</p>
-      <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal">{user.name}</h1>
+    <div>
+      <h2 className="font-serif text-2xl font-semibold text-charcoal">Overview</h2>
 
-      {/* A. Account overview */}
-      <section className="mt-8 border border-taupe-200 p-6">
-        <h2 className="font-serif text-xl font-semibold text-charcoal">Overview</h2>
-        <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <section className="mt-4 border border-taupe-200 bg-cream p-5">
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Email</dt>
             <dd className="mt-1 text-sm text-charcoal">{user.email}</dd>
@@ -472,48 +308,19 @@ export default function AccountPage() {
             </div>
           )}
         </dl>
+        <div className="mt-4 flex flex-wrap gap-5 border-t border-taupe-200 pt-4">
+          <TileLink to="/account/profile">Edit profile →</TileLink>
+          <TileLink to="/account/security">Security →</TileLink>
+        </div>
       </section>
 
-      {/* B. Edit profile */}
-      <section className="mt-8 border border-taupe-200 p-6">
-        <h2 className="font-serif text-xl font-semibold text-charcoal">Edit profile</h2>
-        <ProfileForm user={user} />
-      </section>
-
-      {/* C. Saved for later */}
-      <SavedSummarySection />
-
-      {/* D. My Events */}
-      <MyEventsSummarySection />
-
-      {/* E. My Learning */}
-      <MyLearningSummarySection />
-
-      {/* F. Security */}
-      <section className="mt-8 border border-taupe-200 p-6">
-        <h2 className="font-serif text-xl font-semibold text-charcoal">Security</h2>
-        <p className="mt-2 text-sm text-charcoal-600">Change the password you use to sign in.</p>
-        <Link to="/change-password" className="mt-3 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-          Change password
-        </Link>
-      </section>
-
-      {/* G. Community */}
-      <MyCommunitySummarySection />
-
-      {/* G2. WSF Circle */}
-      <MyCircleSummarySection />
-
-      {/* H. Sign out */}
-      <section className="mt-8">
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="border border-taupe-300 px-5 py-2.5 text-sm font-semibold text-charcoal-600 hover:border-burgundy-500 hover:text-burgundy-600"
-        >
-          Sign out
-        </button>
-      </section>
+      <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <SavedTile />
+        <EventsTile />
+        <LearningTile />
+        <CommunityTile />
+        <CircleTile />
+      </div>
     </div>
   )
 }

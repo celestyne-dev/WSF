@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { fetchMyEventRegistrations, cancelEventRegistration, registerForEvent } from '../api/eventRegistrations'
 import useSeo from '../hooks/useSeo'
-import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import EventCard from '../components/cards/EventCard'
 import { formatDate } from '../utils/format'
@@ -116,9 +115,10 @@ function RegistrationRow({ item, onCancel, onReregister, busy }) {
   )
 }
 
+// Routed only as a child of AccountLayout, which already guards on
+// accessToken/user/mustChangePassword before rendering any child route.
 export default function AccountEventsPage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
-  const user = useSelector((s) => s.auth.user)
 
   const [activeTab, setActiveTab] = useState('upcoming')
   const [page, setPage] = useState(1)
@@ -149,10 +149,6 @@ export default function AccountEventsPage() {
       cancelled = true
     }
   }, [accessToken, activeTab, page, retryCount])
-
-  if (!accessToken) return <Navigate to="/login" replace />
-  if (!user) return <PageLoader />
-  if (user.mustChangePassword) return <Navigate to="/change-password" replace />
 
   function handleTabChange(tabKey) {
     setActiveTab(tabKey)
@@ -193,9 +189,8 @@ export default function AccountEventsPage() {
   }
 
   return (
-    <div className="container-editorial max-w-4xl py-14">
-      <p className="eyebrow">My WSF Account</p>
-      <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal">My Events</h1>
+    <div className="max-w-[880px]">
+      <h2 className="font-serif text-2xl font-semibold text-charcoal">My Events</h2>
       <p className="mt-2 max-w-xl text-sm text-charcoal-600">Events you've registered for with Women Shaping Futures.</p>
 
       <div className="mt-8 flex flex-wrap gap-2 border-b border-taupe-200 pb-4">

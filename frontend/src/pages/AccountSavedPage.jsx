@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { fetchSavedItems } from '../api/saved'
 import useSeo from '../hooks/useSeo'
-import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import SaveButton from '../components/account/SaveButton'
 import ArticleCard from '../components/cards/ArticleCard'
@@ -65,9 +64,10 @@ function SavedItemCard({ item }) {
   )
 }
 
+// Routed only as a child of AccountLayout, which already guards on
+// accessToken/user/mustChangePassword before rendering any child route.
 export default function AccountSavedPage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
-  const user = useSelector((s) => s.auth.user)
 
   const [activeTab, setActiveTab] = useState('')
   const [page, setPage] = useState(1)
@@ -98,10 +98,6 @@ export default function AccountSavedPage() {
     }
   }, [accessToken, activeTab, page, retryCount])
 
-  if (!accessToken) return <Navigate to="/login" replace />
-  if (!user) return <PageLoader />
-  if (user.mustChangePassword) return <Navigate to="/change-password" replace />
-
   function handleTabChange(tabKey) {
     setActiveTab(tabKey)
     setPage(1)
@@ -115,9 +111,8 @@ export default function AccountSavedPage() {
   }
 
   return (
-    <div className="container-editorial max-w-5xl py-14">
-      <p className="eyebrow">My WSF Account</p>
-      <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal">Saved for later</h1>
+    <div>
+      <h2 className="font-serif text-2xl font-semibold text-charcoal">Saved for later</h2>
       <p className="mt-2 max-w-xl text-sm text-charcoal-600">
         Your personal collection of stories, opportunities and resources to return to.
       </p>

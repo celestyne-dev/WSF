@@ -1,21 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { fetchMyCircleMembership, startCircleCheckout } from '../api/circle'
 import { formatProductPrice } from '../utils/format'
 import { getCheckoutErrorPresentation } from '../utils/circlePayment'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
-import PageLoader from '../components/ui/PageLoader'
 import { formatDate } from '../utils/format'
 
 function billingLabel(plan) {
   return plan?.billingInterval === 'yearly' ? 'Yearly' : 'Monthly'
 }
 
+// Routed only as a child of AccountLayout, which already guards on
+// accessToken/user/mustChangePassword before rendering any child route.
 export default function AccountMembershipPage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
-  const user = useSelector((s) => s.auth.user)
   const [searchParams, setSearchParams] = useSearchParams()
   // `?payment=success` is never trusted by itself — the effect below only
   // ever flips `showSuccessBanner` on once `membership.hasAccess` (real
@@ -74,10 +74,6 @@ export default function AccountMembershipPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [membership, paymentSuccessParam])
 
-  if (!accessToken) return <Navigate to="/login" replace />
-  if (!user) return <PageLoader />
-  if (user.mustChangePassword) return <Navigate to="/change-password" replace />
-
   const subscription = membership?.subscription || null
   const status = subscription?.status
 
@@ -104,9 +100,8 @@ export default function AccountMembershipPage() {
   }
 
   return (
-    <div className="container-editorial max-w-3xl py-14">
-      <p className="eyebrow">My WSF Account</p>
-      <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal">WSF Circle</h1>
+    <div className="max-w-[880px]">
+      <h2 className="font-serif text-2xl font-semibold text-charcoal">WSF Circle</h2>
 
       {showSuccessBanner && (
         <div className="mt-6 border border-burgundy-400 bg-blush-50 p-5 text-center">

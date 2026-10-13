@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import {
@@ -11,7 +11,6 @@ import {
 import { fetchTopics } from '../api/taxonomies'
 import CountrySelect from '../components/ui/CountrySelect'
 import useSeo from '../hooks/useSeo'
-import PageLoader from '../components/ui/PageLoader'
 import { formatDate } from '../utils/format'
 
 // Staff-controlled states a self-service member can land in without being
@@ -163,9 +162,10 @@ function ProfileForm({ member, topics, onSaved }) {
   )
 }
 
+// Routed only as a child of AccountLayout, which already guards on
+// accessToken/user/mustChangePassword before rendering any child route.
 export default function AccountCommunityPage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
-  const user = useSelector((s) => s.auth.user)
 
   const [membership, setMembership] = useState(undefined)
   const [topics, setTopics] = useState([])
@@ -193,10 +193,6 @@ export default function AccountCommunityPage() {
       cancelled = true
     }
   }, [accessToken, retryCount])
-
-  if (!accessToken) return <Navigate to="/login" replace />
-  if (!user) return <PageLoader />
-  if (user.mustChangePassword) return <Navigate to="/change-password" replace />
 
   async function handleLeave() {
     if (!window.confirm('Leave the WSF Community? Your account and other WSF features are not affected.')) return
@@ -226,11 +222,10 @@ export default function AccountCommunityPage() {
   }
 
   return (
-    <div className="container-editorial max-w-3xl py-14">
-      <p className="eyebrow">My WSF Account</p>
-      <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal">My Community</h1>
+    <div className="max-w-[880px]">
+      <h2 className="font-serif text-2xl font-semibold text-charcoal">My Community</h2>
 
-      <div className="mt-8">
+      <div className="mt-6">
         {error ? (
           <div className="border border-taupe-200 p-6">
             <p className="text-sm text-charcoal-600">{error}</p>
