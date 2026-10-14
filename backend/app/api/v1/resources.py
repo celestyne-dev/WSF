@@ -20,7 +20,8 @@ from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 from sqlalchemy import or_
 
-from app.extensions import db
+from app.auth.decorators import active_user_required
+from app.extensions import db, limiter
 from app.models.commerce import Product
 from app.models.media import Media
 from app.models.people import Author, Organization
@@ -29,6 +30,8 @@ from app.models.resource import (
     Resource as ResourceModel,
     ResourceImage,
     ResourceLead,
+    ResourcePayment,
+    ResourcePurchase,
 )
 from app.models.taxonomy import Tag, Topic
 from app.schemas.media import MediaSchema
@@ -46,6 +49,7 @@ from app.services.resource_downloads import (
     resolve_real_protected_path,
     save_protected_upload,
 )
+from app.services.resource_payments import get_resource_payment_status, start_resource_checkout
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.slugs import slugify
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -180,17 +184,19 @@ def _validate_publish(resource):
     configured an uploaded file almost certainly intends to serve that
     file, not a stale legacy URL left over from before.
 
-    circle_only deliberately does NOT accept `file_url` OR `external_url`
-    at all (Module 10, part A; hardened in Module 10.1) — either field
-    points to a permanent, publicly reachable location (WSF's own
-    MEDIA_ROOT tree, or a third-party host like Drive/S3/Dropbox) that,
-    once handed out by /access, can be copied and reused forever outside
-    any Circle entitlement check. That defeats the entire point of a
-    protected Circle download, so a circle_only resource's ONLY valid
-    target is `protected_file_path`, served exclusively through the
-    short-lived token in ResourceDownloadResource below — and, same as
-    the other access types above, it must resolve to a real, existing
-    regular file inside PROTECTED_MEDIA_ROOT.
+    circle_only and premium deliberately do NOT accept `file_url` OR
+    `external_url` at all (Module 10, part A; hardened in Module 10.1;
+    premium joined this rule once purchase entitlement existed — see
+    PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES) — either field points to a
+    permanent, publicly reachable location (WSF's own MEDIA_ROOT tree,
+    or a third-party host like Drive/S3/Dropbox) that, once handed out
+    by /access, can be copied and reused forever outside any entitlement
+    check. That defeats the entire point of a protected download, so a
+    circle_only/premium resource's ONLY valid target is
+    `protected_file_path`, served exclusively through the short-lived
+    token in ResourceDownloadResource below — and, same as the other
+    access types above, it must resolve to a real, existing regular file
+    inside PROTECTED_MEDIA_ROOT.
 
     Draft/review resources are unaffected: this whole function only runs
     for status in (published, scheduled).
@@ -223,6 +229,34 @@ def _validate_publish(resource):
             )
         return
 
+    if resource.access_type == "premium":
+        # Checkout is now connected (see app/services/resource_payments.py),
+        # so a published premium resource needs real commercial facts: a
+        # real price (schema/model already enforce a valid 3-letter
+        # currency) and its own protected file — never a public file_url/
+        # external_url (see this function's docstring on why those are
+        # never valid for premium, same as circle_only).
+        if resource.price <= 0:
+            raise ApiError(
+                "A published premium resource needs a price greater than zero.",
+                422,
+                code="validation_error",
+            )
+        if not resource.protected_file_path:
+            raise ApiError(
+                "A published premium resource needs a protected file.",
+                422,
+                code="validation_error",
+            )
+        if not protected_file_exists(resource.protected_file_path):
+            raise ApiError(
+                "This premium resource's protected file could not be found on the server. "
+                "Check the protected file path and confirm the file has been uploaded.",
+                422,
+                code="validation_error",
+            )
+        return
+
     if resource.access_type in ("direct_download", "email_gate", "member_only"):
         if resource.protected_file_path:
             if not protected_file_exists(resource.protected_file_path):
@@ -236,12 +270,6 @@ def _validate_publish(resource):
         if not (resource.file_url or resource.external_url):
             raise ApiError("A published resource needs a file URL or external URL.", 422, code="validation_error")
         return
-
-    # premium: unchanged for now — no file requirement yet, since
-    # check_resource_access() blocks all premium access until checkout
-    # exists. An uploaded protected file may already be stored in
-    # preparation for that (see PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES'
-    # docstring), but nothing requires or serves it yet.
 
 
 def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images):
@@ -288,7 +316,18 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
 
 
 def _is_referenced(resource):
-    return Product.query.filter_by(resource_id=resource.id).first() is not None
+    """A Resource with a linked Shop Product, or any historical
+    ResourcePurchase/ResourcePayment row, can never be hard-deleted —
+    see ResourcePurchase/ResourcePayment's own docstrings in
+    app/models/resource.py for why commercial purchase history must
+    never silently disappear. Archiving (Resource.status) remains the
+    correct way to retire paid content.
+    """
+    if Product.query.filter_by(resource_id=resource.id).first() is not None:
+        return True
+    if ResourcePurchase.query.filter_by(resource_id=resource.id).first() is not None:
+        return True
+    return ResourcePayment.query.filter_by(resource_id=resource.id).first() is not None
 
 
 def _protected_path_still_referenced(path):
@@ -546,13 +585,13 @@ def _resolve_target_url(resource, viewer):
     back to a legacy URL when a broken protected file is explicitly
     configured" rule.
 
-    circle_only has no further fallback at all: file_url/external_url
-    are never consulted for it, matching _validate_publish()'s rule that
-    circle_only publish validation doesn't accept either field either.
-    direct_download/email_gate/member_only DO fall back to file_url/
-    external_url when no protected_file_path is configured at all — the
-    legacy behavior every Resource created before this upload flow
-    existed still relies on.
+    circle_only and premium have no further fallback at all: file_url/
+    external_url are never consulted for either, matching
+    _validate_publish()'s rule that neither one's publish validation
+    accepts either field. direct_download/email_gate/member_only DO fall
+    back to file_url/external_url when no protected_file_path is
+    configured at all — the legacy behavior every Resource created
+    before this upload flow existed still relies on.
     """
     if resource.access_type == "external_link":
         candidate = resource.external_url
@@ -569,7 +608,7 @@ def _resolve_target_url(resource, viewer):
             raw_token = issue_download_token(resource, viewer)
             return f"/api/v1/resources/downloads/{raw_token}"
 
-        if resource.access_type == "circle_only":
+        if resource.access_type in ("circle_only", "premium"):
             raise ApiError("This resource has no file configured yet.", 409, code="not_configured")
 
         candidate = resource.file_url or resource.external_url
@@ -577,8 +616,8 @@ def _resolve_target_url(resource, viewer):
             raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
         return candidate
 
-    # premium: check_resource_access() already raised before we got here
-    # (purchasing isn't connected) — unreachable in practice.
+    # Every access_type is either "external_link" or a member of
+    # PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES — this branch is unreachable.
     raise ApiError("This resource has no file or link configured yet.", 409, code="not_configured")
 
 
@@ -722,8 +761,59 @@ class ResourceProtectedUploadResource(Resource):
         )
 
 
+class ResourceCheckoutResource(Resource):
+    """Stage 1 of the premium-Resource Paystack integration: start a
+    hosted checkout for a premium Resource (see app/services/
+    resource_payments.py's start_resource_checkout). The request body is
+    never read — amount/currency/customer email all come from the
+    database and the authenticated session, so there is nothing in the
+    body that could influence checkout terms even if a client sent one.
+    No frontend calls this yet (Stage 2 adds that) — the endpoint exists
+    now so the backend contract can be reviewed ahead of that work.
+    """
+
+    @limiter.limit("10 per minute")
+    @active_user_required
+    def post(self, slug):
+        resource = ResourceModel.query.filter_by(slug=slug).first()
+        if resource is None:
+            raise ApiError("Resource not found.", 404, code="not_found")
+        result = start_resource_checkout(current_user, resource)
+        return success_response(
+            {"reference": result["reference"], "authorizationUrl": result["authorization_url"]}, status=201
+        )
+
+
+class ResourcePaymentStatusResource(Resource):
+    """Stage 1: owner-only payment status/verification — the function a
+    future checkout-callback page will poll (see app/services/
+    resource_payments.py's get_resource_payment_status). Never accepts
+    or trusts anything from the query string; verification against
+    Paystack happens server-side only. Same anti-enumeration policy as
+    Circle's equivalent endpoint: a wrong user and a nonexistent
+    reference return the same 404.
+    """
+
+    @limiter.limit("30 per minute")
+    @active_user_required
+    def get(self, reference):
+        status = get_resource_payment_status(current_user, reference)
+        return success_response(
+            {
+                "reference": status["reference"],
+                "status": status["status"],
+                "purchaseActivated": status["purchase_activated"],
+                "reconciliationRequired": status["reconciliation_required"],
+                "reason": status["reason"],
+                "resourceSlug": status["resource_slug"],
+            }
+        )
+
+
 api.add_resource(ResourceListResource, "")
 api.add_resource(ResourceDetailResource, "/<string:slug>")
 api.add_resource(ResourceAccessResource, "/<string:slug>/access")
 api.add_resource(ResourceDownloadResource, "/downloads/<string:token>")
 api.add_resource(ResourceProtectedUploadResource, "/uploads/protected")
+api.add_resource(ResourceCheckoutResource, "/<string:slug>/checkout")
+api.add_resource(ResourcePaymentStatusResource, "/payments/<string:reference>")

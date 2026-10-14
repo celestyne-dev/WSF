@@ -549,21 +549,27 @@ class TestCircleOnly:
 
 
 class TestPremium:
-    # 49. premium remains unavailable
-    def test_premium_unavailable(self, app, client):
+    # 49. anonymous premium access requires a WSF account (Stage 1 of the
+    # premium Resource Paystack integration — see app/services/
+    # resource_access.py's check_resource_access() and
+    # app/services/resource_payments.py for the purchase entitlement this
+    # now gates on).
+    def test_premium_requires_account(self, app, client):
         _, slug = _make_resource(app, access_type="premium", price=4900)
         resp = client.post(f"/api/v1/resources/{slug}/access")
-        assert resp.status_code == 403
-        assert resp.get_json()["error"]["code"] == "premium_unavailable"
+        assert resp.status_code == 401
+        assert resp.get_json()["error"]["code"] == "account_required"
 
-    # 50. active Circle subscription does NOT unlock premium resource
+    # 50. active Circle subscription does NOT unlock premium resource —
+    # still blocked, now with the new purchase_required code rather than
+    # the old unconditional premium_unavailable.
     def test_circle_subscription_does_not_unlock_premium(self, app, client, user1_token):
         plan_id = _make_plan(app)
         _make_subscription(app, USER1["email"], plan_id, status="active")
         _, slug = _make_resource(app, access_type="premium", price=4900)
         resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
         assert resp.status_code == 403
-        assert resp.get_json()["error"]["code"] == "premium_unavailable"
+        assert resp.get_json()["error"]["code"] == "purchase_required"
 
     # 51. premium denial does not increment count
     def test_premium_denial_does_not_increment_count(self, app, client):

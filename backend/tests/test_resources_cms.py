@@ -354,11 +354,26 @@ def test_email_gated_resource_consent_subscribes_to_newsletter(client, app, mana
         assert subscriber.status == "active"
 
 
-def test_premium_resource_access_not_available(client, manager_token):
+def test_premium_resource_requires_account_to_access(client, app, manager_token, tmp_path):
+    """Stage 1 of the premium Resource Paystack integration: purchase
+    entitlement now exists (see app/services/resource_payments.py), so
+    an anonymous visitor hitting /access is rejected for lacking an
+    account at all — not the old unconditional "coming soon" response.
+    See app/services/resource_access.py's check_resource_access(). A
+    published premium resource also now needs a real protected file
+    (see app/api/v1/resources.py's _validate_publish()).
+    """
+    protected_root = tmp_path / "protected_media"
+    protected_root.mkdir()
+    app.config["PROTECTED_MEDIA_ROOT"] = str(protected_root)
+    filename = "women-founders-toolkit.pdf"
+    (protected_root / filename).write_bytes(b"%PDF-1.4 fake pdf body")
+
     resp = client.post(
         "/api/v1/resources",
         json=_base_payload(
-            name="Women Founders Business Planning Toolkit", accessType="premium", price=4900, fileUrl=None
+            name="Women Founders Business Planning Toolkit", accessType="premium", price=4900, fileUrl=None,
+            protectedFilePath=filename,
         ),
         headers=auth_headers(manager_token),
     )
@@ -367,8 +382,8 @@ def test_premium_resource_access_not_available(client, manager_token):
     assert data["is_free"] is False
 
     access = client.post(f"/api/v1/resources/{data['slug']}/access")
-    assert access.status_code == 403
-    assert access.get_json()["error"]["code"] == "premium_unavailable"
+    assert access.status_code == 401
+    assert access.get_json()["error"]["code"] == "account_required"
 
 
 def test_external_link_resource_access(client, manager_token):

@@ -57,11 +57,13 @@ _ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in ACCESS
 # app/services/resource_downloads.py's resolve_download_token() and
 # app/api/v1/resources.py's _resolve_target_url() both import this rather
 # than re-listing it. external_link never has a protected file to serve
-# (its whole point is an off-site URL); premium is deliberately excluded
-# even though a file may already be uploaded/stored for it, because
-# check_resource_access() blocks all premium access until checkout exists
-# — a token must never be mintable for a resource no one can access yet.
-PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "circle_only")
+# (its whole point is an off-site URL). "premium" is included now that
+# one-time Resource purchase entitlement exists (see ResourcePurchase
+# below and app/services/resource_access.py's check_resource_access) —
+# a token is only ever actually issued once that function has confirmed
+# the viewer holds a ResourcePurchase for this Resource, exactly the same
+# as circle_only's own gate via has_circle_access().
+PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "circle_only", "premium")
 
 FILE_FORMATS = ("PDF", "DOCX", "XLSX", "PPTX", "ZIP", "Image", "Video", "Other")
 _FILE_FORMAT_CHECK_SQL = "file_format IS NULL OR file_format IN (" + ", ".join(f"'{f}'" for f in FILE_FORMATS) + ")"
@@ -285,3 +287,194 @@ class ResourceDownloadToken(db.Model):
 
     resource = db.relationship("Resource", foreign_keys=[resource_id])
     user = db.relationship("User", foreign_keys=[user_id])
+
+
+# Premium Resource purchase — Stage 1 of the Paystack premium-resource
+# integration (see app/services/resource_payments.py). Deliberately a
+# SEPARATE entitlement system from WSF Circle (app/models/circle.py's
+# CircleSubscription): a Circle membership never unlocks a premium
+# Resource, and buying a premium Resource never grants Circle (see
+# app/services/resource_access.py's check_resource_access). Also
+# deliberately NOT a Product/Order (app/models/commerce.py) — a premium
+# Resource purchase is a one-off, non-shippable digital entitlement with
+# its own payment-verification lifecycle, which Order was never designed
+# for, mirroring exactly why CirclePayment/CircleSubscription stayed
+# separate from Order/OrderItem too.
+#
+# "active" is the only status this MVP needs — a refund/revocation
+# workflow is explicitly out of scope for Stage 1 (see the task's own
+# "ADMIN / REFUNDS OUT OF SCOPE" section). Kept as a real, checked column
+# (rather than omitted entirely) so a future "refunded"/"revoked" value
+# is a deliberate migration later, not a schema redesign.
+RESOURCE_PURCHASE_STATUSES = ("active",)
+_RESOURCE_PURCHASE_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in RESOURCE_PURCHASE_STATUSES) + ")"
+
+
+class ResourcePurchase(db.Model):
+    """One durable, one-time purchase entitlement: `user` owns `resource`
+    permanently (no expiry, no renewal) once this row exists. This is the
+    ONE source of truth app/services/resource_access.py's
+    check_resource_access() consults for access_type == "premium" — never
+    re-derived from CirclePayment/CircleSubscription, Product/Order, or
+    any frontend flag.
+
+    A user may hold AT MOST ONE active purchase of a given Resource — see
+    the unique index below. This is a plain (not partial) unique index
+    because RESOURCE_PURCHASE_STATUSES currently has exactly one value;
+    should a future "refunded" status ever need to coexist with a later
+    legitimate re-purchase, that would require switching this to a
+    partial index scoped to status == "active", the same pattern
+    app/models/circle.py's CircleSubscription already uses for its own
+    "one current row per user" rule — a deliberate later migration, not
+    something this MVP needs to anticipate.
+
+    `payment_reference` records which ResourcePayment originally granted
+    this purchase, purely for support/reconciliation — it is NOT the
+    authority for entitlement (this row's mere existence is); a payment
+    row may be deleted/archived later without this purchase ever being
+    affected.
+    """
+
+    __tablename__ = "resource_purchases"
+    __table_args__ = (
+        db.CheckConstraint(_RESOURCE_PURCHASE_STATUS_CHECK_SQL, name="ck_resource_purchases_status"),
+        db.Index("uq_resource_purchases_user_resource", "user_id", "resource_id", unique=True),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # RESTRICT (the FK default) — same reasoning as CircleSubscription.plan_id
+    # in app/models/circle.py: a Resource referenced by any purchase, ever,
+    # can never be hard-deleted, only archived (see Resource.status and
+    # app/api/v1/resources.py's _is_referenced()). Purchase history must
+    # never silently disappear because a Resource row was removed.
+    resource_id = db.Column(db.Integer, db.ForeignKey("resources.id"), nullable=False, index=True)
+
+    payment_reference = db.Column(db.String(100), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="active")
+
+    purchased_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
+    )
+
+    user = db.relationship("User", foreign_keys=[user_id])
+    resource = db.relationship("Resource", foreign_keys=[resource_id])
+
+
+# Same meaning/lifecycle as app/models/circle.py's CIRCLE_PAYMENT_STATUSES
+# — see that module's docstring for the full pending -> verified ->
+# consumed / failed / abandoned mapping. A ResourcePayment reaches at most
+# one of consumed/failed/abandoned, never more than one, and never goes
+# back to pending/verified once there.
+RESOURCE_PAYMENT_STATUSES = ("pending", "verified", "consumed", "failed", "abandoned")
+_RESOURCE_PAYMENT_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in RESOURCE_PAYMENT_STATUSES) + ")"
+
+# Just Paystack for now — same reasoning as app/models/circle.py's
+# CIRCLE_PAYMENT_PROVIDERS: a real, checked column rather than a free-text
+# string, so a second provider (if one is ever added) is a deliberate
+# migration rather than a typo.
+RESOURCE_PAYMENT_PROVIDERS = ("paystack",)
+_RESOURCE_PAYMENT_PROVIDER_CHECK_SQL = "provider IN (" + ", ".join(f"'{p}'" for p in RESOURCE_PAYMENT_PROVIDERS) + ")"
+
+
+class ResourcePayment(db.Model):
+    """One Paystack transaction attempt for one premium Resource purchase.
+    Mirrors app/models/circle.py's CirclePayment property-for-property —
+    see that class's own docstring for the full rationale this one
+    shares: `amount_subunits`/`currency`/`customer_email` are SNAPSHOTS
+    taken at checkout-initialization time from whatever the Resource
+    looked like at that exact moment, never re-read from the current
+    Resource row afterwards (so a later price/currency edit never affects
+    an in-flight payment); `reference` is the one idempotency key the
+    whole payment lifecycle is built around; no raw Paystack payload is
+    ever stored, only the same small allowlisted `provider_snapshot`
+    subset CirclePayment uses.
+
+    `purchase_id` is set only once consume_verified_resource_payment()
+    (app/services/resource_payments.py) has created/attached the
+    resulting ResourcePurchase — null for the entire pending/verified
+    window, and permanently null for a payment that ends up failed/
+    abandoned.
+    """
+
+    __tablename__ = "resource_payments"
+    __table_args__ = (
+        db.CheckConstraint(_RESOURCE_PAYMENT_STATUS_CHECK_SQL, name="ck_resource_payments_status"),
+        db.CheckConstraint(_RESOURCE_PAYMENT_PROVIDER_CHECK_SQL, name="ck_resource_payments_provider"),
+        # Strictly positive, not merely non-negative — same reasoning as
+        # CirclePayment's identical constraint: a ResourcePayment is a
+        # real Paystack transaction attempt, never a fake zero-value row.
+        db.CheckConstraint("amount_subunits > 0", name="ck_resource_payments_amount_positive"),
+        # Mirrors CirclePayment's identical partial unique index: a given
+        # Paystack transaction id must never back two different WSF
+        # payment rows. Partial (WHERE NOT NULL) because a `pending` row
+        # whose Paystack initialize call never completed has no
+        # transaction id at all.
+        db.Index(
+            "uq_resource_payments_provider_transaction_id",
+            "provider_transaction_id",
+            unique=True,
+            postgresql_where=db.text("provider_transaction_id IS NOT NULL"),
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # WSF-generated before the Paystack initialize call is ever made — see
+    # app/services/paystack.py's generate_reference(prefix="wsfresource").
+    # The one key every idempotency check in app/services/resource_payments.py
+    # locks/queries on.
+    reference = db.Column(db.String(100), unique=True, nullable=False, index=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # RESTRICT (the FK default) — same reasoning as ResourcePurchase.resource_id
+    # above: a Resource referenced by any payment, current or historical,
+    # can never be hard-deleted, only archived.
+    resource_id = db.Column(db.Integer, db.ForeignKey("resources.id"), nullable=False, index=True)
+    # Set only once consume_verified_resource_payment() has created/attached
+    # the resulting ResourcePurchase — see class docstring.
+    purchase_id = db.Column(db.Integer, db.ForeignKey("resource_purchases.id"), nullable=True, index=True)
+
+    provider = db.Column(db.String(30), nullable=False, default="paystack")
+    # Paystack's own transaction id — present only once Paystack has
+    # actually responded. String, not Integer: Paystack documents this as
+    # needing to accommodate unsigned 64-bit values.
+    provider_transaction_id = db.Column(db.String(64), nullable=True)
+
+    # --- Snapshots taken at checkout-initialization time (see class
+    # docstring) — never re-derived from Resource's current row. ---
+    amount_subunits = db.Column(db.Integer, nullable=False)  # resource.price * 100, integer arithmetic only, > 0
+    currency = db.Column(db.String(3), nullable=False)
+    customer_email = db.Column(db.String(255), nullable=False)
+
+    status = db.Column(db.String(20), nullable=False, default="pending", index=True)
+
+    # The hosted-checkout redirect target Paystack returned at
+    # initialization — a customer redirect URL, never a credential.
+    authorization_url = db.Column(db.String(500), nullable=True)
+    # Channel Paystack reports the payment completed through once known
+    # (e.g. "card", "mobile_money") — informational only.
+    provider_channel = db.Column(db.String(30), nullable=True)
+
+    # Small, explicitly allowlisted subset of Paystack's verify/webhook
+    # response — see class docstring. Never the full raw provider payload.
+    provider_snapshot = db.Column(db.JSON, nullable=True)
+
+    paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    verified_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # Last time WSF called Paystack's verify endpoint for this reference —
+    # lets app/services/resource_payments.py throttle repeated verify
+    # calls without needing a separate rate-limit table.
+    last_verification_attempt_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
+    )
+
+    user = db.relationship("User", foreign_keys=[user_id])
+    resource = db.relationship("Resource", foreign_keys=[resource_id])
+    purchase = db.relationship("ResourcePurchase", foreign_keys=[purchase_id])
