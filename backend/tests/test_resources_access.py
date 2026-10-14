@@ -560,16 +560,25 @@ class TestPremium:
         assert resp.status_code == 401
         assert resp.get_json()["error"]["code"] == "account_required"
 
-    # 50. active Circle subscription does NOT unlock premium resource —
-    # still blocked, now with the new purchase_required code rather than
-    # the old unconditional premium_unavailable.
-    def test_circle_subscription_does_not_unlock_premium(self, app, client, user1_token):
+    # 50. active Circle subscription UNLOCKS premium resource access —
+    # business rule change: Premium Resource access = active
+    # ResourcePurchase OR active WSF Circle entitlement via
+    # has_circle_access(user). See test_resource_purchase.py's
+    # TestCircleIncludedPremiumAccess for the full expiry/precedence/
+    # isolation matrix (expired/cancelled/future-start Circle, Community
+    # membership never counting, purchase precedence, no ResourcePurchase
+    # ever created for Circle access, etc.).
+    def test_active_circle_subscription_unlocks_premium(self, app, client, user1_token, protected_root):
         plan_id = _make_plan(app)
         _make_subscription(app, USER1["email"], plan_id, status="active")
-        _, slug = _make_resource(app, access_type="premium", price=4900)
+        filename = f"{uuid.uuid4().hex}.pdf"
+        (protected_root / filename).write_bytes(b"%PDF-1.4 fake pdf body")
+        _, slug = _make_resource(
+            app, access_type="premium", price=4900, file_url=None, protected_file_path=filename
+        )
         resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
-        assert resp.status_code == 403
-        assert resp.get_json()["error"]["code"] == "purchase_required"
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["accessType"] == "premium"
 
     # 51. premium denial does not increment count
     def test_premium_denial_does_not_increment_count(self, app, client):

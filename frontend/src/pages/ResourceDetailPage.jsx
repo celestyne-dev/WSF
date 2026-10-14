@@ -201,10 +201,16 @@ function AccessCta({
     }
 
     if (resource.viewerCanAccess === true) {
+      // "purchase" takes precedence when a viewer somehow holds both
+      // (see backend/app/services/resource_access.py's
+      // get_viewer_access_source) — the durable entitlement is the one
+      // worth naming. Circle-included access is never labeled
+      // "Purchased": nothing was bought, so nothing should say so.
+      const label = resource.viewerAccessSource === 'circle' ? 'Included with WSF Circle' : 'Purchased'
       return (
         <div className="mt-5">
           <p className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-burgundy-600">
-            <Lock size={14} /> Purchased
+            <Lock size={14} /> {label}
           </p>
           <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary inline-flex disabled:opacity-60">
             <Download size={16} /> {requesting ? 'Preparing…' : 'Download resource'}
@@ -361,6 +367,22 @@ export default function ResourceDetailPage() {
     }
   }
 
+  // A background refresh for the two stale-state checkout recoveries
+  // below — deliberately narrow: only `resource` is reloaded (so
+  // viewerCanAccess/viewerAccessSource catch up and the normal render
+  // takes over), never `related`/`error`/`showEmailGate`, which belong
+  // only to the full page-load effect above. Failures are swallowed —
+  // worst case the page simply keeps showing its last-known state,
+  // which is no worse than before this recovery ran.
+  async function refetchResourceForAccessRecovery() {
+    try {
+      const data = await fetchResourceBySlug(slug)
+      if (data) setResource(data)
+    } catch {
+      // Intentionally silent — see comment above.
+    }
+  }
+
   // Starts a hosted Paystack checkout for a premium Resource purchase —
   // see spec section F/G: never embeds a card form, never sends
   // price/currency/user/email, and never infers success from the
@@ -387,6 +409,17 @@ export default function ResourceDetailPage() {
         // either way.
         setCheckingOut(false)
         handleAccessClick()
+        return
+      }
+      if (code === 'included_with_circle') {
+        // The viewer gained active WSF Circle access since this page
+        // loaded (stale page, duplicate tab, membership activated
+        // mid-session) — never a payment failure, never a Paystack
+        // retry. Refetch so the CTA becomes "Included with WSF Circle /
+        // Download resource" on its own; the backend already charged
+        // nothing and created nothing.
+        setCheckingOut(false)
+        refetchResourceForAccessRecovery()
         return
       }
       setCheckoutError(getResourceCheckoutErrorPresentation(code))
@@ -447,6 +480,9 @@ export default function ResourceDetailPage() {
                 ? 'Free'
                 : formatCurrency(resource.price, resource.currency)}
           </p>
+          {resource.accessType === 'premium' && resource.viewerCanAccess !== true && (
+            <p className="mt-1 text-xs text-charcoal-600/70">Included with an active WSF Circle membership.</p>
+          )}
 
           <AccessCta
             resource={resource}

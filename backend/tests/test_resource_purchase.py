@@ -180,15 +180,44 @@ def _make_plan(app, **overrides):
         return plan.id
 
 
-def _make_active_circle_subscription(app, user_id, plan_id):
+def _make_circle_subscription(app, user_id, plan_id, **overrides):
     from app.extensions import db
     from app.models.circle import CircleSubscription
 
+    defaults = dict(user_id=user_id, plan_id=plan_id, status="active", source="manual")
+    defaults.update(overrides)
     with app.app_context():
-        sub = CircleSubscription(user_id=user_id, plan_id=plan_id, status="active", source="manual")
+        sub = CircleSubscription(**defaults)
         db.session.add(sub)
         db.session.commit()
         return sub.id
+
+
+def _make_active_circle_subscription(app, user_id, plan_id):
+    return _make_circle_subscription(app, user_id, plan_id, status="active")
+
+
+def _make_community_member(app, user_id, email, **overrides):
+    """A Community Member record linked to this same user_id — entirely
+    separate from WSF Circle (see app/models/community.py's own
+    docstring). `membership_type="Premium Member"` is deliberately used
+    by default in tests that need to prove this never unlocks a premium
+    *Resource* — the shared word "Premium" is coincidental naming across
+    two unrelated systems, not a real entitlement link.
+    """
+    from app.extensions import db
+    from app.models.community import Member
+
+    defaults = dict(
+        user_id=user_id, first_name="Test", last_name="Member", email=email,
+        status="active", membership_type="Premium Member",
+    )
+    defaults.update(overrides)
+    with app.app_context():
+        member = Member(**defaults)
+        db.session.add(member)
+        db.session.commit()
+        return member.id
 
 
 class TestResourcePurchaseModel:
@@ -334,15 +363,30 @@ class TestPremiumAccessEntitlement:
         assert body["accessType"] == "premium"
         assert body["url"].startswith("/api/v1/resources/downloads/")
 
-    def test_circle_membership_alone_does_not_unlock_premium(self, client, app, user1_token, protected_root):
+    # Business rule change: an active WSF Circle member now gets
+    # complimentary premium Resource access via has_circle_access(user)
+    # (see app/services/resource_access.py's check_resource_access) —
+    # without ever holding a ResourcePurchase. See TestCircleIncludedPremiumAccess
+    # below for the full matrix (expired/cancelled/future-start Circle,
+    # Community membership, purchase precedence, download token, etc.).
+    def test_active_circle_membership_unlocks_premium_without_purchase(self, client, app, user1_token, protected_root):
         user_id = _get_user_id(app, USER1["email"])
         plan_id = _make_plan(app)
         _make_active_circle_subscription(app, user_id, plan_id)
-        _, slug = _make_premium_resource(app, protected_root)
+        resource_id, slug = _make_premium_resource(app, protected_root)
 
         resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
-        assert resp.status_code == 403
-        assert resp.get_json()["error"]["code"] == "purchase_required"
+        assert resp.status_code == 200
+        body = resp.get_json()["data"]
+        assert body["accessType"] == "premium"
+        assert body["url"].startswith("/api/v1/resources/downloads/")
+
+        from app.models.resource import ResourcePurchase
+
+        with app.app_context():
+            assert (
+                ResourcePurchase.query.filter_by(user_id=user_id, resource_id=resource_id).first() is None
+            )
 
     def test_purchasing_premium_never_grants_circle(self, app, user1_token, protected_root):
         from app.services.circle import has_circle_access
@@ -388,12 +432,193 @@ class TestPremiumAccessEntitlement:
         resource_id, slug = _make_premium_resource(app, protected_root)
 
         no_purchase = client.get(f"/api/v1/resources/{slug}", headers=auth_headers(user1_token))
-        assert no_purchase.get_json()["data"]["viewerCanAccess"] is False
+        no_purchase_data = no_purchase.get_json()["data"]
+        assert no_purchase_data["viewerCanAccess"] is False
+        assert no_purchase_data["viewerAccessSource"] is None
 
         _make_purchase(app, user_id, resource_id)
 
         with_purchase = client.get(f"/api/v1/resources/{slug}", headers=auth_headers(user1_token))
-        assert with_purchase.get_json()["data"]["viewerCanAccess"] is True
+        with_purchase_data = with_purchase.get_json()["data"]
+        assert with_purchase_data["viewerCanAccess"] is True
+        assert with_purchase_data["viewerAccessSource"] == "purchase"
+
+    def test_anonymous_viewer_access_source_is_null_and_safe(self, client, app, protected_root):
+        _, slug = _make_premium_resource(app, protected_root)
+        resp = client.get(f"/api/v1/resources/{slug}")
+        data = resp.get_json()["data"]
+        assert data["viewerCanAccess"] is False
+        assert data["viewerAccessSource"] is None
+        # No membership/payment detail of any kind leaks alongside it.
+        assert "subscriptionId" not in data and "planId" not in data and "paymentId" not in data
+
+
+class TestCircleIncludedPremiumAccess:
+    """The business-rule change this follow-up implements: Premium
+    Resource access = active ResourcePurchase OR active WSF Circle
+    entitlement via has_circle_access(user) — reused, never re-derived
+    (see app/services/resource_access.py). Covers the full expiry/
+    precedence/isolation matrix called out in the follow-up spec.
+    """
+
+    def test_expired_circle_membership_denied(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(app, user_id, plan_id, status="expired")
+        _, slug = _make_premium_resource(app, protected_root)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "purchase_required"
+
+    def test_cancelled_circle_membership_denied(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(app, user_id, plan_id, status="cancelled")
+        _, slug = _make_premium_resource(app, protected_root)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "purchase_required"
+
+    def test_revoked_circle_membership_denied(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(app, user_id, plan_id, status="revoked")
+        _, slug = _make_premium_resource(app, protected_root)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "purchase_required"
+
+    def test_future_start_circle_membership_denied(self, client, app, user1_token, protected_root):
+        from datetime import datetime, timedelta, timezone
+
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(
+            app, user_id, plan_id, status="active", starts_at=datetime.now(timezone.utc) + timedelta(days=7)
+        )
+        _, slug = _make_premium_resource(app, protected_root)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "purchase_required"
+
+    def test_lapsed_period_end_denied_even_if_status_still_active(self, client, app, user1_token, protected_root):
+        """has_circle_access()'s own date check, not just the status
+        column — a subscription row that hasn't been transitioned to
+        "expired" yet but whose current_period_end has already passed
+        must still deny access (see app/services/circle.py).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(
+            app, user_id, plan_id, status="active", current_period_end=datetime.now(timezone.utc) - timedelta(days=1)
+        )
+        _, slug = _make_premium_resource(app, protected_root)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "purchase_required"
+
+    def test_community_membership_alone_does_not_unlock_premium(self, client, app, user1_token, protected_root):
+        """Community's own "Premium Member" membership_type is a
+        coincidental name collision with Resource.access_type ==
+        "premium" — the two systems are deliberately unrelated (see
+        app/services/resource_access.py's module docstring).
+        """
+        user_id = _get_user_id(app, USER1["email"])
+        _make_community_member(app, user_id, "circle-community-collision@example.com")
+        _, slug = _make_premium_resource(app, protected_root)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "purchase_required"
+
+    def test_purchase_access_survives_circle_expiry(self, client, app, user1_token, protected_root):
+        """A durable ResourcePurchase keeps working after Circle lapses —
+        Circle access is temporary/membership-based; purchase is not."""
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(app, user_id, plan_id, status="expired")
+        resource_id, slug = _make_premium_resource(app, protected_root)
+        _make_purchase(app, user_id, resource_id)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["accessType"] == "premium"
+
+    def test_purchase_plus_active_circle_still_succeeds(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_active_circle_subscription(app, user_id, plan_id)
+        resource_id, slug = _make_premium_resource(app, protected_root)
+        _make_purchase(app, user_id, resource_id)
+
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+
+    def test_purchase_takes_precedence_over_circle_in_viewer_access_source(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_active_circle_subscription(app, user_id, plan_id)
+        resource_id, slug = _make_premium_resource(app, protected_root)
+        _make_purchase(app, user_id, resource_id)
+
+        resp = client.get(f"/api/v1/resources/{slug}", headers=auth_headers(user1_token))
+        data = resp.get_json()["data"]
+        assert data["viewerCanAccess"] is True
+        assert data["viewerAccessSource"] == "purchase"
+
+    def test_circle_only_viewer_access_source_is_circle(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_active_circle_subscription(app, user_id, plan_id)
+        _, slug = _make_premium_resource(app, protected_root)
+
+        resp = client.get(f"/api/v1/resources/{slug}", headers=auth_headers(user1_token))
+        data = resp.get_json()["data"]
+        assert data["viewerCanAccess"] is True
+        assert data["viewerAccessSource"] == "circle"
+
+    def test_circle_access_never_creates_resource_purchase_row(self, client, app, user1_token, protected_root):
+        from app.models.resource import ResourcePurchase
+
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_active_circle_subscription(app, user_id, plan_id)
+        resource_id, slug = _make_premium_resource(app, protected_root)
+
+        # Hit /access twice to also prove repeated Circle-based access
+        # never creates one on a later call either.
+        client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+
+        with app.app_context():
+            assert (
+                ResourcePurchase.query.filter_by(user_id=user_id, resource_id=resource_id).first() is None
+            )
+
+    def test_circle_included_access_issues_working_short_lived_download_token(
+        self, client, app, user1_token, protected_root
+    ):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_active_circle_subscription(app, user_id, plan_id)
+        content = b"%PDF-1.4 circle-included premium workbook body"
+        _, slug = _make_premium_resource(app, protected_root, content=content)
+
+        access_resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert access_resp.status_code == 200
+        url = access_resp.get_json()["data"]["url"]
+        assert url.startswith("/api/v1/resources/downloads/")
+
+        download_resp = client.get(url)
+        assert download_resp.status_code == 200
+        assert download_resp.data == content
 
 
 class TestPremiumPublishValidation:

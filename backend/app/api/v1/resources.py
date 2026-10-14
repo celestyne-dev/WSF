@@ -40,7 +40,7 @@ from app.schemas.resource import ResourceInputSchema, ResourceLeadInputSchema, R
 from app.schemas.taxonomy import TagSchema, TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.newsletter import upsert_subscriber
-from app.services.resource_access import check_resource_access, viewer_can_access
+from app.services.resource_access import check_resource_access, get_viewer_access_source, viewer_can_access
 from app.services.resource_downloads import (
     is_safe_protected_path,
     issue_download_token,
@@ -454,6 +454,11 @@ def build_public_resource_payload(resource, viewer):
         "requiresAccount": resource.access_type in ("member_only", "circle_only", "premium"),
         "requiresCircle": resource.access_type == "circle_only",
         "viewerCanAccess": viewer_can_access(resource, viewer),
+        # Premium only — "purchase", "circle", or null; see
+        # get_viewer_access_source's own docstring for the precedence
+        # rule and exactly what it never leaks (no subscription/plan/
+        # payment id or date, ever).
+        "viewerAccessSource": get_viewer_access_source(resource, viewer),
         "fileFormat": resource.file_format,
         "fileSize": resource.file_size,
         "pageCount": resource.page_count,

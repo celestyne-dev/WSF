@@ -144,6 +144,39 @@ def _count_purchases_for(app, user_id, resource_id):
         return ResourcePurchase.query.filter_by(user_id=user_id, resource_id=resource_id).count()
 
 
+def _make_plan(app, **overrides):
+    from app.extensions import db
+    from app.models.circle import CirclePlan
+
+    defaults = dict(
+        slug=f"circle-plan-{uuid.uuid4().hex[:10]}",
+        name="WSF Circle Membership",
+        billing_interval="monthly",
+        price=1000,
+        currency="KES",
+        status="active",
+    )
+    defaults.update(overrides)
+    with app.app_context():
+        plan = CirclePlan(**defaults)
+        db.session.add(plan)
+        db.session.commit()
+        return plan.id
+
+
+def _make_circle_subscription(app, user_id, plan_id, **overrides):
+    from app.extensions import db
+    from app.models.circle import CircleSubscription
+
+    defaults = dict(user_id=user_id, plan_id=plan_id, status="active", source="manual")
+    defaults.update(overrides)
+    with app.app_context():
+        sub = CircleSubscription(**defaults)
+        db.session.add(sub)
+        db.session.commit()
+        return sub.id
+
+
 _FAKE_INIT_RESULT = {"authorization_url": "https://checkout.paystack.com/abc123", "access_code": "abc123"}
 
 
@@ -244,6 +277,72 @@ class TestCheckoutAuthAndEligibility:
         _enable_paystack(app)
         resp = client.post("/api/v1/resources/does-not-exist/checkout", headers=auth_headers(user1_token))
         assert resp.status_code == 404
+
+
+class TestCheckoutCircleEligibility:
+    """Follow-up business rule: an active WSF Circle member already has
+    complimentary premium Resource access (see app/services/
+    resource_access.py's check_resource_access) and must never be able
+    to initialize — let alone complete — a Paystack checkout for one.
+    See app/services/resource_payments.py's start_resource_checkout for
+    the included_with_circle rejection this proves.
+    """
+
+    def test_active_circle_member_denied_without_paystack_initialize(self, client, app, user1_token, protected_root):
+        _enable_paystack(app)
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(app, user_id, plan_id, status="active")
+        resource_id, slug = _make_premium_resource(app, protected_root)
+
+        with patch("app.services.resource_payments.initialize_transaction") as mock_init:
+            resp = client.post(f"/api/v1/resources/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 409
+        assert resp.get_json()["error"]["code"] == "included_with_circle"
+        mock_init.assert_not_called()
+        assert _count_payments_for(app, user_id, resource_id) == 0
+        assert _count_purchases_for(app, user_id, resource_id) == 0
+
+    def test_purchased_and_active_circle_member_still_already_purchased(
+        self, client, app, user1_token, protected_root
+    ):
+        """already_purchased is checked first — a purchaser who also has
+        Circle gets the existing (harmless, no-op) already_purchased
+        response, never included_with_circle.
+        """
+        _enable_paystack(app)
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(app, user_id, plan_id, status="active")
+        resource_id, slug = _make_premium_resource(app, protected_root)
+        _make_purchase(app, user_id, resource_id)
+
+        with patch("app.services.resource_payments.initialize_transaction") as mock_init:
+            resp = client.post(f"/api/v1/resources/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 409
+        assert resp.get_json()["error"]["code"] == "already_purchased"
+        mock_init.assert_not_called()
+
+    def test_expired_circle_member_checkout_allowed_normally(self, client, app, user1_token, protected_root):
+        _enable_paystack(app)
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app)
+        _make_circle_subscription(app, user_id, plan_id, status="expired")
+        _, slug = _make_premium_resource(app, protected_root)
+
+        with patch("app.services.resource_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
+            resp = client.post(f"/api/v1/resources/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 201
+        mock_init.assert_called_once()
+
+    def test_non_circle_unpurchased_user_checkout_continues_normally(self, client, app, user1_token, protected_root):
+        _enable_paystack(app)
+        _, slug = _make_premium_resource(app, protected_root)
+
+        with patch("app.services.resource_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
+            resp = client.post(f"/api/v1/resources/{slug}/checkout", headers=auth_headers(user1_token))
+        assert resp.status_code == 201
+        mock_init.assert_called_once()
 
 
 class TestCheckoutSnapshotsAndRequestIsolation:

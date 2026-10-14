@@ -21,6 +21,14 @@ WHAT'S DIFFERENT FROM CIRCLE:
   is simply "does this user already hold an active ResourcePurchase for
   this Resource" (already_purchased) rather than Circle's richer
   new/renew/blocked_* classification.
+- An active WSF Circle member gets premium Resource access for free via
+  has_circle_access(user) (see app/services/resource_access.py) WITHOUT
+  ever holding a ResourcePurchase — Circle access is temporary and
+  membership-based, never converted into this module's durable
+  entitlement. start_resource_checkout() below rejects a Circle member's
+  checkout attempt (code "included_with_circle") before creating any
+  ResourcePayment row or calling Paystack at all, which Circle's own
+  checkout has no equivalent of — see that function's own comment.
 - consume_verified_resource_payment() therefore has a simpler outcome
   vocabulary than consume_verified_circle_payment(): there is no
   "membership_conflict" — if a ResourcePurchase for this (user, resource)
@@ -76,6 +84,7 @@ from app.services.paystack import (
     initialize_transaction,
     verify_transaction,
 )
+from app.services.circle import has_circle_access
 from app.services.resource_downloads import protected_file_exists
 from app.utils.responses import ApiError
 
@@ -212,6 +221,22 @@ def start_resource_checkout(user, resource):
 
     if _already_purchased(user, resource):
         raise ApiError("You already own this resource.", 409, code="already_purchased")
+
+    # An active WSF Circle member already has complimentary access to
+    # every premium Resource (see app/services/resource_access.py's
+    # check_resource_access) — checked AFTER already_purchased so a
+    # purchaser-who-also-has-Circle still gets the (harmless, no-op)
+    # already_purchased response rather than this one. Rejected here,
+    # before any ResourcePayment row exists and before Paystack is ever
+    # called, so a stale "Buy" button, a duplicate tab, or membership
+    # becoming active while this page was open can never actually charge
+    # a Circle member or create a payment row for them.
+    if has_circle_access(user):
+        raise ApiError(
+            "This resource is included with your active WSF Circle membership.",
+            409,
+            code="included_with_circle",
+        )
 
     # See module docstring: this advisory lock is held across the
     # Paystack call on purpose, not released beforehand. -resource.id

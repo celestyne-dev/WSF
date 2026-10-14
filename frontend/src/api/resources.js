@@ -55,6 +55,11 @@ export function mapResource(r) {
     // authorization) — absent for the staff/admin dump, where it simply
     // doesn't apply. See app/services/resource_access.py.
     viewerCanAccess: r.viewerCanAccess ?? null,
+    // Premium only — "purchase", "circle", or null; see
+    // app/services/resource_access.py's get_viewer_access_source. Never
+    // computed here from Redux membership state — the backend is
+    // authoritative for which path (if any) actually grants access.
+    viewerAccessSource: r.viewer_access_source ?? r.viewerAccessSource ?? null,
     // Present only in the public-safe payload — the admin/staff dump
     // never includes these (see app/api/v1/resources.py); null here for
     // a staff-authenticated response is expected, not a bug.

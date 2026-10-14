@@ -12,11 +12,19 @@ Community Member record, never WSF Circle, never Member.membership_type
 (see app/models/community.py's own docstring for why those stay separate
 concepts). circle_only means exactly has_circle_access(user); nothing
 about Community membership feeds into it either way. premium means
-exactly "this user holds a ResourcePurchase for this Resource" — a WSF
-Circle membership never unlocks it, and buying it never grants Circle
-(see ResourcePurchase's own docstring in app/models/resource.py) —
-Community membership, Product/Order records, and frontend flags are
-likewise never consulted.
+"this user holds a ResourcePurchase for this Resource, OR currently has
+active WSF Circle entitlement via has_circle_access(user)" — the two are
+deliberately separate paths to the SAME access, not merged concepts:
+a ResourcePurchase is a durable, one-time entitlement that survives a
+later Circle lapse; Circle access is temporary, membership-based, and
+disappears the moment has_circle_access(user) stops being true, exactly
+like circle_only's own gate. Circle access is never itself converted
+into (or recorded as) a ResourcePurchase row — see
+get_viewer_access_source below for how a caller tells the two apart for
+display purposes. Buying a premium Resource still never grants Circle
+either way (see ResourcePurchase's own docstring in
+app/models/resource.py) — Community membership, Product/Order records,
+and frontend flags are likewise never consulted for either path.
 """
 from app.models.resource import ResourcePurchase
 from app.services.circle import has_circle_access
@@ -64,17 +72,19 @@ def check_resource_access(resource, user):
 
     if access_type == "premium":
         # Requires a real WSF account first (same account_required 401 as
-        # member_only/circle_only) — ownership must persist and attach to
+        # member_only/circle_only) — ownership/entitlement must attach to
         # a known account, so an anonymous visitor can never hold/redeem
-        # a purchase. A WSF Circle membership never substitutes for one —
-        # Circle and premium Resource purchase are deliberately separate
-        # commercial concepts (see has_resource_purchase's docstring).
+        # either path below. has_circle_access(user) is checked as a
+        # second, independent path to the SAME access (see
+        # get_viewer_access_source for the display precedence this gives
+        # purchase over it) — never as a substitute that creates or
+        # implies a ResourcePurchase.
         _require_account(user)
-        if not has_resource_purchase(user, resource):
-            raise ApiError(
-                "This premium resource requires purchase.", 403, code="purchase_required"
-            )
-        return
+        if has_resource_purchase(user, resource) or has_circle_access(user):
+            return
+        raise ApiError(
+            "This premium resource requires purchase.", 403, code="purchase_required"
+        )
 
     if access_type == "member_only":
         _require_account(user)
@@ -109,3 +119,25 @@ def viewer_can_access(resource, user):
         return True
     except ApiError:
         return False
+
+
+def get_viewer_access_source(resource, user):
+    """Which of the two independent premium-access paths `user` actually
+    holds right now — serialization-only, same safety posture as
+    viewer_can_access (never itself a grant; never consulted by POST
+    /access, which re-derives everything from check_resource_access
+    directly). Returns "purchase", "circle", or None; always None for
+    any access_type other than premium, since those have no second path
+    to distinguish. Purchase takes precedence when a viewer holds both —
+    it's the durable entitlement, so it's the one worth surfacing to the
+    UI even while Circle also happens to be active. Exposes only which
+    PATH grants access, never any subscription id, plan id, payment id,
+    date, or other membership/payment detail.
+    """
+    if resource.access_type != "premium":
+        return None
+    if has_resource_purchase(user, resource):
+        return "purchase"
+    if has_circle_access(user):
+        return "circle"
+    return None
