@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
-import { Download, Lock, Mail, ExternalLink, X } from 'lucide-react'
+import { Download, Lock, Mail, ExternalLink, Sparkles, X } from 'lucide-react'
 import { fetchResourceBySlug, fetchResources, requestResourceAccess, startResourceCheckout } from '../api/resources'
 import { fetchMyCircleMembership } from '../api/circle'
 import { getResourceCheckoutErrorPresentation } from '../utils/resourcePayment'
@@ -15,7 +15,6 @@ import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
 import ShareBar from '../components/ui/ShareBar'
 import NewsletterForm from '../components/ui/NewsletterForm'
-import ResourceCard from '../components/cards/ResourceCard'
 import SaveButton from '../components/account/SaveButton'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
@@ -348,7 +347,7 @@ function ResourceGallery({ resource }) {
         <div className="mt-4">
           <span className="eyebrow">Preview inside</span>
           <p className="mt-1 text-xs text-charcoal-600/70">Explore a few sample pages.</p>
-          <div className="mt-3 flex gap-2.5 overflow-x-auto pb-1">
+          <div className="mt-3 flex gap-2 overflow-x-auto scrollbar-none pb-1">
             {frames.map((frame, i) => (
               <button
                 key={i}
@@ -356,8 +355,10 @@ function ResourceGallery({ resource }) {
                 onClick={() => setSelected(i)}
                 aria-pressed={selected === i}
                 aria-label={i === 0 ? 'Show cover image' : `Show preview page ${i}`}
-                className={`shrink-0 overflow-hidden border-2 transition-colors ${
-                  selected === i ? 'border-plum-600' : 'border-transparent hover:border-taupe-300'
+                className={`shrink-0 overflow-hidden border-2 transition-all ${
+                  selected === i
+                    ? 'border-plum-600 ring-2 ring-plum-600/30 ring-offset-2 ring-offset-ivory'
+                    : 'border-transparent hover:border-taupe-300'
                 }`}
               >
                 <MediaImage
@@ -365,10 +366,10 @@ function ResourceGallery({ resource }) {
                   mediaPath={frame.mediaPath}
                   variant="thumbnail"
                   alt={frame.media?.altText || (i === 0 ? `${resource.name} cover` : `${resource.name} preview ${i}`)}
-                  width={120}
-                  height={120}
-                  aspect={1}
-                  className="h-[72px] w-[72px] object-cover"
+                  width={80}
+                  height={100}
+                  aspect={4 / 5}
+                  className="h-[100px] w-20 object-cover"
                 />
               </button>
             ))}
@@ -376,6 +377,110 @@ function ResourceGallery({ resource }) {
         </div>
       )}
     </div>
+  )
+}
+
+function getResourceAccessBadge(resource) {
+  const isYearlyOnly = resource.accessType === 'circle_only' && resource.circleAccessLevel === 'yearly_members'
+  if (isYearlyOnly) return { Icon: Sparkles, label: 'WSF Circle Yearly' }
+  const badges = {
+    email_gate: { Icon: Mail, label: 'Email required' },
+    member_only: { Icon: Lock, label: 'WSF account' },
+    circle_only: { Icon: Sparkles, label: 'WSF Circle' },
+    premium: { Icon: Lock, label: 'Premium' },
+    external_link: { Icon: ExternalLink, label: 'External' },
+  }
+  return badges[resource.accessType]
+}
+
+function getResourcePriceLabel(resource) {
+  return resource.accessType === 'circle_only' ? 'WSF Circle' : resource.isFree ? 'Free' : formatCurrency(resource.price, resource.currency)
+}
+
+// A Resource-detail-specific recommendation card for the 2/3-up related
+// grid — smaller image footprint, text sooner — kept local here rather
+// than changed on the shared ResourceCard, which also drives the denser
+// ResourcesPage grid where a taller cover is the right call.
+function RelatedResourceCard({ resource }) {
+  const badge = getResourceAccessBadge(resource)
+  return (
+    <Link to={`/resources/${resource.slug}`} className="group block">
+      <div className="relative overflow-hidden bg-taupe-100">
+        <MediaImage
+          media={resource.coverMedia}
+          variant="card"
+          mediaPath={resource.coverImage}
+          alt={resource.name}
+          width={640}
+          height={480}
+          aspect={4 / 3}
+          className="aspect-[4/3] w-full object-cover transition-transform duration-250 group-hover:scale-105"
+        />
+        {resource.featured && (
+          <span className="absolute left-3 top-3 bg-burgundy-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-ivory">Featured</span>
+        )}
+        {badge && (
+          <span className="absolute right-3 top-3 inline-flex items-center gap-1 bg-charcoal/85 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-ivory">
+            <badge.Icon size={11} /> {badge.label}
+          </span>
+        )}
+      </div>
+      <div className="mt-3">
+        <span className="eyebrow">{resource.type}</span>
+        <h3 className="mt-1 font-serif text-lg font-semibold leading-snug text-charcoal transition-colors group-hover:text-burgundy-600">
+          {resource.name}
+        </h3>
+        {resource.shortDescription && <p className="mt-1 line-clamp-2 text-sm text-charcoal-600/80">{resource.shortDescription}</p>}
+        <p className="mt-1.5 text-sm font-medium text-charcoal-600">{getResourcePriceLabel(resource)}</p>
+      </div>
+    </Link>
+  )
+}
+
+// The wide treatment for the one-related-result case — the vertical
+// ResourceCard shape left a single card stranded at the far left with
+// the rest of the row empty; this fills that same footprint on purpose
+// instead, without stretching the portrait cover out of proportion.
+function RelatedResourceWideCard({ resource }) {
+  const badge = getResourceAccessBadge(resource)
+  return (
+    <Link
+      to={`/resources/${resource.slug}`}
+      className="group flex max-w-[720px] flex-col overflow-hidden border border-taupe-200 transition-colors hover:border-burgundy-300 sm:flex-row"
+    >
+      <div className="relative shrink-0 overflow-hidden bg-taupe-100 sm:w-48">
+        <MediaImage
+          media={resource.coverMedia}
+          variant="card"
+          mediaPath={resource.coverImage}
+          alt={resource.name}
+          width={400}
+          height={500}
+          aspect={4 / 5}
+          className="aspect-[4/5] w-full object-cover transition-transform duration-250 group-hover:scale-105 sm:h-full"
+        />
+        {resource.featured && (
+          <span className="absolute left-3 top-3 bg-burgundy-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-ivory">Featured</span>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col justify-center p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="eyebrow">{resource.type}</span>
+          {badge && (
+            <span className="inline-flex items-center gap-1 bg-charcoal/85 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-ivory">
+              <badge.Icon size={11} /> {badge.label}
+            </span>
+          )}
+        </div>
+        <h3 className="mt-2 font-serif text-xl font-semibold leading-snug text-charcoal transition-colors group-hover:text-burgundy-600">
+          {resource.name}
+        </h3>
+        {resource.shortDescription && (
+          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-charcoal-600/80">{resource.shortDescription}</p>
+        )}
+        <p className="mt-3 text-sm font-semibold text-charcoal-600">{getResourcePriceLabel(resource)}</p>
+      </div>
+    </Link>
   )
 }
 
@@ -549,7 +654,7 @@ export default function ResourceDetailPage() {
             </div>
             <SaveButton contentType="resource" contentId={resource.id} />
           </div>
-          <h1 className="mt-3 font-serif text-4xl font-semibold leading-tight text-charcoal sm:text-5xl">{resource.name}</h1>
+          <h1 className="mt-3 max-w-xl font-serif text-4xl font-semibold leading-tight text-charcoal sm:text-5xl">{resource.name}</h1>
           {resource.subtitle && <p className="mt-3 max-w-xl text-lg leading-relaxed text-charcoal-600">{resource.subtitle}</p>}
           {(resource.author?.name || resource.authorName) && (
             <p className="mt-4 text-sm font-medium text-charcoal-600">By {resource.author?.name || resource.authorName}</p>
@@ -614,26 +719,39 @@ export default function ResourceDetailPage() {
             onCheckoutClick={handlePremiumCheckout}
           />
 
-          <div className="mt-8 flex items-center gap-3 border-t border-taupe-200 pt-6">
-            <ShareBar title={resource.name} url={canonicalUrl} trackEventName="resource_share_click" trackPayload={{ resourceSlug: resource.slug }} />
+          <div className="mt-8 flex items-center gap-3 border-t border-taupe-200 pt-5">
+            <span className="text-xs font-medium uppercase tracking-wide text-charcoal-600/50">Share</span>
+            <div className="origin-left scale-90 opacity-80">
+              <ShareBar title={resource.name} url={canonicalUrl} trackEventName="resource_share_click" trackPayload={{ resourceSlug: resource.slug }} />
+            </div>
           </div>
         </div>
       </div>
 
       <div className="container-editorial pb-4 pt-2">
-        <div className="mx-auto max-w-[1140px] [&_h2]:mx-auto [&_h2]:max-w-[760px] [&_h3]:mx-auto [&_h3]:max-w-[760px] [&_h4]:mx-auto [&_h4]:max-w-[760px] [&_p]:mx-auto [&_p]:max-w-[760px] [&_ul]:mx-auto [&_ul]:max-w-[760px] [&_ol]:mx-auto [&_ol]:max-w-[760px]">
-          <ArticleContent blocks={resource.description} variant="article" />
+        <div className="max-w-[1150px] [&_h2]:max-w-[760px] [&_h3]:max-w-[760px] [&_h4]:max-w-[760px] [&_p]:max-w-[760px]">
+          <ArticleContent blocks={resource.description} variant="resource" />
         </div>
       </div>
 
       {related.length > 0 && (
         <div className="container-editorial border-t border-taupe-200 py-16">
-          <span className="eyebrow">Related resources</span>
-          <h2 className="mt-2 font-serif text-2xl font-semibold text-charcoal sm:text-3xl">You may also like</h2>
-          <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
-            {related.map((r) => (
-              <ResourceCard key={r.id} resource={r} />
-            ))}
+          <div className="max-w-[1160px]">
+            <span className="eyebrow">Related resources</span>
+            <h2 className="mt-2 font-serif text-2xl font-semibold text-charcoal sm:text-3xl">You may also like</h2>
+            {related.length === 1 ? (
+              <div className="mt-8">
+                <RelatedResourceWideCard resource={related[0]} />
+              </div>
+            ) : (
+              <div className={`mt-8 grid grid-cols-1 gap-8 ${related.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
+                {related.map((r) => (
+                  <div key={r.id} className={related.length === 2 ? 'max-w-sm' : undefined}>
+                    <RelatedResourceCard resource={r} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

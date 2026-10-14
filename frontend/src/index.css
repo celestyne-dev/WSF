@@ -67,3 +67,17 @@ body {
     @apply text-burgundy-600 underline;
   }
 }
+
+@layer utilities {
+  /* Hides the native scrollbar on an explicitly scrollable element while
+     keeping it scrollable (wheel, touch, drag, and keyboard/focus
+     auto-scroll all still work) — used by ResourceDetailPage's preview
+     thumbnail strip. */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

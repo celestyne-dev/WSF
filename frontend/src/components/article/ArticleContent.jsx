@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
 import NewsletterForm from '../ui/NewsletterForm'
-import { ArrowRight, Quote } from 'lucide-react'
+import { ArrowRight, Check, Quote } from 'lucide-react'
 
 // Block text (paragraph/list-item/quote/callout) may contain a small
 // allow-listed set of inline tags (b/strong/i/em/u/a/br) — sanitized
@@ -37,8 +37,10 @@ function Heading({ block, headingId, variant }) {
     4: 'text-lg leading-snug sm:text-xl',
   }
   const isArticle = variant === 'article'
-  const sizeClass = (isArticle ? articleSizes : sizes)[block.level] || (isArticle ? articleSizes[2] : sizes[2])
-  const spacingClass = isArticle && block.level === 2 ? 'mt-14' : 'mt-10'
+  const isResource = variant === 'resource'
+  const useArticleScale = isArticle || isResource
+  const sizeClass = (useArticleScale ? articleSizes : sizes)[block.level] || (useArticleScale ? articleSizes[2] : sizes[2])
+  const spacingClass = useArticleScale && block.level === 2 ? (isResource ? 'mt-16' : 'mt-14') : 'mt-10'
   // `headingId`, when supplied by a caller (e.g. LegalPageLayout's "On
   // this page" nav), gives this heading a stable anchor; scroll-mt-28
   // keeps the sticky site header from covering it when a TOC link or
@@ -55,7 +57,7 @@ function Heading({ block, headingId, variant }) {
 }
 
 function Paragraph({ block, variant, isLeadParagraph }) {
-  if (variant === 'article') {
+  if (variant === 'article' || variant === 'resource') {
     // The first paragraph in the article gets a subtly larger, darker
     // introductory treatment (no drop cap) — everything after reads at
     // the same comfortable long-form size/line-height.
@@ -74,7 +76,7 @@ function Paragraph({ block, variant, isLeadParagraph }) {
 function ImageBlock({ block, variant }) {
   // `media` is the normalized reference the block editor saves (with real
   // generated WebP variants); `mediaPath` is the legacy/mock-mode fallback.
-  const isArticle = variant === 'article'
+  const isArticle = variant === 'article' || variant === 'resource'
   return (
     <figure className={isArticle ? 'my-12' : 'my-10'}>
       <MediaImage
@@ -106,6 +108,15 @@ function PullQuote({ block, variant }) {
       </blockquote>
     )
   }
+  if (variant === 'resource') {
+    return (
+      <blockquote className="relative mx-auto my-10 max-w-[760px] border-y border-taupe-200 py-7 text-center">
+        <Quote className="mx-auto mb-3 text-burgundy-500/40" size={20} aria-hidden="true" />
+        <InlineHtml as="p" html={block.text} className="font-serif text-2xl italic leading-snug text-charcoal sm:text-3xl" />
+        {block.attribution && <cite className="mt-4 block font-sans text-sm not-italic text-charcoal-600">{block.attribution}</cite>}
+      </blockquote>
+    )
+  }
   return (
     <blockquote className="relative my-10 border-y border-taupe-200 py-8 text-center">
       <Quote className="mx-auto mb-3 text-burgundy-500/50" size={28} />
@@ -134,6 +145,28 @@ function BlockQuote({ block, variant }) {
 
 function ListBlock({ block, variant }) {
   const Tag = block.style === 'number' ? 'ol' : 'ul'
+  if (variant === 'resource') {
+    // A deliberately wider, custom-marker "editorial panel" treatment for
+    // Resource detail pages only. `list-none` drops the browser bullet/
+    // number — Safari+VoiceOver is known to also drop the implicit list
+    // role along with it, so `role="list"` restores that explicitly.
+    return (
+      <Tag role="list" className="mt-6 max-w-[880px] list-none divide-y divide-taupe-200">
+        {block.items.map((item, i) => (
+          <li key={i} className="flex items-start gap-3 py-2.5 font-sans text-[1.0625rem] leading-[1.7] text-charcoal">
+            {block.style === 'number' ? (
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-plum-600 text-xs font-semibold text-ivory">
+                {i + 1}
+              </span>
+            ) : (
+              <Check size={18} className="mt-0.5 shrink-0 text-plum-600" aria-hidden="true" />
+            )}
+            <InlineHtml as="span" html={item} className={ARTICLE_LINK_CLASSES} />
+          </li>
+        ))}
+      </Tag>
+    )
+  }
   if (variant === 'article') {
     return (
       <Tag
@@ -160,6 +193,14 @@ function Highlight({ block, variant }) {
       <div className="my-10 border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6 sm:p-8">
         {block.title && <p className="eyebrow mb-2">{block.title}</p>}
         <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal sm:text-xl" />
+      </div>
+    )
+  }
+  if (variant === 'resource') {
+    return (
+      <div className="my-10 max-w-[820px] border border-taupe-200 border-l-4 border-l-plum-600 bg-blush-50 p-7 sm:p-8">
+        {block.title && <p className="eyebrow mb-2">{block.title}</p>}
+        <InlineHtml as="p" html={block.text} className="font-serif text-lg italic leading-relaxed text-charcoal sm:text-xl" />
       </div>
     )
   }
@@ -324,6 +365,9 @@ function Divider({ variant }) {
   if (variant === 'article') {
     return <hr className="mx-auto my-16 w-16 border-t border-taupe-300" />
   }
+  if (variant === 'resource') {
+    return <hr className="mx-auto my-10 w-16 border-t border-taupe-300" />
+  }
   return <hr className="my-10 border-t border-taupe-300" />
 }
 
@@ -356,15 +400,18 @@ const RENDERERS = {
 // `variant="article"` is likewise optional, used only by ArticlePage for
 // a more premium long-form reading treatment (larger serif headings,
 // richer paragraph color/line-height, a stronger first paragraph, more
-// editorial block styling). Every renderer above falls through to its
-// original, unchanged markup/classes whenever `variant` is omitted, so
-// LegalPageLayout/AboutEditorialSections/ContactPage and any other
-// existing caller render exactly as before.
+// editorial block styling). `variant="resource"` (ResourceDetailPage only)
+// shares that same treatment for every block type except List, which
+// instead gets a wider, custom-marker "editorial panel" look. Every
+// renderer above falls through to its original, unchanged markup/classes
+// whenever `variant` is omitted, so LegalPageLayout/AboutEditorialSections/
+// ContactPage and any other existing caller render exactly as before.
 export default function ArticleContent({ blocks = [], relatedArticlesBySlug, headingIdForBlock, variant }) {
-  // -1 whenever variant isn't "article" (every existing caller), so
+  // -1 unless variant is "article" or "resource" (every other caller), so
   // `i === firstParagraphIndex` below is never true for them — no lead-
-  // paragraph behavior change outside the new article treatment.
-  const firstParagraphIndex = variant === 'article' ? blocks.findIndex((b) => b.type === 'paragraph') : -1
+  // paragraph behavior change outside those two treatments.
+  const firstParagraphIndex =
+    variant === 'article' || variant === 'resource' ? blocks.findIndex((b) => b.type === 'paragraph') : -1
   return (
     <div>
       {blocks.map((block, i) => {
