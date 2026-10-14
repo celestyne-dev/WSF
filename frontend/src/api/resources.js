@@ -49,7 +49,7 @@ export function mapResource(r) {
     isExternal: r.is_external ?? r.isExternal ?? false,
     isFree: r.is_free ?? !r.isPremium,
     requiresEmail: r.requires_email ?? (r.access_type === 'email_gate' || r.accessType === 'email_gate'),
-    requiresAccount: r.requires_account ?? false,
+    requiresAccount: r.requires_account ?? r.requiresAccount ?? false,
     requiresCircle: r.requires_circle ?? r.requiresCircle ?? false,
     // Serialization-only hint from the backend (never itself an
     // authorization) — absent for the staff/admin dump, where it simply
@@ -130,10 +130,14 @@ export async function fetchResourcesFilterOptions() {
   return delay({ types: [...new Set(resources.map((r) => r.type))] })
 }
 
-// Requests access to a resource per its access_type: a direct/email-gated
-// download or external link returns { url }; premium/member-only resources
-// (no payment/account system yet) reject with a typed error the caller
-// renders as an honest "not yet available" state.
+// Requests access to a resource per its access_type — the sole,
+// backend-authoritative download/visit grant for every access type,
+// premium included now that purchase entitlement exists (see
+// app/services/resource_access.py's check_resource_access). A
+// direct/email-gated download or external link returns { url }
+// immediately; member_only/circle_only/premium reject with a typed error
+// (account_required/purchase_required/...) the caller renders as the
+// right call-to-action rather than a generic failure.
 export async function requestResourceAccess(slug, payload = {}) {
   const { data } = await apiClient.post(`/resources/${slug}/access`, {
     email: payload.email || undefined,
@@ -143,6 +147,33 @@ export async function requestResourceAccess(slug, payload = {}) {
     acquisition: payload.acquisition || undefined,
   })
   return { url: data.url, accessType: data.accessType }
+}
+
+// Starts a hosted Paystack checkout for a one-time premium Resource
+// purchase — see app/services/resource_payments.py's
+// start_resource_checkout. Takes only a slug; amount, currency, and
+// customer email are all decided server-side from the authenticated user
+// and the resource's own current price, never sent from here.
+export async function startResourceCheckout(slug) {
+  const { data } = await apiClient.post(`/resources/${encodeURIComponent(slug)}/checkout`)
+  return { reference: data?.reference, authorizationUrl: data?.authorizationUrl }
+}
+
+// The checkout callback page's one source of truth for whether a
+// purchase succeeded — see ResourceCheckoutCallbackPage.jsx. `reference`
+// here is only ever used as an opaque lookup key; the backend
+// (owner-scoped — see get_resource_payment_or_404) decides everything
+// else.
+export async function getResourcePaymentStatus(reference) {
+  const { data } = await apiClient.get(`/resources/payments/${encodeURIComponent(reference)}`)
+  return {
+    reference: data?.reference,
+    status: data?.status,
+    purchaseActivated: !!data?.purchaseActivated,
+    reconciliationRequired: !!data?.reconciliationRequired,
+    reason: data?.reason || null,
+    resourceSlug: data?.resourceSlug || null,
+  }
 }
 
 // POST /api/v1/resources/uploads/protected — multipart. Axios sets the

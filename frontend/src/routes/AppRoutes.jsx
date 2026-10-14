@@ -23,6 +23,7 @@ const EventsListingPage = lazy(() => import('../pages/EventsListingPage'))
 const EventDetailPage = lazy(() => import('../pages/EventDetailPage'))
 const ResourcesPage = lazy(() => import('../pages/ResourcesPage'))
 const ResourceDetailPage = lazy(() => import('../pages/ResourceDetailPage'))
+const ResourceCheckoutCallbackPage = lazy(() => import('../pages/ResourceCheckoutCallbackPage'))
 const OrganizationsIndexPage = lazy(() => import('../pages/OrganizationsIndexPage'))
 const OrganizationDetailPage = lazy(() => import('../pages/OrganizationDetailPage'))
 const DirectoryIndexPage = lazy(() => import('../pages/DirectoryIndexPage'))
@@ -185,6 +186,7 @@ export default function AppRoutes() {
           <Route path="/events/:slug" element={<EventDetailPage />} />
 
           <Route path="/resources" element={<ResourcesPage />} />
+          <Route path="/resources/checkout/callback" element={<ResourceCheckoutCallbackPage />} />
           <Route path="/resources/:slug" element={<ResourceDetailPage />} />
 
           <Route path="/organizations" element={<OrganizationsIndexPage />} />

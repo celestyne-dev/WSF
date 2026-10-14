@@ -173,7 +173,7 @@ class Resource(db.Model):
     # real file, POST /resources/{slug}/access hands back a short-lived,
     # resource-bound download token (see ResourceDownloadResource)
     # instead of file_url/
-    # external_url — circle_only alone never falls back to either of
+    # external_url — circle_only and premium never fall back to either of
     # those, even if also present (see _resolve_target_url). Every other
     # access type keeps file_url/external_url working exactly as before
     # for a Resource that has no protected_file_path at all.

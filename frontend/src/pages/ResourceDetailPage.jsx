@@ -3,8 +3,9 @@ import { useSelector } from 'react-redux'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Download, Lock, Mail, ExternalLink, X } from 'lucide-react'
-import { fetchResourceBySlug, fetchResources, requestResourceAccess } from '../api/resources'
+import { fetchResourceBySlug, fetchResources, requestResourceAccess, startResourceCheckout } from '../api/resources'
 import { fetchMyCircleMembership } from '../api/circle'
+import { getResourceCheckoutErrorPresentation } from '../utils/resourcePayment'
 import { resolveImage } from '../utils/media'
 import { formatCurrency } from '../utils/format'
 import { trackEvent, withAcquisitionMetadata } from '../utils/analytics'
@@ -42,16 +43,25 @@ function useResourceStructuredData(resource, canonicalUrl) {
     }
     // A zero-price Offer is only truthful for a resource that's openly
     // available for the taking. member_only/circle_only gate on
-    // something real (an account, a paid Circle membership) and premium
-    // has no working purchase yet — none of those is an openly
-    // available free Offer, so Offer is omitted entirely rather than
-    // falsely advertised as free/InStock (see spec section M).
+    // something real (an account, a paid Circle membership) rather than
+    // a price, so neither is a zero-price Offer — omitted entirely
+    // rather than falsely advertised as free/InStock. premium now has a
+    // real, purchasable price (see app/services/resource_payments.py)
+    // and gets its own real Offer instead of being omitted.
     if (['direct_download', 'email_gate', 'external_link'].includes(resource.accessType)) {
       data.offers = {
         '@type': 'Offer',
         price: 0,
-        priceCurrency: resource.currency || 'USD',
+        priceCurrency: resource.currency || 'KES',
         availability: 'https://schema.org/InStock',
+      }
+    } else if (resource.accessType === 'premium') {
+      data.offers = {
+        '@type': 'Offer',
+        price: resource.price,
+        priceCurrency: resource.currency || 'KES',
+        availability: 'https://schema.org/InStock',
+        url: canonicalUrl,
       }
     }
     let el = document.head.querySelector('script[data-resource-structured-data]')
@@ -143,7 +153,16 @@ function EmailGateModal({ resource, onClose, onSuccess }) {
 // decides which button/link to show, and never claims access the
 // backend hasn't confirmed (see spec section J: "Backend remains
 // authoritative... Show a safe fallback" if the Circle check fails).
-function AccessCta({ resource, accessToken, requesting, onAccessClick, onEmailGateClick }) {
+function AccessCta({
+  resource,
+  accessToken,
+  requesting,
+  onAccessClick,
+  onEmailGateClick,
+  checkingOut,
+  checkoutError,
+  onCheckoutClick,
+}) {
   const location = useLocation()
   const [circleMembership, setCircleMembership] = useState(undefined)
 
@@ -159,15 +178,47 @@ function AccessCta({ resource, accessToken, requesting, onAccessClick, onEmailGa
   }, [accessToken, resource.accessType])
 
   if (resource.accessType === 'premium') {
+    const priceLabel = formatCurrency(resource.price, resource.currency)
+    const returnTo = `/resources/${resource.slug}`
+
+    if (!accessToken) {
+      return (
+        <div className="mt-5">
+          <Link to="/register" state={{ from: returnTo }} className="btn-primary inline-flex">
+            <Lock size={16} /> Buy for {priceLabel}
+          </Link>
+          <p className="mt-2.5 text-sm text-charcoal-600">
+            Already have a WSF account?{' '}
+            <Link to="/login" state={{ from: returnTo }} className="font-semibold text-burgundy-600 hover:underline">
+              Sign in
+            </Link>
+          </p>
+          <p className="mt-2.5 max-w-sm text-xs text-charcoal-600/70">
+            A free WSF account is required so your purchase and downloads stay linked to you.
+          </p>
+        </div>
+      )
+    }
+
+    if (resource.viewerCanAccess === true) {
+      return (
+        <div className="mt-5">
+          <p className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-burgundy-600">
+            <Lock size={14} /> Purchased
+          </p>
+          <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary inline-flex disabled:opacity-60">
+            <Download size={16} /> {requesting ? 'Preparing…' : 'Download resource'}
+          </button>
+        </div>
+      )
+    }
+
     return (
-      <div className="mt-5 border border-taupe-300 bg-taupe-50 px-4 py-3">
-        <p className="inline-flex items-center gap-2 text-sm font-semibold text-charcoal">
-          <Lock size={16} className="text-burgundy-600" />
-          Premium access <span className="text-burgundy-600">— coming soon</span>
-        </p>
-        <p className="mt-1.5 text-xs text-charcoal-600/70">
-          This premium resource isn't available to purchase yet. Check back soon.
-        </p>
+      <div className="mt-5">
+        <button type="button" onClick={onCheckoutClick} disabled={checkingOut} className="btn-primary inline-flex disabled:opacity-60">
+          <Lock size={16} /> {checkingOut ? 'Starting secure checkout…' : `Buy securely — ${priceLabel}`}
+        </button>
+        {checkoutError && <p className="mt-2 text-sm text-burgundy-600">{checkoutError}</p>}
       </div>
     )
   }
@@ -241,6 +292,8 @@ export default function ResourceDetailPage() {
   const [error, setError] = useState(null)
   const [showEmailGate, setShowEmailGate] = useState(false)
   const [requesting, setRequesting] = useState(false)
+  const [checkingOut, setCheckingOut] = useState(false)
+  const [checkoutError, setCheckoutError] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -308,6 +361,39 @@ export default function ResourceDetailPage() {
     }
   }
 
+  // Starts a hosted Paystack checkout for a premium Resource purchase —
+  // see spec section F/G: never embeds a card form, never sends
+  // price/currency/user/email, and never infers success from the
+  // redirect itself (POST /resources/payments/<reference> on the
+  // callback page remains the sole authority for that).
+  async function handlePremiumCheckout() {
+    if (!resource || checkingOut) return
+    setCheckoutError(null)
+    setCheckingOut(true)
+    trackEvent('resource_checkout_click', { resourceSlug: resource.slug })
+    try {
+      const { authorizationUrl } = await startResourceCheckout(resource.slug)
+      if (!authorizationUrl) throw new Error('Checkout response was missing an authorization URL.')
+      trackEvent('resource_checkout_initialized', { resourceSlug: resource.slug })
+      // Full browser redirect to Paystack's hosted checkout — never an
+      // iframe, never a WSF-collected card/mobile-money form.
+      window.location.assign(authorizationUrl)
+    } catch (err) {
+      const code = err?.response?.data?.error?.code
+      if (code === 'already_purchased') {
+        // The page's viewerCanAccess hint was stale (e.g. purchased in
+        // another tab) — re-evaluate access directly instead of
+        // showing a failure; backend entitlement remains authoritative
+        // either way.
+        setCheckingOut(false)
+        handleAccessClick()
+        return
+      }
+      setCheckoutError(getResourceCheckoutErrorPresentation(code))
+      setCheckingOut(false)
+    }
+  }
+
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this resource" description={error} /></div>
   if (resource === undefined) return <PageLoader />
   if (resource === null) return <NotFoundPage />
@@ -357,11 +443,9 @@ export default function ResourceDetailPage() {
           <p className="mt-4 font-serif text-2xl font-semibold text-charcoal">
             {resource.accessType === 'circle_only'
               ? 'Included with WSF Circle'
-              : resource.accessType === 'premium'
-                ? 'Premium access'
-                : resource.isFree
-                  ? 'Free'
-                  : formatCurrency(resource.price, resource.currency)}
+              : resource.isFree
+                ? 'Free'
+                : formatCurrency(resource.price, resource.currency)}
           </p>
 
           <AccessCta
@@ -370,6 +454,9 @@ export default function ResourceDetailPage() {
             requesting={requesting}
             onAccessClick={handleAccessClick}
             onEmailGateClick={() => setShowEmailGate(true)}
+            checkingOut={checkingOut}
+            checkoutError={checkoutError}
+            onCheckoutClick={handlePremiumCheckout}
           />
 
           <div className="mt-6">
