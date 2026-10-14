@@ -98,6 +98,26 @@ def has_circle_access(user):
     return True
 
 
+def has_yearly_circle_access(user):
+    """A narrower entitlement than has_circle_access(user): TRUE only when
+    the user has active Circle access AND her CURRENT subscription's plan
+    has billing_interval == "yearly" (see app/models/circle.py's
+    CirclePlan.billing_interval). Never re-derives any status/date rule —
+    has_circle_access(user) above remains the one authority for whether
+    the subscription is currently valid at all; this only adds "and it's
+    the yearly plan" on top, reusing get_current_subscription() rather
+    than re-querying independently. FALSE for a monthly member, and FALSE
+    for every case has_circle_access already denies (expired/cancelled/
+    revoked/pending/past_due/future starts_at/lapsed current_period_end/
+    inactive account) — a Community Member record without Circle access
+    is likewise never consulted here, same as has_circle_access itself.
+    """
+    if not has_circle_access(user):
+        return False
+    subscription = get_current_subscription(user)
+    return bool(subscription and subscription.plan and subscription.plan.billing_interval == "yearly")
+
+
 def get_circle_entitlement(user):
     """Returns {"has_access": bool, "subscription": CircleSubscription|None}
     — the one shape both the owner API and account pages build their

@@ -51,6 +51,11 @@ export function mapResource(r) {
     requiresEmail: r.requires_email ?? (r.access_type === 'email_gate' || r.accessType === 'email_gate'),
     requiresAccount: r.requires_account ?? r.requiresAccount ?? false,
     requiresCircle: r.requires_circle ?? r.requiresCircle ?? false,
+    // "all_members" | "yearly_members" — meaningful only when accessType
+    // is circle_only (see backend/app/models/resource.py's
+    // CIRCLE_ACCESS_LEVELS). Display/filter metadata only, never itself
+    // an authorization check — the same posture as requiresCircle above.
+    circleAccessLevel: r.circle_access_level || r.circleAccessLevel || 'all_members',
     // Serialization-only hint from the backend (never itself an
     // authorization) — absent for the staff/admin dump, where it simply
     // doesn't apply. See app/services/resource_access.py.
@@ -233,6 +238,10 @@ function toApiPayload(form) {
     price: form.price === '' || form.price == null ? 0 : Number(form.price),
     currency: form.currency || undefined,
     accessType: form.accessType || 'direct_download',
+    // Meaningful only for circle_only — the backend's own _apply_fields
+    // normalizes this to 'all_members' for every other accessType, so
+    // sending the form's current value unconditionally is safe.
+    circleAccessLevel: form.circleAccessLevel || 'all_members',
     fileUrl: form.fileUrl || undefined,
     externalUrl: form.externalUrl || undefined,
     protectedFilePath: form.protectedFilePath || undefined,

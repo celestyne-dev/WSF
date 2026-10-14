@@ -5,6 +5,7 @@ from marshmallow import fields, validate, ValidationError
 from app.extensions import ma
 from app.models.resource import (
     ACCESS_TYPES,
+    CIRCLE_ACCESS_LEVELS,
     FILE_FORMATS,
     Resource,
     ResourceImage,
@@ -148,6 +149,16 @@ class ResourceInputSchema(ma.Schema):
     currency = fields.String(required=False, load_default="KES", validate=validate.Length(equal=3))
 
     access_type = fields.String(required=False, load_default="direct_download", data_key="accessType", validate=validate.OneOf(ACCESS_TYPES))
+    # Meaningful only when access_type == "circle_only" — the caller
+    # (_apply_fields in app/api/v1/resources.py) normalizes this back to
+    # "all_members" for every other access_type, so a value loaded here
+    # for a non-circle_only save never survives into the saved row.
+    circle_access_level = fields.String(
+        required=False,
+        load_default="all_members",
+        data_key="circleAccessLevel",
+        validate=validate.OneOf(CIRCLE_ACCESS_LEVELS),
+    )
     file_url = fields.String(required=False, allow_none=True, data_key="fileUrl", validate=_validate_file_url)
     external_url = fields.String(required=False, allow_none=True, data_key="externalUrl", validate=_validate_external_url)
     # A WSF-hosted private resource file — usable by direct_download,

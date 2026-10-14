@@ -479,6 +479,81 @@ def test_resource_safe_delete_blocked_when_linked_to_product(client, app, manage
     assert delete_resp.status_code == 409
 
 
+def test_resource_create_defaults_circle_access_level_to_all_members(client, manager_token):
+    resp = client.post("/api/v1/resources", json=_base_payload(), headers=auth_headers(manager_token))
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["circle_access_level"] == "all_members"
+
+
+def test_circle_only_resource_accepts_yearly_members_level(client, app, manager_token, tmp_path):
+    protected_root = tmp_path / "protected_media"
+    protected_root.mkdir()
+    app.config["PROTECTED_MEDIA_ROOT"] = str(protected_root)
+    filename = "yearly-vault-item.pdf"
+    (protected_root / filename).write_bytes(b"%PDF-1.4 fake pdf body")
+
+    resp = client.post(
+        "/api/v1/resources",
+        json=_base_payload(
+            accessType="circle_only", circleAccessLevel="yearly_members",
+            fileUrl=None, protectedFilePath=filename,
+        ),
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 201
+    data = resp.get_json()["data"]
+    assert data["circle_access_level"] == "yearly_members"
+
+    # Round-trips through the public payload too.
+    public = client.get(f"/api/v1/resources/{data['slug']}")
+    assert public.get_json()["data"]["circleAccessLevel"] == "yearly_members"
+
+
+def test_circle_access_level_normalized_for_non_circle_access_types(client, manager_token):
+    """Resource.circle_access_level is meaningful only for circle_only
+    (see app/models/resource.py's CIRCLE_ACCESS_LEVELS) — a direct_
+    download resource that sends circleAccessLevel=yearly_members is
+    never rejected, just silently normalized back to all_members (see
+    app/api/v1/resources.py's _apply_fields), per spec: "For all other
+    Resource access types: circle_access_level must remain
+    all_members/default."
+    """
+    resp = client.post(
+        "/api/v1/resources",
+        json=_base_payload(accessType="direct_download", circleAccessLevel="yearly_members"),
+        headers=auth_headers(manager_token),
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["circle_access_level"] == "all_members"
+
+
+def test_circle_access_level_reset_when_resource_moves_off_circle_only(client, app, manager_token, tmp_path):
+    protected_root = tmp_path / "protected_media"
+    protected_root.mkdir()
+    app.config["PROTECTED_MEDIA_ROOT"] = str(protected_root)
+    filename = "was-yearly-vault-item.pdf"
+    (protected_root / filename).write_bytes(b"%PDF-1.4 fake pdf body")
+
+    created = client.post(
+        "/api/v1/resources",
+        json=_base_payload(
+            accessType="circle_only", circleAccessLevel="yearly_members",
+            fileUrl=None, protectedFilePath=filename,
+        ),
+        headers=auth_headers(manager_token),
+    )
+    slug = created.get_json()["data"]["slug"]
+    assert created.get_json()["data"]["circle_access_level"] == "yearly_members"
+
+    updated = client.put(
+        f"/api/v1/resources/{slug}",
+        json=_base_payload(accessType="direct_download"),
+        headers=auth_headers(manager_token),
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["circle_access_level"] == "all_members"
+
+
 def test_resource_delete_allowed_when_unreferenced(client, manager_token):
     created = client.post("/api/v1/resources", json=_base_payload(), headers=auth_headers(manager_token))
     slug = created.get_json()["data"]["slug"]

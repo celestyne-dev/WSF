@@ -267,6 +267,12 @@ export default function AdminCirclePlanEditor() {
           </Section>
 
           <Section title="Benefits" description="Short, broad lines — never a specific claim about a feature that doesn't exist yet.">
+            {form.billingInterval === 'yearly' && (
+              <p className="text-xs text-charcoal-600/70">
+                For yearly plans, list genuine annual-only benefits here, such as the Yearly Member Resource Vault,
+                quarterly reset packs and planning tools.
+              </p>
+            )}
             <div className="space-y-2">
               {form.benefits.map((b, i) => (
                 <div key={i} className="flex items-center justify-between border border-taupe-200 px-3 py-2 text-sm">

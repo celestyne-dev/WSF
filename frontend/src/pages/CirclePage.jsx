@@ -253,6 +253,13 @@ export default function CirclePage() {
   // Circle" badges and each detail page's existing server-side access
   // checks). undefined = still loading.
   const [circleContent, setCircleContent] = useState(undefined)
+  // A small, separate preview of the Yearly Member Bonus Vault — annual-
+  // member-only circle_only Resources (circleAccessLevel=yearly_members).
+  // Fetched from the same public Resources list endpoint as everything
+  // else on this page (never a new catalog/backend surface) and kept
+  // apart from circleContent.resources above, which previews EVERY
+  // circle_only resource regardless of tier. undefined = still loading.
+  const [yearlyBonusResources, setYearlyBonusResources] = useState(undefined)
 
   // Carries the chosen plan across account creation/sign-in (see PlanCta's
   // anonymous CTA above) — a public plan slug only, read straight from the
@@ -330,6 +337,16 @@ export default function CirclePage() {
     }
   }, [])
 
+  useEffect(() => {
+    let active = true
+    fetchResources({ accessType: 'circle_only', circleAccessLevel: 'yearly_members', pageSize: 6 })
+      .then((res) => active && setYearlyBonusResources(res.items))
+      .catch(() => active && setYearlyBonusResources([]))
+    return () => {
+      active = false
+    }
+  }, [])
+
   // Backend dedupe (Module 2's _find_reusable_pending_payment) already
   // protects against a genuine double-submission server-side; this local
   // guard just keeps the UI from firing a second request — and from
@@ -397,6 +414,11 @@ export default function CirclePage() {
 
         <div className="py-14">
           <h2 className="font-serif text-3xl font-semibold text-charcoal">Membership</h2>
+          {plans.length > 0 && (
+            <p className="mt-3 max-w-2xl text-sm text-charcoal-600">
+              Choose Monthly for flexibility. Choose Yearly for the best value and exclusive annual-member bonuses.
+            </p>
+          )}
           {plans.length === 0 ? (
             <div className="mt-4 text-sm text-charcoal-600">
               <p>
@@ -412,6 +434,7 @@ export default function CirclePage() {
             <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {plans.map((plan) => {
                 const isSelected = !!selectedPlanSlug && plan.slug === selectedPlanSlug
+                const isYearly = plan.billingInterval === 'yearly'
                 return (
                   <div
                     key={plan.slug}
@@ -421,7 +444,7 @@ export default function CirclePage() {
                     className={`border p-6 ${
                       isSelected
                         ? 'border-burgundy-500 bg-blush-50'
-                        : plan.featured
+                        : plan.featured || isYearly
                           ? 'border-burgundy-400 bg-blush-50'
                           : 'border-taupe-200 bg-white'
                     }`}
@@ -434,6 +457,9 @@ export default function CirclePage() {
                     {plan.featured && !isSelected && (
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">Featured</p>
                     )}
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">
+                      {isYearly ? 'Best value' : 'Flexible access'}
+                    </p>
                     <h3 className="font-serif text-xl font-semibold text-charcoal">{plan.name}</h3>
                     {plan.shortDescription && <p className="mt-2 text-sm text-charcoal-600">{plan.shortDescription}</p>}
                     <p className="mt-4 text-2xl font-semibold text-charcoal">
@@ -441,11 +467,18 @@ export default function CirclePage() {
                       <span className="ml-1 text-sm font-normal text-charcoal-600/70">{billingLabel(plan)}</span>
                     </p>
                     {plan.benefits?.length > 0 && (
-                      <ul className="mt-4 space-y-1 text-sm text-charcoal-600">
-                        {plan.benefits.map((b, i) => (
-                          <li key={i}>&bull; {b}</li>
-                        ))}
-                      </ul>
+                      <>
+                        {isYearly && (
+                          <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-burgundy-600">
+                            Yearly member extras
+                          </p>
+                        )}
+                        <ul className={`${isYearly ? 'mt-2' : 'mt-4'} space-y-1 text-sm text-charcoal-600`}>
+                          {plan.benefits.map((b, i) => (
+                            <li key={i}>&bull; {b}</li>
+                          ))}
+                        </ul>
+                      </>
                     )}
                     {plan.description?.length > 0 && (
                       <div className="mt-4 text-sm text-charcoal-600">
@@ -558,6 +591,27 @@ export default function CirclePage() {
                   </div>
                 </CircleHubGroup>
               )}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-taupe-200 py-14">
+          <h2 className="font-serif text-3xl font-semibold text-charcoal">Yearly Member Bonus Vault</h2>
+          <p className="mt-3 max-w-2xl text-sm text-charcoal-600">
+            Extra planning tools, workbooks and visibility resources reserved for WSF Circle Yearly members.
+          </p>
+
+          {yearlyBonusResources === undefined ? (
+            <div className="mt-8">
+              <PageLoader />
+            </div>
+          ) : yearlyBonusResources.length === 0 ? (
+            <p className="mt-8 text-sm text-charcoal-600">Yearly member bonuses are being added.</p>
+          ) : (
+            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {yearlyBonusResources.map((resource) => (
+                <ResourceCard key={resource.id} resource={resource} />
+              ))}
             </div>
           )}
         </div>

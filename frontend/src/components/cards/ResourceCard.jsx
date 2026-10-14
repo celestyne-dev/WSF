@@ -13,7 +13,8 @@ const ACCESS_BADGE = {
 
 export default function ResourceCard({ resource }) {
   if (!resource) return null
-  const badge = ACCESS_BADGE[resource.accessType]
+  const isYearlyOnly = resource.accessType === 'circle_only' && resource.circleAccessLevel === 'yearly_members'
+  const badge = isYearlyOnly ? { icon: Sparkles, label: 'WSF Circle Yearly' } : ACCESS_BADGE[resource.accessType]
   return (
     <Link to={`/resources/${resource.slug}`} className="group block">
       <div className="relative overflow-hidden bg-taupe-100">

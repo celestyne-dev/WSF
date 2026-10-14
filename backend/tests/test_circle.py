@@ -708,6 +708,128 @@ class TestEntitlement:
         assert data["payment_reference"] == "ref-123"
 
 
+class TestYearlyEntitlement:
+    """has_yearly_circle_access(user) — the Yearly Member Bonus Vault's
+    own narrower entitlement helper (see app/services/circle.py). Must
+    never rewrite has_circle_access's own status/date rules, only add
+    "and it's the yearly plan" on top — every denial case here is first
+    and foremost a has_circle_access denial, confirmed unchanged by
+    TestEntitlement above.
+    """
+
+    def test_monthly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="monthly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_active_yearly_plan_grants_access(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is True
+
+    def test_expired_yearly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="expired")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_cancelled_yearly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="cancelled")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_revoked_yearly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="revoked")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_pending_yearly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="pending")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_past_due_yearly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="past_due")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_future_starts_at_yearly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active", starts_at=_now() + timedelta(days=5))
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_lapsed_period_end_yearly_plan_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active", current_period_end=_now() - timedelta(days=1))
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_inactive_account_yearly_plan_denied(self, app, user1_token):
+        from app.extensions import db
+        from app.services.circle import has_yearly_circle_access
+
+        plan_id, _ = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            user.is_active = False
+            db.session.commit()
+            assert has_yearly_circle_access(user) is False
+
+    def test_no_subscription_at_all_denied(self, app, user1_token):
+        from app.services.circle import has_yearly_circle_access
+
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            assert has_yearly_circle_access(user) is False
+
+    def test_community_membership_alone_denied(self, app, client, user1_token):
+        from app.extensions import db
+        from app.models.community import Member
+        from app.services.circle import has_yearly_circle_access
+
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            member = Member(first_name="Amara", last_name="Diallo", email=USER1["email"], user_id=user.id, status="active")
+            db.session.add(member)
+            db.session.commit()
+            assert has_yearly_circle_access(user) is False
+
+
 class TestOwnerApi:
     # 31. /circle/me is owner-scoped; 33. no membership returns hasAccess=false safely
     def test_circle_me_no_membership(self, client, user1_token):

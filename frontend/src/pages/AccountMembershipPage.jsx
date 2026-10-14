@@ -186,6 +186,35 @@ export default function AccountMembershipPage() {
                 )}
               </div>
             )}
+            {/* No "Upgrade now" payment action here — the server-side
+                different_plan_active guard on Circle checkout
+                intentionally blocks a plan switch outright, and this
+                module never attempts proration/plan-switch logic (see
+                the module docstring). A monthly member sees only an
+                informational link to /circle, never a CTA implying an
+                immediate self-service switch. */}
+            {subscription.plan?.billingInterval === 'yearly' ? (
+              <div className="mt-6 border-t border-taupe-200 pt-5">
+                <p className="font-serif text-lg font-semibold text-charcoal">Your Yearly Member Benefits</p>
+                <p className="mt-1 text-sm text-charcoal-600">
+                  Your Circle Yearly membership includes the full Yearly Member Resource Vault on top of everything
+                  in Monthly.
+                </p>
+                <Link to="/resources?access=circle_yearly" className="btn-secondary mt-3 inline-block">
+                  Explore the Yearly Member Bonus Vault
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-6 border-t border-taupe-200 pt-5">
+                <p className="text-sm text-charcoal-600">
+                  Yearly membership includes additional annual-member workbooks, planning tools and bonus
+                  resources. Available when choosing your next membership period.
+                </p>
+                <Link to="/circle" className="mt-2 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+                  View Yearly benefits
+                </Link>
+              </div>
+            )}
           </div>
         ) : status === "past_due" ? (
           <div className="border border-taupe-200 p-6">

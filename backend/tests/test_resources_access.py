@@ -548,6 +548,196 @@ class TestCircleOnly:
             assert reloaded.membership_type == "Community Member"
 
 
+class TestYearlyCircleAccess:
+    """Yearly Member Bonus Vault: a second, narrower circle_only tier
+    (Resource.circle_access_level == "yearly_members") reserved for
+    members whose CURRENT subscription's plan has billing_interval ==
+    "yearly" (see app/services/circle.py's has_yearly_circle_access).
+    "all_members" (the default) keeps circle_only's existing behavior
+    for every billing interval, monthly included — see TestCircleOnly
+    above, entirely unchanged by this class.
+    """
+
+    # all_members (default) + active yearly plan still succeeds, same as
+    # any other active Circle member — TestCircleOnly already proves this
+    # for a monthly plan; this is the yearly-plan half of that matrix.
+    def test_all_members_active_yearly_plan_succeeds(self, app, client, user1_token, protected_root):
+        (protected_root / "workbook.pdf").write_bytes(b"content")
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        _, slug = _make_resource(app, access_type="circle_only", file_url=None, protected_file_path="workbook.pdf")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+
+    # yearly_members + active yearly plan succeeds and issues a working
+    # short-lived download token for the real protected file.
+    def test_yearly_members_active_yearly_plan_succeeds(self, app, client, user1_token, protected_root):
+        (protected_root / "vault.pdf").write_bytes(b"vault content")
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        _, slug = _make_resource(
+            app, access_type="circle_only", circle_access_level="yearly_members",
+            file_url=None, protected_file_path="vault.pdf",
+        )
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+        download = client.get(resp.get_json()["data"]["url"])
+        assert download.status_code == 200
+        assert download.data == b"vault content"
+
+    # yearly_members + active MONTHLY plan -> 403 yearly_circle_required,
+    # never the generic circle_required — she IS an active Circle member,
+    # just not the Yearly tier this Resource needs.
+    def test_yearly_members_active_monthly_plan_denied(self, app, client, user1_token):
+        plan_id = _make_plan(app, billing_interval="monthly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "yearly_circle_required"
+
+    # yearly_members + no Circle access at all -> the ordinary
+    # circle_required fires first (has_circle_access is checked before
+    # has_yearly_circle_access) — never yearly_circle_required.
+    def test_yearly_members_no_circle_access_gets_generic_circle_required(self, app, client, user1_token):
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "circle_required"
+
+    # yearly_members + expired yearly subscription -> denied (has_circle_
+    # access itself already denies this; has_yearly_circle_access is
+    # never even reached).
+    def test_yearly_members_expired_yearly_plan_denied(self, app, client, user1_token):
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="expired")
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "circle_required"
+
+    # yearly_members + cancelled yearly subscription -> denied.
+    def test_yearly_members_cancelled_yearly_plan_denied(self, app, client, user1_token):
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="cancelled")
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "circle_required"
+
+    # yearly_members + revoked yearly subscription -> denied.
+    def test_yearly_members_revoked_yearly_plan_denied(self, app, client, user1_token):
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="revoked")
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "circle_required"
+
+    # yearly_members + active yearly subscription but a future starts_at
+    # -> denied (has_circle_access itself denies this).
+    def test_yearly_members_future_start_yearly_plan_denied(self, app, client, user1_token):
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active", starts_at=_now() + timedelta(days=5))
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "circle_required"
+
+    # Community membership alone (no Circle at all) -> denied, same
+    # isolation TestCircleOnly already proves for all_members.
+    def test_yearly_members_community_membership_alone_denied(self, app, client, user1_token):
+        with app.app_context():
+            from app.extensions import db
+            from app.models.community import Member
+
+            user = _resolve_user(USER1["email"])
+            member = Member(first_name="Amara", last_name="Diallo", email=USER1["email"], user_id=user.id, status="active")
+            db.session.add(member)
+            db.session.commit()
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "circle_required"
+
+    # Inactive account -> denied before Circle entitlement is even
+    # considered — same account_required/forbidden path every other
+    # access_type's _require_account already enforces first.
+    def test_yearly_members_inactive_account_denied(self, app, client, user1_token):
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        with app.app_context():
+            from app.extensions import db
+
+            user = _resolve_user(USER1["email"])
+            user.is_active = False
+            db.session.commit()
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 403
+        assert resp.get_json()["error"]["code"] == "forbidden"
+
+    # Monthly member denied a token for a yearly-only resource — no
+    # download_count increment, matching TestCircleOnly's own
+    # denied-attempts-don't-increment-count convention.
+    def test_yearly_members_monthly_member_denied_does_not_increment_count(self, app, client, user1_token):
+        plan_id = _make_plan(app, billing_interval="monthly")
+        _make_subscription(app, USER1["email"], plan_id, status="active")
+        resource_id, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert _get_resource(app, resource_id).download_count == 0
+
+    # circle_access_level is meaningless to premium's own purchase-or-
+    # Circle rule — a premium resource with a stale/irrelevant
+    # circle_access_level value must still grant access via the ordinary
+    # rule, completely unaffected by this unrelated field.
+    def test_circle_access_level_irrelevant_to_premium_access(self, app, client, user1_token, protected_root):
+        from app.extensions import db
+        from app.models.resource import ResourcePurchase
+
+        (protected_root / "premium.pdf").write_bytes(b"premium content")
+        resource_id, slug = _make_resource(
+            app, access_type="premium", circle_access_level="yearly_members",
+            file_url=None, protected_file_path="premium.pdf", price=1500,
+        )
+        with app.app_context():
+            user = _resolve_user(USER1["email"])
+            db.session.add(ResourcePurchase(user_id=user.id, resource_id=resource_id, status="active"))
+            db.session.commit()
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+
+    # Public payload exposes circleAccessLevel safely and never leaks any
+    # subscription/plan/payment identifier or date alongside it.
+    def test_public_payload_exposes_circle_access_level_safely(self, app, client):
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        detail = client.get(f"/api/v1/resources/{slug}").get_json()["data"]
+        assert detail["circleAccessLevel"] == "yearly_members"
+        for leak_key in (
+            "subscriptionId", "subscription_id", "planId", "plan_id",
+            "paymentReference", "payment_reference", "currentPeriodEnd", "current_period_end",
+        ):
+            assert leak_key not in detail
+
+    # viewerCanAccess matrix for a yearly-only resource: anonymous false,
+    # an active monthly member false, an active yearly member true.
+    def test_viewer_can_access_matrix_for_yearly_only_resource(self, app, client, user1_token, user2_token):
+        monthly_plan = _make_plan(app, billing_interval="monthly")
+        yearly_plan = _make_plan(app, billing_interval="yearly")
+        _make_subscription(app, USER1["email"], monthly_plan, status="active")
+        _make_subscription(app, USER2["email"], yearly_plan, status="active")
+        _, slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+
+        anon_detail = client.get(f"/api/v1/resources/{slug}").get_json()["data"]
+        assert anon_detail["viewerCanAccess"] is False
+
+        monthly_detail = client.get(f"/api/v1/resources/{slug}", headers=auth_headers(user1_token)).get_json()["data"]
+        assert monthly_detail["viewerCanAccess"] is False
+
+        yearly_detail = client.get(f"/api/v1/resources/{slug}", headers=auth_headers(user2_token)).get_json()["data"]
+        assert yearly_detail["viewerCanAccess"] is True
+
+
 class TestPremium:
     # 49. anonymous premium access requires a WSF account (Stage 1 of the
     # premium Resource Paystack integration — see app/services/
@@ -626,6 +816,31 @@ class TestPublicListingAccessFilter:
         slugs = {item["slug"] for item in resp.get_json()["data"]}
         assert circle_slug in slugs
         assert free_slug not in slugs
+
+    # The Yearly Member Bonus Vault's own filter: ?access_type=circle_only
+    # &circle_access_level=yearly_members must return only the narrower
+    # tier — never every circle_only resource.
+    def test_circle_access_level_yearly_filter_finds_only_yearly_resources(self, app, client):
+        _, yearly_slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        _, standard_slug = _make_resource(app, access_type="circle_only")
+        resp = client.get(
+            "/api/v1/resources",
+            query_string={"access_type": "circle_only", "circle_access_level": "yearly_members"},
+        )
+        slugs = {item["slug"] for item in resp.get_json()["data"]}
+        assert yearly_slug in slugs
+        assert standard_slug not in slugs
+
+    # Regression: the existing, broader ?access_type=circle_only query
+    # (the general "WSF Circle" filter bucket) must keep including
+    # yearly-only resources too — adding the narrower Yearly filter is
+    # additive, never a change that silently removes them from the
+    # general Circle bucket.
+    def test_general_circle_only_filter_still_includes_yearly_resources(self, app, client):
+        _, yearly_slug = _make_resource(app, access_type="circle_only", circle_access_level="yearly_members")
+        resp = client.get("/api/v1/resources", query_string={"access_type": "circle_only"})
+        slugs = {item["slug"] for item in resp.get_json()["data"]}
+        assert yearly_slug in slugs
 
 
 class TestExternalLink:

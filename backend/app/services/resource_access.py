@@ -10,8 +10,14 @@ for that.
 member_only means any valid authenticated WSF User account — never a
 Community Member record, never WSF Circle, never Member.membership_type
 (see app/models/community.py's own docstring for why those stay separate
-concepts). circle_only means exactly has_circle_access(user); nothing
-about Community membership feeds into it either way. premium means
+concepts). circle_only means has_circle_access(user) — further narrowed
+to has_yearly_circle_access(user) when the Resource's own
+circle_access_level == "yearly_members" (see app/models/resource.py's
+CIRCLE_ACCESS_LEVELS; meaningless for every other access_type). Monthly
+and yearly Circle members alike pass the ordinary circle_only gate — the
+yearly-only narrowing is a strictly smaller, second tier reserved for
+annual-member bonus content, never a replacement for the base rule.
+Nothing about Community membership feeds into either tier. premium means
 "this user holds a ResourcePurchase for this Resource, OR currently has
 active WSF Circle entitlement via has_circle_access(user)" — the two are
 deliberately separate paths to the SAME access, not merged concepts:
@@ -27,7 +33,7 @@ app/models/resource.py) — Community membership, Product/Order records,
 and frontend flags are likewise never consulted for either path.
 """
 from app.models.resource import ResourcePurchase
-from app.services.circle import has_circle_access
+from app.services.circle import has_circle_access, has_yearly_circle_access
 from app.utils.responses import ApiError
 
 
@@ -95,6 +101,15 @@ def check_resource_access(resource, user):
         if not has_circle_access(user):
             raise ApiError(
                 "This resource is included with WSF Circle membership.", 403, code="circle_required"
+            )
+        # A second, narrower tier reserved for annual-member bonus
+        # content (see app/models/resource.py's CIRCLE_ACCESS_LEVELS) —
+        # meaningless for the "all_members" default, which stops right
+        # above at the ordinary Circle check every monthly or yearly
+        # member already passes.
+        if resource.circle_access_level == "yearly_members" and not has_yearly_circle_access(user):
+            raise ApiError(
+                "This resource is included with WSF Circle Yearly.", 403, code="yearly_circle_required"
             )
         return
 

@@ -286,6 +286,13 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     resource.price = data.get("price", 0)
     resource.currency = data.get("currency", "KES")
     resource.access_type = data.get("access_type", "direct_download")
+    # Meaningful only for circle_only (see app/models/resource.py's
+    # CIRCLE_ACCESS_LEVELS) — normalized back to the default for every
+    # other access_type so a value saved while briefly circle_only can
+    # never survive a later edit that moves the Resource off that type.
+    resource.circle_access_level = (
+        data.get("circle_access_level", "all_members") if resource.access_type == "circle_only" else "all_members"
+    )
     # is_premium/is_downloadable/is_external are legacy stored booleans kept
     # for existing call sites (Product-resource linkage, old mock parity);
     # derived here from the one field an editor actually sets, so they can
@@ -389,7 +396,7 @@ def _build_query(user):
             )
         )
 
-    query = apply_equality_filters(query, ResourceModel, request.args, ["type", "access_type"])
+    query = apply_equality_filters(query, ResourceModel, request.args, ["type", "access_type", "circle_access_level"])
     query = apply_search(query, ResourceModel, request.args, ["name", "subtitle", "short_description"])
 
     if request.args.get("topic"):
@@ -453,6 +460,11 @@ def build_public_resource_payload(resource, viewer):
         "requiresEmail": resource.access_type == "email_gate",
         "requiresAccount": resource.access_type in ("member_only", "circle_only", "premium"),
         "requiresCircle": resource.access_type == "circle_only",
+        # "all_members" | "yearly_members" — meaningful only for
+        # circle_only (see app/models/resource.py's CIRCLE_ACCESS_LEVELS);
+        # display/filter metadata only, never itself an authorization
+        # mechanism, same posture as isDownloadable/requiresCircle above.
+        "circleAccessLevel": resource.circle_access_level,
         "viewerCanAccess": viewer_can_access(resource, viewer),
         # Premium only — "purchase", "circle", or null; see
         # get_viewer_access_source's own docstring for the precedence

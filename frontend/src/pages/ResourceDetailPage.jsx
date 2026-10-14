@@ -162,20 +162,9 @@ function AccessCta({
   checkingOut,
   checkoutError,
   onCheckoutClick,
+  circleMembership,
 }) {
   const location = useLocation()
-  const [circleMembership, setCircleMembership] = useState(undefined)
-
-  useEffect(() => {
-    if (!accessToken || resource.accessType !== 'circle_only') return undefined
-    let active = true
-    fetchMyCircleMembership()
-      .then((result) => active && setCircleMembership(result))
-      .catch(() => active && setCircleMembership(null))
-    return () => {
-      active = false
-    }
-  }, [accessToken, resource.accessType])
 
   if (resource.accessType === 'premium') {
     const priceLabel = formatCurrency(resource.price, resource.currency)
@@ -266,6 +255,21 @@ function AccessCta({
         </Link>
       )
     }
+    // A yearly-only (annual-member bonus) Resource: a monthly member
+    // passes the ordinary Circle check above but not this narrower tier
+    // (see backend/app/services/resource_access.py's
+    // yearly_circle_required) — never show a working Download for her,
+    // never pretend she's purchased anything, never send her to Paystack
+    // for a Resource purchase. WSF Circle's own plan page is the only
+    // legitimate next step, same discovery path a non-member already sees
+    // just above.
+    if (resource.circleAccessLevel === 'yearly_members' && circleMembership.subscription?.plan?.billingInterval !== 'yearly') {
+      return (
+        <Link to="/circle" className="btn-secondary mt-5 inline-flex">
+          Explore WSF Circle Yearly
+        </Link>
+      )
+    }
     return (
       <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
         <Download size={16} /> {requesting ? 'Preparing…' : 'Access resource'}
@@ -300,6 +304,18 @@ export default function ResourceDetailPage() {
   const [requesting, setRequesting] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState(null)
+  const [circleMembership, setCircleMembership] = useState(undefined)
+
+  useEffect(() => {
+    if (!accessToken || resource?.accessType !== 'circle_only') return undefined
+    let active = true
+    fetchMyCircleMembership()
+      .then((result) => active && setCircleMembership(result))
+      .catch(() => active && setCircleMembership(null))
+    return () => {
+      active = false
+    }
+  }, [accessToken, resource?.accessType, resource?.slug])
 
   useEffect(() => {
     let active = true
@@ -473,13 +489,36 @@ export default function ResourceDetailPage() {
             {resource.pageCount && <span>{resource.pageCount} pages</span>}
           </div>
 
-          <p className="mt-4 font-serif text-2xl font-semibold text-charcoal">
-            {resource.accessType === 'circle_only'
-              ? 'Included with WSF Circle'
-              : resource.isFree
-                ? 'Free'
-                : formatCurrency(resource.price, resource.currency)}
-          </p>
+          {(() => {
+            const isYearlyOnly = resource.accessType === 'circle_only' && resource.circleAccessLevel === 'yearly_members'
+            // Only an active member of the Circle Yearly plan actually
+            // holds this narrower tier — a monthly member sees this as
+            // "available", not "included", even though she does pass the
+            // ordinary circle_only check (see AccessCta's own circle_only
+            // branch for the matching CTA treatment).
+            const monthlyMemberOnYearlyOnly =
+              isYearlyOnly && circleMembership?.hasAccess && circleMembership?.subscription?.plan?.billingInterval !== 'yearly'
+            return (
+              <>
+                <p className="mt-4 font-serif text-2xl font-semibold text-charcoal">
+                  {resource.accessType === 'circle_only'
+                    ? isYearlyOnly
+                      ? monthlyMemberOnYearlyOnly
+                        ? 'Available with WSF Circle Yearly'
+                        : 'Included with WSF Circle Yearly'
+                      : 'Included with WSF Circle'
+                    : resource.isFree
+                      ? 'Free'
+                      : formatCurrency(resource.price, resource.currency)}
+                </p>
+                {monthlyMemberOnYearlyOnly && (
+                  <p className="mt-1 text-xs text-charcoal-600/70">
+                    This annual-member bonus is included with WSF Circle Yearly.
+                  </p>
+                )}
+              </>
+            )
+          })()}
           {resource.accessType === 'premium' && resource.viewerCanAccess !== true && (
             <p className="mt-1 text-xs text-charcoal-600/70">Included with an active WSF Circle membership.</p>
           )}
@@ -488,6 +527,7 @@ export default function ResourceDetailPage() {
             resource={resource}
             accessToken={accessToken}
             requesting={requesting}
+            circleMembership={circleMembership}
             onAccessClick={handleAccessClick}
             onEmailGateClick={() => setShowEmailGate(true)}
             checkingOut={checkingOut}

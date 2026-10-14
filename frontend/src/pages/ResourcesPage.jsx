@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { fetchResources, fetchResourcesFilterOptions } from '../api/resources'
 import useSeo from '../hooks/useSeo'
@@ -10,15 +11,25 @@ import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
 
 export default function ResourcesPage() {
+  // Lets a deep link like /resources?access=circle_yearly (see
+  // AccountMembershipPage's "Explore the Yearly Member Bonus Vault" link)
+  // land already filtered — read once on mount, same lazy-initializer
+  // pattern as CirclePage's own ?plan= read; never kept in sync with the
+  // URL afterwards, same as every other filter on this page.
+  const location = useLocation()
   const [query, setQuery] = useState('')
   const [type, setType] = useState('')
-  // Three distinct buckets, never two: "Free" must never include a
+  // Four distinct buckets, never overlapping: "Free" must never include a
   // circle_only resource (it requires a paid WSF Circle membership, so
-  // it isn't genuinely free to a visitor without one), and "WSF Circle"
-  // must never be folded into "Premium" (a separate one-off commercial
+  // it isn't genuinely free to a visitor without one), "WSF Circle" must
+  // never be folded into "Premium" (a separate one-off commercial
   // resource type — Circle membership never unlocks it, see
-  // app/services/resource_access.py). '' means no access filter applied.
-  const [access, setAccess] = useState('')
+  // app/services/resource_access.py), and "Yearly Member Bonuses" is a
+  // narrower view of the SAME circle_only resources (never a fifth,
+  // separate access_type — see Resource.circle_access_level), so picking
+  // it still sends access_type=circle_only, just with circleAccessLevel
+  // added. '' means no access filter applied.
+  const [access, setAccess] = useState(() => new URLSearchParams(location.search).get('access') || '')
   const [types, setTypes] = useState([])
   const [featured, setFeatured] = useState(null)
   const [latest, setLatest] = useState(null)
@@ -71,8 +82,15 @@ export default function ResourcesPage() {
     setError(null)
     // "WSF Circle" is its own access_type equality filter, never the
     // free=true/false boolean — see the `access` state comment above.
+    // "Yearly Member Bonuses" narrows that same circle_only filter with
+    // circleAccessLevel=yearly_members (sent to the backend's own
+    // circle_access_level equality filter — never filtered client-side
+    // from unauthorized data).
     const params = { type, q: query, pageSize: 100 }
-    if (access === 'circle') params.accessType = 'circle_only'
+    if (access === 'circle_yearly') {
+      params.accessType = 'circle_only'
+      params.circleAccessLevel = 'yearly_members'
+    } else if (access === 'circle') params.accessType = 'circle_only'
     else if (access) params.free = access
     fetchResources(params)
       .then((res) => active && setResults(res.items))
@@ -108,6 +126,7 @@ export default function ResourcesPage() {
             options={[
               { value: 'true', label: 'Free' },
               { value: 'circle', label: 'WSF Circle' },
+              { value: 'circle_yearly', label: 'Yearly Member Bonuses' },
               { value: 'false', label: 'Premium' },
             ]}
           />

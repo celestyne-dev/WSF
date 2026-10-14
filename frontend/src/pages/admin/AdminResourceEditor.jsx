@@ -117,6 +117,7 @@ function blankForm() {
     price: '',
     currency: 'KES',
     accessType: 'direct_download',
+    circleAccessLevel: 'all_members',
     fileUrl: '',
     externalUrl: '',
     protectedFilePath: '',
@@ -152,6 +153,7 @@ function toForm(resource) {
     price: resource.price ?? '',
     currency: resource.currency || 'KES',
     accessType: resource.accessType || 'direct_download',
+    circleAccessLevel: resource.circleAccessLevel || 'all_members',
     fileUrl: resource.fileUrl || '',
     externalUrl: resource.externalUrl || '',
     protectedFilePath: resource.protectedFilePath || '',
@@ -246,6 +248,13 @@ export default function AdminResourceEditor() {
       const next = { ...prev, [field]: value }
       if (field === 'name' && !slugTouched) {
         next.slug = slugify(value)
+      }
+      // circleAccessLevel is meaningful only for circle_only — never let
+      // a yearly_members choice survive a move to a different access
+      // type (see backend/app/api/v1/resources.py's _apply_fields, which
+      // normalizes this the same way server-side).
+      if (field === 'accessType' && value !== 'circle_only') {
+        next.circleAccessLevel = 'all_members'
       }
       return next
     })
@@ -371,6 +380,7 @@ export default function AdminResourceEditor() {
       price: form.price,
       currency: form.currency,
       accessType: form.accessType,
+      circleAccessLevel: form.accessType === 'circle_only' ? form.circleAccessLevel : 'all_members',
       fileUrl: form.fileUrl || null,
       externalUrl: form.externalUrl || null,
       protectedFilePath: form.protectedFilePath || null,
@@ -489,6 +499,22 @@ export default function AdminResourceEditor() {
                 ))}
               </select>
             </Field>
+            {form.accessType === 'circle_only' && (
+              <Field label="Circle availability" hint="who among active WSF Circle members can access this">
+                <select
+                  value={form.circleAccessLevel}
+                  onChange={(e) => updateField('circleAccessLevel', e.target.value)}
+                  className="w-full max-w-xs border border-taupe-300 px-3 py-2 text-sm"
+                >
+                  <option value="all_members">All active WSF Circle members</option>
+                  <option value="yearly_members">Yearly WSF Circle members only</option>
+                </select>
+                <p className="mt-1.5 text-xs text-charcoal-600/70">
+                  Choose Yearly only for annual-member bonus resources. Premium Resources are already included
+                  with all active WSF Circle memberships.
+                </p>
+              </Field>
+            )}
             {form.accessType === 'external_link' ? (
               <Field label="External URL">
                 <input value={form.externalUrl} onChange={(e) => updateField('externalUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />

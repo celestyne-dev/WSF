@@ -620,6 +620,27 @@ class TestCircleIncludedPremiumAccess:
         assert download_resp.status_code == 200
         assert download_resp.data == content
 
+    # Explicit monthly-vs-yearly regression for the Yearly Member Bonus
+    # Vault follow-up: Premium access must stay billing-interval-blind —
+    # has_circle_access(user) alone decides it, never circle_access_level
+    # or billing_interval (see app/services/resource_access.py's premium
+    # branch, which never consults either).
+    def test_monthly_circle_still_unlocks_premium(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app, billing_interval="monthly")
+        _make_active_circle_subscription(app, user_id, plan_id)
+        _, slug = _make_premium_resource(app, protected_root)
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+
+    def test_yearly_circle_still_unlocks_premium(self, client, app, user1_token, protected_root):
+        user_id = _get_user_id(app, USER1["email"])
+        plan_id = _make_plan(app, billing_interval="yearly")
+        _make_active_circle_subscription(app, user_id, plan_id)
+        _, slug = _make_premium_resource(app, protected_root)
+        resp = client.post(f"/api/v1/resources/{slug}/access", headers=auth_headers(user1_token))
+        assert resp.status_code == 200
+
 
 class TestPremiumPublishValidation:
     def test_published_premium_with_zero_price_rejected(self, app, manager_token, client, protected_root):

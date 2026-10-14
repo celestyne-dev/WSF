@@ -66,6 +66,26 @@ _ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in ACCESS
 # as circle_only's own gate via has_circle_access().
 PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "circle_only", "premium")
 
+# Meaningful ONLY when access_type == "circle_only" (see
+# app/services/resource_access.py's check_resource_access and
+# has_yearly_circle_access in app/services/circle.py). "all_members" is
+# every other access_type's only valid value too — _apply_fields in
+# app/api/v1/resources.py normalizes it back to this whenever access_type
+# isn't circle_only, so a value saved while a Resource was briefly
+# circle_only can never survive a later edit that moves it off that type.
+#   all_members: any active WSF Circle member (monthly or yearly) — the
+#     existing circle_only behavior, unchanged.
+#   yearly_members: only a Circle member whose CURRENT subscription's plan
+#     has billing_interval == "yearly" — the Yearly Member Bonus Vault.
+# This is a second, independent axis from Premium Resource purchase
+# entitlement (access_type == "premium") — a yearly-only Resource is never
+# access_type == "premium", and a premium Resource's purchase-or-any-
+# Circle-membership rule is completely unaffected by this field.
+CIRCLE_ACCESS_LEVELS = ("all_members", "yearly_members")
+_CIRCLE_ACCESS_LEVEL_CHECK_SQL = "circle_access_level IN (" + ", ".join(
+    f"'{l}'" for l in CIRCLE_ACCESS_LEVELS
+) + ")"
+
 FILE_FORMATS = ("PDF", "DOCX", "XLSX", "PPTX", "ZIP", "Image", "Video", "Other")
 _FILE_FORMAT_CHECK_SQL = "file_format IS NULL OR file_format IN (" + ", ".join(f"'{f}'" for f in FILE_FORMATS) + ")"
 
@@ -111,6 +131,7 @@ class Resource(db.Model):
         db.CheckConstraint(_RESOURCE_TYPE_CHECK_SQL, name="ck_resources_type"),
         db.CheckConstraint(_RESOURCE_STATUS_CHECK_SQL, name="ck_resources_status"),
         db.CheckConstraint(_ACCESS_TYPE_CHECK_SQL, name="ck_resources_access_type"),
+        db.CheckConstraint(_CIRCLE_ACCESS_LEVEL_CHECK_SQL, name="ck_resources_circle_access_level"),
         db.CheckConstraint(_FILE_FORMAT_CHECK_SQL, name="ck_resources_file_format"),
         db.CheckConstraint("price >= 0", name="ck_resources_price_nonnegative"),
         db.CheckConstraint("download_count >= 0", name="ck_resources_download_count_nonnegative"),
@@ -148,6 +169,9 @@ class Resource(db.Model):
     is_external = db.Column(db.Boolean, nullable=False, default=False)
 
     access_type = db.Column(db.String(20), nullable=False, default="direct_download")
+    # See CIRCLE_ACCESS_LEVELS above — meaningful only when access_type ==
+    # "circle_only"; every other access_type keeps this at its default.
+    circle_access_level = db.Column(db.String(20), nullable=False, default="all_members")
     # A legacy/external target: this app's own MEDIA_URL-rooted path or an
     # http(s) URL, whichever `is_external` says to use (see
     # app/utils/urls.py's is_safe_resource_target, the one place both are
