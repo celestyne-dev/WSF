@@ -53,29 +53,48 @@ export default function SeriesDetailPage() {
 
   return (
     <div>
-      <div className="relative flex min-h-[320px] items-end bg-plum-700">
-        <MediaImage
-          media={seriesItem.coverMedia}
-          variant="hero"
-          mediaPath={seriesItem.coverImage}
-          alt={seriesItem.name}
-          width={1920}
-          height={640}
-          aspect={3}
-          tone="plum"
-          priority
-          className="absolute inset-0 h-full w-full object-cover opacity-60"
-        />
-        <div className="container-editorial relative py-10 text-ivory">
-          <Breadcrumb items={[{ label: 'Series', to: '/series' }, { label: seriesItem.name }]} />
-          <p className="eyebrow mt-4 !text-blush-200">Series</p>
-          <h1 className="mt-2 font-serif text-4xl font-semibold sm:text-5xl">{seriesItem.name}</h1>
-          <p className="mt-3 max-w-2xl text-ivory/85">{seriesItem.description}</p>
-          {seriesItem.sponsor && <p className="mt-3 text-xs uppercase tracking-wide text-ivory/60">Presented in partnership with {seriesItem.sponsor.name}</p>}
+      {/* An editorial split hero rather than a shallow object-cover banner:
+          the old layout forced every uploaded image (portrait, landscape,
+          square) into a wide shallow box and cropped it to fit. Text now
+          gets its own readable column instead of sitting on top of the
+          image, and the image gets its own panel sized to show the full
+          composition via object-contain — no new CMS field, no crop. */}
+      <div className="border-b border-taupe-200">
+        <div className="container-editorial py-14 lg:py-16">
+          <div className="grid grid-cols-1 items-center gap-10 lg:mx-auto lg:max-w-[1220px] lg:grid-cols-[1fr_1.15fr] lg:gap-14">
+            <div>
+              <Breadcrumb items={[{ label: 'Series', to: '/series' }, { label: seriesItem.name }]} />
+              <p className="eyebrow mt-5">Series</p>
+              <h1 className="mt-2 font-serif text-4xl font-semibold leading-tight text-charcoal sm:text-5xl">{seriesItem.name}</h1>
+              <p className="mt-4 max-w-md text-lg leading-relaxed text-charcoal-600">{seriesItem.description}</p>
+              {seriesItem.sponsor && (
+                <p className="mt-4 text-xs uppercase tracking-wide text-charcoal-600/70">Presented in partnership with {seriesItem.sponsor.name}</p>
+              )}
+            </div>
+            {/* A fixed-height panel only at lg+ (mobile sizes to the
+                image's own natural height instead, per spec, so nothing
+                is ever cropped); `object-contain` lets a portrait image
+                show in full, letterboxed in the panel's own background,
+                while a landscape image naturally fills more of it. */}
+            <div className="relative flex items-center justify-center overflow-hidden bg-cream lg:h-[520px]">
+              <MediaImage
+                media={seriesItem.coverMedia}
+                variant="hero"
+                mediaPath={seriesItem.coverImage}
+                alt={seriesItem.name}
+                width={1000}
+                height={1000}
+                aspect={1}
+                tone="plum"
+                priority
+                className="h-auto w-full object-contain lg:h-full"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="container-editorial py-14">
+      <div className={`container-editorial ${articles.length ? 'py-14' : 'py-10'}`}>
         {articles.length ? (
           <div className="grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
             {articles.map((a) => (
