@@ -709,7 +709,8 @@ class ResourceDownloadResource(Resource):
     ResourceAccessResource above and streams the protected file. The
     token alone is the credential — no JWT/session is checked here, and
     whichever access_type rule originally applied (nothing, an account,
-    or Circle entitlement) is NOT re-verified (see
+    Circle entitlement, or a premium purchase entitlement) is NOT
+    re-verified (see
     app/services/resource_downloads.py's module docstring for why that's
     the correct, deliberate design, not an oversight).
 

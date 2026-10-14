@@ -163,9 +163,16 @@ export async function startResourceCheckout(slug) {
 // purchase succeeded — see ResourceCheckoutCallbackPage.jsx. `reference`
 // here is only ever used as an opaque lookup key; the backend
 // (owner-scoped — see get_resource_payment_or_404) decides everything
-// else.
+// else. `suppressAuthRedirect` (see api/client.js's handleUnauthorized)
+// opts this one request out of the global hard-redirect-to-/login an
+// unrecoverable 401 would otherwise trigger: the callback page already
+// owns its own lost-auth UX and the callback URL (reference included)
+// that must survive a sign-in round trip, so it — not the global
+// interceptor — needs to be the one deciding where "sign in" sends her.
 export async function getResourcePaymentStatus(reference) {
-  const { data } = await apiClient.get(`/resources/payments/${encodeURIComponent(reference)}`)
+  const { data } = await apiClient.get(`/resources/payments/${encodeURIComponent(reference)}`, {
+    suppressAuthRedirect: true,
+  })
   return {
     reference: data?.reference,
     status: data?.status,

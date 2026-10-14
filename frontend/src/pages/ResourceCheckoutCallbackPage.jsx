@@ -41,12 +41,15 @@ export default function ResourceCheckoutCallbackPage() {
 
   useEffect(() => {
     // No accessToken at all means GET /resources/payments/<reference>
-    // would just 401 — and the app's global 401 interceptor (see
-    // api/client.js's handleUnauthorized) would hard-redirect the whole
-    // page to bare /login the instant that happens, with no return path.
-    // Checking here first, before ever making the request, is what lets
-    // this page show its own "sign in" state below with the callback URL
-    // (reference included) preserved instead.
+    // would just 401. getResourcePaymentStatus() passes
+    // suppressAuthRedirect (see api/client.js's handleUnauthorized), so
+    // even an unrecoverable 401 — no refresh token, or a retried request
+    // that still 401s — never triggers the app's global hard redirect to
+    // bare /login; it's rejected back to the catch below instead, same
+    // as any other failure. Checking here first, before ever making the
+    // request, only avoids a pointless round trip for the common
+    // no-token-at-all case — it is not what keeps this page from being
+    // yanked to bare /login; the opt-in flag on the request itself is.
     if (!reference || !accessToken) return undefined
 
     // `cancelled` and `timeoutId` are local to THIS effect invocation, not
@@ -64,10 +67,13 @@ export default function ResourceCheckoutCallbackPage() {
         return { data }
       } catch (err) {
         if (cancelled) return { data: null }
-        // Defense in depth: a token that was present but expired/invalid
-        // between render and this request still surfaces the same
-        // "sign in" state as having no token at all, rather than the
-        // generic fetch-failed message.
+        // A token that was present at render but turned out to be
+        // unrecoverable by request time — refresh token expired, or a
+        // retried request still 401s (see api/client.js's
+        // handleUnauthorized) — lands here rather than being hard-
+        // redirected to bare /login, thanks to suppressAuthRedirect.
+        // Surfaces the same "sign in" state as having no token at all,
+        // rather than the generic fetch-failed message.
         if (err?.response?.status === 401) {
           setAuthRequired(true)
           return { data: null, authRequired: true }

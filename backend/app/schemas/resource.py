@@ -151,9 +151,9 @@ class ResourceInputSchema(ma.Schema):
     file_url = fields.String(required=False, allow_none=True, data_key="fileUrl", validate=_validate_file_url)
     external_url = fields.String(required=False, allow_none=True, data_key="externalUrl", validate=_validate_external_url)
     # A WSF-hosted private resource file — usable by direct_download,
-    # email_gate, member_only, and circle_only (mandatory for the last);
-    # see app/models/resource.py's Resource.protected_file_path and
-    # app/services/resource_downloads.py.
+    # email_gate, member_only, circle_only, and premium (mandatory for
+    # the latter two); see app/models/resource.py's
+    # Resource.protected_file_path and app/services/resource_downloads.py.
     protected_file_path = fields.String(
         required=False, allow_none=True, data_key="protectedFilePath", validate=_validate_protected_file_path
     )

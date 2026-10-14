@@ -270,13 +270,15 @@ class ResourceDownloadToken(db.Model):
     expires; the short TTL alone bounds how long a leaked link stays
     useful. `user_id` records who it was issued to for audit purposes
     only — redemption (GET /resources/downloads/{token}) never re-checks
-    current entitlement (Circle, account, or otherwise), only the
-    token's own hash/expiry/resource binding, exactly like whichever
+    current entitlement (Circle, account, purchase, or otherwise), only
+    the token's own hash/expiry/resource binding, exactly like whichever
     access_type rule was already evaluated, moments earlier, by the same
     request that issued it. Nullable because a direct_download or
     email_gate resource's protected file may be requested by an
     anonymous visitor who was never asked to sign in at all — unlike
-    member_only/circle_only, which always have a real `user` to record.
+    member_only/circle_only/premium, which always have a real `user` to
+    record (premium's purchase entitlement is itself tied to a user —
+    see ResourcePurchase below — so its grant is never anonymous).
     """
 
     __tablename__ = "resource_download_tokens"

@@ -154,11 +154,30 @@ function redirectToLogin() {
   }
 }
 
+// Same effect on stored auth state as redirectToLogin(), but never
+// navigates — used only when the failing request opted out of the hard
+// redirect via `suppressAuthRedirect` (see handleUnauthorized below), so
+// the page that made the request can render its own "sign in" state with
+// its own preserved return path, rather than being yanked to bare /login
+// mid-render with that return path lost. The original 401 is still
+// rejected either way — this only ever changes whether a navigation
+// happens, never whether the request succeeds or whether stored tokens
+// get cleared.
+function clearAuthWithoutRedirect() {
+  clearStoredAuth()
+}
+
 async function handleUnauthorized(error) {
   const originalRequest = error.config || {}
   const url = originalRequest.url || ''
   const isLoginAttempt = url.includes('/auth/login')
   const isRefreshAttempt = url.includes('/auth/refresh')
+  // Opt-in only (see api/resources.js's getResourcePaymentStatus for the
+  // one caller that currently sets this) — every other request leaves
+  // this undefined and gets the exact redirectToLogin() behavior below
+  // that's always existed.
+  const suppressRedirect = !!originalRequest.suppressAuthRedirect
+  const giveUp = suppressRedirect ? clearAuthWithoutRedirect : redirectToLogin
 
   if (isLoginAttempt) {
     return Promise.reject(error)
@@ -167,7 +186,7 @@ async function handleUnauthorized(error) {
     // The refresh token itself is invalid/expired, or a request we already
     // retried once with a fresh access token still failed — no further
     // recovery is possible.
-    redirectToLogin()
+    giveUp()
     return Promise.reject(error)
   }
 
@@ -183,7 +202,7 @@ async function handleUnauthorized(error) {
     originalRequest.headers.Authorization = `Bearer ${accessToken}`
     return apiClient(originalRequest)
   } catch {
-    redirectToLogin()
+    giveUp()
     return Promise.reject(error)
   }
 }
