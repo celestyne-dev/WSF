@@ -139,7 +139,7 @@ function EmailGateModal({ resource, onClose, onSuccess }) {
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" />
             Also subscribe me to the Women Shaping Futures newsletter.
           </label>
-          <button type="submit" disabled={submitting} className="btn-primary w-full !py-2.5 text-sm disabled:opacity-60">
+          <button type="submit" disabled={submitting} aria-busy={submitting} className="btn-primary w-full !py-2.5 text-sm disabled:opacity-60">
             {submitting ? 'Preparing your download…' : 'Get the download'}
           </button>
         </form>
@@ -170,6 +170,22 @@ function AccessCta({
     const priceLabel = formatCurrency(resource.price, resource.currency)
     const returnTo = `/resources/${resource.slug}`
 
+    // Shown under the Buy CTA for a purchaser candidate only — never
+    // once she already holds access via purchase or Circle (see the
+    // viewerCanAccess branch below, which never renders this).
+    // Restrained, informational, and deliberately never styled as a
+    // second purchase action (no button, no price repeated) — see spec
+    // section 5. Purely presentational: no entitlement/business rule is
+    // read or changed here.
+    const membershipNote = (
+      <p className="mt-3 max-w-sm text-xs leading-relaxed text-charcoal-600/80">
+        WSF Circle members get access to Premium Resources as part of an active membership.{' '}
+        <Link to="/circle" className="font-semibold text-burgundy-600 hover:underline">
+          WSF Circle
+        </Link>
+      </p>
+    )
+
     if (!accessToken) {
       return (
         <div className="mt-5">
@@ -185,6 +201,7 @@ function AccessCta({
           <p className="mt-2.5 max-w-sm text-xs text-charcoal-600/70">
             A free WSF account is required so your purchase and downloads stay linked to you.
           </p>
+          {membershipNote}
         </div>
       )
     }
@@ -201,7 +218,7 @@ function AccessCta({
           <p className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-burgundy-600">
             <Lock size={14} /> {label}
           </p>
-          <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary inline-flex disabled:opacity-60">
+          <button type="button" onClick={onAccessClick} disabled={requesting} aria-busy={requesting} className="btn-primary inline-flex disabled:opacity-60">
             <Download size={16} /> {requesting ? 'Preparing…' : 'Download resource'}
           </button>
         </div>
@@ -210,10 +227,11 @@ function AccessCta({
 
     return (
       <div className="mt-5">
-        <button type="button" onClick={onCheckoutClick} disabled={checkingOut} className="btn-primary inline-flex disabled:opacity-60">
+        <button type="button" onClick={onCheckoutClick} disabled={checkingOut} aria-busy={checkingOut} className="btn-primary inline-flex disabled:opacity-60">
           <Lock size={16} /> {checkingOut ? 'Starting secure checkout…' : `Buy securely — ${priceLabel}`}
         </button>
         {checkoutError && <p className="mt-2 text-sm text-burgundy-600">{checkoutError}</p>}
+        {membershipNote}
       </div>
     )
   }
@@ -227,7 +245,7 @@ function AccessCta({
       )
     }
     return (
-      <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
+      <button type="button" onClick={onAccessClick} disabled={requesting} aria-busy={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
         <Download size={16} /> {requesting ? 'Preparing…' : 'Access resource'}
       </button>
     )
@@ -243,7 +261,7 @@ function AccessCta({
     }
     if (circleMembership === undefined) {
       return (
-        <button type="button" disabled className="btn-secondary mt-5 inline-flex opacity-60">
+        <button type="button" disabled aria-busy="true" className="btn-secondary mt-5 inline-flex opacity-60">
           Checking membership…
         </button>
       )
@@ -271,7 +289,7 @@ function AccessCta({
       )
     }
     return (
-      <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
+      <button type="button" onClick={onAccessClick} disabled={requesting} aria-busy={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
         <Download size={16} /> {requesting ? 'Preparing…' : 'Access resource'}
       </button>
     )
@@ -288,9 +306,76 @@ function AccessCta({
   const Icon = resource.accessType === 'external_link' ? ExternalLink : Download
   const label = resource.accessType === 'external_link' ? 'Visit resource' : 'Download now'
   return (
-    <button type="button" onClick={onAccessClick} disabled={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
+    <button type="button" onClick={onAccessClick} disabled={requesting} aria-busy={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
       <Icon size={16} /> {requesting ? 'Preparing…' : label}
     </button>
+  )
+}
+
+// One cohesive preview area for the hero's left column: the cover plus
+// (when a gallery exists) a redesigned thumbnail strip beneath it.
+// Selecting a thumbnail swaps which image the large frame shows — a
+// purely local display preference, never a fetch or an access check:
+// every image here already came back on the SAME public resource
+// payload (resource.coverMedia / resource.images), nothing protected,
+// and no new API call is made. Resources with no gallery render exactly
+// as before — just the cover, no strip.
+function ResourceGallery({ resource }) {
+  const [selected, setSelected] = useState(0)
+  const hasGallery = resource.images?.length > 0
+  const frames = hasGallery
+    ? [{ media: resource.coverMedia, mediaPath: resource.coverImage }, ...resource.images.map((img) => ({ media: img.media }))]
+    : null
+  const active = frames ? frames[selected] || frames[0] : null
+
+  return (
+    <div>
+      <div className="overflow-hidden border border-taupe-200 shadow-card">
+        <MediaImage
+          media={active ? active.media : resource.coverMedia}
+          mediaPath={active ? active.mediaPath : resource.coverImage}
+          variant="medium"
+          alt={resource.name}
+          width={800}
+          height={1000}
+          aspect={4 / 5}
+          className="w-full object-cover"
+          priority
+        />
+      </div>
+
+      {hasGallery && (
+        <div className="mt-4">
+          <span className="eyebrow">Preview inside</span>
+          <p className="mt-1 text-xs text-charcoal-600/70">Explore a few sample pages.</p>
+          <div className="mt-3 flex gap-2.5 overflow-x-auto pb-1">
+            {frames.map((frame, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setSelected(i)}
+                aria-pressed={selected === i}
+                aria-label={i === 0 ? 'Show cover image' : `Show preview page ${i}`}
+                className={`shrink-0 overflow-hidden border-2 transition-colors ${
+                  selected === i ? 'border-plum-600' : 'border-transparent hover:border-taupe-300'
+                }`}
+              >
+                <MediaImage
+                  media={frame.media}
+                  mediaPath={frame.mediaPath}
+                  variant="thumbnail"
+                  alt={frame.media?.altText || (i === 0 ? `${resource.name} cover` : `${resource.name} preview ${i}`)}
+                  width={120}
+                  height={120}
+                  aspect={1}
+                  className="h-[72px] w-[72px] object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -452,16 +537,9 @@ export default function ResourceDetailPage() {
       <div className="container-editorial pt-6">
         <Breadcrumb items={[{ label: 'Resources', to: '/resources' }, { label: resource.name }]} />
       </div>
-      <div className="container-editorial grid grid-cols-1 gap-10 py-10 sm:grid-cols-[360px_1fr]">
+      <div className="container-editorial grid grid-cols-1 gap-10 py-10 sm:grid-cols-[360px_1fr] lg:gap-14">
         <div>
-          <MediaImage media={resource.coverMedia} variant="medium" mediaPath={resource.coverImage} alt={resource.name} width={800} height={1000} aspect={4 / 5} className="w-full object-cover" />
-          {resource.images?.length > 0 && (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {resource.images.map((img, i) => (
-                <MediaImage key={img.id ?? i} media={img.media} variant="thumbnail" width={200} height={200} aspect={1} className="w-full object-cover" />
-              ))}
-            </div>
-          )}
+          <ResourceGallery resource={resource} key={resource.slug} />
         </div>
         <div>
           <div className="flex items-start justify-between gap-4">
@@ -471,10 +549,10 @@ export default function ResourceDetailPage() {
             </div>
             <SaveButton contentType="resource" contentId={resource.id} />
           </div>
-          <h1 className="mt-2 font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{resource.name}</h1>
-          {resource.subtitle && <p className="mt-2 max-w-xl text-lg text-charcoal-600">{resource.subtitle}</p>}
+          <h1 className="mt-3 font-serif text-4xl font-semibold leading-tight text-charcoal sm:text-5xl">{resource.name}</h1>
+          {resource.subtitle && <p className="mt-3 max-w-xl text-lg leading-relaxed text-charcoal-600">{resource.subtitle}</p>}
           {(resource.author?.name || resource.authorName) && (
-            <p className="mt-3 text-sm text-charcoal-600">By {resource.author?.name || resource.authorName}</p>
+            <p className="mt-4 text-sm font-medium text-charcoal-600">By {resource.author?.name || resource.authorName}</p>
           )}
 
           {resource.sponsored && (
@@ -484,8 +562,9 @@ export default function ResourceDetailPage() {
             </div>
           )}
 
-          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-charcoal-600/70">
+          <div className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-charcoal-600/70">
             {resource.fileFormat && <span>{resource.fileFormat}</span>}
+            {resource.fileFormat && resource.pageCount && <span aria-hidden="true">&middot;</span>}
             {resource.pageCount && <span>{resource.pageCount} pages</span>}
           </div>
 
@@ -500,7 +579,7 @@ export default function ResourceDetailPage() {
               isYearlyOnly && circleMembership?.hasAccess && circleMembership?.subscription?.plan?.billingInterval !== 'yearly'
             return (
               <>
-                <p className="mt-4 font-serif text-2xl font-semibold text-charcoal">
+                <p className="mt-5 font-serif text-3xl font-semibold text-charcoal">
                   {resource.accessType === 'circle_only'
                     ? isYearlyOnly
                       ? monthlyMemberOnYearlyOnly
@@ -520,7 +599,7 @@ export default function ResourceDetailPage() {
             )
           })()}
           {resource.accessType === 'premium' && resource.viewerCanAccess !== true && (
-            <p className="mt-1 text-xs text-charcoal-600/70">Included with an active WSF Circle membership.</p>
+            <p className="mt-1.5 text-xs text-charcoal-600/70">Included with an active WSF Circle membership.</p>
           )}
 
           <AccessCta
@@ -535,20 +614,23 @@ export default function ResourceDetailPage() {
             onCheckoutClick={handlePremiumCheckout}
           />
 
-          <div className="mt-6">
+          <div className="mt-8 flex items-center gap-3 border-t border-taupe-200 pt-6">
             <ShareBar title={resource.name} url={canonicalUrl} trackEventName="resource_share_click" trackPayload={{ resourceSlug: resource.slug }} />
           </div>
         </div>
       </div>
 
-      <div className="container-editorial max-w-reading pb-4">
-        <ArticleContent blocks={resource.description} />
+      <div className="container-editorial pb-4 pt-2">
+        <div className="mx-auto max-w-[1140px] [&_h2]:mx-auto [&_h2]:max-w-[760px] [&_h3]:mx-auto [&_h3]:max-w-[760px] [&_h4]:mx-auto [&_h4]:max-w-[760px] [&_p]:mx-auto [&_p]:max-w-[760px] [&_ul]:mx-auto [&_ul]:max-w-[760px] [&_ol]:mx-auto [&_ol]:max-w-[760px]">
+          <ArticleContent blocks={resource.description} variant="article" />
+        </div>
       </div>
 
       {related.length > 0 && (
-        <div className="container-editorial border-t border-taupe-200 py-14">
-          <p className="eyebrow mb-6">You may also like</p>
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+        <div className="container-editorial border-t border-taupe-200 py-16">
+          <span className="eyebrow">Related resources</span>
+          <h2 className="mt-2 font-serif text-2xl font-semibold text-charcoal sm:text-3xl">You may also like</h2>
+          <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
             {related.map((r) => (
               <ResourceCard key={r.id} resource={r} />
             ))}
@@ -556,7 +638,7 @@ export default function ResourceDetailPage() {
         </div>
       )}
 
-      <section className="border-t border-taupe-200 bg-charcoal py-14 text-ivory">
+      <section className="border-t border-taupe-200 bg-charcoal py-16 text-ivory">
         <div className="container-editorial flex flex-col items-center text-center">
           <p className="eyebrow !text-blush-200">Never miss a new resource</p>
           <h2 className="mt-3 max-w-xl font-serif text-2xl font-semibold sm:text-3xl">Get new guides and toolkits in your inbox</h2>
