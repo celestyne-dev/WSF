@@ -11,8 +11,9 @@ The only way to it is:
 
   1. POST /resources/{slug}/access succeeds (app/services/resource_access
      .py's check_resource_access() has already confirmed whatever that
-     resource's access_type requires — nothing, an account, or active
-     Circle entitlement) and calls issue_download_token() here, which
+     resource's access_type requires — nothing, an account, active
+     Circle entitlement, or a one-time ResourcePurchase) and calls
+     issue_download_token() here, which
      returns a short-lived, resource-bound, opaque token. `user` is None
      for an anonymous grant (direct_download, or an email_gate submission
      from a visitor with no account) — see issue_download_token() below.
@@ -154,9 +155,12 @@ def resolve_download_token(raw_token):
 
     `resource.access_type` must still be one of
     PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES at redemption time — not just at
-    issuance — so a resource edited to premium/external_link between
-    grant and redemption (a narrow window, given the token's short TTL)
-    can never still be downloaded via a token minted under its old type.
+    issuance — so a resource edited to an ineligible access type such as
+    external_link between grant and redemption (a narrow window, given
+    the token's short TTL) can never still be downloaded via a token
+    minted under its old type. Changing TO premium is not itself
+    ineligible — premium is a full PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES
+    member now that purchase entitlement exists.
     """
     if not raw_token or not isinstance(raw_token, str):
         raise ApiError(_GENERIC_INVALID_DOWNLOAD_MESSAGE, 404, code="not_found")
@@ -200,8 +204,8 @@ def resolve_download_target(raw_token):
 # Protected Resource file upload (Module 13B; generalized beyond
 # circle_only) — lets staff upload a Resource's downloadable file
 # directly from WSF Studio instead of placing it on the server by hand,
-# for any of PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES (and, in advance of
-# checkout existing, premium too). Writes INTO the architecture above
+# for any of PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES, premium included.
+# Writes INTO the architecture above
 # (same PROTECTED_MEDIA_ROOT, same is_safe_protected_path()/
 # resolve_real_protected_path() containment); nothing here bypasses or
 # re-derives either check. The browser never chooses a filesystem path —

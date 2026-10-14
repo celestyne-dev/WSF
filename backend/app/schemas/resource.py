@@ -76,6 +76,10 @@ class ResourceSchema(ma.SQLAlchemyAutoSchema):
     requires_email = fields.Method("get_requires_email")
     requires_account = fields.Method("get_requires_account")
     requires_circle = fields.Method("get_requires_circle")
+    # Overrides the auto-serialized stored column (see get_is_downloadable)
+    # so a pre-existing premium row's stale stored False doesn't leak into
+    # the admin CMS; same field name/key, so no CMS consumer is affected.
+    is_downloadable = fields.Method("get_is_downloadable")
     # The existing Product.resource_id hook — surfaced read-only so an
     # editor can see (not create) a Shop listing that already wraps this
     # Resource, without duplicating any product/payment logic here.
@@ -93,13 +97,22 @@ class ResourceSchema(ma.SQLAlchemyAutoSchema):
 
     def get_requires_account(self, obj):
         # Any valid authenticated WSF account is enough for member_only;
-        # circle_only also strictly requires one (plus active Circle
-        # entitlement — see get_requires_circle), so it's "account
-        # required" too, just not account-SUFFICIENT.
-        return obj.access_type in ("member_only", "circle_only")
+        # circle_only and premium also strictly require one (circle_only
+        # plus active Circle entitlement — see get_requires_circle; premium
+        # plus a one-time purchase — see has_resource_purchase), so both
+        # are "account required" too, just not account-SUFFICIENT.
+        return obj.access_type in ("member_only", "circle_only", "premium")
 
     def get_requires_circle(self, obj):
         return obj.access_type == "circle_only"
+
+    def get_is_downloadable(self, obj):
+        # Mirrors the public payload's computed isDownloadable (see
+        # build_public_resource_payload in app/api/v1/resources.py):
+        # derived from access_type rather than the stored legacy
+        # is_downloadable column, which can be stale False on a premium
+        # row created before purchase-gated downloads existed.
+        return obj.access_type in ("direct_download", "email_gate", "member_only", "circle_only", "premium")
 
     def get_linked_product(self, obj):
         from app.models.commerce import Product

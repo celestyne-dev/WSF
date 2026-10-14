@@ -385,6 +385,68 @@ def test_premium_resource_requires_account_to_access(client, app, manager_token,
     assert access.status_code == 401
     assert access.get_json()["error"]["code"] == "account_required"
 
+    # Align with the account/purchase gate above: the public payload's
+    # display/UX metadata must agree that premium needs an account and
+    # is (now) downloadable once purchased — see app/api/v1/resources.py's
+    # build_public_resource_payload() and app/schemas/resource.py's
+    # get_requires_account()/get_is_downloadable(). Never an authorization
+    # mechanism itself — POST /resources/<slug>/access remains the gate.
+    public = client.get(f"/api/v1/resources/{data['slug']}")
+    public_data = public.get_json()["data"]
+    assert public_data["requiresAccount"] is True
+    assert public_data["isDownloadable"] is True
+    assert public_data["isPremium"] is True
+    assert public_data["isFree"] is False
+
+    # And the admin ResourceSchema (returned above as `data`) must agree too.
+    assert data["requires_account"] is True
+    assert data["is_downloadable"] is True
+
+
+def test_public_payload_access_metadata_for_other_access_types(client, app, manager_token, tmp_path):
+    """requiresAccount/isDownloadable are display/UX metadata derived from
+    access_type (see build_public_resource_payload() in
+    app/api/v1/resources.py) — confirms premium's new True/True pairing
+    (asserted above) didn't change any other access type's behavior:
+    member_only == circle_only == requiresAccount True, isDownloadable
+    True; direct_download/email_gate == requiresAccount False,
+    isDownloadable True; external_link == both False.
+    """
+    protected_root = tmp_path / "protected_media"
+    protected_root.mkdir()
+    app.config["PROTECTED_MEDIA_ROOT"] = str(protected_root)
+    filename = "circle-only-guide.pdf"
+    (protected_root / filename).write_bytes(b"%PDF-1.4 fake pdf body")
+
+    cases = [
+        ({"accessType": "direct_download"}, False, True),
+        ({"accessType": "email_gate"}, False, True),
+        ({"accessType": "member_only"}, True, True),
+        (
+            {"accessType": "circle_only", "fileUrl": None, "protectedFilePath": filename},
+            True,
+            True,
+        ),
+        (
+            {"accessType": "external_link", "fileUrl": None, "externalUrl": "https://example.com/off-site"},
+            False,
+            False,
+        ),
+    ]
+    for i, (overrides, expected_requires_account, expected_downloadable) in enumerate(cases):
+        resp = client.post(
+            "/api/v1/resources",
+            json=_base_payload(name=f"Access Metadata Case {i}", **overrides),
+            headers=auth_headers(manager_token),
+        )
+        assert resp.status_code == 201, resp.get_json()
+        slug = resp.get_json()["data"]["slug"]
+
+        public = client.get(f"/api/v1/resources/{slug}")
+        public_data = public.get_json()["data"]
+        assert public_data["requiresAccount"] is expected_requires_account, overrides
+        assert public_data["isDownloadable"] is expected_downloadable, overrides
+
 
 def test_external_link_resource_access(client, manager_token):
     resp = client.post(

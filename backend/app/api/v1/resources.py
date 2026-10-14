@@ -166,11 +166,10 @@ def _validate_publish(resource):
     """A published (or scheduled) resource needs a real description and a
     real way to actually get it — same "don't let an empty shell go live"
     guard already applied to Job/Event/Product. Every access type whose
-    target the /access endpoint would need to resolve (everything except
-    premium, which has no real target yet — purchasing isn't connected)
-    must have one configured before it can go live — including
-    circle_only, so a Circle member can never reach a published resource
-    with nothing behind it.
+    target the /access endpoint would need to resolve must have one
+    configured before it can go live — including circle_only and
+    premium, so neither a Circle member nor someone who's purchased the
+    resource can ever reach a published resource with nothing behind it.
 
     direct_download/email_gate/member_only accept any of
     protected_file_path, file_url, or external_url — an uploaded WSF-
@@ -295,7 +294,13 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     # purchase are separate commercial concepts (see model docstring).
     resource.is_premium = resource.access_type == "premium"
     resource.is_external = resource.access_type == "external_link"
-    resource.is_downloadable = resource.access_type in ("direct_download", "email_gate", "member_only", "circle_only")
+    resource.is_downloadable = resource.access_type in (
+        "direct_download",
+        "email_gate",
+        "member_only",
+        "circle_only",
+        "premium",
+    )
     resource.file_url = data.get("file_url")
     resource.external_url = data.get("external_url")
     resource.protected_file_path = data.get("protected_file_path")
@@ -436,10 +441,17 @@ def build_public_resource_payload(resource, viewer):
         "accessType": resource.access_type,
         "isFree": resource.access_type != "premium",
         "isPremium": resource.is_premium,
-        "isDownloadable": resource.is_downloadable,
+        # Computed from access_type directly, not the stored is_downloadable
+        # column: a premium row created before purchase-gated downloads
+        # existed can have a stale stored False, which would otherwise
+        # mislead the public payload. Display/UX metadata only — never an
+        # authorization mechanism; POST /resources/<slug>/access remains
+        # authoritative.
+        "isDownloadable": resource.access_type
+        in ("direct_download", "email_gate", "member_only", "circle_only", "premium"),
         "isExternal": resource.is_external,
         "requiresEmail": resource.access_type == "email_gate",
-        "requiresAccount": resource.access_type in ("member_only", "circle_only"),
+        "requiresAccount": resource.access_type in ("member_only", "circle_only", "premium"),
         "requiresCircle": resource.access_type == "circle_only",
         "viewerCanAccess": viewer_can_access(resource, viewer),
         "fileFormat": resource.file_format,
@@ -549,8 +561,8 @@ class ResourceDetailResource(Resource):
 
         if _is_referenced(resource):
             raise ApiError(
-                "This resource is linked to a Shop product and can't be deleted. "
-                "Archive it instead to keep the product listing intact.",
+                "This resource is referenced by existing commercial records and can't be "
+                "deleted. Archive it instead to preserve purchase history.",
                 409,
                 code="reference_conflict",
             )
@@ -732,10 +744,9 @@ class ResourceProtectedUploadResource(Resource):
     (see app/services/resource_downloads.py's save_protected_upload())
     and returns safe metadata only — never a filesystem path, never
     PROTECTED_MEDIA_ROOT's own value. Usable for any access type an
-    editor is preparing a WSF-hosted file for (direct_download,
-    email_gate, member_only, circle_only, or premium ahead of checkout —
-    see PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES for which of those an
-    uploaded file actually serves today). Does not require (or create/
+    editor is preparing a WSF-hosted file for — direct_download,
+    email_gate, member_only, circle_only, or premium (see
+    PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES). Does not require (or create/
     modify) any Resource row: staff attach the returned
     protectedFilePath/protectedOriginalFilename to a Resource via the
     ordinary create/update flow afterwards, the same upload-then-attach

@@ -42,12 +42,13 @@ _RESOURCE_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in RESOURC
 #   circle_only: requires an active WSF Circle entitlement (see
 #     app/services/circle.py's has_circle_access — the one authoritative
 #     check; never re-derived here).
-#   premium: has a real price; no payment processing exists yet, so the
-#     public CTA is an honest "coming soon" rather than a working
-#     checkout (same posture the Shop's Product model already takes). A
-#     WSF Circle membership does NOT unlock a premium resource — Circle
-#     and one-off resource purchase are deliberately separate commercial
-#     concepts.
+#   premium: has a real price and a working Paystack checkout (see
+#     app/services/resource_payments.py); access requires a durable
+#     one-time ResourcePurchase entitlement (see that model below and
+#     app/services/resource_access.py's check_resource_access — the one
+#     authoritative check). A WSF Circle membership does NOT unlock a
+#     premium resource — Circle and one-off resource purchase are
+#     deliberately separate commercial concepts.
 #   external_link: hosted elsewhere — the CTA sends the visitor off-site.
 ACCESS_TYPES = ("direct_download", "email_gate", "member_only", "circle_only", "premium", "external_link")
 _ACCESS_TYPE_CHECK_SQL = "access_type IN (" + ", ".join(f"'{a}'" for a in ACCESS_TYPES) + ")"
@@ -164,12 +165,14 @@ class Resource(db.Model):
     # path resolved against config.PROTECTED_MEDIA_ROOT, a directory
     # outside both the deployment checkout AND the publicly-served
     # MEDIA_ROOT tree. Usable by direct_download, email_gate, member_only,
-    # and circle_only (PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES below); a
-    # premium resource may also have one prepared ahead of checkout going
-    # live, though nothing serves it yet (see check_resource_access).
-    # Whenever this is set and resolves to a real file, POST
-    # /resources/{slug}/access hands back a short-lived, resource-bound
-    # download token (see ResourceDownloadResource) instead of file_url/
+    # circle_only, and premium (PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES
+    # below) — a premium resource's file is served only once
+    # check_resource_access() has confirmed the viewer holds a
+    # ResourcePurchase for it, exactly as circle_only requires
+    # has_circle_access() first. Whenever this is set and resolves to a
+    # real file, POST /resources/{slug}/access hands back a short-lived,
+    # resource-bound download token (see ResourceDownloadResource)
+    # instead of file_url/
     # external_url — circle_only alone never falls back to either of
     # those, even if also present (see _resolve_target_url). Every other
     # access type keeps file_url/external_url working exactly as before

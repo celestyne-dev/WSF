@@ -503,7 +503,12 @@ class TestResourceDeletionProtection:
 
         resp = client.delete(f"/api/v1/resources/{slug}", headers=auth_headers(manager_token))
         assert resp.status_code == 409
+        message = resp.get_json()["error"]["message"]
         assert resp.get_json()["error"]["code"] == "reference_conflict"
+        # The old copy named a Shop product, which is false for a
+        # purchase-only reference — see app/api/v1/resources.py's
+        # ResourceDetailResource.delete().
+        assert "Shop product" not in message
 
     def test_resource_with_only_payment_history_cannot_be_hard_deleted(self, client, app, user1_token, manager_token, protected_root):
         user_id = _get_user_id(app, USER1["email"])
@@ -512,7 +517,12 @@ class TestResourceDeletionProtection:
 
         resp = client.delete(f"/api/v1/resources/{slug}", headers=auth_headers(manager_token))
         assert resp.status_code == 409
+        message = resp.get_json()["error"]["message"]
         assert resp.get_json()["error"]["code"] == "reference_conflict"
+        # Same neutral copy for a payment-only reference — no Shop
+        # product involved, and no customer/payment details leaked.
+        assert "Shop product" not in message
+        assert "@" not in message
 
     def test_resource_without_any_commercial_history_can_be_deleted(self, client, app, manager_token, protected_root):
         _, slug = _make_premium_resource(app, protected_root)
