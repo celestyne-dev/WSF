@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { fetchCirclePlans, fetchMyCircleMembership, requestCircleMembership, startCircleCheckout } from '../api/circle'
@@ -115,12 +115,26 @@ function RequestAssistanceToggle({ plan, label = 'Request assistance' }) {
   )
 }
 
-function PlanCta({ plan, accessToken, membership, hasAccess, loginFrom, checkingOutSlug, checkoutError, onPaySecurely }) {
+function PlanCta({ plan, accessToken, membership, hasAccess, checkingOutSlug, checkoutError, onPaySecurely }) {
   if (!accessToken) {
+    // The plan itself is already fully public — only enrollment requires
+    // an account. The chosen plan's slug (never price/payment/user data)
+    // rides along as a same-app return path through register/login's
+    // `state.from`, both of which run it through sanitizeReturnTo()
+    // (utils/permissions.js) before ever navigating anywhere with it.
+    const returnTo = `/circle?plan=${encodeURIComponent(plan.slug)}`
     return (
-      <Link to="/login" state={{ from: loginFrom }} className="mt-4 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
-        Join WSF Circle &rarr;
-      </Link>
+      <div className="mt-4">
+        <Link to="/register" state={{ from: returnTo }} className="btn-primary inline-block">
+          Choose this plan
+        </Link>
+        <p className="mt-2 text-sm text-charcoal-600">
+          Already have a WSF account?{' '}
+          <Link to="/login" state={{ from: returnTo }} className="font-semibold text-burgundy-600 hover:underline">
+            Sign in
+          </Link>
+        </p>
+      </div>
     )
   }
 
@@ -240,6 +254,14 @@ export default function CirclePage() {
   // checks). undefined = still loading.
   const [circleContent, setCircleContent] = useState(undefined)
 
+  // Carries the chosen plan across account creation/sign-in (see PlanCta's
+  // anonymous CTA above) — a public plan slug only, read straight from the
+  // query string and never trusted for price/payment: "Pay securely" below
+  // still checks out through the real plan object fetched from the
+  // backend, exactly as it always has.
+  const selectedPlanSlug = new URLSearchParams(location.search).get('plan')
+  const planCardRefs = useRef({})
+
   useSeo({
     title: 'WSF Circle | Women Shaping Futures',
     description: 'WSF Circle is the premium membership experience for women who want deeper access to learning, career resources, curated opportunities, events and community experiences.',
@@ -269,6 +291,16 @@ export default function CirclePage() {
       active = false
     }
   }, [accessToken])
+
+  // Subtly scrolls to the plan she picked before being sent to create an
+  // account/sign in — never starts checkout or redirects to Paystack by
+  // itself. An invalid or no-longer-active slug simply matches nothing in
+  // `plans` and is ignored here (see the render below for the matching
+  // highlight/"Your selected plan" treatment).
+  useEffect(() => {
+    if (!selectedPlanSlug || !plans?.some((p) => p.slug === selectedPlanSlug)) return
+    planCardRefs.current[selectedPlanSlug]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [plans, selectedPlanSlug])
 
   // Same small catalog preview for every viewer — anonymous, signed-in
   // non-member, or active member alike. Each call asks its own public list
@@ -378,44 +410,60 @@ export default function CirclePage() {
             </div>
           ) : (
             <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {plans.map((plan) => (
-                <div
-                  key={plan.slug}
-                  className={`border p-6 ${plan.featured ? 'border-burgundy-400 bg-blush-50' : 'border-taupe-200 bg-white'}`}
-                >
-                  {plan.featured && (
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">Featured</p>
-                  )}
-                  <h3 className="font-serif text-xl font-semibold text-charcoal">{plan.name}</h3>
-                  {plan.shortDescription && <p className="mt-2 text-sm text-charcoal-600">{plan.shortDescription}</p>}
-                  <p className="mt-4 text-2xl font-semibold text-charcoal">
-                    {formatProductPrice(plan.price, plan.currency)}
-                    <span className="ml-1 text-sm font-normal text-charcoal-600/70">{billingLabel(plan)}</span>
-                  </p>
-                  {plan.benefits?.length > 0 && (
-                    <ul className="mt-4 space-y-1 text-sm text-charcoal-600">
-                      {plan.benefits.map((b, i) => (
-                        <li key={i}>&bull; {b}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {plan.description?.length > 0 && (
-                    <div className="mt-4 text-sm text-charcoal-600">
-                      <ArticleContent blocks={plan.description} />
-                    </div>
-                  )}
-                  <PlanCta
-                    plan={plan}
-                    accessToken={accessToken}
-                    membership={membership}
-                    hasAccess={hasAccess}
-                    loginFrom={location.pathname}
-                    checkingOutSlug={checkingOutSlug}
-                    checkoutError={checkoutError}
-                    onPaySecurely={handlePaySecurely}
-                  />
-                </div>
-              ))}
+              {plans.map((plan) => {
+                const isSelected = !!selectedPlanSlug && plan.slug === selectedPlanSlug
+                return (
+                  <div
+                    key={plan.slug}
+                    ref={(el) => {
+                      planCardRefs.current[plan.slug] = el
+                    }}
+                    className={`border p-6 ${
+                      isSelected
+                        ? 'border-burgundy-500 bg-blush-50'
+                        : plan.featured
+                          ? 'border-burgundy-400 bg-blush-50'
+                          : 'border-taupe-200 bg-white'
+                    }`}
+                  >
+                    {isSelected && (
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">
+                        Your selected plan
+                      </p>
+                    )}
+                    {plan.featured && !isSelected && (
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">Featured</p>
+                    )}
+                    <h3 className="font-serif text-xl font-semibold text-charcoal">{plan.name}</h3>
+                    {plan.shortDescription && <p className="mt-2 text-sm text-charcoal-600">{plan.shortDescription}</p>}
+                    <p className="mt-4 text-2xl font-semibold text-charcoal">
+                      {formatProductPrice(plan.price, plan.currency)}
+                      <span className="ml-1 text-sm font-normal text-charcoal-600/70">{billingLabel(plan)}</span>
+                    </p>
+                    {plan.benefits?.length > 0 && (
+                      <ul className="mt-4 space-y-1 text-sm text-charcoal-600">
+                        {plan.benefits.map((b, i) => (
+                          <li key={i}>&bull; {b}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {plan.description?.length > 0 && (
+                      <div className="mt-4 text-sm text-charcoal-600">
+                        <ArticleContent blocks={plan.description} />
+                      </div>
+                    )}
+                    <PlanCta
+                      plan={plan}
+                      accessToken={accessToken}
+                      membership={membership}
+                      hasAccess={hasAccess}
+                      checkingOutSlug={checkingOutSlug}
+                      checkoutError={checkoutError}
+                      onPaySecurely={handlePaySecurely}
+                    />
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

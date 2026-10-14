@@ -63,7 +63,10 @@ export default function LoginPage() {
         </form>
         <p className="mt-6 text-center text-xs text-charcoal-600">
           New to WSF?{' '}
-          <Link to="/register" className="font-semibold text-burgundy-600 hover:underline">
+          {/* Carries the same `from` return path forward — e.g. Circle ->
+              Login -> Register -> back to the selected plan — rather than
+              losing it the moment she realizes she needs an account instead. */}
+          <Link to="/register" state={{ from: location.state?.from }} className="font-semibold text-burgundy-600 hover:underline">
             Create an account
           </Link>
         </p>

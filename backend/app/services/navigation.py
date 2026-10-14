@@ -428,6 +428,7 @@ def seed_default_navigation():
         {"label": "Shop", "item_type": "route", "url": "/shop"},
     ]
     secondary_items = [
+        {"label": "WSF Circle", "item_type": "route", "url": "/circle"},
         {"label": "WSF Weekly Newsletter", "item_type": "route", "url": "/newsletter"},
         {"label": "Partner With Us", "item_type": "route", "url": "/partnerships"},
     ]

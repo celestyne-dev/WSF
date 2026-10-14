@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { registerUser } from '../features/auth/authSlice'
-import { getPostLoginRoute } from '../utils/permissions'
+import { getPostLoginRoute, sanitizeReturnTo } from '../utils/permissions'
 import useSeo from '../hooks/useSeo'
 import CountrySelect from '../components/ui/CountrySelect'
 
@@ -20,7 +20,14 @@ export default function RegisterPage() {
   const [fieldError, setFieldError] = useState(null)
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const status = useSelector((s) => s.auth.status)
+
+  // A plan she chose on /circle before being sent here to create an
+  // account (see CirclePage.jsx's anonymous plan CTA) — used only to add
+  // one short contextual sentence below; the return path itself is
+  // handled the same safe way as LoginPage's, via sanitizeReturnTo().
+  const isCircleReturn = typeof location.state?.from === 'string' && location.state.from.startsWith('/circle')
 
   useSeo({
     title: 'Create Your WSF Account | Women Shaping Futures',
@@ -56,8 +63,14 @@ export default function RegisterPage() {
     )
 
     if (result.meta.requestStatus === 'fulfilled') {
-      toast.success(`Welcome to WSF, ${result.payload.user.firstName || 'there'}.`)
-      navigate(getPostLoginRoute(result.payload.user))
+      const user = result.payload.user
+      toast.success(`Welcome to WSF, ${user.firstName || 'there'}.`)
+      // Mirrors LoginPage's safe post-auth return behavior exactly — a
+      // forced password change still wins over any return path, and
+      // sanitizeReturnTo() is the only thing that decides whether `from`
+      // is actually safe to navigate to (same-app, non-auth path).
+      const returnTo = user.mustChangePassword ? null : sanitizeReturnTo(location.state?.from)
+      navigate(returnTo || getPostLoginRoute(user))
     } else {
       // result.payload is the normalized { message, errors? } register()
       // returns on failure (see api/auth.js) — errors is the backend's raw
@@ -76,6 +89,11 @@ export default function RegisterPage() {
           A WSF account lets you save your profile and manage your settings. It's separate from — and doesn't
           automatically join you to — the WSF Community.
         </p>
+        {isCircleReturn && (
+          <p className="mt-2 text-center text-sm text-charcoal-600">
+            Create your free WSF account to continue with your Circle membership.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -181,7 +199,7 @@ export default function RegisterPage() {
         </p>
         <p className="mt-3 text-center text-xs text-charcoal-600">
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-burgundy-600 hover:underline">
+          <Link to="/login" state={{ from: location.state?.from }} className="font-semibold text-burgundy-600 hover:underline">
             Sign in
           </Link>
         </p>
