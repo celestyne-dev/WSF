@@ -1114,6 +1114,17 @@ def seed_demo_content():
     # hero"), so the only safe idempotent behavior is "skip entirely if
     # any row already exists" — exactly like every other create-only
     # seed block in this function.
+    #
+    # IA Pass 1 (see audit): this is the curated 9-section default for a
+    # FRESH/demo/test environment, not "every module type that exists" —
+    # featured_stories/topic_collection/partners/sponsor_placement/jobs/
+    # community_cta/mentorship_cta remain fully supported module types
+    # (registry + frontend component untouched) and can still be added
+    # from WSF Studio any time; they're just not part of the curated
+    # default anymore. This block never runs against production (see the
+    # WSF Studio checklist in this task's final report for the equivalent
+    # manual production change) and never mutates an already-seeded
+    # environment (the `if ... is None` guard above).
     if HomepageModule.query.first() is None:
         db.session.add_all(
             [
@@ -1124,122 +1135,83 @@ def seed_demo_content():
                     selection_mode="manual",
                     config={
                         "leadArticleSlug": "how-women-are-redefining-leadership",
-                        "secondaryArticleSlugs": ["building-a-saas-company-from-austin-not-silicon-valley"],
-                    },
-                ),
-                HomepageModule(
-                    type="featured_stories",
-                    enabled=True,
-                    sort_order=1,
-                    heading="Featured Stories",
-                    subheading="Editors' picks — the stories we don't want you to miss.",
-                    selection_mode="manual",
-                    config={
-                        "articleSlugs": [
-                            "the-negotiation-conversation-nobody-prepares-you-for",
+                        "secondaryArticleSlugs": [
                             "building-a-saas-company-from-austin-not-silicon-valley",
-                        ]
+                            "the-negotiation-conversation-nobody-prepares-you-for",
+                        ],
                     },
                 ),
                 HomepageModule(
                     type="latest_stories",
                     enabled=True,
-                    sort_order=2,
+                    sort_order=1,
                     heading="Latest Stories",
                     subheading="Fresh reporting and essays, published this week.",
                     selection_mode="automatic",
-                    config={"itemCount": 8},
+                    config={"itemCount": 6},
                 ),
                 HomepageModule(
                     type="featured_woman",
                     enabled=True,
-                    sort_order=3,
+                    sort_order=2,
                     heading="Women Shaping Futures Spotlight",
                     subheading="A woman worth knowing, featured every month.",
                     selection_mode="manual",
                     config={"personSlug": "danielle-reyes"},
                 ),
                 HomepageModule(
-                    type="series_feature",
-                    enabled=True,
-                    sort_order=4,
-                    heading="Women Doing Incredible Things",
-                    selection_mode="manual",
-                    config={"seriesSlug": "women-doing-incredible-things", "itemCount": 3},
-                ),
-                HomepageModule(
-                    type="topic_collection",
-                    enabled=True,
-                    sort_order=5,
-                    heading="Leadership",
-                    subheading="Editorial guidance for the way you work now.",
-                    selection_mode="manual",
-                    config={"topicSlug": "leadership", "itemCount": 3},
-                ),
-                HomepageModule(
                     type="opportunities",
                     enabled=True,
-                    sort_order=6,
-                    heading="Opportunities Worth Applying For",
+                    sort_order=3,
+                    heading="Opportunities for Women",
                     subheading="Fellowships, scholarships, and grants closing soon.",
-                    selection_mode="automatic",
-                    config={"itemCount": 3},
-                ),
-                HomepageModule(
-                    type="jobs",
-                    enabled=True,
-                    sort_order=7,
-                    heading="Jobs We're Watching",
-                    subheading="Featured roles from employers hiring now.",
-                    selection_mode="automatic",
-                    config={"itemCount": 4},
-                ),
-                HomepageModule(
-                    type="events",
-                    enabled=True,
-                    sort_order=8,
-                    heading="Upcoming Events",
-                    subheading="Join us online or in person.",
                     selection_mode="automatic",
                     config={"itemCount": 3},
                 ),
                 HomepageModule(
                     type="resources",
                     enabled=True,
-                    sort_order=9,
-                    heading="Resources to Save",
+                    sort_order=4,
+                    heading="Resources for Your Next Move",
                     subheading="Guides, templates, and worksheets from our library.",
+                    selection_mode="automatic",
+                    config={"itemCount": 3},
+                ),
+                HomepageModule(
+                    type="editorial_callout",
+                    enabled=True,
+                    sort_order=5,
+                    heading="Go Further With WSF Circle",
+                    subheading=(
+                        "Access Premium Resources, practical learning, member opportunities "
+                        "and additional tools designed to support your growth."
+                    ),
+                    cta_label="Explore WSF Circle",
+                    cta_url="/circle",
+                ),
+                HomepageModule(
+                    type="series_feature",
+                    enabled=True,
+                    sort_order=6,
+                    heading="Featured Series",
+                    selection_mode="manual",
+                    config={"seriesSlug": "women-doing-incredible-things", "itemCount": 3},
+                ),
+                HomepageModule(
+                    type="events",
+                    enabled=True,
+                    sort_order=7,
+                    heading="Upcoming Events",
+                    subheading="Join us online or in person.",
                     selection_mode="automatic",
                     config={"itemCount": 3},
                 ),
                 HomepageModule(
                     type="newsletter",
                     enabled=True,
-                    sort_order=10,
+                    sort_order=8,
                     heading="WSF Weekly",
                     subheading="The stories, jobs, and opportunities worth your Thursday morning coffee.",
-                ),
-                HomepageModule(
-                    type="partners",
-                    enabled=True,
-                    sort_order=11,
-                    heading="In Partnership With",
-                    selection_mode="manual",
-                    # Only kaziwave/lumen-analytics are seeded as "published"
-                    # organizations — harrow-vance/maple-ridge-capital/
-                    # northstar-collective are deliberately seeded as
-                    # "draft" (they're referenced as Article/Job employers,
-                    # not as public partner logos), so listing them here
-                    # would immediately surface a real "no longer
-                    # published" warning in the builder.
-                    config={"partnerSlugs": ["kaziwave", "lumen-analytics"]},
-                ),
-                HomepageModule(
-                    type="sponsor_placement",
-                    enabled=True,
-                    sort_order=12,
-                    heading="Our Sponsors",
-                    config={"placementKey": "homepage_featured"},
                 ),
             ]
         )

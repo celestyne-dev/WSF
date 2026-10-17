@@ -394,22 +394,45 @@ def seed_default_navigation():
     `seed-demo` run always has) and equally safe to run repeatedly against
     a real production database that has never run — and must never run —
     `seed-demo` (see heal_menu_defaults()'s docstring for why this is not
-    a create-only guard). The "Topics" dropdown is built from whatever
-    Topic rows actually exist and are published at the time this runs,
-    never a hardcoded demo slug list, so it stays correct as real topics
-    are added later — an empty "Topics" group (no topics published yet)
-    is expected and simply won't render publicly until the CMS has
-    published at least one Topic (see serialize_public_menu_item).
+    a create-only guard).
+
+    IA Pass 1 (see audit): "Topics" is no longer a separate top-level
+    primary item with one dynamically-generated child per published Topic
+    — it is now a single static link (to the same /topics destination
+    the old per-topic dropdown ultimately served) nested under "Stories"
+    alongside "Series" (moved here from "People", since Series is
+    editorial/story taxonomy, not a people taxonomy). "Jobs" gets its
+    first-ever nav home, nested under "Opportunities" alongside the
+    existing "Opportunities" link — the two entities stay separate
+    (different routes, different cards), this only organizes them under
+    one shared dropdown. "WSF Circle" moves from secondary/utility into
+    primary, reflecting that it is a real paid membership product rather
+    than a utility link.
+
+    heal_menu_defaults() only ever ADDS a missing top-level destination —
+    it never rewrites an existing top-level item's children. So on an
+    already-seeded database (e.g. real production, which this function
+    must never be run against destructively — see DEPLOYMENT.md/the WSF
+    Studio checklist), an existing "Stories"/"People"/"Opportunities" item
+    is recognized as already satisfying its (unchanged) top-level
+    destination and is left completely alone, children included — the
+    new Topics/Series/Jobs children only appear automatically on a
+    genuinely fresh environment. Migrating an already-seeded environment
+    to the new nested shape, and removing the old secondary "WSF Circle"
+    entry once it's been added to primary, are deliberate manual WSF
+    Studio steps, by design — see this task's own final report.
     """
     about_page = Page.query.filter_by(key="about").first()
-    topics = Topic.query.filter_by(status="published").order_by(Topic.sort_order, Topic.id).all()
 
     primary_items = [
-        {"label": "Stories", "item_type": "route", "url": "/topics"},
         {
-            "label": "Topics",
-            "item_type": "group",
-            "children": [{"label": t.name, "item_type": "topic", "topic_id": t.id} for t in topics],
+            "label": "Stories",
+            "item_type": "route",
+            "url": "/topics",
+            "children": [
+                {"label": "Topics", "item_type": "route", "url": "/topics"},
+                {"label": "Series", "item_type": "route", "url": "/series"},
+            ],
         },
         {
             "label": "People",
@@ -418,17 +441,24 @@ def seed_default_navigation():
             "children": [
                 {"label": "People Directory", "item_type": "route", "url": "/people"},
                 {"label": "Authors", "item_type": "route", "url": "/authors"},
-                {"label": "Series", "item_type": "route", "url": "/series"},
             ],
         },
-        {"label": "Opportunities", "item_type": "route", "url": "/opportunities"},
+        {
+            "label": "Opportunities",
+            "item_type": "route",
+            "url": "/opportunities",
+            "children": [
+                {"label": "Opportunities", "item_type": "route", "url": "/opportunities"},
+                {"label": "Jobs", "item_type": "route", "url": "/jobs"},
+            ],
+        },
         {"label": "Resources", "item_type": "route", "url": "/resources"},
         {"label": "Events", "item_type": "route", "url": "/events"},
+        {"label": "WSF Circle", "item_type": "route", "url": "/circle"},
         {"label": "Community", "item_type": "route", "url": "/community"},
         {"label": "Shop", "item_type": "route", "url": "/shop"},
     ]
     secondary_items = [
-        {"label": "WSF Circle", "item_type": "route", "url": "/circle"},
         {"label": "WSF Weekly Newsletter", "item_type": "route", "url": "/newsletter"},
         {"label": "Partner With Us", "item_type": "route", "url": "/partnerships"},
     ]

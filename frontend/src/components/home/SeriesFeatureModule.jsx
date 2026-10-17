@@ -7,6 +7,12 @@ import SectionHeading from '../ui/SectionHeading'
 export default function SeriesFeatureModule({ module }) {
   const [seriesItem, setSeriesItem] = useState(undefined)
   const [items, setItems] = useState([])
+  // 'loading' | 'error' | 'success' for the nested articles fetch only —
+  // the Series entity itself is already guarded below (!seriesItem). This
+  // separately guards against a resolved Series with zero eligible
+  // stories rendering an empty ArticleCard grid, without hiding the
+  // module while that second fetch is still in flight or has failed.
+  const [storiesStatus, setStoriesStatus] = useState('loading')
 
   useEffect(() => {
     if (!module.seriesSlug) return
@@ -17,8 +23,12 @@ export default function SeriesFeatureModule({ module }) {
         setSeriesItem(data)
         if (!data) return
         fetchArticles({ series: module.seriesSlug, pageSize: module.itemCount || 3 })
-          .then((res) => active && setItems(res.items))
-          .catch(() => {})
+          .then((res) => {
+            if (!active) return
+            setItems(res.items)
+            setStoriesStatus('success')
+          })
+          .catch(() => active && setStoriesStatus('error'))
       })
       .catch(() => active && setSeriesItem(null))
     return () => {
@@ -27,6 +37,7 @@ export default function SeriesFeatureModule({ module }) {
   }, [module.seriesSlug, module.itemCount])
 
   if (!module.seriesSlug || !seriesItem) return null
+  if (storiesStatus === 'success' && items.length === 0) return null
 
   return (
     <section className="border-t border-taupe-200 bg-cream py-14 sm:py-16">

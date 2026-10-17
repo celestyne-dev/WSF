@@ -547,22 +547,20 @@ class TestDefaultNavigationHealing:
 
         assert primary_labels == [
             "Stories",
-            "Topics",
             "People",
             "Opportunities",
             "Resources",
             "Events",
+            "WSF Circle",
             "Community",
             "Shop",
         ]
         # "Newsletter" (not "WSF Weekly Newsletter") is exactly the stale
-        # label this regression produces — healing adds the missing "WSF
-        # Circle" and "Partner With Us" destinations without renaming the
-        # item that's already there (see the "never touches an existing
-        # match" test below for why that label is never silently corrected
-        # here). "WSF Circle" sorts first because it ranks first in the
-        # canonical list and nothing already in this menu outranks it.
-        assert secondary_labels == ["WSF Circle", "Newsletter", "Partner With Us", "About"]
+        # label this regression produces — healing adds the missing
+        # "Partner With Us" destination without renaming the item that's
+        # already there (see the "never touches an existing match" test
+        # below for why that label is never silently corrected here).
+        assert secondary_labels == ["Newsletter", "Partner With Us", "About"]
 
     def test_never_touches_an_item_that_already_points_at_a_canonical_destination(self, app):
         """A relabel is indistinguishable, from stored data alone, between
@@ -588,7 +586,7 @@ class TestDefaultNavigationHealing:
 
             items = MenuItem.query.filter_by(menu_id=secondary.id, parent_id=None).order_by(MenuItem.sort_order).all()
 
-        assert [it.label for it in items] == ["WSF Circle", "Our Newsletter", "Partner With Us", "About"]
+        assert [it.label for it in items] == ["Our Newsletter", "Partner With Us", "About"]
 
     def test_idempotent_second_run_is_a_no_op(self, app):
         from app.models.cms import Menu, MenuItem
@@ -623,33 +621,14 @@ class TestDefaultNavigationHealing:
 
         assert labels == [
             "Stories",
-            "Topics",
             "People",
             "Opportunities",
             "Resources",
             "Events",
+            "WSF Circle",
             "Community",
             "Shop",
         ]
-
-    def test_topics_group_reflects_real_published_topics_not_hardcoded_demo_slugs(self, app):
-        from app.extensions import db
-        from app.models.cms import Menu, MenuItem
-        from app.models.taxonomy import Topic
-        from app.services.navigation import seed_default_navigation
-
-        with app.app_context():
-            topic = Topic(slug="new-topic", name="Brand New Topic", status="published")
-            db.session.add(topic)
-            db.session.commit()
-
-            seed_default_navigation()
-
-            primary = Menu.query.filter_by(key="primary").first()
-            topics_group = MenuItem.query.filter_by(menu_id=primary.id, item_type="group", label="Topics").first()
-            child_labels = [c.label for c in topics_group.children]
-
-        assert child_labels == ["Brand New Topic"]
 
     def test_public_navigation_endpoint_reflects_the_healed_full_header(self, client, app):
         from app.services.navigation import seed_default_navigation
@@ -662,12 +641,8 @@ class TestDefaultNavigationHealing:
         primary_labels = [i["label"] for i in menus["primary"]["items"]]
         secondary_labels = [i["label"] for i in menus["secondary"]["items"]]
 
-        # "Topics" is dropped entirely from the public response (per
-        # serialize_public_menu_item) since no Topic has been published in
-        # this test's otherwise-empty database — every other section still
-        # renders regardless of that.
-        assert primary_labels == ["Stories", "People", "Opportunities", "Resources", "Events", "Community", "Shop"]
-        assert secondary_labels == ["WSF Circle", "WSF Weekly Newsletter", "Partner With Us"]
+        assert primary_labels == ["Stories", "People", "Opportunities", "Resources", "Events", "WSF Circle", "Community", "Shop"]
+        assert secondary_labels == ["WSF Weekly Newsletter", "Partner With Us"]
 
     def test_seed_navigation_cli_command_heals_and_persists(self, app):
         with app.app_context():
@@ -1038,50 +1013,66 @@ class TestFooterOwnershipBoundary:
         assert [i["label"] for i in public.get_json()["data"]["menus"]["footer_legal"]["items"]] == ["Privacy"]
 
 
-class TestWsfCircleSecondaryNavigation:
-    """Regression coverage for adding WSF Circle (-> /circle) to the
-    canonical secondary navigation. The healing/dedup/idempotency
-    machinery itself is generic (see heal_menu_defaults() and
-    _canonical_item_key()'s docstrings) — this class exercises those same
-    guarantees specifically for the new /circle destination, as the public
-    Circle-discovery task requires.
+class TestWsfCirclePrimaryNavigation:
+    """Regression coverage for IA Pass 1's move of WSF Circle (-> /circle)
+    from the canonical secondary/utility menu into the canonical PRIMARY
+    menu, reflecting that it's a real paid membership product rather than
+    a utility link. The healing/dedup/idempotency machinery itself is
+    generic (see heal_menu_defaults() and _canonical_item_key()'s
+    docstrings) — this class exercises those same guarantees specifically
+    for the new primary-menu /circle destination.
     """
 
-    def _secondary_items(self):
+    def _primary_items(self):
         from app.models.cms import Menu, MenuItem
 
-        secondary = Menu.query.filter_by(key="secondary").first()
-        return MenuItem.query.filter_by(menu_id=secondary.id, parent_id=None).order_by(MenuItem.sort_order).all()
+        primary = Menu.query.filter_by(key="primary").first()
+        return MenuItem.query.filter_by(menu_id=primary.id, parent_id=None).order_by(MenuItem.sort_order).all()
 
-    def test_circle_added_to_a_stale_secondary_menu(self, app):
+    def test_circle_added_to_a_stale_primary_menu(self, app):
         from app.extensions import db
         from app.models.cms import Menu, MenuItem
         from app.services.navigation import seed_default_navigation
 
         with app.app_context():
-            # A secondary menu seeded before WSF Circle existed as a
-            # canonical destination — exactly the shape a pre-Circle
-            # production database already has.
-            secondary = Menu(key="secondary")
-            db.session.add(secondary)
+            # A primary menu seeded before WSF Circle existed as a
+            # canonical primary destination — exactly the shape a
+            # pre-IA-Pass-1 production database already has (Circle was
+            # canonical-secondary before this pass, never canonical-primary).
+            # Every OTHER canonical primary destination is already present
+            # here (matched by key), so healing must recognize them as
+            # already satisfied and leave them untouched; only Circle is
+            # missing and should be the sole item added.
+            primary = Menu(key="primary")
+            db.session.add(primary)
             db.session.flush()
-            db.session.add(
-                MenuItem(menu_id=secondary.id, label="WSF Weekly Newsletter", item_type="route", url="/newsletter", sort_order=0)
-            )
-            db.session.add(
-                MenuItem(menu_id=secondary.id, label="Partner With Us", item_type="route", url="/partnerships", sort_order=1)
-            )
+            db.session.add(MenuItem(menu_id=primary.id, label="Stories", item_type="route", url="/topics", sort_order=0))
+            db.session.add(MenuItem(menu_id=primary.id, label="People", item_type="route", url="/people", sort_order=1))
+            db.session.add(MenuItem(menu_id=primary.id, label="Opportunities", item_type="route", url="/opportunities", sort_order=2))
+            db.session.add(MenuItem(menu_id=primary.id, label="Resources", item_type="route", url="/resources", sort_order=3))
+            db.session.add(MenuItem(menu_id=primary.id, label="Events", item_type="route", url="/events", sort_order=4))
+            db.session.add(MenuItem(menu_id=primary.id, label="Community", item_type="route", url="/community", sort_order=5))
+            db.session.add(MenuItem(menu_id=primary.id, label="Shop", item_type="route", url="/shop", sort_order=6))
             db.session.commit()
 
             seed_default_navigation()
 
-            items = self._secondary_items()
+            items = self._primary_items()
             circle_items = [it for it in items if it.effective_url() == "/circle"]
 
         assert len(circle_items) == 1
         assert circle_items[0].label == "WSF Circle"
-        # Added without disturbing either item already there.
-        assert {it.label for it in items} == {"WSF Circle", "WSF Weekly Newsletter", "Partner With Us"}
+        # Added without disturbing any item already there.
+        assert {it.label for it in items} == {
+            "WSF Circle",
+            "Stories",
+            "People",
+            "Opportunities",
+            "Resources",
+            "Events",
+            "Community",
+            "Shop",
+        }
 
     def test_existing_custom_circle_item_preserved_not_duplicated(self, app):
         from app.extensions import db
@@ -1089,18 +1080,18 @@ class TestWsfCircleSecondaryNavigation:
         from app.services.navigation import seed_default_navigation
 
         with app.app_context():
-            # An admin already added/renamed a /circle item before this
-            # canonical entry existed — healing must recognize it by
-            # destination and never add a second one or rename it.
-            secondary = Menu(key="secondary")
-            db.session.add(secondary)
+            # An admin already added/renamed a /circle item in primary
+            # before this canonical entry existed — healing must recognize
+            # it by destination and never add a second one or rename it.
+            primary = Menu(key="primary")
+            db.session.add(primary)
             db.session.flush()
-            db.session.add(MenuItem(menu_id=secondary.id, label="Join Our Circle", item_type="route", url="/circle", sort_order=0))
+            db.session.add(MenuItem(menu_id=primary.id, label="Join Our Circle", item_type="route", url="/circle", sort_order=0))
             db.session.commit()
 
             seed_default_navigation()
 
-            items = self._secondary_items()
+            items = self._primary_items()
             circle_items = [it for it in items if it.effective_url() == "/circle"]
 
         assert len(circle_items) == 1
@@ -1111,14 +1102,27 @@ class TestWsfCircleSecondaryNavigation:
 
         with app.app_context():
             seed_default_navigation()
-            first_ids = sorted(it.id for it in self._secondary_items())
+            first_ids = sorted(it.id for it in self._primary_items())
 
             seed_default_navigation()
-            second_ids = sorted(it.id for it in self._secondary_items())
+            second_ids = sorted(it.id for it in self._primary_items())
 
         assert first_ids == second_ids
 
-    def test_public_navigation_includes_wsf_circle_when_visible(self, client, app):
+    def test_public_navigation_includes_wsf_circle_in_primary_when_visible(self, client, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+
+        resp = client.get("/api/v1/public/navigation")
+        items = resp.get_json()["data"]["menus"]["primary"]["items"]
+        circle_item = next((i for i in items if i["url"] == "/circle"), None)
+
+        assert circle_item is not None
+        assert circle_item["label"] == "WSF Circle"
+
+    def test_circle_no_longer_added_to_secondary(self, client, app):
         from app.services.navigation import seed_default_navigation
 
         with app.app_context():
@@ -1126,7 +1130,183 @@ class TestWsfCircleSecondaryNavigation:
 
         resp = client.get("/api/v1/public/navigation")
         items = resp.get_json()["data"]["menus"]["secondary"]["items"]
-        circle_item = next((i for i in items if i["url"] == "/circle"), None)
+        assert all(i["url"] != "/circle" for i in items)
 
-        assert circle_item is not None
-        assert circle_item["label"] == "WSF Circle"
+
+class TestIAPass1NavigationStructure:
+    """Direct, line-item regression coverage for IA Pass 1's target
+    navigation structure (see this task's own audit/report) on a
+    completely fresh environment — the shape every new/demo/test database
+    converges on. Separate from TestDefaultNavigationHealing (which
+    exercises the additive-healing machinery itself against various
+    already-seeded starting states) so the TARGET shape has one direct,
+    easy-to-read home.
+    """
+
+    def _menu_items(self, key):
+        from app.models.cms import Menu, MenuItem
+
+        menu = Menu.query.filter_by(key=key).first()
+        return MenuItem.query.filter_by(menu_id=menu.id, parent_id=None).order_by(MenuItem.sort_order).all()
+
+    def _item(self, items, label):
+        return next(it for it in items if it.label == label)
+
+    def test_wsf_circle_is_in_primary(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            primary_labels = [it.label for it in self._menu_items("primary")]
+
+        assert "WSF Circle" in primary_labels
+
+    def test_wsf_circle_is_no_longer_in_secondary(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            secondary_labels = [it.label for it in self._menu_items("secondary")]
+
+        assert "WSF Circle" not in secondary_labels
+
+    def test_topics_is_no_longer_a_separate_top_level_primary_item(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            primary_labels = [it.label for it in self._menu_items("primary")]
+
+        assert "Topics" not in primary_labels
+
+    def test_stories_contains_topics(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            stories = self._item(self._menu_items("primary"), "Stories")
+            child_labels = [c.label for c in stories.children]
+
+        assert "Topics" in child_labels
+
+    def test_stories_contains_series(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            stories = self._item(self._menu_items("primary"), "Stories")
+            child_labels = [c.label for c in stories.children]
+
+        assert "Series" in child_labels
+
+    def test_people_no_longer_contains_series(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            people = self._item(self._menu_items("primary"), "People")
+            child_labels = [c.label for c in people.children]
+
+        assert "Series" not in child_labels
+
+    def test_people_still_contains_people_directory(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            people = self._item(self._menu_items("primary"), "People")
+            child_labels = [c.label for c in people.children]
+
+        assert "People Directory" in child_labels
+
+    def test_people_still_contains_authors(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            people = self._item(self._menu_items("primary"), "People")
+            child_labels = [c.label for c in people.children]
+
+        assert "Authors" in child_labels
+
+    def test_opportunities_contains_opportunities(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            opportunities = self._item(self._menu_items("primary"), "Opportunities")
+            child_labels = [c.label for c in opportunities.children]
+
+        assert "Opportunities" in child_labels
+
+    def test_opportunities_contains_jobs(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            opportunities = self._item(self._menu_items("primary"), "Opportunities")
+            child_labels = [c.label for c in opportunities.children]
+
+        assert "Jobs" in child_labels
+
+    def test_secondary_contains_newsletter(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            secondary_labels = [it.label for it in self._menu_items("secondary")]
+
+        assert "WSF Weekly Newsletter" in secondary_labels
+
+    def test_secondary_contains_partner_with_us(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            secondary_labels = [it.label for it in self._menu_items("secondary")]
+
+        assert "Partner With Us" in secondary_labels
+
+    def test_secondary_contains_about(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            secondary_labels = [it.label for it in self._menu_items("secondary")]
+
+        # No system About page exists in this test's otherwise-empty
+        # database, so About is correctly omitted rather than added
+        # broken — see _canonical_item_key()'s "page" fallback identity
+        # and seed_default_navigation()'s own `if about_page is not None`
+        # guard. Confirms the omission is deliberate, not a bug, and
+        # confirms About *is* added once the page exists.
+        assert "About" not in secondary_labels
+
+    def test_secondary_contains_about_when_about_page_exists(self, app):
+        from app.extensions import db
+        from app.models.page import Page
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            db.session.add(Page(key="about", slug="about", page_type="general", title="About", content=[], status="published"))
+            db.session.commit()
+
+            seed_default_navigation()
+            secondary_labels = [it.label for it in self._menu_items("secondary")]
+
+        assert "About" in secondary_labels
+
+    def test_navigation_seeding_remains_idempotent(self, app):
+        from app.services.navigation import seed_default_navigation
+
+        with app.app_context():
+            seed_default_navigation()
+            first_primary_ids = [it.id for it in self._menu_items("primary")]
+            first_secondary_ids = [it.id for it in self._menu_items("secondary")]
+
+            seed_default_navigation()
+            second_primary_ids = [it.id for it in self._menu_items("primary")]
+            second_secondary_ids = [it.id for it in self._menu_items("secondary")]
+
+        assert first_primary_ids == second_primary_ids
+        assert first_secondary_ids == second_secondary_ids
