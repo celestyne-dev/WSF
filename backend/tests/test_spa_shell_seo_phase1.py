@@ -472,13 +472,15 @@ class TestRouteClassBoundaries:
         resp = client.get("/newsletter/unsubscribe/some-token")
         assert resp.status_code == 200
 
-    def test_resources_checkout_callback_is_a_passthrough_not_404(self, client, app):
+    def test_resources_checkout_callback_stays_200_and_functional(self, client, app):
+        # Still a real, fully functional SPA route — never 404'd — now
+        # with its own safe, raw noindex metadata (see
+        # TestCheckoutCallbackRawNoindex for the full coverage).
         _use_fixture_index(app)
         resp = client.get("/resources/checkout/callback")
         assert resp.status_code == 200
-        assert "<title>Women Shaping Futures</title>" in resp.get_data(as_text=True)
 
-    def test_circle_checkout_callback_is_a_passthrough_not_404(self, client, app):
+    def test_circle_checkout_callback_stays_200_and_functional(self, client, app):
         _use_fixture_index(app)
         resp = client.get("/circle/checkout/callback")
         assert resp.status_code == 200
@@ -500,3 +502,74 @@ class TestRouteClassBoundaries:
         _use_fixture_index(app)
         resp = client.get("/totally-made-up-prefix/some-slug")
         assert resp.status_code == 404
+
+
+class TestCheckoutCallbackRawNoindex:
+    """Payment-callback landing pages (/resources/checkout/callback,
+    /circle/checkout/callback) stay real, fully functional, unchanged-
+    in-payment-behavior SPA routes — but their raw server HTML must
+    never be indexable, never carry a page-specific title that could be
+    mistaken for real content, and — critically — can never leak a
+    query-string payment/transaction reference, since Paystack always
+    appends ?reference=...&trxref=... to these exact URLs on redirect
+    back. Flask's <path:subpath> converter the backend route is built on
+    only ever captures the PATH portion of a URL, never the query
+    string (see app/__init__.py's spa_shell_fallback(subpath)) — so no
+    query parameter can reach spa_shell.py's title/canonical/metadata
+    logic even in principle, regardless of what's appended to the real
+    browser URL.
+    """
+
+    def test_resources_checkout_callback_is_200_with_raw_noindex(self, client, app):
+        _use_fixture_index(app)
+        resp = client.get("/resources/checkout/callback")
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert _meta_content(html, "name", "robots") == "noindex, nofollow"
+        assert "<title>Resource Payment | Women Shaping Futures</title>" in html
+
+    def test_circle_checkout_callback_is_200_with_raw_noindex(self, client, app):
+        _use_fixture_index(app)
+        resp = client.get("/circle/checkout/callback")
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert _meta_content(html, "name", "robots") == "noindex, nofollow"
+        assert "<title>WSF Circle Payment | Women Shaping Futures</title>" in html
+
+    def test_resources_checkout_callback_never_leaks_query_params_or_payment_references(self, client, app):
+        # A real Paystack redirect looks like this — reference/trxref
+        # must never appear anywhere in the raw response.
+        _use_fixture_index(app)
+        resp = client.get(
+            "/resources/checkout/callback?reference=wsf_res_abc123&trxref=wsf_res_abc123&status=success"
+        )
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert "wsf_res_abc123" not in html
+        assert "reference" not in html
+        assert "trxref" not in html
+        assert _canonical_href(html) == "https://womenshapingfutures.org/resources/checkout/callback"
+        assert _meta_content(html, "name", "robots") == "noindex, nofollow"
+
+    def test_circle_checkout_callback_never_leaks_query_params_or_payment_references(self, client, app):
+        _use_fixture_index(app)
+        resp = client.get(
+            "/circle/checkout/callback?reference=wsf_circle_xyz789&trxref=wsf_circle_xyz789&status=success"
+        )
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert "wsf_circle_xyz789" not in html
+        assert "reference" not in html
+        assert "trxref" not in html
+        assert _canonical_href(html) == "https://womenshapingfutures.org/circle/checkout/callback"
+        assert _meta_content(html, "name", "robots") == "noindex, nofollow"
+
+    def test_checkout_callbacks_carry_no_description_or_sitewide_structured_data(self, client, app):
+        # These are not indexable content — no description, no
+        # WebSite/Organization JSON-LD (matches every other noindex
+        # utility route this phase covers).
+        _use_fixture_index(app)
+        for path in ("/resources/checkout/callback", "/circle/checkout/callback"):
+            html = client.get(path).get_data(as_text=True)
+            assert _meta_content(html, "name", "description") is None
+            assert "data-site-structured-data" not in html

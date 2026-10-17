@@ -228,10 +228,11 @@ def _build_site_json_ld(site_identity, public_site_url):
     Organization pair exactly (same two @types, same name/url/logo/
     sameAs fields, same "only real admin-configured values, nothing
     fabricated" rule) so the browser- and server-rendered shapes never
-    drift apart. Rendered on every server-rendered page THIS PHASE ADDS
-    (homepage, list pages, the 8 entity-detail types, CMS Page routes) —
-    deliberately NOT added to the pre-existing Article shell, which this
-    phase preserves byte-for-byte apart from the new og:site_name tag.
+    drift apart. Rendered on every server-rendered page — homepage, list
+    pages, the 8 entity-detail types, CMS Page routes, and (under its
+    own data-site-structured-data attribute, alongside and never
+    replacing the existing data-article-structured-data block) the
+    Article shell too — see render_article_shell().
     """
     site_name = site_identity.get("site_name") or "Women Shaping Futures"
     data = [
@@ -340,11 +341,13 @@ def render_article_shell(article):
     """Builds the crawler-readable HTML for a published Article's flat
     /<slug> route. `article` must already be confirmed PUBLISHED by the
     caller (resolve_spa_response() below) — this function never checks
-    status itself. UNCHANGED behavior from Phase 0 apart from the new
-    og:site_name tag (_apply_base_seo) — same title/description/
-    canonical/robots computation, same 3-tier image priority, same
-    Article JSON-LD under the same data-article-structured-data
-    attribute, same (lack of) a site-wide WebSite/Organization block.
+    status itself. UNCHANGED behavior from Phase 0 apart from two
+    additive-only tags: the new og:site_name (_apply_base_seo), and the
+    site-wide WebSite/Organization JSON-LD block every other server-
+    rendered page gets too — added under its own data-site-structured-
+    data attribute, alongside (never replacing) the Article's own
+    data-article-structured-data block. Title/description/canonical/
+    robots computation and the 3-tier image priority are unchanged.
     """
     public_site_url = current_app.config["PUBLIC_SITE_URL"]
     site_identity = get_site_identity_resolved()
@@ -374,6 +377,7 @@ def render_article_shell(article):
 
     structured_data = _build_article_json_ld(article, canonical_url, image_url, site_identity, public_site_url)
     html_doc = _set_structured_data(html_doc, "data-article-structured-data", structured_data)
+    html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
 
     return _html_response(html_doc)
 
@@ -662,8 +666,7 @@ _SYSTEM_PAGE_KEYS = ("about", "contact", "privacy", "terms", "cookies", "editori
 #   ("list", title, description)       — stable list/landing page copy
 #   ("noindex", title, description, robots) — auth/private/utility page
 #   ("passthrough",)                   — a real, working route with no
-#                                         indexable content of its own
-#                                         (checkout-callback pages) —
+#                                         indexable content of its own —
 #                                         just the untouched generic shell
 # Canonical for "list"/"noindex" entries is always {PUBLIC_SITE_URL}/
 # {subpath} — computed once in _render_static_route, not repeated here.
@@ -743,8 +746,15 @@ _STATIC_ROUTES = {
     "account/community": ("noindex", "My Community | Women Shaping Futures", None, "noindex, nofollow"),
     "account/membership": ("noindex", "WSF Circle | Women Shaping Futures", None, "noindex, nofollow"),
     "account/security": ("noindex", "Security | Women Shaping Futures", None, "noindex, nofollow"),
-    "resources/checkout/callback": ("passthrough",),
-    "circle/checkout/callback": ("passthrough",),
+    # Real, functional payment-callback landing pages — never indexable
+    # (there is nothing for a search engine to index, and the raw HTML
+    # must never carry a payment/transaction reference, which only ever
+    # lives in the query string: Flask's <path:subpath> converter never
+    # captures it, so it can't leak into `subpath`-derived title/
+    # canonical even by accident). Title only, no description, no
+    # canonical-worthy content, no site-wide structured data.
+    "resources/checkout/callback": ("noindex", "Resource Payment | Women Shaping Futures", None, "noindex, nofollow"),
+    "circle/checkout/callback": ("noindex", "WSF Circle Payment | Women Shaping Futures", None, "noindex, nofollow"),
 }
 for _key in _SYSTEM_PAGE_KEYS:
     _STATIC_ROUTES[_key] = ("page", _key)

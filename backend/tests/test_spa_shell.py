@@ -175,6 +175,31 @@ class TestPublishedArticleShell:
         assert data["author"]["name"] == "Amara Okafor"
         assert data["publisher"]["name"] == "Women Shaping Futures"
 
+    def test_article_also_carries_sitewide_website_and_organization_json_ld(self, client, app):
+        # The Article page's own JSON-LD (data-article-structured-data)
+        # must never be replaced or merged away — the site-wide
+        # WebSite+Organization block (data-site-structured-data) is
+        # added alongside it, under its own attribute, exactly like
+        # every other server-rendered page gets.
+        _use_fixture_index(app)
+        _make_article(app, slug="both-schemas-story", title="Both Schemas Story", excerpt="Has both JSON-LD blocks.")
+
+        resp = client.get("/both-schemas-story")
+        html = resp.get_data(as_text=True)
+
+        assert _count(r"data-article-structured-data", html) == 1
+        assert _count(r"data-site-structured-data", html) == 1
+
+        article_data = _structured_data_json_by_attr(html, "data-article-structured-data")
+        assert article_data["@type"] == "Article"
+        assert article_data["headline"] == "Both Schemas Story"
+
+        site_data = _structured_data_json_by_attr(html, "data-site-structured-data")
+        site_types = {d["@type"] for d in site_data}
+        assert site_types == {"WebSite", "Organization"}
+        for d in site_data:
+            assert d["name"] == "Women Shaping Futures"
+
     def test_cms_canonical_override_is_used_everywhere(self, client, app):
         _use_fixture_index(app)
         _make_article(
