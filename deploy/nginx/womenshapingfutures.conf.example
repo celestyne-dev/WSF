@@ -72,7 +72,7 @@ server {
     # current hashed asset filenames, so caching it would pin visitors to
     # a stale deploy.
     location = /index.html {
-        add_header Cache-Control "no-cache";
+        return 301 https://womenshapingfutures.org/;
     }
 
     # --- Protected Resource file upload: its own, larger body limit ---
@@ -175,9 +175,19 @@ server {
     # index.html itself (see config.SPA_INDEX_PATH) and, only for a
     # published Article's own flat /<slug> route, injects crawler-
     # readable title/description/canonical/OpenGraph/Twitter metadata
-    # and Article JSON-LD before returning it. Every other route
-    # (unknown slug, /admin/..., etc.) still gets that same index.html
-    # back completely unmodified — nothing here is ever crawler-only.
+    # and page-specific SEO metadata before returning it. The exact
+    # homepage location below ensures / is also handled by Flask instead
+    # of Nginx serving dist/index.html directly. Unknown routes also pass
+    # through Flask so real HTTP 404 and noindex behavior is preserved.
+    location = / {
+        proxy_pass http://127.0.0.1:8020;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location / {
         try_files $uri $uri/ @spa_shell;
     }
