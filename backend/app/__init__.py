@@ -214,13 +214,15 @@ def create_app(config_name="development"):
 
     @app.get("/")
     def spa_shell_root():
-        # Module 12B: the bare root is always the generic SPA shell —
-        # there's no article slug to resolve here — but it must still go
-        # through the same fresh-read-of-the-built-index.html path as
-        # every other route below, not some separately maintained copy.
-        from app.services.spa_shell import render_generic_shell
+        # Module 12B / SEO Phase 1: the homepage gets its own real
+        # server-rendered metadata now (title/description/canonical/OG/
+        # Twitter/robots/site-wide WebSite+Organization JSON-LD) — see
+        # app/services/spa_shell.py's render_homepage_shell(). Still the
+        # same fresh-read-of-the-built-index.html path every other route
+        # uses, not a separately maintained copy.
+        from app.services.spa_shell import render_homepage_shell
 
-        return render_generic_shell()
+        return render_homepage_shell()
 
     @app.get("/<path:subpath>")
     def spa_shell_fallback(subpath):

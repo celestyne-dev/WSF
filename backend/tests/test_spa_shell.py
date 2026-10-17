@@ -127,12 +127,14 @@ def _canonical_href(html):
 
 
 def _structured_data_json(html):
+    return _structured_data_json_by_attr(html, "data-article-structured-data")
+
+
+def _structured_data_json_by_attr(html, attr_name):
     import json
 
-    match = re.search(
-        r'<script\b[^>]*data-article-structured-data[^>]*>(.*?)</script>', html, re.IGNORECASE | re.DOTALL
-    )
-    assert match is not None, "expected a data-article-structured-data script tag"
+    match = re.search(rf"<script\b[^>]*{re.escape(attr_name)}[^>]*>(.*?)</script>", html, re.IGNORECASE | re.DOTALL)
+    assert match is not None, f"expected a {attr_name} script tag"
     return json.loads(match.group(1))
 
 
@@ -332,6 +334,12 @@ class TestPublisherLogoVariant:
 
 class TestVisibilityAndRedirects:
     def test_draft_article_metadata_is_never_leaked(self, client, app):
+        # SEO Phase 1: a draft article's slug is, to a public visitor,
+        # indistinguishable from "doesn't exist" — it now gets the same
+        # real 404 an unknown slug gets (see
+        # test_unknown_slug_now_returns_a_real_404_with_noindex_metadata),
+        # not the old 200 soft-404. The content-safety guarantee this
+        # test exists for — title/excerpt never leaked — is unchanged.
         _use_fixture_index(app)
         _make_article(
             app,
@@ -342,21 +350,20 @@ class TestVisibilityAndRedirects:
         )
 
         resp = client.get("/still-a-draft")
-        assert resp.status_code == 200
+        assert resp.status_code == 404
         html = resp.get_data(as_text=True)
 
         assert "Secret Draft Title" not in html
         assert "This must never reach a crawler." not in html
         assert "data-article-structured-data" not in html
-        # The same untouched generic shell as any other unknown route.
-        assert "<title>Women Shaping Futures</title>" in html
+        assert "<title>Page Not Found | Women Shaping Futures</title>" in html
 
     def test_archived_article_metadata_is_never_leaked(self, client, app):
         _use_fixture_index(app)
         _make_article(app, slug="old-news", title="Archived Title", status="archived")
 
         resp = client.get("/old-news")
-        assert resp.status_code == 200
+        assert resp.status_code == 404
         html = resp.get_data(as_text=True)
         assert "Archived Title" not in html
 
@@ -491,16 +498,25 @@ class TestNoDuplicateTags:
 
 
 class TestGenericShellAndReservedPrefixes:
-    def test_unknown_slug_gets_generic_untouched_shell(self, client, app):
+    def test_unknown_slug_now_returns_a_real_404_with_noindex_metadata(self, app, client):
+        # SEO Phase 1: a single-segment slug that resolves to neither a
+        # published Article nor a Redirect alias used to fall through to
+        # the same 200 generic shell every other unmatched path got (the
+        # soft-404 the SEO audit flagged). It now gets a real 404 with
+        # raw, crawler-visible noindex metadata — see
+        # spa_shell.py's resolve_spa_response()/_render_404_shell().
         _use_fixture_index(app)
         resp = client.get("/this-slug-does-not-exist")
-        assert resp.status_code == 200
+        assert resp.status_code == 404
         html = resp.get_data(as_text=True)
-        assert "<title>Women Shaping Futures</title>" in html
+        assert "<title>Page Not Found | Women Shaping Futures</title>" in html
+        assert _meta_content(html, "name", "robots") == "noindex, follow"
         assert "data-article-structured-data" not in html
         assert '<link rel="canonical"' not in html
 
     def test_nested_spa_route_gets_generic_untouched_shell(self, client, app):
+        # /admin/* is a real, auth-gated SPA route this phase leaves
+        # exactly as it already behaved — never 404, never rewritten.
         _use_fixture_index(app)
         resp = client.get("/admin/articles")
         assert resp.status_code == 200
@@ -508,11 +524,20 @@ class TestGenericShellAndReservedPrefixes:
         assert "<title>Women Shaping Futures</title>" in html
         assert "data-article-structured-data" not in html
 
-    def test_root_path_gets_generic_shell(self, client, app):
+    def test_root_path_gets_real_homepage_seo(self, client, app):
+        # SEO Phase 1: the homepage now gets its own server-rendered
+        # metadata (see spa_shell.py's render_homepage_shell()) instead
+        # of the untouched generic shell.
         _use_fixture_index(app)
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "<title>Women Shaping Futures</title>" in resp.get_data(as_text=True)
+        html = resp.get_data(as_text=True)
+        assert "<title>Women Shaping Futures — Stories, Opportunity &amp; Growth for Women Worldwide</title>" in html
+        assert _canonical_href(html) == "https://womenshapingfutures.org/"
+        assert _meta_content(html, "property", "og:site_name") == "Women Shaping Futures"
+        assert _meta_content(html, "property", "og:type") == "website"
+        data = _structured_data_json_by_attr(html, "data-site-structured-data")
+        assert {d["@type"] for d in data} == {"WebSite", "Organization"}
 
     def test_unknown_api_path_is_not_swallowed_into_html(self, client, app):
         _use_fixture_index(app)

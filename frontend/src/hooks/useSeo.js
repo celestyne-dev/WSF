@@ -62,6 +62,10 @@ function setCanonical(url) {
  */
 export default function useSeo({ title, description, canonical, image, imageAlt, robots = 'index, follow', type, ogType } = {}) {
   const seoDefaults = useSelector((s) => s.site.settings?.seo)
+  // Read from the same state.site.settings.site.name Site Identity already
+  // bootstraps for useSiteStructuredData.js's own Organization/WebSite
+  // block, rather than hardcoding "Women Shaping Futures" again here.
+  const siteName = useSelector((s) => s.site.settings?.site?.name)
   const resolvedTitle = title || seoDefaults?.defaultTitle
   const resolvedDescription = description || seoDefaults?.defaultDescription
   const resolvedImage = image || (seoDefaults?.defaultOgImage ? resolveMediaImage(seoDefaults.defaultOgImage, { variant: 'large' }).src : undefined)
@@ -76,6 +80,7 @@ export default function useSeo({ title, description, canonical, image, imageAlt,
     setMeta('property', 'og:description', resolvedDescription)
     setMeta('property', 'og:url', canonical)
     setMeta('property', 'og:type', resolvedType)
+    setMeta('property', 'og:site_name', siteName)
     setMeta('property', 'og:image', resolvedImage)
     setMeta('property', 'og:image:alt', resolvedImage ? imageAlt : undefined)
     setMeta('name', 'twitter:card', 'summary_large_image')
@@ -83,5 +88,5 @@ export default function useSeo({ title, description, canonical, image, imageAlt,
     setMeta('name', 'twitter:description', resolvedDescription)
     setMeta('name', 'twitter:image', resolvedImage)
     setMeta('name', 'twitter:image:alt', resolvedImage ? imageAlt : undefined)
-  }, [resolvedTitle, resolvedDescription, canonical, resolvedImage, imageAlt, robots, resolvedType])
+  }, [resolvedTitle, resolvedDescription, canonical, resolvedImage, imageAlt, robots, resolvedType, siteName])
 }

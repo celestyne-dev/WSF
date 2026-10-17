@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { fetchTopicBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
+import { resolveImage } from '../utils/media'
 import PageHeader from '../components/ui/PageHeader'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import ArticleCard from '../components/cards/ArticleCard'
@@ -40,9 +41,11 @@ export default function TopicDetailPage() {
   useSeo(
     topic
       ? {
-          title: `${topic.name} | Women Shaping Futures`,
-          description: topic.description,
-          canonical: `https://womenshapingfutures.org/topics/${topic.slug}`,
+          title: topic.seo?.title || `${topic.name} | Women Shaping Futures`,
+          description: topic.seo?.description || topic.description,
+          canonical: topic.seo?.canonical || `https://womenshapingfutures.org/topics/${topic.slug}`,
+          robots: topic.seo?.robots,
+          image: topic.heroMedia ? resolveImage(topic.heroMedia, { width: 1200, height: 630 }) : undefined,
         }
       : {},
   )

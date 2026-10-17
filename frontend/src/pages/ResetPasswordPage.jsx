@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { resetPassword } from '../api/auth'
+import useSeo from '../hooks/useSeo'
 
 // /reset-password — deliberately rendered OUTSIDE PublicLayout (see
 // routes/AppRoutes.jsx) and imports nothing from it: no Header/Footer/
@@ -32,9 +33,9 @@ export default function ResetPasswordPage() {
   const [fieldError, setFieldError] = useState(null)
   const [succeeded, setSucceeded] = useState(false)
 
-  useEffect(() => {
-    document.title = 'Reset Password | Women Shaping Futures'
+  useSeo({ title: 'Reset Password | Women Shaping Futures', robots: 'noindex, nofollow' })
 
+  useEffect(() => {
     // Remove the token from the visible URL immediately — it was
     // already captured into this component's own state above, so
     // nothing downstream (browser history, a shared/bookmarked link, a

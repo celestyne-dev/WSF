@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { fetchSeriesBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
+import { resolveImage } from '../utils/media'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
@@ -40,9 +41,11 @@ export default function SeriesDetailPage() {
   useSeo(
     seriesItem
       ? {
-          title: `${seriesItem.name} | Women Shaping Futures`,
-          description: seriesItem.description,
-          canonical: `https://womenshapingfutures.org/series/${seriesItem.slug}`,
+          title: seriesItem.seo?.title || `${seriesItem.name} | Women Shaping Futures`,
+          description: seriesItem.seo?.description || seriesItem.description,
+          canonical: seriesItem.seo?.canonical || `https://womenshapingfutures.org/series/${seriesItem.slug}`,
+          robots: seriesItem.seo?.robots,
+          image: seriesItem.coverMedia ? resolveImage(seriesItem.coverMedia, { width: 1200, height: 630 }) : undefined,
         }
       : {},
   )
