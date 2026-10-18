@@ -7,6 +7,7 @@ import { fetchArticles } from '../api/articles'
 import { fetchSeriesBySlug } from '../api/taxonomies'
 import { resolveImage } from '../utils/media'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
@@ -101,6 +102,7 @@ export default function PersonProfilePage() {
   )
 
   usePersonStructuredData(person, canonicalUrl)
+  useBreadcrumbStructuredData(person ? [{ label: 'People', to: '/people' }, { label: person.name }] : null, canonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this profile" description={error} /></div>
   if (person === undefined) return <PageLoader />

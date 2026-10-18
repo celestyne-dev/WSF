@@ -9,6 +9,7 @@ import { formatDate, formatCurrency } from '../utils/format'
 import { resolveImage } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
@@ -407,6 +408,7 @@ export default function EventDetailPage() {
   )
 
   useEventStructuredData(event, canonicalUrl)
+  useBreadcrumbStructuredData(event ? [{ label: 'Events', to: '/events' }, { label: event.title }] : null, canonicalUrl)
 
   function handleRegisterClick() {
     trackEvent('event_registration_click', { eventSlug: event.slug })

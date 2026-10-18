@@ -8,6 +8,7 @@ import { formatDate, formatFunding } from '../utils/format'
 import { resolveImage } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import Tag from '../components/ui/Tag'
@@ -180,6 +181,10 @@ export default function OpportunityDetailPage() {
   )
 
   useOpportunityStructuredData(opportunity, canonicalUrl)
+  useBreadcrumbStructuredData(
+    opportunity ? [{ label: 'Opportunities', to: '/opportunities' }, { label: opportunity.title }] : null,
+    canonicalUrl,
+  )
 
   function handleApplyClick() {
     trackEvent('opportunity_apply_click', { opportunitySlug: opportunity.slug })

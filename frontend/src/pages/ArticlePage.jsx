@@ -10,6 +10,7 @@ import { formatDate } from '../utils/format'
 import { resolveReadingTime } from '../utils/readingTime'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageLoader from '../components/ui/PageLoader'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -200,6 +201,11 @@ export default function ArticlePage() {
   )
 
   useArticleStructuredData(article, effectiveCanonicalUrl, socialImageUrl)
+  // Fixed "Home > Stories > Article title" hierarchy, matching the
+  // server's own breadcrumb (spa_shell.py's render_article_shell) —
+  // deliberately independent of the visible <Breadcrumb> below, which
+  // keeps its own existing topic-aware trail unchanged.
+  useBreadcrumbStructuredData(article ? [{ label: 'Stories', to: '/topics' }, { label: article.title }] : null, effectiveCanonicalUrl)
 
   useEffect(() => {
     if (article) trackEvent('article_view', { articleSlug: article.slug, topicSlugs: article.topicSlugs })

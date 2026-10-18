@@ -37,6 +37,25 @@ nothing here ever special-cases a request by User-Agent. Still
 deliberately NOT Next.js, a Node SSR server, or a separate prerender
 service — a small, stdlib-only (no HTML-parsing dependency) rewrite of a
 handful of <head> tags over Vite's own static build output.
+
+Phase 2A ("Server Structured Data + Breadcrumbs") adds, on top of
+Phase 1's metadata-only coverage:
+  - mirrored entity-specific JSON-LD (JobPosting/Event/Resource's
+    DigitalDocument-or-VideoObject/Person twice over, for both Person
+    and Author) for the 5 entity-detail types whose existing frontend
+    structured-data hook this app already trusts — see each
+    _build_*_json_ld() function's own docstring for exactly which
+    frontend hook it mirrors and why
+  - server-rendered BreadcrumbList JSON-LD for every entity-detail
+    type (all 8, including the 3 — Topic/Series/Opportunity — that
+    don't get their own entity schema this phase), their list/landing
+    pages, the Article shell, and CMS Page routes — see
+    _build_breadcrumb_json_ld()
+  - zero frontend changes: every entity's existing client-side
+    structured-data hook (JobDetailPage.jsx et al.) already finds and
+    reuses a script tag by attribute PRESENCE, not by content — so it
+    naturally adopts this phase's server-rendered tag instead of
+    appending a duplicate, with no change needed on that side at all
 """
 import json
 import re
@@ -379,6 +398,19 @@ def render_article_shell(article):
     html_doc = _set_structured_data(html_doc, "data-article-structured-data", structured_data)
     html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
 
+    # Fixed "Home > Stories > Article title" hierarchy regardless of
+    # whether this article has a Topic — matches the visible
+    # ArticlePage.jsx breadcrumb's "Stories" link target (/topics) when
+    # there IS a topic; this phase doesn't add the extra per-topic
+    # breadcrumb level ArticlePage.jsx's visible trail inserts in that
+    # case, so it never has to fabricate/guess a topic that may not
+    # exist. The Article's own JSON-LD above is unaffected either way.
+    breadcrumb = _build_breadcrumb_json_ld(
+        public_site_url,
+        [("Stories", f"{public_site_url.rstrip('/')}/topics"), (article.title, canonical_url)],
+    )
+    html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
+
     return _html_response(html_doc)
 
 
@@ -626,20 +658,355 @@ def _resource_meta(resource, public_site_url, site_identity):
     }
 
 
+def _build_breadcrumb_json_ld(public_site_url, crumbs):
+    """Server-rendered schema.org BreadcrumbList — WSF SEO Phase 2A.
+    Always anchored at Home (position 1, the site root); `crumbs` is the
+    ordered list of (name, absolute_url) pairs for every crumb AFTER
+    Home, including the current page's own crumb (using that page's own
+    canonical URL, so the trail always ends on the exact address the
+    page itself canonicalizes to). Positions are always contiguous
+    starting at 1. The hierarchy for each route this phase covers
+    mirrors that page's own EXISTING visible <Breadcrumb items=...> —
+    see each call site — never a level invented here that isn't already
+    shown there.
+    """
+    items = [{"@type": "ListItem", "position": 1, "name": "Home", "item": f"{public_site_url.rstrip('/')}/"}]
+    for position, (name, url) in enumerate(crumbs, start=2):
+        items.append({"@type": "ListItem", "position": position, "name": name, "item": url})
+    return {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": items}
+
+
+_JOB_EMPLOYMENT_TYPE_SCHEMA = {
+    "Full-time": "FULL_TIME",
+    "Part-time": "PART_TIME",
+    "Contract": "CONTRACTOR",
+    "Temporary": "TEMPORARY",
+    "Internship": "INTERN",
+}
+
+
+def _build_job_json_ld(job, canonical_url, public_site_url, site_name):
+    """Mirrors frontend/src/pages/JobDetailPage.jsx's
+    useJobStructuredData field-for-field — same EMPLOYMENT_TYPE_SCHEMA
+    mapping, same remote/on-site location branching, same
+    salary-visibility gate, nothing fabricated beyond what that hook
+    already shows. Only ever called (see _render_entity_detail) for a
+    Job _lookup_job already confirmed publicly visible
+    (is_job_publicly_visible) — this function never re-checks status
+    itself. `site_name` is accepted for signature parity with the other
+    4 entity builders but unused here — a JobPosting's organization is
+    always the job's own employer, never WSF itself.
+    """
+    data = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "title": job.title,
+        "description": job.short_description or job.title,
+    }
+    if job.published_date:
+        data["datePosted"] = job.published_date.isoformat()
+    if job.deadline:
+        # Matches new Date(job.deadline).toISOString() for a date-only
+        # JS Date — midnight UTC on that calendar date.
+        data["validThrough"] = f"{job.deadline.isoformat()}T00:00:00Z"
+    if job.employment_type and job.employment_type in _JOB_EMPLOYMENT_TYPE_SCHEMA:
+        data["employmentType"] = _JOB_EMPLOYMENT_TYPE_SCHEMA[job.employment_type]
+
+    hiring_org = {"@type": "Organization", "name": job.company_name}
+    logo_media = job.organization.logo if job.organization and job.organization.logo else job.logo
+    if logo_media is not None:
+        logo_url = _absolute_url(logo_media.public_url, public_site_url)
+        if logo_url:
+            hiring_org["logo"] = logo_url
+    data["hiringOrganization"] = hiring_org
+
+    if job.work_mode == "Remote":
+        data["jobLocationType"] = "TELECOMMUTE"
+        if job.remote_scope == "worldwide":
+            data["applicantLocationRequirements"] = {"@type": "Country", "name": "Anywhere"}
+        elif job.remote_scope == "country" and job.country:
+            data["applicantLocationRequirements"] = {"@type": "Country", "name": job.country.name}
+        elif job.remote_scope == "region" and job.remote_region:
+            data["applicantLocationRequirements"] = {"@type": "Place", "name": job.remote_region}
+    elif job.location or job.country:
+        address = {"@type": "PostalAddress"}
+        if job.city:
+            address["addressLocality"] = job.city
+        elif job.location:
+            address["addressLocality"] = job.location
+        if job.country:
+            address["addressCountry"] = job.country.code
+        data["jobLocation"] = {"@type": "Place", "address": address}
+
+    if job.salary_min and job.currency and job.salary_visible:
+        value = {"@type": "QuantitativeValue", "minValue": job.salary_min}
+        if job.salary_max:
+            value["maxValue"] = job.salary_max
+        value["unitText"] = (job.salary_period or "year").upper()[:4]
+        data["baseSalary"] = {"@type": "MonetaryAmount", "currency": job.currency, "value": value}
+
+    return data
+
+
+_EVENT_ATTENDANCE_MODE = {
+    "in-person": "https://schema.org/OfflineEventAttendanceMode",
+    "virtual": "https://schema.org/OnlineEventAttendanceMode",
+    "hybrid": "https://schema.org/MixedEventAttendanceMode",
+}
+
+
+def _build_event_json_ld(event, canonical_url, public_site_url, site_name):
+    """Mirrors frontend/src/pages/EventDetailPage.jsx's
+    useEventStructuredData field-for-field, EXCEPT for one deliberate,
+    task-directed correction to its `offers.price`: the frontend's
+    `price: event.ticketPrice || 0` conflates "no price was ever
+    entered" with "explicitly free" into the same fallback. This uses
+    the SAME authoritative is_free signal the public API already
+    computes (EventSchema.get_is_free: `not event.ticket_price` — see
+    app/schemas/opportunity.py) to decide when "0" is truthful, and
+    never fabricates a priceCurrency that was never configured (a free
+    event with no currency on file gets `price: "0"` alone, no
+    priceCurrency key at all, rather than a made-up one).
+    """
+    data = {
+        "@context": "https://schema.org",
+        "@type": "Event",
+        "name": event.title,
+        "description": event.short_description or event.title,
+    }
+    if event.cover_media is not None:
+        image_url = _absolute_url(event.cover_media.public_url, public_site_url)
+        if image_url:
+            data["image"] = image_url
+
+    data["startDate"] = f"{event.date.isoformat()}T{event.start_time.isoformat()}" if event.start_time else event.date.isoformat()
+    if event.end_time:
+        end_date_val = event.end_date or event.date
+        data["endDate"] = f"{end_date_val.isoformat()}T{event.end_time.isoformat()}"
+    elif event.end_date:
+        data["endDate"] = event.end_date.isoformat()
+
+    if event.status == "cancelled":
+        data["eventStatus"] = "https://schema.org/EventCancelled"
+    elif event.status == "postponed":
+        data["eventStatus"] = "https://schema.org/EventPostponed"
+    else:
+        data["eventStatus"] = "https://schema.org/EventScheduled"
+
+    if event.format and event.format in _EVENT_ATTENDANCE_MODE:
+        data["eventAttendanceMode"] = _EVENT_ATTENDANCE_MODE[event.format]
+
+    organizer_name = event.organizer.name if event.organizer else (event.organizer_name or site_name)
+    data["organizer"] = {"@type": "Organization", "name": organizer_name}
+
+    if event.format == "virtual":
+        # Never the private virtual_link — the canonical page URL, same
+        # as the frontend hook, regardless of virtual_link_public.
+        data["location"] = {"@type": "VirtualLocation", "url": canonical_url}
+    else:
+        address = {"@type": "PostalAddress"}
+        if event.address:
+            address["streetAddress"] = event.address
+        if event.city:
+            address["addressLocality"] = event.city
+        elif event.location:
+            address["addressLocality"] = event.location
+        if event.country:
+            address["addressCountry"] = event.country.code
+        place = {"@type": "Place", "address": address}
+        if event.venue:
+            place["name"] = event.venue
+        data["location"] = place
+
+    if event.registration_url:
+        offer = {
+            "@type": "Offer",
+            "url": event.registration_url,
+            "availability": "https://schema.org/SoldOut" if event.sold_out else "https://schema.org/InStock",
+        }
+        if not event.ticket_price:
+            offer["price"] = "0"
+            if event.currency:
+                offer["priceCurrency"] = event.currency
+        elif event.currency:
+            offer["price"] = event.ticket_price
+            offer["priceCurrency"] = event.currency
+        data["offers"] = offer
+
+    speakers = [
+        {"@type": "Person", "name": (s.person.name if s.person else s.name)} for s in (event.speakers or [])
+    ]
+    speakers = [p for p in speakers if p["name"]]
+    if speakers:
+        data["performer"] = speakers
+
+    return data
+
+
+def _build_resource_json_ld(resource, canonical_url, public_site_url, site_name):
+    """Mirrors frontend/src/pages/ResourceDetailPage.jsx's
+    useResourceStructuredData field-for-field — including its existing
+    `resource.accessType === 'video_resource'` check for the @type
+    branch. That check never actually matches any real
+    Resource.access_type value: "Video Resource" is a value of the
+    separate `type` column, not `access_type` (see RESOURCE_TYPES vs.
+    ACCESS_TYPES in app/models/resource.py), so every resource's @type
+    resolves to DigitalDocument today regardless of its real format.
+    Left exactly as-is rather than "fixed" here — correcting it only on
+    the server would make the SSR and post-hydration client JSON-LD
+    disagree, which this phase must never do. Never references
+    file_url/external_url/protected_file_path/download tokens/purchase
+    IDs/member IDs — same safe fields the frontend hook already limits
+    itself to.
+    """
+    data = {
+        "@context": "https://schema.org",
+        "@type": "VideoObject" if resource.access_type == "video_resource" else "DigitalDocument",
+        "name": resource.name,
+        "description": resource.short_description or resource.name,
+        "url": canonical_url,
+    }
+    if resource.cover_media is not None:
+        image_url = _absolute_url(resource.cover_media.public_url, public_site_url)
+        if image_url:
+            data["image"] = image_url
+
+    if resource.author is not None and resource.author.name:
+        data["author"] = {"@type": "Person", "name": resource.author.name}
+    elif resource.author_name:
+        data["author"] = {"@type": "Organization", "name": resource.author_name}
+
+    data["publisher"] = {"@type": "Organization", "name": site_name}
+
+    # A zero-price Offer is only truthful for a resource that's openly
+    # available for the taking. member_only/circle_only gate on
+    # something real (an account, a paid Circle membership) rather than
+    # a price, so neither gets an Offer — omitted entirely rather than
+    # falsely advertised as free/InStock. premium has a real,
+    # purchasable price and gets its own real Offer instead.
+    if resource.access_type in ("direct_download", "email_gate", "external_link"):
+        data["offers"] = {
+            "@type": "Offer",
+            "price": 0,
+            "priceCurrency": resource.currency or "KES",
+            "availability": "https://schema.org/InStock",
+        }
+    elif resource.access_type == "premium":
+        data["offers"] = {
+            "@type": "Offer",
+            "price": resource.price,
+            "priceCurrency": resource.currency or "KES",
+            "availability": "https://schema.org/InStock",
+            "url": canonical_url,
+        }
+
+    return data
+
+
+def _social_same_as(entity):
+    """Shared by Person/Author — identical sameAs derivation as
+    PersonProfilePage.jsx/AuthorProfilePage.jsx's own hooks: the real
+    website plus LinkedIn/Twitter profile URLs built from the stored
+    handle, only when actually present. Never a fabricated profile.
+    """
+    social = entity.social or {}
+    candidates = [
+        entity.website,
+        f"https://linkedin.com/in/{social['linkedin']}" if social.get("linkedin") else None,
+        f"https://twitter.com/{social['twitter']}" if social.get("twitter") else None,
+    ]
+    return [url for url in candidates if url]
+
+
+def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
+    """Mirrors frontend/src/pages/PersonProfilePage.jsx's
+    usePersonStructuredData field-for-field. Never exposes email or any
+    internal account/role ID — none of those are referenced here, same
+    as the frontend hook.
+    """
+    data = {"@context": "https://schema.org", "@type": "Person", "name": person.name, "url": canonical_url}
+    if person.title:
+        data["jobTitle"] = person.title
+    if person.organization is not None and person.organization.name:
+        data["worksFor"] = {"@type": "Organization", "name": person.organization.name}
+    if person.photo is not None:
+        image_url = _absolute_url(person.photo.public_url, public_site_url)
+        if image_url:
+            data["image"] = image_url
+    same_as = _social_same_as(person)
+    if same_as:
+        data["sameAs"] = same_as
+    return data
+
+
+def _build_author_json_ld(author, canonical_url, public_site_url, site_name):
+    """Mirrors frontend/src/pages/AuthorProfilePage.jsx's
+    useAuthorStructuredData field-for-field. Never exposes email or any
+    internal account/role ID — none of those are referenced here, same
+    as the frontend hook.
+    """
+    data = {"@context": "https://schema.org", "@type": "Person", "name": author.name, "url": canonical_url}
+    if author.role:
+        data["jobTitle"] = author.role
+    if author.photo is not None:
+        image_url = _absolute_url(author.photo.public_url, public_site_url)
+        if image_url:
+            data["image"] = image_url
+    same_as = _social_same_as(author)
+    if same_as:
+        data["sameAs"] = same_as
+    return data
+
+
 # Maps each in-scope entity-detail URL prefix (/<prefix>/<slug>) to its
-# (lookup, metadata-builder) pair. A prefix NOT in this dict but still a
-# real two-segment SPA route (organizations, directory, learning, shop,
-# newsletter) is handled by _UNENHANCED_PREFIXES below instead — left
-# exactly as it already behaved, never enhanced and never 404'd.
+# (lookup, metadata-builder, breadcrumb section label, display-name
+# getter) tuple. A prefix NOT in this dict but still a real two-segment
+# SPA route (organizations, directory, learning, shop, newsletter) is
+# handled by _UNENHANCED_PREFIXES below instead — left exactly as it
+# already behaved, never enhanced and never 404'd. The breadcrumb
+# section label doubles as that section's own path segment
+# (f"/{prefix}") — see _render_entity_detail.
 _ENTITY_DETAIL_PREFIXES = {
-    "topics": (_lookup_topic, _topic_meta),
-    "series": (_lookup_series, _series_meta),
-    "people": (_lookup_person, _person_meta),
-    "authors": (_lookup_author, _author_meta),
-    "opportunities": (_lookup_opportunity, _opportunity_meta),
-    "jobs": (_lookup_job, _job_meta),
-    "resources": (_lookup_resource, _resource_meta),
-    "events": (_lookup_event, _event_meta),
+    "topics": (_lookup_topic, _topic_meta, "Topics", lambda e: e.name),
+    "series": (_lookup_series, _series_meta, "Series", lambda e: e.name),
+    "people": (_lookup_person, _person_meta, "People", lambda e: e.name),
+    "authors": (_lookup_author, _author_meta, "Authors", lambda e: e.name),
+    "opportunities": (_lookup_opportunity, _opportunity_meta, "Opportunities", lambda e: e.title),
+    "jobs": (_lookup_job, _job_meta, "Jobs", lambda e: e.title),
+    "resources": (_lookup_resource, _resource_meta, "Resources", lambda e: e.name),
+    "events": (_lookup_event, _event_meta, "Events", lambda e: e.title),
+}
+
+# The 5 entity-detail prefixes that additionally get their OWN
+# entity-specific JSON-LD (mirroring that entity's existing frontend
+# structured-data hook — see each builder's own docstring), under the
+# SAME data-*-structured-data attribute name that entity's existing
+# client-side hook already looks for (JobDetailPage.jsx et al.) — so the
+# existing client hook finds and reuses this server-rendered tag rather
+# than appending a duplicate, with zero frontend changes required.
+# Topic/Series/Opportunity get BreadcrumbList only (see section 9 of the
+# implementation task) — deliberately absent from this second dict.
+_ENTITY_STRUCTURED_DATA_BUILDERS = {
+    "jobs": ("data-job-structured-data", _build_job_json_ld),
+    "events": ("data-event-structured-data", _build_event_json_ld),
+    "resources": ("data-resource-structured-data", _build_resource_json_ld),
+    "people": ("data-person-structured-data", _build_person_json_ld),
+    "authors": ("data-author-structured-data", _build_author_json_ld),
+}
+
+# The 8 list/landing pages that get a 2-level ("Home" > Section)
+# BreadcrumbList — a subset of _STATIC_ROUTES's "list"-kind entries:
+# circle/newsletter are deliberately excluded (not part of this phase's
+# breadcrumb scope — see _render_static_route).
+_LIST_PAGE_BREADCRUMB_LABELS = {
+    "topics": "Topics",
+    "series": "Series",
+    "people": "People",
+    "authors": "Authors",
+    "opportunities": "Opportunities",
+    "jobs": "Jobs",
+    "resources": "Resources",
+    "events": "Events",
 }
 
 # First path segment of an already-working SPA route this phase does
@@ -805,6 +1172,8 @@ def _render_system_page_shell(page_key, public_site_url, site_identity, site_nam
         site_name=site_name,
     )
     html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
+    breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(title, canonical)])
+    html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
     return _html_response(html_doc)
 
 
@@ -837,6 +1206,10 @@ def _render_static_route(subpath, entry):
             site_name=site_name,
         )
         html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
+        breadcrumb_label = _LIST_PAGE_BREADCRUMB_LABELS.get(subpath)
+        if breadcrumb_label is not None:
+            breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(breadcrumb_label, canonical)])
+            html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
         return _html_response(html_doc)
 
     # kind == "noindex" — a private/auth/utility page. No site-wide
@@ -857,7 +1230,7 @@ def _render_static_route(subpath, entry):
 
 
 def _render_entity_detail(prefix, slug):
-    lookup, build_meta = _ENTITY_DETAIL_PREFIXES[prefix]
+    lookup, build_meta, section_label, display_name = _ENTITY_DETAIL_PREFIXES[prefix]
     entity = lookup(slug)
     if entity is None:
         return _render_404_shell()
@@ -880,6 +1253,19 @@ def _render_entity_detail(prefix, slug):
         site_name=site_name,
     )
     html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
+
+    breadcrumb = _build_breadcrumb_json_ld(
+        public_site_url,
+        [(section_label, f"{public_site_url.rstrip('/')}/{prefix}"), (display_name(entity), meta["canonical"])],
+    )
+    html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
+
+    entity_builder = _ENTITY_STRUCTURED_DATA_BUILDERS.get(prefix)
+    if entity_builder is not None:
+        attr_name, build_entity_data = entity_builder
+        entity_data = build_entity_data(entity, meta["canonical"], public_site_url, site_name)
+        html_doc = _set_structured_data(html_doc, attr_name, entity_data)
+
     return _html_response(html_doc)
 
 

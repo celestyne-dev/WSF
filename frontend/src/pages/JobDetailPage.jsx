@@ -10,6 +10,7 @@ import { formatSalary, formatDate } from '../utils/format'
 import { resolveImage } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ShareBar from '../components/ui/ShareBar'
@@ -209,6 +210,7 @@ export default function JobDetailPage() {
   )
 
   useJobStructuredData(job, canonicalUrl)
+  useBreadcrumbStructuredData(job ? [{ label: 'Jobs', to: '/jobs' }, { label: job.title }] : null, canonicalUrl)
 
   function handleApplyClick() {
     trackEvent('job_apply_click', { jobSlug: job.slug, company: job.company })

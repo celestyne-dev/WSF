@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { fetchTopicBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import { resolveImage } from '../utils/media'
 import PageHeader from '../components/ui/PageHeader'
 import Breadcrumb from '../components/ui/Breadcrumb'
@@ -48,6 +49,11 @@ export default function TopicDetailPage() {
           image: topic.heroMedia ? resolveImage(topic.heroMedia, { width: 1200, height: 630 }) : undefined,
         }
       : {},
+  )
+
+  useBreadcrumbStructuredData(
+    topic ? [{ label: 'Topics', to: '/topics' }, { label: topic.name }] : null,
+    topic ? topic.seo?.canonical || `https://womenshapingfutures.org/topics/${topic.slug}` : null,
   )
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this topic" description={error} /></div>

@@ -10,6 +10,7 @@ import { resolveImage } from '../utils/media'
 import { formatCurrency } from '../utils/format'
 import { trackEvent, withAcquisitionMetadata } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
@@ -550,6 +551,7 @@ export default function ResourceDetailPage() {
   )
 
   useResourceStructuredData(resource, canonicalUrl)
+  useBreadcrumbStructuredData(resource ? [{ label: 'Resources', to: '/resources' }, { label: resource.name }] : null, canonicalUrl)
 
   async function openUrl(url) {
     window.open(url, '_blank', 'noopener,noreferrer')

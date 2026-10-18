@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { fetchSeriesBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import { resolveImage } from '../utils/media'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -48,6 +49,11 @@ export default function SeriesDetailPage() {
           image: seriesItem.coverMedia ? resolveImage(seriesItem.coverMedia, { width: 1200, height: 630 }) : undefined,
         }
       : {},
+  )
+
+  useBreadcrumbStructuredData(
+    seriesItem ? [{ label: 'Series', to: '/series' }, { label: seriesItem.name }] : null,
+    seriesItem ? seriesItem.seo?.canonical || `https://womenshapingfutures.org/series/${seriesItem.slug}` : null,
   )
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this series" description={error} /></div>
