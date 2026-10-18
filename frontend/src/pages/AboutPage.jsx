@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchPublicPage } from '../api/pages'
 import { resolveMediaImage } from '../utils/media'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import AboutEditorialSections from '../components/pages/AboutEditorialSections'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
@@ -80,6 +81,12 @@ export default function AboutPage() {
     canonical: 'https://womenshapingfutures.org/about',
     image: page?.heroMedia ? resolveMediaImage(page.heroMedia, { variant: 'large' }).src : undefined,
   })
+  // Home > (current loaded CMS page title) — matches the server's own
+  // breadcrumb for this page (spa_shell.py's _render_system_page_shell,
+  // same title fallback chain), so this hook finds and reuses the
+  // server-rendered tag rather than appending a duplicate, and removes
+  // it on navigating away.
+  useBreadcrumbStructuredData(page ? [{ label: page?.seo?.title || page?.title }] : null, 'https://womenshapingfutures.org/about')
 
   if (page === undefined) return <PageLoader />
   if (page === null) return <EmptyState title="This page isn't available right now" description="Please check back shortly." />

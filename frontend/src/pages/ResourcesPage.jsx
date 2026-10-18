@@ -3,12 +3,15 @@ import { useLocation } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { fetchResources, fetchResourcesFilterOptions } from '../api/resources'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import ResourceCard from '../components/cards/ResourceCard'
 import NewsletterForm from '../components/ui/NewsletterForm'
 import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
+
+const CANONICAL = 'https://womenshapingfutures.org/resources'
 
 export default function ResourcesPage() {
   // Lets a deep link like /resources?access=circle_yearly (see
@@ -42,8 +45,12 @@ export default function ResourcesPage() {
   useSeo({
     title: 'Resource Library | Women Shaping Futures',
     description: 'Guides, workbooks, templates, and toolkits to help you plan your career, negotiate pay, and grow a business — free, WSF Circle, and premium.',
-    canonical: 'https://womenshapingfutures.org/resources',
+    canonical: CANONICAL,
   })
+  // Home > Resources — matches the server's own 2-level breadcrumb for
+  // this list page; finds and reuses the server-rendered tag, removes
+  // it on navigating away.
+  useBreadcrumbStructuredData([{ label: 'Resources' }], CANONICAL)
 
   useEffect(() => {
     let active = true

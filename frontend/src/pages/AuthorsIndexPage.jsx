@@ -3,10 +3,13 @@ import { Link } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { fetchAuthors } from '../api/taxonomies'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import MediaImage from '../components/ui/MediaImage'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
+
+const CANONICAL = 'https://womenshapingfutures.org/authors'
 
 export default function AuthorsIndexPage() {
   const [query, setQuery] = useState('')
@@ -16,8 +19,12 @@ export default function AuthorsIndexPage() {
   useSeo({
     title: 'Authors | Women Shaping Futures',
     description: 'Meet the editors and writers behind Women Shaping Futures.',
-    canonical: 'https://womenshapingfutures.org/authors',
+    canonical: CANONICAL,
   })
+  // Home > Authors — matches the server's own 2-level breadcrumb for this
+  // list page; finds and reuses the server-rendered tag, removes it on
+  // navigating away.
+  useBreadcrumbStructuredData([{ label: 'Authors' }], CANONICAL)
 
   useEffect(() => {
     let active = true

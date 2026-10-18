@@ -51,11 +51,18 @@ Phase 1's metadata-only coverage:
     don't get their own entity schema this phase), their list/landing
     pages, the Article shell, and CMS Page routes — see
     _build_breadcrumb_json_ld()
-  - zero frontend changes: every entity's existing client-side
-    structured-data hook (JobDetailPage.jsx et al.) already finds and
-    reuses a script tag by attribute PRESENCE, not by content — so it
-    naturally adopts this phase's server-rendered tag instead of
-    appending a duplicate, with no change needed on that side at all
+  - no frontend changes for the 5 entity-detail types' own entity
+    JSON-LD: each one's existing client-side structured-data hook
+    (JobDetailPage.jsx et al.) already finds and reuses a script tag by
+    attribute PRESENCE, not by content — so it naturally adopts this
+    phase's server-rendered tag instead of appending a duplicate
+  - a shared frontend hook, useBreadcrumbStructuredData.js, wired into
+    every list/landing page and CMS page that receives a server
+    BreadcrumbList (plus the detail pages, added alongside their own
+    entity hook) using the SAME find-by-attribute-presence pattern, so
+    every route that gets a server BreadcrumbList also owns and updates
+    it client-side on SPA navigation, and a page with no breadcrumb of
+    its own can never inherit a previous page's stale one
 """
 import json
 import re
@@ -757,16 +764,17 @@ _EVENT_ATTENDANCE_MODE = {
 
 def _build_event_json_ld(event, canonical_url, public_site_url, site_name):
     """Mirrors frontend/src/pages/EventDetailPage.jsx's
-    useEventStructuredData field-for-field, EXCEPT for one deliberate,
-    task-directed correction to its `offers.price`: the frontend's
-    `price: event.ticketPrice || 0` conflates "no price was ever
-    entered" with "explicitly free" into the same fallback. This uses
-    the SAME authoritative is_free signal the public API already
-    computes (EventSchema.get_is_free: `not event.ticket_price` — see
-    app/schemas/opportunity.py) to decide when "0" is truthful, and
-    never fabricates a priceCurrency that was never configured (a free
-    event with no currency on file gets `price: "0"` alone, no
-    priceCurrency key at all, rather than a made-up one).
+    useEventStructuredData field-for-field, including its `offers.price`
+    semantics. The Event model has no separate "this event is free"
+    flag — a ticket_price that was simply never entered is treated as
+    free by convention, the SAME rule the public API already applies
+    (EventSchema.get_is_free: `not event.ticket_price` — see
+    app/schemas/opportunity.py), so free here means `price: "0"`, never
+    a fabricated priceCurrency when no currency was ever configured. A
+    real ticket_price only ever gets a price when a real currency is
+    also on file — see the frontend hook for the identical rule; the
+    two must stay in lockstep or hydration overwrites this SSR offer
+    with a disagreeing one.
     """
     data = {
         "@context": "https://schema.org",
@@ -845,23 +853,20 @@ def _build_event_json_ld(event, canonical_url, public_site_url, site_name):
 
 def _build_resource_json_ld(resource, canonical_url, public_site_url, site_name):
     """Mirrors frontend/src/pages/ResourceDetailPage.jsx's
-    useResourceStructuredData field-for-field — including its existing
-    `resource.accessType === 'video_resource'` check for the @type
-    branch. That check never actually matches any real
-    Resource.access_type value: "Video Resource" is a value of the
-    separate `type` column, not `access_type` (see RESOURCE_TYPES vs.
-    ACCESS_TYPES in app/models/resource.py), so every resource's @type
-    resolves to DigitalDocument today regardless of its real format.
-    Left exactly as-is rather than "fixed" here — correcting it only on
-    the server would make the SSR and post-hydration client JSON-LD
-    disagree, which this phase must never do. Never references
+    useResourceStructuredData field-for-field. The @type branch checks
+    `resource.type == "Video Resource"` — the Resource model's actual
+    content-type field (see RESOURCE_TYPES in app/models/resource.py) —
+    never `access_type` (the delivery/gating mechanism: direct_download/
+    email_gate/member_only/circle_only/premium/external_link), which has
+    no "video" value at all and was the wrong field checked here and on
+    the frontend hook before this correction. Never references
     file_url/external_url/protected_file_path/download tokens/purchase
     IDs/member IDs — same safe fields the frontend hook already limits
     itself to.
     """
     data = {
         "@context": "https://schema.org",
-        "@type": "VideoObject" if resource.access_type == "video_resource" else "DigitalDocument",
+        "@type": "VideoObject" if resource.type == "Video Resource" else "DigitalDocument",
         "name": resource.name,
         "description": resource.short_description or resource.name,
         "url": canonical_url,
@@ -983,7 +988,10 @@ _ENTITY_DETAIL_PREFIXES = {
 # SAME data-*-structured-data attribute name that entity's existing
 # client-side hook already looks for (JobDetailPage.jsx et al.) — so the
 # existing client hook finds and reuses this server-rendered tag rather
-# than appending a duplicate, with zero frontend changes required.
+# than appending a duplicate, with no change needed to any of those 5
+# hooks themselves (useBreadcrumbStructuredData, which every one of
+# these detail pages also now calls, is a separate, shared hook — see
+# frontend/src/hooks/useBreadcrumbStructuredData.js).
 # Topic/Series/Opportunity get BreadcrumbList only (see section 9 of the
 # implementation task) — deliberately absent from this second dict.
 _ENTITY_STRUCTURED_DATA_BUILDERS = {

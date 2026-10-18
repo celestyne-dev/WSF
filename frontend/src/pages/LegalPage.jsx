@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchPublicPage } from '../api/pages'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import InstitutionalPageHero from '../components/pages/InstitutionalPageHero'
 import InstitutionalPageShell from '../components/pages/InstitutionalPageShell'
 import LegalPageLayout from '../components/pages/LegalPageLayout'
@@ -67,6 +68,15 @@ export default function LegalPage({ docKey }) {
     description: page?.seo?.description || page?.subtitle,
     canonical: `https://womenshapingfutures.org/${docKey}`,
   })
+  // Home > (current loaded CMS page title) — matches the server's own
+  // breadcrumb for this docKey (spa_shell.py's _render_system_page_shell,
+  // same title fallback chain), computed against the current docKey's
+  // own canonical so switching between /privacy, /terms, /cookies, and
+  // /editorial-policy never leaves a stale previous-page breadcrumb.
+  useBreadcrumbStructuredData(
+    page ? [{ label: page?.seo?.title || page?.title }] : null,
+    `https://womenshapingfutures.org/${docKey}`,
+  )
 
   const headings = useMemo(() => buildHeadingToc(page?.content), [page?.content])
 

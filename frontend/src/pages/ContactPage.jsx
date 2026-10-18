@@ -7,6 +7,7 @@ import { fetchPublicPage } from '../api/pages'
 import { submitContactInquiry } from '../api/contact'
 import { CONTACT_INQUIRY_TYPES, CONTACT_INQUIRY_TYPE_LABELS } from '../constants/contact'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import InstitutionalPageHero from '../components/pages/InstitutionalPageHero'
 import InstitutionalPageShell from '../components/pages/InstitutionalPageShell'
 import ArticleContent from '../components/article/ArticleContent'
@@ -52,6 +53,11 @@ export default function ContactPage() {
     description: page?.seo?.description,
     canonical: 'https://womenshapingfutures.org/contact',
   })
+  // Home > (current loaded CMS page title) — matches the server's own
+  // breadcrumb for this page (spa_shell.py's _render_system_page_shell);
+  // finds and reuses the server-rendered tag, removes it on navigating
+  // away.
+  useBreadcrumbStructuredData(page ? [{ label: page?.seo?.title }] : null, 'https://womenshapingfutures.org/contact')
 
   async function handleSubmit(e) {
     e.preventDefault()

@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { fetchOpportunities, fetchOpportunityFilterOptions } from '../api/opportunities'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import OpportunityCard from '../components/cards/OpportunityCard'
 import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
+
+const CANONICAL = 'https://womenshapingfutures.org/opportunities'
 
 export default function OpportunitiesListingPage() {
   const [query, setQuery] = useState('')
@@ -21,8 +24,12 @@ export default function OpportunitiesListingPage() {
   useSeo({
     title: 'Opportunities | Women Shaping Futures',
     description: 'Scholarships, fellowships, grants, and accelerators for women worldwide.',
-    canonical: 'https://womenshapingfutures.org/opportunities',
+    canonical: CANONICAL,
   })
+  // Home > Opportunities — matches the server's own 2-level breadcrumb
+  // for this list page; finds and reuses the server-rendered tag,
+  // removes it on navigating away.
+  useBreadcrumbStructuredData([{ label: 'Opportunities' }], CANONICAL)
 
   useEffect(() => {
     let active = true

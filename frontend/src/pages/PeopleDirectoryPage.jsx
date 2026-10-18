@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
 import { fetchPeople, fetchPeopleFilterOptions } from '../api/people'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import PersonCard from '../components/cards/PersonCard'
@@ -9,6 +10,7 @@ import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
 
 const EMPTY_OPTIONS = { countries: [], regions: [], industries: [], expertise: [] }
+const CANONICAL = 'https://womenshapingfutures.org/people'
 
 export default function PeopleDirectoryPage() {
   const [query, setQuery] = useState('')
@@ -33,8 +35,12 @@ export default function PeopleDirectoryPage() {
   useSeo({
     title: 'People Directory | Women Shaping Futures',
     description: 'Discover the women leading business, science, government, and culture around the world.',
-    canonical: 'https://womenshapingfutures.org/people',
+    canonical: CANONICAL,
   })
+  // Home > People — matches the server's own 2-level breadcrumb for this
+  // list page; finds and reuses the server-rendered tag, removes it on
+  // navigating away.
+  useBreadcrumbStructuredData([{ label: 'People' }], CANONICAL)
 
   useEffect(() => {
     let active = true

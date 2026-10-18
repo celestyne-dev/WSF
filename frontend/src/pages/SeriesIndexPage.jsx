@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { fetchSeries } from '../api/taxonomies'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import SeriesCard from '../components/cards/SeriesCard'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
+
+const CANONICAL = 'https://womenshapingfutures.org/series'
 
 export default function SeriesIndexPage() {
   const [series, setSeries] = useState(null)
@@ -13,8 +16,12 @@ export default function SeriesIndexPage() {
   useSeo({
     title: 'Editorial Series | Women Shaping Futures',
     description: 'Explore our ongoing editorial series, from Women Doing Incredible Things to Founder Stories.',
-    canonical: 'https://womenshapingfutures.org/series',
+    canonical: CANONICAL,
   })
+  // Home > Series — matches the server's own 2-level breadcrumb for this
+  // list page; finds and reuses the server-rendered tag, removes it on
+  // navigating away.
+  useBreadcrumbStructuredData([{ label: 'Series' }], CANONICAL)
 
   useEffect(() => {
     let active = true

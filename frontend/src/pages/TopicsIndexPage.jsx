@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchTopics } from '../api/taxonomies'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
+
+const CANONICAL = 'https://womenshapingfutures.org/topics'
 
 export default function TopicsIndexPage() {
   const [topics, setTopics] = useState(null)
@@ -13,8 +16,13 @@ export default function TopicsIndexPage() {
   useSeo({
     title: 'Stories by Topic | Women Shaping Futures',
     description: 'Explore Women Shaping Futures stories by topic — leadership, careers, entrepreneurship, money, technology, and more.',
-    canonical: 'https://womenshapingfutures.org/topics',
+    canonical: CANONICAL,
   })
+  // Home > Topics — matches the server's own 2-level breadcrumb for this
+  // list page (spa_shell.py's _LIST_PAGE_BREADCRUMB_LABELS["topics"]), so
+  // this hook finds and reuses the server-rendered tag rather than
+  // appending a duplicate, and removes it on navigating away.
+  useBreadcrumbStructuredData([{ label: 'Topics' }], CANONICAL)
 
   useEffect(() => {
     let active = true

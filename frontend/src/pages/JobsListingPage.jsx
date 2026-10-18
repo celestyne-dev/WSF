@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { fetchJobs, fetchJobsFilterOptions } from '../api/jobs'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import JobCard from '../components/cards/JobCard'
@@ -9,6 +10,7 @@ import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
 
 const PAGE_SIZE = 10
+const CANONICAL = 'https://womenshapingfutures.org/jobs'
 const CLOSING_OPTIONS = [
   { value: '7', label: 'Within 7 days' },
   { value: '30', label: 'Within 30 days' },
@@ -37,8 +39,12 @@ export default function JobsListingPage() {
   useSeo({
     title: 'Jobs for Women | Women Shaping Futures',
     description: 'Curated job openings from employers committed to hiring and advancing women, worldwide and remote.',
-    canonical: 'https://womenshapingfutures.org/jobs',
+    canonical: CANONICAL,
   })
+  // Home > Jobs — matches the server's own 2-level breadcrumb for this
+  // list page; finds and reuses the server-rendered tag, removes it on
+  // navigating away.
+  useBreadcrumbStructuredData([{ label: 'Jobs' }], CANONICAL)
 
   useEffect(() => {
     let active = true

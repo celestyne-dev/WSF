@@ -22,14 +22,21 @@ import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
 // Valid schema.org structured data for a downloadable resource — built
-// only from fields this record actually carries.
+// only from fields this record actually carries. @type checks
+// resource.type === 'Video Resource' — the Resource model's actual
+// content-type field (see RESOURCE_TYPES in app/models/resource.py) —
+// never resource.accessType (the delivery/gating mechanism), which has
+// no "video" value at all and was the wrong field checked here before
+// this correction. Must match the server's _build_resource_json_ld
+// exactly (app/services/spa_shell.py), or hydration overwrites the
+// server's correct SSR @type with a wrong one.
 function useResourceStructuredData(resource, canonicalUrl) {
   const siteName = useSelector((s) => s.site.settings?.site?.name) || 'Women Shaping Futures'
   useEffect(() => {
     if (!resource) return
     const data = {
       '@context': 'https://schema.org',
-      '@type': resource.accessType === 'video_resource' ? 'VideoObject' : 'DigitalDocument',
+      '@type': resource.type === 'Video Resource' ? 'VideoObject' : 'DigitalDocument',
       name: resource.name,
       description: resource.shortDescription || resource.name,
       ...(resource.coverImage ? { image: resolveImage(resource.coverImage, { width: 1200, height: 630 }) } : {}),

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { fetchEvents, fetchEventsFilterOptions } from '../api/events'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import EventCard from '../components/cards/EventCard'
@@ -12,6 +13,7 @@ const PRICE_OPTIONS = [
   { value: 'free', label: 'Free' },
   { value: 'paid', label: 'Paid' },
 ]
+const CANONICAL = 'https://womenshapingfutures.org/events'
 
 export default function EventsListingPage() {
   const [query, setQuery] = useState('')
@@ -33,8 +35,12 @@ export default function EventsListingPage() {
   useSeo({
     title: 'Events | Women Shaping Futures',
     description: 'WSF conferences, webinars, workshops, and networking events — in person and online, worldwide.',
-    canonical: 'https://womenshapingfutures.org/events',
+    canonical: CANONICAL,
   })
+  // Home > Events — matches the server's own 2-level breadcrumb for this
+  // list page; finds and reuses the server-rendered tag, removes it on
+  // navigating away.
+  useBreadcrumbStructuredData([{ label: 'Events' }], CANONICAL)
 
   useEffect(() => {
     let active = true

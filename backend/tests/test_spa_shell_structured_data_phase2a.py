@@ -256,11 +256,13 @@ class TestEventStructuredData:
         assert resp.status_code == 404
         assert "data-event-structured-data" not in resp.get_data(as_text=True)
 
-    def test_absent_ticket_price_is_explicit_free_not_fake_zero(self, client, app):
-        # Matches EventSchema.get_is_free's own authoritative rule (`not
-        # ticket_price`) — a ticket price that was simply never entered
-        # becomes a genuinely free offer (price "0"), never a fabricated
-        # currency for one that was never configured either.
+    def test_absent_ticket_price_means_free_not_fake_zero(self, client, app):
+        # The Event model has no separate "this event is free" flag —
+        # ticket_price absent is simply treated as free by convention,
+        # matching EventSchema.get_is_free's own rule (`not ticket_price`)
+        # — so a ticket price that was never entered becomes a genuinely
+        # free offer (price "0"), never a fabricated currency for one
+        # that was never configured either.
         _use_fixture_index(app)
         _make_event(app, "free-webinar", registration_url="https://example.com/register", ticket_price=None, currency=None)
         html = client.get("/events/free-webinar").get_data(as_text=True)
@@ -328,6 +330,26 @@ class TestResourceStructuredData:
         html = client.get("/resources/circle-guide").get_data(as_text=True)
         data = _structured_data_json_by_attr(html, "data-resource-structured-data")
         assert "offers" not in data
+
+    def test_video_resource_type_gets_videoobject(self, client, app):
+        # @type is driven by Resource.type (the content-type field — see
+        # RESOURCE_TYPES in app/models/resource.py), never access_type
+        # (the delivery/gating mechanism) — access_type here is
+        # deliberately an ordinary one, to prove type alone decides this.
+        _use_fixture_index(app)
+        _make_resource(app, "masterclass-video", type="Video Resource", access_type="direct_download")
+        html = client.get("/resources/masterclass-video").get_data(as_text=True)
+        data = _structured_data_json_by_attr(html, "data-resource-structured-data")
+        assert data["@type"] == "VideoObject"
+
+    def test_ordinary_resource_types_get_digitaldocument(self, client, app):
+        _use_fixture_index(app)
+        _make_resource(app, "workbook-guide", type="Workbook", access_type="direct_download")
+        _make_resource(app, "plain-guide", type="Guide", access_type="direct_download")
+        for slug in ("workbook-guide", "plain-guide"):
+            html = client.get(f"/resources/{slug}").get_data(as_text=True)
+            data = _structured_data_json_by_attr(html, "data-resource-structured-data")
+            assert data["@type"] == "DigitalDocument"
 
     def test_resources_list_page_has_no_resource_schema(self, client, app):
         _use_fixture_index(app)

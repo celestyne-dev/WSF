@@ -38,6 +38,16 @@ const EVENT_STATUS_SCHEMA = {
 // virtualLinkPublic is true off-page, since search engines index this
 // data publicly regardless of on-page visibility. Performers are only the
 // speakers WSF actually lists for this event — never invented.
+//
+// offers.price: the Event model has no separate "this event is free"
+// flag — ticketPrice absent is simply treated as free by convention (see
+// EventSchema.get_is_free on the backend: `not obj.ticket_price`), so a
+// missing ticketPrice here means price "0", with priceCurrency included
+// only if a real currency is actually on file (never a fabricated one).
+// When ticketPrice IS set, price + currency are only emitted together —
+// never a price with no real currency to pair it with. Must match the
+// server's _build_event_json_ld exactly (app/services/spa_shell.py), or
+// hydration overwrites the server's correct SSR JSON-LD with a wrong one.
 function useEventStructuredData(event, canonicalUrl) {
   const siteName = useSelector((s) => s.site.settings?.site?.name) || 'Women Shaping Futures'
   useEffect(() => {
@@ -75,8 +85,11 @@ function useEventStructuredData(event, canonicalUrl) {
             offers: {
               '@type': 'Offer',
               url: event.registrationUrl,
-              price: event.ticketPrice || 0,
-              priceCurrency: event.currency || 'USD',
+              ...(!event.ticketPrice
+                ? { price: '0', ...(event.currency ? { priceCurrency: event.currency } : {}) }
+                : event.currency
+                  ? { price: event.ticketPrice, priceCurrency: event.currency }
+                  : {}),
               availability: event.soldOut ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock',
             },
           }
