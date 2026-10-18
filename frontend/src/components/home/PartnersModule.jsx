@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchOrganizationBySlug } from '../../api/taxonomies'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 
 export default function PartnersModule({ module }) {
   const [partners, setPartners] = useState([])
@@ -28,11 +29,12 @@ export default function PartnersModule({ module }) {
               media={p.logoMedia}
               variant="thumbnail"
               mediaPath={p.logo}
-              alt={p.name}
+              alt={resolveAltText(p.logoMedia, `${p.name} logo`)}
               width={200}
               height={100}
               aspect={2}
               tone="taupe"
+              sizes="48px"
               className="mx-auto h-12 w-auto grayscale transition-all hover:grayscale-0"
             />
           ))}

@@ -6,7 +6,7 @@ import { Calendar, MapPin, Clock, Ticket, Globe2, AlertCircle, CalendarPlus, Pau
 import { fetchEventBySlug, fetchEvents } from '../api/events'
 import { registerForEvent, checkEventRegistration } from '../api/eventRegistrations'
 import { formatDate, formatCurrency } from '../utils/format'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
@@ -173,7 +173,7 @@ function downloadIcs(event, canonicalUrl) {
 function SpeakerTile({ speaker }) {
   const content = (
     <>
-      <MediaImage media={speaker.headshot} width={160} height={160} aspect={1} alt={speaker.name} tone="plum" className="h-20 w-20 rounded-full object-cover" />
+      <MediaImage media={speaker.headshot} width={160} height={160} aspect={1} alt={resolveAltText(speaker.headshot, speaker.name)} tone="plum" sizes="80px" className="h-20 w-20 rounded-full object-cover" />
       <div className="mt-2">
         <p className="font-serif text-sm font-semibold text-charcoal">{speaker.name}</p>
         {(speaker.title || speaker.organizationName) && (
@@ -194,7 +194,7 @@ function SpeakerTile({ speaker }) {
 
 function SponsorTile({ sponsor }) {
   const inner = sponsor.logo?.mediaPath ? (
-    <MediaImage media={sponsor.logo} variant="thumbnail" width={160} height={80} aspect={2} tone="taupe" alt={sponsor.name} className="h-10 w-auto object-contain" />
+    <MediaImage media={sponsor.logo} variant="thumbnail" width={160} height={80} aspect={2} tone="taupe" alt={resolveAltText(sponsor.logo, `${sponsor.name} logo`)} sizes="80px" className="h-10 w-auto object-contain" />
   ) : (
     <span className="font-serif text-sm font-semibold text-charcoal">{sponsor.name}</span>
   )
@@ -444,7 +444,7 @@ export default function EventDetailPage() {
   return (
     <div>
       <div className="relative">
-        <MediaImage media={event.coverMedia} variant="hero" mediaPath={event.coverImage} alt={event.title} width={1920} height={720} aspect={2.6} tone="burgundy" priority className="h-64 w-full object-cover sm:h-96" />
+        <MediaImage media={event.coverMedia} variant="hero" mediaPath={event.coverImage} alt={resolveAltText(event.coverMedia, event.title)} width={1920} height={720} aspect={2.6} tone="burgundy" sizes="100vw" priority className="h-64 w-full object-cover sm:h-96" />
         <div className="absolute inset-0 bg-gradient-to-t from-charcoal-800/80 to-transparent" />
         <div className="container-editorial absolute inset-x-0 bottom-0 pb-8 text-ivory">
           <Breadcrumb items={[{ label: 'Events', to: '/events' }, { label: event.title }]} />
@@ -630,7 +630,7 @@ export default function EventDetailPage() {
               {event.organizerSlug ? (
                 <Link to={`/organizations/${event.organizerSlug}`} className="flex items-center gap-3 font-serif text-base font-semibold text-charcoal hover:text-burgundy-600">
                   {event.organizerLogo && (
-                    <MediaImage media={event.organizerLogoMedia} variant="thumbnail" mediaPath={event.organizerLogo} alt={event.organizer} width={80} height={80} aspect={1} className="h-8 w-8 object-contain" />
+                    <MediaImage media={event.organizerLogoMedia} variant="thumbnail" mediaPath={event.organizerLogo} alt={resolveAltText(event.organizerLogoMedia, `${event.organizer} logo`)} width={80} height={80} aspect={1} sizes="32px" className="h-8 w-8 object-contain" />
                   )}
                   {event.organizer}
                 </Link>

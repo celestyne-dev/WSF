@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 
 export default function SeriesCard({ item }) {
   if (!item) return null
@@ -9,11 +10,12 @@ export default function SeriesCard({ item }) {
         media={item.coverMedia}
         variant="card"
         mediaPath={item.coverImage}
-        alt={item.name}
+        alt={resolveAltText(item.coverMedia, item.name)}
         width={900}
         height={1125}
         aspect={0.8}
         tone="plum"
+        sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
         className="aspect-[4/5] w-full object-cover transition-transform duration-700 group-hover:scale-105"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-charcoal-800/85 via-charcoal-800/10 to-transparent" />

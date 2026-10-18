@@ -5,7 +5,7 @@ import SocialIcon from '../components/ui/SocialIcon'
 import { fetchPersonBySlug } from '../api/people'
 import { fetchArticles } from '../api/articles'
 import { fetchSeriesBySlug } from '../api/taxonomies'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
@@ -114,7 +114,7 @@ export default function PersonProfilePage() {
         <div className="container-editorial">
           <Breadcrumb items={[{ label: 'People', to: '/people' }, { label: person.name }]} />
           <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-[220px_1fr] sm:items-center">
-            <MediaImage media={person.photoMedia} variant="medium" mediaPath={person.photo} alt={person.name} width={440} height={550} aspect={0.8} className="aspect-[4/5] w-full max-w-[220px] object-cover" />
+            <MediaImage media={person.photoMedia} variant="medium" mediaPath={person.photo} alt={resolveAltText(person.photoMedia, person.name)} width={440} height={550} aspect={0.8} sizes="220px" className="aspect-[4/5] w-full max-w-[220px] object-cover" />
             <div>
               <h1 className="font-serif text-4xl font-semibold text-charcoal sm:text-5xl">
                 {person.name} {person.pronouns && <span className="text-xl font-normal text-charcoal-600/60">({person.pronouns})</span>}

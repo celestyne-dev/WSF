@@ -7,7 +7,7 @@ import { fetchJobs } from '../api/jobs'
 import { fetchOpportunities } from '../api/opportunities'
 import { fetchPeople } from '../api/people'
 import { fetchArticles } from '../api/articles'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import useSeo from '../hooks/useSeo'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -133,7 +133,7 @@ export default function OrganizationDetailPage() {
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
             {org.logo ? (
               <div className="flex h-24 w-24 shrink-0 items-center justify-center border border-taupe-200 bg-white p-3">
-                <MediaImage media={org.logoMedia} variant="thumbnail" mediaPath={org.logo} alt={`${org.name} logo`} width={200} height={200} aspect={1} className="h-full w-full object-contain" />
+                <MediaImage media={org.logoMedia} variant="thumbnail" mediaPath={org.logo} alt={resolveAltText(org.logoMedia, `${org.name} logo`)} width={200} height={200} aspect={1} sizes="96px" className="h-full w-full object-contain" />
               </div>
             ) : null}
             <div>

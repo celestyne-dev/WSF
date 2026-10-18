@@ -202,15 +202,38 @@ export function resolveMediaImage(media, { variant = 'card', width = 1200, heigh
   if (!media) return { src: resolveImage(null, { width, height, tone }), srcSet: undefined }
 
   const realEntries = Object.entries(media.variants || {}).filter(
-    ([, v]) => v?.url && v?.width && isBackendMediaPath(v.url),
+    ([, v]) => v?.url && Number.isFinite(v?.width) && v.width > 0 && isBackendMediaPath(v.url),
   )
   if (realEntries.length) {
     const preferred = media.variants?.[variant]
     const src = toAbsoluteUrl((preferred?.url && isBackendMediaPath(preferred.url) ? preferred.url : realEntries[0][1].url))
-    const srcSet = realEntries.map(([, v]) => `${toAbsoluteUrl(v.url)} ${v.width}w`).join(', ')
+    // Sorted ascending by width and deduped by width (the browser's srcset
+    // parser doesn't require either, but a predictable, width-ordered list
+    // with no repeated descriptor is easier to reason about/test, and
+    // guards against a future backend response that repeats a width across
+    // two variant names).
+    const byWidth = new Map()
+    for (const [, v] of realEntries) byWidth.set(v.width, v.url)
+    const srcSet = [...byWidth.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([w, url]) => `${toAbsoluteUrl(url)} ${w}w`)
+      .join(', ')
     return { src, srcSet }
   }
 
   const path = pickVariantPath(media, variant)
   return { src: resolveImage(path, { width, height, tone }), srcSet: resolveSrcSet(path, { aspect, tone }) }
+}
+
+/**
+ * Contextual alt-text fallback for a public-content image: a real
+ * uploaded Media's own `altText` always wins when present (an editor
+ * deliberately wrote it), otherwise the caller's contextual fallback
+ * (the entity's own title/name — never fabricated visual detail). Call
+ * sites compute this themselves (rather than MediaImage doing it
+ * internally) so a component that genuinely wants a decorative `alt=""`
+ * can still pass that directly without this helper overriding it.
+ */
+export function resolveAltText(media, fallback) {
+  return media?.altText || fallback || ''
 }

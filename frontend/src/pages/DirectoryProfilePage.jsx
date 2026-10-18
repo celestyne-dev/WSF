@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { Globe, ShieldCheck, Star, ArrowUpRight } from 'lucide-react'
 import { fetchDirectoryListing } from '../api/directory'
 import { fetchJobs } from '../api/jobs'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import {
   DIRECTORY_OWNERSHIP_LABELS,
   DIRECTORY_LISTING_TYPE_LABELS,
@@ -109,7 +109,7 @@ export default function DirectoryProfilePage() {
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
             {org.logo ? (
               <div className="flex h-24 w-24 shrink-0 items-center justify-center border border-taupe-200 bg-white p-3">
-                <MediaImage media={org.logo} variant="thumbnail" alt={`${org.name} logo`} width={200} height={200} aspect={1} className="h-full w-full object-contain" />
+                <MediaImage media={org.logo} variant="thumbnail" alt={resolveAltText(org.logo, `${org.name} logo`)} width={200} height={200} aspect={1} className="h-full w-full object-contain" />
               </div>
             ) : null}
             <div>

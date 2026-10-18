@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Quote } from 'lucide-react'
 import { fetchPersonBySlug } from '../../api/people'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 
 export default function FeaturedWomanModule({ module }) {
   const [person, setPerson] = useState(undefined)
@@ -27,11 +28,12 @@ export default function FeaturedWomanModule({ module }) {
           media={person.photoMedia}
           variant="large"
           mediaPath={person.photo}
-          alt={person.name}
+          alt={resolveAltText(person.photoMedia, person.name)}
           width={900}
           height={1080}
           aspect={5 / 6}
           tone="plum"
+          sizes="(min-width: 1024px) 50vw, 100vw"
           className="aspect-[5/6] w-full max-w-md object-cover"
         />
         <div>

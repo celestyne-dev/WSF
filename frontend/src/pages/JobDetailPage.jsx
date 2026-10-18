@@ -7,7 +7,7 @@ import { fetchJobBySlug, fetchJobs, accessJob } from '../api/jobs'
 import { fetchOrganizationBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
 import { formatSalary, formatDate } from '../utils/format'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
@@ -283,7 +283,7 @@ export default function JobDetailPage() {
 
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-              <MediaImage media={job.logoMedia} variant="thumbnail" mediaPath={job.logo} alt={`${job.company} logo`} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-contain p-2" />
+              <MediaImage media={job.logoMedia} variant="thumbnail" mediaPath={job.logo} alt={resolveAltText(job.logoMedia, `${job.company} logo`)} width={160} height={160} aspect={1} sizes="80px" className="h-20 w-20 border border-taupe-200 object-contain p-2" />
               <div>
                 <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{job.title}</h1>
                 {job.companySlug ? (
@@ -457,7 +457,7 @@ export default function JobDetailPage() {
             <div className="border border-taupe-200 p-5">
               <p className="eyebrow mb-3">About {job.company}</p>
               {company?.logo && (
-                <MediaImage media={company.logoMedia} variant="thumbnail" mediaPath={company.logo} alt={job.company} width={120} height={120} aspect={1} className="mb-3 h-14 w-14 object-contain" />
+                <MediaImage media={company.logoMedia} variant="thumbnail" mediaPath={company.logo} alt={resolveAltText(company.logoMedia, `${job.company} logo`)} width={120} height={120} aspect={1} sizes="56px" className="mb-3 h-14 w-14 object-contain" />
               )}
               {company?.shortDescription && <p className="mb-3 text-sm text-charcoal-600">{company.shortDescription}</p>}
               <Link to={`/organizations/${job.companySlug}`} className="font-serif text-base font-semibold text-charcoal hover:text-burgundy-600">

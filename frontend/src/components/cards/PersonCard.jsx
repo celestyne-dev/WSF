@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 
 // `person` must be a normalized object from api/people.js — its `country`
 // field is already resolved there (nested by the backend in real mode,
@@ -12,10 +13,11 @@ export default function PersonCard({ person }) {
         media={person.photoMedia}
         variant="card"
         mediaPath={person.photo}
-        alt={person.name}
+        alt={resolveAltText(person.photoMedia, person.name)}
         width={600}
         height={750}
         aspect={0.8}
+        sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
         className="aspect-[4/5] w-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
       <div className="mt-3">

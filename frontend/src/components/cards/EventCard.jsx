@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { MapPin, Globe2 } from 'lucide-react'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 import { formatDate, formatCurrency } from '../../utils/format'
 
 export default function EventCard({ event }) {
@@ -60,10 +61,11 @@ export default function EventCard({ event }) {
           media={event.coverMedia}
           variant="thumbnail"
           mediaPath={event.coverImage}
-          alt={event.title}
+          alt={resolveAltText(event.coverMedia, event.title)}
           width={200}
           height={200}
           aspect={1}
+          sizes="80px"
           className="hidden h-20 w-20 shrink-0 object-cover sm:block"
         />
       )}

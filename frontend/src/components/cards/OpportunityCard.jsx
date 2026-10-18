@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Clock } from 'lucide-react'
 import MediaImage from '../ui/MediaImage'
 import Tag from '../ui/Tag'
+import { resolveAltText } from '../../utils/media'
 import { formatDeadline, formatFunding } from '../../utils/format'
 
 export default function OpportunityCard({ opportunity }) {
@@ -27,10 +28,11 @@ export default function OpportunityCard({ opportunity }) {
                   media={opportunity.logoMedia}
                   variant="thumbnail"
                   mediaPath={opportunity.logo}
-                  alt={opportunity.organization}
+                  alt={resolveAltText(opportunity.logoMedia, `${opportunity.organization} logo`)}
                   width={64}
                   height={64}
                   aspect={1}
+                  sizes="32px"
                   className="h-full w-full object-contain"
                 />
               </div>

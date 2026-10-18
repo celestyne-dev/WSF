@@ -243,6 +243,17 @@ def _validate_for_publish(article):
             "This article is marked as AI-assisted or AI-generated and must be confirmed as human-reviewed "
             "before it can be published."
         )
+    # WSF SEO Phase 2C — the block editor already lets an editor set a
+    # real alt field on every image block (see ArticleBlockEditor.jsx's
+    # ImageBlockEditor); this only catches the case where an image was
+    # attached but that field was left blank, never a block with no
+    # image at all (nothing to describe there).
+    missing_alt = any(
+        isinstance(block, dict) and block.get("type") == "image" and block.get("media") and not (block.get("alt") or "").strip()
+        for block in (article.content or [])
+    )
+    if missing_alt:
+        errors.append("Add alt text to every image before publishing (leave it blank only for a purely decorative image).")
     if errors:
         raise ApiError(errors[0], 422, code="publish_validation_failed", errors=errors)
 

@@ -59,6 +59,10 @@ export default function MediaImage({
       width={width}
       height={computedHeight}
       loading={priority ? 'eager' : 'lazy'}
+      // Only a genuine hero/LCP image should ever request high fetch
+      // priority — every other call site (cards, thumbnails, avatars,
+      // logos) leaves this at the browser's own default, never "high".
+      fetchPriority={priority ? 'high' : undefined}
       decoding="async"
       className={className}
     />

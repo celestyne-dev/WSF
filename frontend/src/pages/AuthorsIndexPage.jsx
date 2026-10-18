@@ -8,6 +8,7 @@ import PageHeader from '../components/ui/PageHeader'
 import MediaImage from '../components/ui/MediaImage'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
+import { resolveAltText } from '../utils/media'
 
 const CANONICAL = 'https://womenshapingfutures.org/authors'
 
@@ -54,7 +55,7 @@ export default function AuthorsIndexPage() {
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
               {authors.map((author) => (
                 <Link key={author.id} to={`/authors/${author.slug}`} className="group flex items-start gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40">
-                  <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={author.name} width={160} height={160} aspect={1} className="h-16 w-16 shrink-0 rounded-full object-cover" />
+                  <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={resolveAltText(author.photoMedia, author.name)} width={160} height={160} aspect={1} sizes="64px" className="h-16 w-16 shrink-0 rounded-full object-cover" />
                   <div>
                     <h2 className="font-serif text-lg font-semibold text-charcoal transition-colors group-hover:text-burgundy-600">{author.name}</h2>
                     {author.role && <p className="text-sm text-charcoal-600">{author.role}</p>}

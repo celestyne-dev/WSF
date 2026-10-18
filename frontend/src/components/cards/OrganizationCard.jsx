@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 
 const TYPE_LABELS = {
   company: 'Company',
@@ -30,10 +31,11 @@ export default function OrganizationCard({ organization }) {
             media={organization.logoMedia}
             variant="thumbnail"
             mediaPath={organization.logo}
-            alt={`${organization.name} logo`}
+            alt={resolveAltText(organization.logoMedia, `${organization.name} logo`)}
             width={112}
             height={112}
             aspect={1}
+            sizes="64px"
             className="h-full w-full object-contain"
           />
         </div>

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Mail, Lock, Sparkles, ExternalLink } from 'lucide-react'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 import { formatCurrency } from '../../utils/format'
 
 const ACCESS_BADGE = {
@@ -22,10 +23,11 @@ export default function ResourceCard({ resource }) {
           media={resource.coverMedia}
           variant="card"
           mediaPath={resource.coverImage}
-          alt={resource.name}
+          alt={resolveAltText(resource.coverMedia, resource.name)}
           width={800}
           height={1000}
           aspect={4 / 5}
+          sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
           className="aspect-[4/5] w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         {resource.featured && (

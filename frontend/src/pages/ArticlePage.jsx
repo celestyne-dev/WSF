@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import { Clock, Sparkles } from 'lucide-react'
 import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles } from '../api/articles'
 import { fetchPersonBySlug } from '../api/people'
-import { resolveImage, resolveMediaImage } from '../utils/media'
+import { resolveImage, resolveMediaImage, resolveAltText } from '../utils/media'
 import { buildArticleStructuredData } from '../utils/articleStructuredData'
 import { formatDate } from '../utils/format'
 import { resolveReadingTime } from '../utils/readingTime'
@@ -266,7 +266,7 @@ export default function ArticlePage() {
             <div className="mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 {author && (
-                  <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={author.name} width={96} height={96} aspect={1} className="h-12 w-12 rounded-full object-cover" />
+                  <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={resolveAltText(author.photoMedia, author.name)} width={96} height={96} aspect={1} sizes="48px" className="h-12 w-12 rounded-full object-cover" />
                 )}
                 <div className="text-sm">
                   <p className="font-semibold text-charcoal">
@@ -317,10 +317,11 @@ export default function ArticlePage() {
             media={article.heroMedia}
             variant="hero"
             mediaPath={article.heroImage}
-            alt={article.heroImageAlt}
+            alt={resolveAltText(article.heroMedia, article.title)}
             width={1600}
             height={Math.round(1600 / heroAspect)}
             aspect={heroAspect}
+            sizes="(min-width: 1120px) 1120px, 100vw"
             priority
             className="h-auto w-full object-contain"
           />

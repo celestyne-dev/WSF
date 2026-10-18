@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ShieldCheck, Star } from 'lucide-react'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 import { DIRECTORY_OWNERSHIP_LABELS } from '../../constants/directory'
 
 // `listing` must be a normalized object from api/directory.js
@@ -20,7 +21,7 @@ export default function DirectoryCard({ listing }) {
       <div className="flex items-start gap-4">
         {org.logo ? (
           <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-taupe-100 bg-white p-2">
-            <MediaImage media={org.logo} variant="thumbnail" alt={`${org.name} logo`} width={112} height={112} aspect={1} className="h-full w-full object-contain" />
+            <MediaImage media={org.logo} variant="thumbnail" alt={resolveAltText(org.logo, `${org.name} logo`)} width={112} height={112} aspect={1} sizes="56px" className="h-full w-full object-contain" />
           </div>
         ) : (
           <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-taupe-100 bg-taupe-100 font-serif text-base font-semibold text-charcoal-600">

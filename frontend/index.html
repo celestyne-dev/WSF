@@ -6,6 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Women Shaping Futures</title>
     <meta name="description" content="Women Shaping Futures — a global media, opportunity, and growth platform for women." />
+    <!-- Same Fraunces + Inter families/weights previously loaded via a
+         CSS @import in src/index.css — moved here so the browser can
+         discover and connect to Google Fonts before any CSS/JS parses,
+         instead of only after the stylesheet that contained the @import
+         itself loads. Font behavior (families, weights, display=swap)
+         is unchanged. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>

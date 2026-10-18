@@ -5,7 +5,7 @@ import { toast } from 'react-toastify'
 import { Calendar, Globe2, Award, AlertCircle } from 'lucide-react'
 import { fetchOpportunityBySlug, fetchOpportunities, accessOpportunity } from '../api/opportunities'
 import { formatDate, formatFunding } from '../utils/format'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
@@ -246,7 +246,7 @@ export default function OpportunityDetailPage() {
           <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
               {opportunity.logo && (
-                <MediaImage media={opportunity.logoMedia} variant="thumbnail" mediaPath={opportunity.logo} alt={opportunity.organization} width={160} height={160} aspect={1} className="h-20 w-20 border border-taupe-200 object-contain p-2" />
+                <MediaImage media={opportunity.logoMedia} variant="thumbnail" mediaPath={opportunity.logo} alt={resolveAltText(opportunity.logoMedia, `${opportunity.organization} logo`)} width={160} height={160} aspect={1} sizes="80px" className="h-20 w-20 border border-taupe-200 object-contain p-2" />
               )}
               <div>
                 {opportunity.type && <Tag tone="plum">{opportunity.type}</Tag>}

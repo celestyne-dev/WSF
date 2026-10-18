@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { MapPin, Clock } from 'lucide-react'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 import { formatSalary, formatDeadline } from '../../utils/format'
 
 export default function JobCard({ job }) {
@@ -17,10 +18,11 @@ export default function JobCard({ job }) {
             media={job.logoMedia}
             variant="thumbnail"
             mediaPath={job.logo}
-            alt={`${job.company} logo`}
+            alt={resolveAltText(job.logoMedia, `${job.company} logo`)}
             width={112}
             height={112}
             aspect={1}
+            sizes="56px"
             className="h-full w-full object-contain"
           />
         </div>

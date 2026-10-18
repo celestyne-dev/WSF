@@ -179,6 +179,68 @@ def _set_structured_data(html_doc, attr_name, data):
     return html_doc
 
 
+_IMAGE_PRELOAD_RE = re.compile(r'<link\b[^>]*data-lcp-image-preload="true"[^>]*>', re.IGNORECASE)
+
+
+def _image_preload_candidates(media):
+    """Sorted-ascending, deduped-by-width (width, url) pairs built from a
+    real Media's own generated MediaVariant rows — mirrors frontend/src/
+    utils/media.js's resolveMediaImage() srcSet construction (same sort/
+    dedupe/invalid-width-filter rules) so the preloaded candidate set
+    matches what the browser will actually pick once the SPA mounts and
+    renders the same image with a real srcSet. Returns (href, candidates)
+    where `href` is a real generated variant when any exist (preferring
+    "large", matching what a browser that ignores imagesrcset would
+    fetch) and `candidates` is `[]` when none do — never the protected
+    filesystem path, only Media/MediaVariant.public_url.
+    """
+    by_width = {}
+    for variant in media.variants:
+        if variant.public_url and variant.width and variant.width > 0:
+            by_width[variant.width] = variant.public_url
+    if not by_width:
+        return media.public_url, []
+    candidates = sorted(by_width.items())
+    preferred = media.variant_url("large") or media.variant_url("hero") or candidates[-1][1]
+    return preferred, candidates
+
+
+def _set_image_preload(html_doc, *, media, public_site_url, sizes):
+    """WSF SEO Phase 2C — the ONE managed <link rel=preload as=image> tag
+    for this page's genuine LCP/hero image, same dedup-then-insert shape
+    as _set_meta/_set_structured_data (strip every existing managed tag,
+    then insert exactly one fresh tag when there's a real image to
+    preload). Only ever called for a route whose frontend ALSO marks
+    this same image `priority` — see render_article_shell and
+    _render_entity_detail's _ENTITY_IMAGE_PRELOAD for exactly which
+    routes that is. `sizes` should match that frontend <img>'s own
+    `sizes` attribute closely so the browser's preload candidate
+    selection agrees with its later real image-element selection.
+    """
+    html_doc = _IMAGE_PRELOAD_RE.sub("", html_doc)
+    if media is None:
+        return html_doc
+    href, candidates = _image_preload_candidates(media)
+    href_url = _absolute_url(href, public_site_url)
+    if not href_url:
+        return html_doc
+    attrs = [
+        'rel="preload"',
+        'as="image"',
+        f'href="{_escape(href_url, quote=True)}"',
+        'fetchpriority="high"',
+        'data-lcp-image-preload="true"',
+    ]
+    if len(candidates) > 1:
+        srcset_urls = [(w, _absolute_url(u, public_site_url)) for w, u in candidates]
+        if all(u for _, u in srcset_urls):
+            srcset = ", ".join(f"{_escape(u, quote=True)} {w}w" for w, u in srcset_urls)
+            attrs.append(f'imagesrcset="{srcset}"')
+            attrs.append(f'imagesizes="{_escape(sizes, quote=True)}"')
+    tag = f"<link {' '.join(attrs)}>"
+    return _insert_before_head_close(html_doc, tag + "\n")
+
+
 def _read_index_html():
     # Read fresh on every call — never cached in a module-level variable
     # — so a newer frontend build is picked up immediately with no
@@ -418,6 +480,16 @@ def render_article_shell(article):
         [("Stories", f"{public_site_url.rstrip('/')}/topics"), (article.title, canonical_url)],
     )
     html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
+
+    # WSF SEO Phase 2C — ArticlePage.jsx's hero is `priority` with
+    # `sizes="(min-width: 1120px) 1120px, 100vw"` (see that component);
+    # mirrored here exactly so a browser can start fetching the real LCP
+    # candidate before any JS/API round-trip resolves it client-side.
+    # `article.hero_media` is None for an article with no hero image, so
+    # this is a no-op (no preload tag) in that case.
+    html_doc = _set_image_preload(
+        html_doc, media=article.hero_media, public_site_url=public_site_url, sizes="(min-width: 1120px) 1120px, 100vw"
+    )
 
     return _html_response(html_doc)
 
@@ -1021,6 +1093,24 @@ _ENTITY_STRUCTURED_DATA_BUILDERS = {
     "authors": ("data-author-structured-data", _build_author_json_ld),
 }
 
+# WSF SEO Phase 2C — the 3 non-Article entity-detail prefixes whose
+# OWN frontend page marks its primary image `priority` (a genuine
+# above-the-fold hero/cover, not a small avatar/logo — see
+# SeriesDetailPage.jsx/ResourceDetailPage.jsx/EventDetailPage.jsx).
+# Topic (no page image at all), People/Authors (small portrait next to
+# a lot of text — left lazy on purpose) and Opportunities/Jobs (small
+# logo only) are deliberately absent: preloading their image would not
+# match a real LCP candidate. Each entry's `sizes` mirrors that same
+# frontend <img>'s own `sizes` attribute exactly. Resource's own
+# gallery defaults to showing `cover_media` first (see
+# ResourceGallery's `active` state in ResourceDetailPage.jsx), so that
+# is the correct media to preload there too.
+_ENTITY_IMAGE_PRELOAD = {
+    "series": (lambda e: e.cover_media, "(min-width: 1024px) 45vw, 100vw"),
+    "resources": (lambda e: e.cover_media, "(min-width: 640px) 360px, 100vw"),
+    "events": (lambda e: e.cover_media, "100vw"),
+}
+
 # The 8 list/landing pages that get a 2-level ("Home" > Section)
 # BreadcrumbList — a subset of _STATIC_ROUTES's "list"-kind entries:
 # circle/newsletter are deliberately excluded (not part of this phase's
@@ -1318,6 +1408,11 @@ def _render_entity_detail(prefix, slug):
         attr_name, build_entity_data = entity_builder
         entity_data = build_entity_data(entity, meta["canonical"], public_site_url, site_name)
         html_doc = _set_structured_data(html_doc, attr_name, entity_data)
+
+    image_preload = _ENTITY_IMAGE_PRELOAD.get(prefix)
+    if image_preload is not None:
+        get_media, sizes = image_preload
+        html_doc = _set_image_preload(html_doc, media=get_media(entity), public_site_url=public_site_url, sizes=sizes)
 
     return _html_response(html_doc)
 

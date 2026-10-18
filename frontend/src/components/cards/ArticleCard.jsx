@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
+import { resolveAltText } from '../../utils/media'
 import { formatShortDate } from '../../utils/format'
 import { resolveReadingTime } from '../../utils/readingTime'
 
@@ -25,9 +26,15 @@ export default function ArticleCard({ article, variant = 'grid' }) {
             media={article.heroMedia}
             variant="large"
             mediaPath={article.heroImage}
-            alt={article.heroImageAlt}
+            alt={resolveAltText(article.heroMedia, article.title)}
             width={1400}
             height={933}
+            // This variant is only ever used once, for the homepage's
+            // selected lead article (see HeroModule) — genuinely the
+            // page's LCP candidate, so it keeps `priority`. Roughly 2/3
+            // of the content column on desktop (lg:col-span-2 of 3),
+            // full width below that.
+            sizes="(min-width: 1024px) 66vw, 100vw"
             priority
             className="aspect-[3/2] w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
           />
@@ -64,10 +71,11 @@ export default function ArticleCard({ article, variant = 'grid' }) {
             media={article.heroMedia}
             variant="thumbnail"
             mediaPath={article.heroImage}
-            alt={article.heroImageAlt}
+            alt={resolveAltText(article.heroMedia, article.title)}
             width={400}
             height={400}
             aspect={1}
+            sizes="(min-width: 640px) 160px, 128px"
             className="aspect-square w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         </Link>
@@ -107,9 +115,10 @@ export default function ArticleCard({ article, variant = 'grid' }) {
           media={article.heroMedia}
           variant="card"
           mediaPath={article.heroImage}
-          alt={article.heroImageAlt}
+          alt={resolveAltText(article.heroMedia, article.title)}
           width={800}
           height={533}
+          sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
           className="aspect-[3/2] w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
       </Link>

@@ -6,7 +6,7 @@ import { Download, Lock, Mail, ExternalLink, Sparkles, X } from 'lucide-react'
 import { fetchResourceBySlug, fetchResources, requestResourceAccess, startResourceCheckout } from '../api/resources'
 import { fetchMyCircleMembership } from '../api/circle'
 import { getResourceCheckoutErrorPresentation } from '../utils/resourcePayment'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import { formatCurrency } from '../utils/format'
 import { trackEvent, withAcquisitionMetadata } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -342,10 +342,11 @@ function ResourceGallery({ resource }) {
           media={active ? active.media : resource.coverMedia}
           mediaPath={active ? active.mediaPath : resource.coverImage}
           variant="medium"
-          alt={resource.name}
+          alt={resolveAltText(active ? active.media : resource.coverMedia, resource.name)}
           width={800}
           height={1000}
           aspect={4 / 5}
+          sizes="(min-width: 640px) 360px, 100vw"
           className="w-full object-cover"
           priority
         />
@@ -418,10 +419,11 @@ function RelatedResourceCard({ resource }) {
           media={resource.coverMedia}
           variant="card"
           mediaPath={resource.coverImage}
-          alt={resource.name}
+          alt={resolveAltText(resource.coverMedia, resource.name)}
           width={640}
           height={480}
           aspect={4 / 3}
+          sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
           className="aspect-[4/3] w-full object-cover transition-transform duration-250 group-hover:scale-105"
         />
         {resource.featured && (
@@ -461,10 +463,11 @@ function RelatedResourceWideCard({ resource }) {
           media={resource.coverMedia}
           variant="card"
           mediaPath={resource.coverImage}
-          alt={resource.name}
+          alt={resolveAltText(resource.coverMedia, resource.name)}
           width={400}
           height={500}
           aspect={4 / 5}
+          sizes="(min-width: 640px) 192px, 100vw"
           className="aspect-[4/5] w-full object-cover transition-transform duration-250 group-hover:scale-105 sm:h-full"
         />
         {resource.featured && (

@@ -4,7 +4,7 @@ import { Globe, ArrowRight } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
 import { fetchAuthorBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
@@ -117,7 +117,7 @@ export default function AuthorProfilePage() {
         <div className="container-editorial">
           <Breadcrumb items={[{ label: 'Authors', to: '/authors' }, { label: author.name }]} />
           <div className="mt-6 flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-            <MediaImage media={author.photoMedia} variant="card" mediaPath={author.photo} alt={author.name} width={200} height={200} aspect={1} className="h-28 w-28 rounded-full object-cover" />
+            <MediaImage media={author.photoMedia} variant="card" mediaPath={author.photo} alt={resolveAltText(author.photoMedia, author.name)} width={200} height={200} aspect={1} sizes="112px" className="h-28 w-28 rounded-full object-cover" />
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{author.name}</h1>
               {author.role && <p className="mt-1 text-base text-charcoal-600">{author.role}</p>}

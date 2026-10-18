@@ -210,8 +210,11 @@ function PendingUploadDialog({ file, uploading, onUpload, onCancel }) {
         <div className="mt-4 space-y-3">
           <div>
             <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-              Alt text <span className="normal-case text-charcoal-600/60">— for accessibility and SEO</span>
+              Alt text
             </label>
+            <p className="mt-0.5 text-xs text-charcoal-600/70">
+              Describe the image&rsquo;s purpose for someone who cannot see it. Leave blank only if the image is decorative.
+            </p>
             <input
               autoFocus
               value={meta.altText}
@@ -309,7 +312,10 @@ function MediaDetailPanel({ media, onClose, onSaved, onDelete }) {
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Alt text <span className="normal-case text-charcoal-600/60">— required for accessibility and SEO</span></label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Alt text</label>
+            <p className="mt-0.5 text-xs text-charcoal-600/70">
+              Describe the image&rsquo;s purpose for someone who cannot see it. Leave blank only if the image is decorative.
+            </p>
             <input value={form.altText || ''} onChange={(e) => setForm((f) => ({ ...f, altText: e.target.value }))} className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none" />
           </div>
           <div>

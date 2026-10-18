@@ -4,7 +4,7 @@ import { fetchSeriesBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
-import { resolveImage } from '../utils/media'
+import { resolveImage, resolveAltText } from '../utils/media'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleCard from '../components/cards/ArticleCard'
@@ -90,11 +90,12 @@ export default function SeriesDetailPage() {
                 media={seriesItem.coverMedia}
                 variant="hero"
                 mediaPath={seriesItem.coverImage}
-                alt={seriesItem.name}
+                alt={resolveAltText(seriesItem.coverMedia, seriesItem.name)}
                 width={1000}
                 height={1000}
                 aspect={1}
                 tone="plum"
+                sizes="(min-width: 1024px) 45vw, 100vw"
                 priority
                 className="h-auto w-full object-contain lg:h-full"
               />

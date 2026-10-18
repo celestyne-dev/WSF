@@ -93,6 +93,7 @@ export default function HeroModule({ module }) {
             width={1200}
             height={800}
             aspect={3 / 2}
+            sizes="(min-width: 1024px) 50vw, 100vw"
             priority
             className="aspect-[3/2] w-full object-cover"
           />

@@ -77,7 +77,7 @@ function SponsorCard({ sponsor, placementKey }) {
     <div className="flex items-start gap-3 border border-taupe-200 bg-white p-4">
       <div className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden bg-taupe-100">
         {logo?.mediaPath ? (
-          <MediaImage media={logo} variant="thumbnail" width={160} height={100} aspect={16 / 10} alt={logo.altText || sponsor.publicName} className="h-full w-full object-contain" />
+          <MediaImage media={logo} variant="thumbnail" width={160} height={100} aspect={16 / 10} alt={logo.altText || `${sponsor.publicName} logo`} className="h-full w-full object-contain" />
         ) : (
           <span className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-charcoal-600/60">{sponsor.publicName}</span>
         )}
