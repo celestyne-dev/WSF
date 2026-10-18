@@ -1180,7 +1180,17 @@ def _render_system_page_shell(page_key, public_site_url, site_identity, site_nam
         site_name=site_name,
     )
     html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
-    breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(title, canonical)])
+    # Breadcrumb uses the real public CMS page display title (page.title
+    # — the same string AboutPage.jsx/ContactPage.jsx/LegalPage.jsx show
+    # as their H1), never `title` (the resolved <title>/SEO metadata
+    # above, which may be an editor-set SEO title or the global default)
+    # — "Home > Page title" means the page's own display title, not its
+    # meta title. When no published Page row exists, there is no real
+    # display title to show, so this falls back to the same safe
+    # `title` (== default_title) the metadata above already uses in
+    # that case, never a fabricated one.
+    breadcrumb_name = page.title if page is not None else title
+    breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(breadcrumb_name, canonical)])
     html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
     return _html_response(html_doc)
 

@@ -157,6 +157,16 @@ def _make_resource(app, slug, name="Career Reset Workbook", status="published", 
         return resource.id
 
 
+def _make_page(app, key, title="About Women Shaping Futures", status="published", **overrides):
+    from app.models.page import Page
+
+    with app.app_context():
+        page = Page(key=key, slug=key, title=title, status=status, **overrides)
+        db.session.add(page)
+        db.session.commit()
+        return page.id
+
+
 class TestJobPostingStructuredData:
     def test_published_job_gets_jobposting_with_stored_fields(self, client, app):
         _use_fixture_index(app)
@@ -536,6 +546,40 @@ class TestBreadcrumbCoverage:
         assert items[0]["name"] == "Home"
         assert len(items) == 2
         assert items[1]["item"] == "https://womenshapingfutures.org/about"
+
+    def test_cms_page_breadcrumb_uses_display_title_not_seo_title(self, client, app):
+        # The breadcrumb's final crumb is the real public page display
+        # title (Page.title — the same string shown as the page's own
+        # H1), never the resolved <title>/SEO metadata, even when a
+        # custom SEO title is configured and differs from it.
+        _use_fixture_index(app)
+        _make_page(
+            app,
+            "about",
+            title="About Women Shaping Futures",
+            seo={"title": "About WSF | Women Shaping Futures"},
+        )
+        html = client.get("/about").get_data(as_text=True)
+        assert "<title>About WSF | Women Shaping Futures</title>" in html
+        data = _structured_data_json_by_attr(html, "data-breadcrumb-structured-data")
+        items = data["itemListElement"]
+        assert [i["name"] for i in items] == ["Home", "About Women Shaping Futures"]
+
+    def test_contact_page_breadcrumb_uses_page_title_with_no_seo_title(self, client, app):
+        # Contact's own SEO title has no page.title fallback of its own
+        # (a blank seo.title falls straight through to the global site
+        # default for <title>/metadata) — but the breadcrumb is a
+        # different, display-title semantic, so it must still show the
+        # real Contact Page.title, never the global default and never
+        # an empty/undefined label.
+        _use_fixture_index(app)
+        _set_site_identity(app, seo_default_title="Site Default Title")
+        _make_page(app, "contact", title="Contact Women Shaping Futures", seo=None)
+        html = client.get("/contact").get_data(as_text=True)
+        assert "<title>Site Default Title</title>" in html
+        data = _structured_data_json_by_attr(html, "data-breadcrumb-structured-data")
+        items = data["itemListElement"]
+        assert [i["name"] for i in items] == ["Home", "Contact Women Shaping Futures"]
 
     def test_list_page_breadcrumb_is_home_and_section(self, client, app):
         _use_fixture_index(app)

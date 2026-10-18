@@ -53,11 +53,14 @@ export default function ContactPage() {
     description: page?.seo?.description,
     canonical: 'https://womenshapingfutures.org/contact',
   })
-  // Home > (current loaded CMS page title) — matches the server's own
-  // breadcrumb for this page (spa_shell.py's _render_system_page_shell);
-  // finds and reuses the server-rendered tag, removes it on navigating
-  // away.
-  useBreadcrumbStructuredData(page ? [{ label: page?.seo?.title }] : null, 'https://womenshapingfutures.org/contact')
+  // Home > (the real public CMS page display title, page.title) —
+  // matches the server's own breadcrumb for this page (spa_shell.py's
+  // _render_system_page_shell, same page.title) even though Contact's
+  // own useSeo title above has no page.title fallback of its own —
+  // the breadcrumb is a different, display-title semantic from the
+  // meta title, so it never goes undefined when no custom SEO title
+  // is configured.
+  useBreadcrumbStructuredData(page ? [{ label: page?.title }] : null, 'https://womenshapingfutures.org/contact')
 
   async function handleSubmit(e) {
     e.preventDefault()

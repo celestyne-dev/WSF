@@ -68,13 +68,16 @@ export default function LegalPage({ docKey }) {
     description: page?.seo?.description || page?.subtitle,
     canonical: `https://womenshapingfutures.org/${docKey}`,
   })
-  // Home > (current loaded CMS page title) — matches the server's own
-  // breadcrumb for this docKey (spa_shell.py's _render_system_page_shell,
-  // same title fallback chain), computed against the current docKey's
-  // own canonical so switching between /privacy, /terms, /cookies, and
-  // /editorial-policy never leaves a stale previous-page breadcrumb.
+  // Home > (the real public CMS page display title, page.title — same
+  // string shown as this page's own H1 via InstitutionalPageHero below)
+  // — matches the server's own breadcrumb for this docKey
+  // (spa_shell.py's _render_system_page_shell, same page.title, never
+  // the resolved SEO/meta title), computed against the current
+  // docKey's own canonical so switching between /privacy, /terms,
+  // /cookies, and /editorial-policy never leaves a stale previous-page
+  // breadcrumb.
   useBreadcrumbStructuredData(
-    page ? [{ label: page?.seo?.title || page?.title }] : null,
+    page ? [{ label: page?.title }] : null,
     `https://womenshapingfutures.org/${docKey}`,
   )
 
