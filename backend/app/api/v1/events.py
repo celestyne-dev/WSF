@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.opportunity import EventInputSchema, EventSchema
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.event_registrations import (
     admin_update_registration_status,
     count_active_registrations,
@@ -354,6 +355,9 @@ class EventDetailResource(Resource):
             raise ApiError("Event not found.", 404, code="not_found")
         _require_manage()
 
+        old_slug = event.slug
+        was_public = is_event_publicly_visible(event)
+
         data = EventInputSchema().load(request.get_json(silent=True) or {})
         organizer = _resolve_organizer(data.get("organizer_id"))
         speakers = _resolve_speakers(data.pop("speakers", []))
@@ -365,6 +369,14 @@ class EventDetailResource(Resource):
         _apply_fields(event, data, organizer, speakers, sponsors)
         if event.status in ("published", "scheduled"):
             _validate_for_publish(event)
+
+        # WSF SEO Phase 2B — redirect only when the slug changed and the
+        # event was publicly visible both before and after this save,
+        # using the same is_event_publicly_visible() rule its own public
+        # detail route already uses.
+        if event.slug != old_slug and was_public and is_event_publicly_visible(event):
+            create_entity_redirect_for_slug_change("event", old_slug, event.slug)
+
         db.session.commit()
         return success_response(_dump_event_for_staff(event))
 

@@ -14,6 +14,7 @@ from app.schemas.opportunity import OpportunityInputSchema, OpportunitySchema
 from app.schemas.people import OrganizationSchema
 from app.schemas.taxonomy import TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.opportunity_access import (
     check_opportunity_application_access,
     has_safe_application_target,
@@ -324,6 +325,9 @@ class OpportunityDetailResource(Resource):
             raise ApiError("Opportunity not found.", 404, code="not_found")
         _require_manage()
 
+        old_slug = opportunity.slug
+        was_public = opportunity.status == "published"
+
         data = OpportunityInputSchema().load(request.get_json(silent=True) or {})
         organization = _resolve_organization(data.get("organization_id"))
 
@@ -333,6 +337,14 @@ class OpportunityDetailResource(Resource):
         _apply_fields(opportunity, data, organization)
         if opportunity.status == "published":
             _validate_for_publish(opportunity)
+
+        # WSF SEO Phase 2B — redirect only when the slug changed and the
+        # opportunity was publicly visible both before and after this
+        # save (same simple status=="published" rule its own public
+        # detail route already uses — see OpportunityDetailResource.get).
+        if opportunity.slug != old_slug and was_public and opportunity.status == "published":
+            create_entity_redirect_for_slug_change("opportunity", old_slug, opportunity.slug)
+
         db.session.commit()
         return success_response(_dump_opportunity_for_staff(opportunity))
 

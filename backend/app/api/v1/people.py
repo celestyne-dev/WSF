@@ -8,6 +8,7 @@ from app.models.people import Person
 from app.models.taxonomy import Series
 from app.schemas.people import PersonInputSchema, PersonSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -156,6 +157,9 @@ class PersonDetailResource(Resource):
         if person is None:
             raise ApiError("Person not found.", 404, code="not_found")
 
+        old_slug = person.slug
+        was_public = person.status == "published"
+
         data = PersonInputSchema().load(request.get_json(silent=True) or {})
         series = _resolve_series(data.pop("series_slugs", []))
 
@@ -165,6 +169,12 @@ class PersonDetailResource(Resource):
         _apply_fields(person, data, series)
         if person.status == "published":
             _validate_for_publish(person)
+
+        # WSF SEO Phase 2B — redirect only when the slug changed and the
+        # person was publicly visible both before and after this save.
+        if person.slug != old_slug and was_public and person.status == "published":
+            create_entity_redirect_for_slug_change("person", old_slug, person.slug)
+
         db.session.commit()
         return success_response(person_schema.dump(person))
 

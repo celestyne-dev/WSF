@@ -15,6 +15,7 @@ from app.schemas.media import MediaSchema
 from app.schemas.opportunity import JobInputSchema, JobSchema
 from app.schemas.people import OrganizationSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.job_access import (
     check_job_application_access,
     has_valid_application_channel,
@@ -375,6 +376,9 @@ class JobDetailResource(Resource):
             raise ApiError("Job not found.", 404, code="not_found")
         _can_edit(job)
 
+        old_slug = job.slug
+        was_public = is_job_publicly_visible(job)
+
         data = JobInputSchema().load(request.get_json(silent=True) or {})
         organization = _resolve_organization(data.get("organization_id"))
         sponsor = _resolve_sponsor(data.get("sponsor_id"))
@@ -385,6 +389,14 @@ class JobDetailResource(Resource):
         _apply_fields(job, data, organization, sponsor)
         if job.status in ("published", "scheduled"):
             _validate_for_publish(job)
+
+        # WSF SEO Phase 2B — redirect only when the slug changed and the
+        # job was publicly visible both before and after this save, using
+        # the same is_job_publicly_visible() rule its own public detail
+        # route already uses.
+        if job.slug != old_slug and was_public and is_job_publicly_visible(job):
+            create_entity_redirect_for_slug_change("job", old_slug, job.slug)
+
         db.session.commit()
         return success_response(_dump_job_for_editor(job))
 

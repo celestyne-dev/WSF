@@ -11,6 +11,7 @@ from app.models.taxonomy import Topic
 from app.schemas.article import article_summary_schema
 from app.schemas.people import AuthorInputSchema, AuthorSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_search
 from app.utils.pagination import paginate
@@ -166,6 +167,9 @@ class AuthorDetailResource(Resource):
         if author is None:
             raise ApiError("Author not found.", 404, code="not_found")
 
+        old_slug = author.slug
+        was_public = author.status == "active"
+
         data = AuthorInputSchema().load(request.get_json(silent=True) or {})
         topics = _resolve_topics(data.pop("topic_slugs", []))
         person = _resolve_person(data.get("person_id"))
@@ -176,6 +180,13 @@ class AuthorDetailResource(Resource):
         _apply_fields(author, data, topics, person)
         if author.status == "active":
             _validate_for_publish(author)
+
+        # WSF SEO Phase 2B — redirect only when the slug changed and the
+        # author was publicly visible ("active") both before and after
+        # this save.
+        if author.slug != old_slug and was_public and author.status == "active":
+            create_entity_redirect_for_slug_change("author", old_slug, author.slug)
+
         db.session.commit()
         return success_response(author_schema.dump(author))
 

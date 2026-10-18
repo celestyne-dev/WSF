@@ -72,6 +72,7 @@ from flask import Response, abort, current_app, redirect
 
 from app.extensions import db
 from app.models.article import Article, Redirect
+from app.models.entity_redirect import EntityRedirect
 from app.models.media import Media
 from app.models.opportunity import Event, Job, Opportunity
 from app.models.page import Page
@@ -982,6 +983,24 @@ _ENTITY_DETAIL_PREFIXES = {
     "events": (_lookup_event, _event_meta, "Events", lambda e: e.title),
 }
 
+# WSF SEO Phase 2B — maps each nested entity-detail route prefix to the
+# matching EntityRedirect.entity_type value (see
+# app/models/entity_redirect.py's own docstring for why entity_type is
+# the singular noun, not this plural URL segment). Used only by
+# _render_entity_detail's redirect fallback below, once the live-entity
+# lookup at that exact slug has already missed — the live route always
+# wins over stale redirect history.
+_ENTITY_TYPE_BY_PREFIX = {
+    "topics": "topic",
+    "series": "series",
+    "people": "person",
+    "authors": "author",
+    "opportunities": "opportunity",
+    "jobs": "job",
+    "resources": "resource",
+    "events": "event",
+}
+
 # The 5 entity-detail prefixes that additionally get their OWN
 # entity-specific JSON-LD (mirroring that entity's existing frontend
 # structured-data hook — see each builder's own docstring), under the
@@ -1251,6 +1270,22 @@ def _render_entity_detail(prefix, slug):
     lookup, build_meta, section_label, display_name = _ENTITY_DETAIL_PREFIXES[prefix]
     entity = lookup(slug)
     if entity is None:
+        # WSF SEO Phase 2B: the live entity always wins over redirect
+        # history — this fallback only runs once the lookup above has
+        # already missed. Scoped by entity_type so a Job redirect can
+        # never answer for an Event (or anything else) whose old slug
+        # happens to be the same text — see
+        # app/services/entity_redirects.py. The redirect always points
+        # at the entity's current slug, which independently re-enforces
+        # its own normal visibility on the next request (this fallback
+        # never bypasses that), so only a redirect actually created by
+        # a publicly-visible-before-and-after slug change is ever
+        # followed here.
+        redirect_row = EntityRedirect.query.filter_by(
+            entity_type=_ENTITY_TYPE_BY_PREFIX[prefix], from_slug=slug
+        ).first()
+        if redirect_row is not None:
+            return redirect(f"/{prefix}/{redirect_row.to_slug}", code=301)
         return _render_404_shell()
 
     public_site_url = current_app.config["PUBLIC_SITE_URL"]

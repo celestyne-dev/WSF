@@ -594,3 +594,58 @@ class TestRobotsTxt:
         directive_lines = [line for line in content.splitlines() if not line.strip().startswith("#")]
         assert not any(line.strip().startswith("Sitemap:") for line in directive_lines)
         assert "Disallow: /admin/" in content
+
+
+# ---------------------------------------------------------------------------
+# WSF SEO Phase 2B regression — this module's own content-type functions
+# (_job_entries/_resource_entries/etc.) each query that entity's live
+# `slug` column directly and never read the new entity_redirects table at
+# all (see app/services/sitemap.py's own docstring), so a slug change
+# already can't leak a stale old-slug URL into the sitemap by
+# construction — proven here rather than merely asserted.
+# ---------------------------------------------------------------------------
+
+
+class TestEntityRedirectsNeverAppearInSitemap:
+    def test_job_slug_change_shows_only_current_slug(self, client, app):
+        job_id = _make_job(app, "old-job-slug", status="published")
+        from app.models.opportunity import Job
+
+        with app.app_context():
+            Job.query.get(job_id).slug = "new-job-slug"
+            db.session.commit()
+
+        resp = _get_sitemap(client)
+        _, locs = _parse(resp.data)
+        assert any(loc.endswith("/jobs/new-job-slug") for loc in locs)
+        assert not any(loc.endswith("/jobs/old-job-slug") for loc in locs)
+
+    def test_resource_slug_change_shows_only_current_slug(self, client, app):
+        resource_id = _make_resource(app, "old-resource-slug", status="published")
+        from app.models.resource import Resource as ResourceModel
+
+        with app.app_context():
+            ResourceModel.query.get(resource_id).slug = "new-resource-slug"
+            db.session.commit()
+
+        resp = _get_sitemap(client)
+        _, locs = _parse(resp.data)
+        assert any(loc.endswith("/resources/new-resource-slug") for loc in locs)
+        assert not any(loc.endswith("/resources/old-resource-slug") for loc in locs)
+
+    def test_stale_entity_redirect_row_itself_never_surfaces_as_a_url(self, client, app):
+        # Even with a real EntityRedirect row on file for the old slug
+        # (the normal end state after a real slug-change save), the
+        # sitemap must still only ever list the live resource's current
+        # slug — it has no code path that reads this table at all.
+        from app.models.entity_redirect import EntityRedirect
+
+        _make_resource(app, "career-guide", status="published")
+        with app.app_context():
+            db.session.add(EntityRedirect(entity_type="resource", from_slug="old-career-guide", to_slug="career-guide"))
+            db.session.commit()
+
+        resp = _get_sitemap(client)
+        _, locs = _parse(resp.data)
+        assert any(loc.endswith("/resources/career-guide") for loc in locs)
+        assert not any(loc.endswith("/resources/old-career-guide") for loc in locs)

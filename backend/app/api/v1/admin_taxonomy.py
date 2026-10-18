@@ -22,6 +22,7 @@ from app.schemas.taxonomy import (
     TopicUpdateSchema,
 )
 from app.services.audit import log_action
+from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.services.taxonomy import (
     category_usage_counts,
@@ -125,6 +126,9 @@ class TopicAdminDetailResource(Resource):
         if topic is None:
             raise ApiError("Topic not found.", 404, code="not_found")
 
+        old_slug = topic.slug
+        was_public = topic.status == "published"
+
         data = TopicUpdateSchema().load(request.get_json(silent=True) or {})
         if "name" in data:
             _reject_duplicate_name(Topic, data["name"], exclude_id=topic.id)
@@ -133,6 +137,14 @@ class TopicAdminDetailResource(Resource):
         for field in ("description", "hero_media_id", "seo", "status", "sort_order"):
             if field in data:
                 setattr(topic, field, data[field])
+
+        # WSF SEO Phase 2B — a redirect is only warranted when the slug
+        # actually changed AND the topic was publicly visible both
+        # before and after this save (never for a draft rename, and
+        # never when the same save also archives/unpublishes it, which
+        # would otherwise create a redirect straight to a 404).
+        if topic.slug != old_slug and was_public and topic.status == "published":
+            create_entity_redirect_for_slug_change("topic", old_slug, topic.slug)
 
         db.session.commit()
         log_action(current_user, "topic.update", "Topic", topic.id, data)
@@ -318,6 +330,9 @@ class SeriesAdminDetailResource(Resource):
         if series is None:
             raise ApiError("Series not found.", 404, code="not_found")
 
+        old_slug = series.slug
+        was_public = series.status == "published"
+
         data = SeriesUpdateSchema().load(request.get_json(silent=True) or {})
         if "name" in data:
             _reject_duplicate_name(Series, data["name"], exclude_id=series.id)
@@ -335,6 +350,12 @@ class SeriesAdminDetailResource(Resource):
         ):
             if field in data:
                 setattr(series, field, data[field])
+
+        # WSF SEO Phase 2B — see TopicAdminDetailResource.put's identical
+        # comment: redirect only when the slug changed and the series
+        # was publicly visible both before and after this save.
+        if series.slug != old_slug and was_public and series.status == "published":
+            create_entity_redirect_for_slug_change("series", old_slug, series.slug)
 
         db.session.commit()
         log_action(current_user, "series.update", "Series", series.id, data)

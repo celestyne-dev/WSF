@@ -39,6 +39,7 @@ from app.schemas.people import AuthorSchema, OrganizationSchema
 from app.schemas.resource import ResourceInputSchema, ResourceLeadInputSchema, ResourceSchema
 from app.schemas.taxonomy import TagSchema, TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.newsletter import upsert_subscriber
 from app.services.resource_access import check_resource_access, get_viewer_access_source, viewer_can_access
 from app.services.resource_downloads import (
@@ -546,6 +547,9 @@ class ResourceDetailResource(Resource):
             raise ApiError("Resource not found.", 404, code="not_found")
         _require_manage()
 
+        old_slug = resource.slug
+        was_public = resource.is_publicly_visible()
+
         data = ResourceInputSchema().load(request.get_json(silent=True) or {})
         topics = _resolve_topics(data.get("topic_slugs", []))
         tags = _resolve_tags(data.get("tag_slugs", []))
@@ -563,6 +567,16 @@ class ResourceDetailResource(Resource):
         # ever runs after a successful commit.
         old_protected_path = resource.protected_file_path
         _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
+
+        # WSF SEO Phase 2B — redirect only when the slug changed and the
+        # resource was publicly visible both before and after this save,
+        # using the same is_publicly_visible() rule its own public detail
+        # route already uses. Placed after _apply_fields() (whose own
+        # _validate_publish call may raise) and before commit, so a
+        # failed save persists neither the slug change nor the redirect.
+        if resource.slug != old_slug and was_public and resource.is_publicly_visible():
+            create_entity_redirect_for_slug_change("resource", old_slug, resource.slug)
+
         db.session.commit()
 
         if old_protected_path and old_protected_path != resource.protected_file_path:
