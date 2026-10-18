@@ -182,17 +182,25 @@ def _set_structured_data(html_doc, attr_name, data):
 _IMAGE_PRELOAD_RE = re.compile(r'<link\b[^>]*data-lcp-image-preload="true"[^>]*>', re.IGNORECASE)
 
 
-def _image_preload_candidates(media):
+def _image_preload_candidates(media, preferred_variant=None):
     """Sorted-ascending, deduped-by-width (width, url) pairs built from a
     real Media's own generated MediaVariant rows — mirrors frontend/src/
     utils/media.js's resolveMediaImage() srcSet construction (same sort/
     dedupe/invalid-width-filter rules) so the preloaded candidate set
     matches what the browser will actually pick once the SPA mounts and
     renders the same image with a real srcSet. Returns (href, candidates)
-    where `href` is a real generated variant when any exist (preferring
-    "large", matching what a browser that ignores imagesrcset would
-    fetch) and `candidates` is `[]` when none do — never the protected
-    filesystem path, only Media/MediaVariant.public_url.
+    where `candidates` is `[]` when no generated variant has a valid
+    width at all. `href` is picked in this order:
+      1. `preferred_variant`'s own generated MediaVariant, if one exists
+         with a valid public URL — this MUST be the same `variant` prop
+         the matching frontend <img> for this route requests (see each
+         call site's own comment), so the browser's early preload fetch
+         and the SPA's later real <img> agree on which file to fetch;
+      2. otherwise the widest valid generated candidate;
+      3. otherwise Media.public_url, when no generated variant exists at
+         all.
+    Never the protected filesystem path (file_path) and never a
+    protected resource-download URL — only Media/MediaVariant.public_url.
     """
     by_width = {}
     for variant in media.variants:
@@ -201,11 +209,11 @@ def _image_preload_candidates(media):
     if not by_width:
         return media.public_url, []
     candidates = sorted(by_width.items())
-    preferred = media.variant_url("large") or media.variant_url("hero") or candidates[-1][1]
+    preferred = (preferred_variant and media.variant_url(preferred_variant)) or candidates[-1][1]
     return preferred, candidates
 
 
-def _set_image_preload(html_doc, *, media, public_site_url, sizes):
+def _set_image_preload(html_doc, *, media, public_site_url, sizes, preferred_variant=None):
     """WSF SEO Phase 2C — the ONE managed <link rel=preload as=image> tag
     for this page's genuine LCP/hero image, same dedup-then-insert shape
     as _set_meta/_set_structured_data (strip every existing managed tag,
@@ -214,13 +222,14 @@ def _set_image_preload(html_doc, *, media, public_site_url, sizes):
     this same image `priority` — see render_article_shell and
     _render_entity_detail's _ENTITY_IMAGE_PRELOAD for exactly which
     routes that is. `sizes` should match that frontend <img>'s own
-    `sizes` attribute closely so the browser's preload candidate
-    selection agrees with its later real image-element selection.
+    `sizes` attribute closely, and `preferred_variant` that same <img>'s
+    own `variant` prop, so the browser's preload candidate selection
+    agrees with its later real image-element selection.
     """
     html_doc = _IMAGE_PRELOAD_RE.sub("", html_doc)
     if media is None:
         return html_doc
-    href, candidates = _image_preload_candidates(media)
+    href, candidates = _image_preload_candidates(media, preferred_variant=preferred_variant)
     href_url = _absolute_url(href, public_site_url)
     if not href_url:
         return html_doc
@@ -482,13 +491,18 @@ def render_article_shell(article):
     html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
 
     # WSF SEO Phase 2C — ArticlePage.jsx's hero is `priority` with
-    # `sizes="(min-width: 1120px) 1120px, 100vw"` (see that component);
-    # mirrored here exactly so a browser can start fetching the real LCP
-    # candidate before any JS/API round-trip resolves it client-side.
-    # `article.hero_media` is None for an article with no hero image, so
-    # this is a no-op (no preload tag) in that case.
+    # `variant="hero"` and `sizes="(min-width: 1120px) 1120px, 100vw"`
+    # (see that component); mirrored here exactly so a browser can start
+    # fetching the real LCP candidate before any JS/API round-trip
+    # resolves it client-side. `article.hero_media` is None for an
+    # article with no hero image, so this is a no-op (no preload tag) in
+    # that case.
     html_doc = _set_image_preload(
-        html_doc, media=article.hero_media, public_site_url=public_site_url, sizes="(min-width: 1120px) 1120px, 100vw"
+        html_doc,
+        media=article.hero_media,
+        public_site_url=public_site_url,
+        sizes="(min-width: 1120px) 1120px, 100vw",
+        preferred_variant="hero",
     )
 
     return _html_response(html_doc)
@@ -1100,15 +1114,17 @@ _ENTITY_STRUCTURED_DATA_BUILDERS = {
 # Topic (no page image at all), People/Authors (small portrait next to
 # a lot of text — left lazy on purpose) and Opportunities/Jobs (small
 # logo only) are deliberately absent: preloading their image would not
-# match a real LCP candidate. Each entry's `sizes` mirrors that same
-# frontend <img>'s own `sizes` attribute exactly. Resource's own
-# gallery defaults to showing `cover_media` first (see
-# ResourceGallery's `active` state in ResourceDetailPage.jsx), so that
-# is the correct media to preload there too.
+# match a real LCP candidate. Each entry's `sizes`/`preferred_variant`
+# mirrors that same frontend <img>'s own `sizes`/`variant` prop exactly
+# (Series/Events: `variant="hero"`; Resources: `variant="medium"` — see
+# each page's own `priority` <MediaImage>). Resource's own gallery
+# defaults to showing `cover_media` first (see ResourceGallery's
+# `active` state in ResourceDetailPage.jsx), so that is the correct
+# media to preload there too.
 _ENTITY_IMAGE_PRELOAD = {
-    "series": (lambda e: e.cover_media, "(min-width: 1024px) 45vw, 100vw"),
-    "resources": (lambda e: e.cover_media, "(min-width: 640px) 360px, 100vw"),
-    "events": (lambda e: e.cover_media, "100vw"),
+    "series": (lambda e: e.cover_media, "(min-width: 1024px) 45vw, 100vw", "hero"),
+    "resources": (lambda e: e.cover_media, "(min-width: 640px) 360px, 100vw", "medium"),
+    "events": (lambda e: e.cover_media, "100vw", "hero"),
 }
 
 # The 8 list/landing pages that get a 2-level ("Home" > Section)
@@ -1411,8 +1427,10 @@ def _render_entity_detail(prefix, slug):
 
     image_preload = _ENTITY_IMAGE_PRELOAD.get(prefix)
     if image_preload is not None:
-        get_media, sizes = image_preload
-        html_doc = _set_image_preload(html_doc, media=get_media(entity), public_site_url=public_site_url, sizes=sizes)
+        get_media, sizes, preferred_variant = image_preload
+        html_doc = _set_image_preload(
+            html_doc, media=get_media(entity), public_site_url=public_site_url, sizes=sizes, preferred_variant=preferred_variant
+        )
 
     return _html_response(html_doc)
 

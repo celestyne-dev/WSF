@@ -77,13 +77,16 @@ function ImageBlock({ block, variant }) {
   // `media` is the normalized reference the block editor saves (with real
   // generated WebP variants); `mediaPath` is the legacy/mock-mode fallback.
   const isArticle = variant === 'article' || variant === 'resource'
+  // A decorative image (editor-marked, never inferred) must render alt=""
+  // exactly — never block.alt, and never inferred from caption/credit.
+  const alt = block.decorative === true ? '' : block.alt
   return (
     <figure className={isArticle ? 'my-12' : 'my-10'}>
       <MediaImage
         media={block.media}
         variant="large"
         mediaPath={block.mediaPath}
-        alt={block.alt}
+        alt={alt}
         width={1400}
         height={933}
         aspect={3 / 2}

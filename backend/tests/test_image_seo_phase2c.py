@@ -170,12 +170,17 @@ def _make_resource(app, slug, name="Career Reset Workbook", status="published", 
 
 
 class TestArticleImagePreload:
-    def test_article_with_hero_and_variants_gets_exactly_one_preload_tag(self, client, app):
+    def test_article_prefers_hero_variant_for_preload_href(self, client, app):
+        # Route-parity requirement: ArticlePage.jsx's hero <MediaImage>
+        # requests variant="hero" — the server preload href must match
+        # that exact variant, not simply "widest generated variant"
+        # (which would wrongly pick a non-existent wider "large" here).
         _use_fixture_index(app)
         media_id = _make_media(app, public_url="/media/originals/hero.jpg")
         _add_variant(app, media_id, "thumbnail", "/media/thumbnail/hero.webp", width=320)
         _add_variant(app, media_id, "card", "/media/card/hero.webp", width=640)
         _add_variant(app, media_id, "large", "/media/large/hero.webp", width=1280)
+        _add_variant(app, media_id, "hero", "/media/hero/hero.webp", width=1920)
         _make_article(app, slug="hero-story", title="Hero Story", hero_media_id=media_id)
 
         html = client.get("/hero-story").get_data(as_text=True)
@@ -185,15 +190,31 @@ class TestArticleImagePreload:
         assert _attr(tag, "rel") == "preload"
         assert _attr(tag, "as") == "image"
         assert _attr(tag, "fetchpriority") == "high"
-        # Prefers the generated "large" variant over the original.
-        assert _attr(tag, "href") == "https://womenshapingfutures.org/media/large/hero.webp"
+        # Prefers the "hero" variant — not "large", even though both exist.
+        assert _attr(tag, "href") == "https://womenshapingfutures.org/media/hero/hero.webp"
         srcset = _attr(tag, "imagesrcset")
         assert srcset == (
             "https://womenshapingfutures.org/media/thumbnail/hero.webp 320w, "
             "https://womenshapingfutures.org/media/card/hero.webp 640w, "
-            "https://womenshapingfutures.org/media/large/hero.webp 1280w"
+            "https://womenshapingfutures.org/media/large/hero.webp 1280w, "
+            "https://womenshapingfutures.org/media/hero/hero.webp 1920w"
         )
         assert _attr(tag, "imagesizes") == "(min-width: 1120px) 1120px, 100vw"
+
+    def test_article_falls_back_to_widest_variant_when_hero_absent(self, client, app):
+        # No "hero"-named variant exists for this Media, so the fallback
+        # rule (widest valid generated candidate) applies — "large" wins.
+        _use_fixture_index(app)
+        media_id = _make_media(app, public_url="/media/originals/hero.jpg")
+        _add_variant(app, media_id, "thumbnail", "/media/thumbnail/hero.webp", width=320)
+        _add_variant(app, media_id, "card", "/media/card/hero.webp", width=640)
+        _add_variant(app, media_id, "large", "/media/large/hero.webp", width=1280)
+        _make_article(app, slug="hero-fallback-story", title="Hero Fallback Story", hero_media_id=media_id)
+
+        html = client.get("/hero-fallback-story").get_data(as_text=True)
+        tags = _preload_tags(html)
+        assert len(tags) == 1
+        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/large/hero.webp"
 
     def test_article_with_hero_but_no_variants_preloads_original_with_no_srcset(self, client, app):
         _use_fixture_index(app)
@@ -301,18 +322,34 @@ class TestArticleImagePreload:
 
 
 class TestEntityDetailImagePreload:
-    def test_series_with_cover_media_gets_preload_matching_frontend_sizes(self, client, app):
+    def test_series_prefers_hero_variant_for_preload_href(self, client, app):
+        # SeriesDetailPage.jsx's cover <MediaImage> requests variant="hero"
+        # — the href must match that, not just "widest" (which would
+        # wrongly pick "large" here even though "hero" also exists).
         _use_fixture_index(app)
         media_id = _make_media(app, public_url="/media/originals/series-cover.jpg")
         _add_variant(app, media_id, "card", "/media/card/series-cover.webp", width=640)
         _add_variant(app, media_id, "large", "/media/large/series-cover.webp", width=1280)
+        _add_variant(app, media_id, "hero", "/media/hero/series-cover.webp", width=1920)
         _make_series(app, "founder-stories", cover_media_id=media_id)
 
         html = client.get("/series/founder-stories").get_data(as_text=True)
         tags = _preload_tags(html)
         assert len(tags) == 1
-        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/large/series-cover.webp"
+        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/hero/series-cover.webp"
         assert _attr(tags[0], "imagesizes") == "(min-width: 1024px) 45vw, 100vw"
+
+    def test_series_falls_back_to_widest_variant_when_hero_absent(self, client, app):
+        _use_fixture_index(app)
+        media_id = _make_media(app, public_url="/media/originals/series-cover.jpg")
+        _add_variant(app, media_id, "card", "/media/card/series-cover.webp", width=640)
+        _add_variant(app, media_id, "large", "/media/large/series-cover.webp", width=1280)
+        _make_series(app, "founder-stories-fallback", cover_media_id=media_id)
+
+        html = client.get("/series/founder-stories-fallback").get_data(as_text=True)
+        tags = _preload_tags(html)
+        assert len(tags) == 1
+        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/large/series-cover.webp"
 
     def test_series_without_cover_media_has_no_preload(self, client, app):
         _use_fixture_index(app)
@@ -321,31 +358,62 @@ class TestEntityDetailImagePreload:
         html = client.get("/series/no-cover-series").get_data(as_text=True)
         assert _preload_tags(html) == []
 
-    def test_resource_with_cover_media_gets_preload_matching_frontend_sizes(self, client, app):
+    def test_resource_prefers_medium_variant_for_preload_href(self, client, app):
+        # ResourceDetailPage.jsx's cover <MediaImage> requests
+        # variant="medium" — NOT "large" and not simply "widest", even
+        # though a wider "large" variant also exists here. This is the
+        # exact route-parity bug being fixed: the href must be "medium".
         _use_fixture_index(app)
         media_id = _make_media(app, public_url="/media/originals/resource-cover.jpg")
         _add_variant(app, media_id, "card", "/media/card/resource-cover.webp", width=640)
+        _add_variant(app, media_id, "medium", "/media/medium/resource-cover.webp", width=960)
         _add_variant(app, media_id, "large", "/media/large/resource-cover.webp", width=1280)
         _make_resource(app, "career-reset-workbook", cover_media_id=media_id)
 
         html = client.get("/resources/career-reset-workbook").get_data(as_text=True)
         tags = _preload_tags(html)
         assert len(tags) == 1
-        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/large/resource-cover.webp"
+        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/medium/resource-cover.webp"
         assert _attr(tags[0], "imagesizes") == "(min-width: 640px) 360px, 100vw"
 
-    def test_event_with_cover_media_gets_preload_matching_frontend_sizes(self, client, app):
+    def test_resource_falls_back_to_widest_variant_when_medium_absent(self, client, app):
+        _use_fixture_index(app)
+        media_id = _make_media(app, public_url="/media/originals/resource-cover.jpg")
+        _add_variant(app, media_id, "card", "/media/card/resource-cover.webp", width=640)
+        _add_variant(app, media_id, "large", "/media/large/resource-cover.webp", width=1280)
+        _make_resource(app, "career-reset-workbook-fallback", cover_media_id=media_id)
+
+        html = client.get("/resources/career-reset-workbook-fallback").get_data(as_text=True)
+        tags = _preload_tags(html)
+        assert len(tags) == 1
+        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/large/resource-cover.webp"
+
+    def test_event_prefers_hero_variant_for_preload_href(self, client, app):
+        # EventDetailPage.jsx's cover <MediaImage> requests variant="hero".
         _use_fixture_index(app)
         media_id = _make_media(app, public_url="/media/originals/event-cover.jpg")
         _add_variant(app, media_id, "card", "/media/card/event-cover.webp", width=640)
         _add_variant(app, media_id, "large", "/media/large/event-cover.webp", width=1280)
+        _add_variant(app, media_id, "hero", "/media/hero/event-cover.webp", width=1920)
         _make_event(app, "wsf-summit", cover_media_id=media_id)
 
         html = client.get("/events/wsf-summit").get_data(as_text=True)
         tags = _preload_tags(html)
         assert len(tags) == 1
-        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/large/event-cover.webp"
+        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/hero/event-cover.webp"
         assert _attr(tags[0], "imagesizes") == "100vw"
+
+    def test_event_falls_back_to_widest_variant_when_hero_absent(self, client, app):
+        _use_fixture_index(app)
+        media_id = _make_media(app, public_url="/media/originals/event-cover.jpg")
+        _add_variant(app, media_id, "card", "/media/card/event-cover.webp", width=640)
+        _add_variant(app, media_id, "large", "/media/large/event-cover.webp", width=1280)
+        _make_event(app, "wsf-summit-fallback", cover_media_id=media_id)
+
+        html = client.get("/events/wsf-summit-fallback").get_data(as_text=True)
+        tags = _preload_tags(html)
+        assert len(tags) == 1
+        assert _attr(tags[0], "href") == "https://womenshapingfutures.org/media/large/event-cover.webp"
 
     def test_event_without_cover_media_has_no_preload(self, client, app):
         _use_fixture_index(app)

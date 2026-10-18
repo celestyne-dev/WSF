@@ -194,23 +194,50 @@ function HighlightBlock({ block, onChange }) {
 }
 
 function ImageBlockEditor({ block, onChange }) {
+  const decorative = block.decorative === true
+
+  function handleMediaChange(media) {
+    onChange({
+      ...block,
+      media,
+      // A decorative image's alt must stay "" even across a media swap —
+      // never silently repopulated from the newly picked media's own
+      // altText while the editor still has it marked decorative.
+      alt: decorative ? '' : block.alt || media?.altText || '',
+      caption: block.caption || media?.caption || '',
+      credit: block.credit || media?.credit || '',
+    })
+  }
+
+  function handleDecorativeChange(nextDecorative) {
+    onChange({
+      ...block,
+      decorative: nextDecorative,
+      // Marking an image decorative clears its stored alt (a decorative
+      // image's rendered alt must be exactly ""). Un-marking it restores
+      // the selected Media's own altText when it has one — never
+      // fabricated from caption/credit/filename.
+      alt: nextDecorative ? '' : block.alt || block.media?.altText || '',
+    })
+  }
+
   return (
     <div className="space-y-2">
-      <MediaPicker
-        label={null}
-        aspect={3 / 2}
-        value={block.media}
-        onChange={(media) =>
-          onChange({
-            ...block,
-            media,
-            alt: block.alt || media?.altText || '',
-            caption: block.caption || media?.caption || '',
-            credit: block.credit || media?.credit || '',
-          })
-        }
+      <MediaPicker label={null} aspect={3 / 2} value={block.media} onChange={handleMediaChange} />
+      <input
+        value={decorative ? '' : block.alt || ''}
+        onChange={(e) => onChange({ ...block, alt: e.target.value })}
+        placeholder="Alt text"
+        disabled={decorative}
+        className={`${inputClass} disabled:cursor-not-allowed disabled:bg-taupe-100 disabled:text-charcoal-600/50`}
       />
-      <input value={block.alt || ''} onChange={(e) => onChange({ ...block, alt: e.target.value })} placeholder="Alt text" className={inputClass} />
+      <label className="flex items-start gap-2 text-sm text-charcoal-600">
+        <input type="checkbox" checked={decorative} onChange={(e) => handleDecorativeChange(e.target.checked)} className="mt-0.5" />
+        Decorative image
+      </label>
+      <p className="text-xs text-charcoal-600/70">
+        Use this only when the image adds no information. Decorative images are ignored by screen readers.
+      </p>
       <div className="grid grid-cols-2 gap-2">
         <input value={block.caption || ''} onChange={(e) => onChange({ ...block, caption: e.target.value })} placeholder="Caption" className={inputClass} />
         <input value={block.credit || ''} onChange={(e) => onChange({ ...block, credit: e.target.value })} placeholder="Credit" className={inputClass} />
@@ -331,7 +358,7 @@ function blankBlock(type) {
     case 'pullquote':
       return { type, text: '', attribution: '' }
     case 'image':
-      return { type, media: null, alt: '', caption: '', credit: '' }
+      return { type, media: null, alt: '', caption: '', credit: '', decorative: false }
     case 'highlight':
       return { type, title: '', text: '' }
     case 'button':

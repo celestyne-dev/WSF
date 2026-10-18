@@ -430,6 +430,117 @@ def test_publish_requires_content(client, editor_token, author_slug):
     assert direct_publish.get_json()["error"]["code"] == "invalid_transition"
 
 
+def _publish(client, token, slug):
+    client.post(f"/api/v1/articles/{slug}/submit-review", headers=auth_headers(token))
+    client.post(f"/api/v1/articles/{slug}/approve", headers=auth_headers(token))
+    return client.post(f"/api/v1/articles/{slug}/publish", headers=auth_headers(token))
+
+
+def test_publish_rejects_non_decorative_image_with_blank_alt(client, editor_token, author_slug):
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "Blank Alt Non Decorative",
+            "authorSlug": author_slug,
+            "content": [{"type": "image", "media": {"id": 1, "mediaPath": "/media/x.jpg"}, "alt": "", "decorative": False}],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    slug = create.get_json()["data"]["slug"]
+
+    publish = _publish(client, editor_token, slug)
+    assert publish.status_code == 422
+    assert publish.get_json()["error"]["code"] == "publish_validation_failed"
+    assert "informative image" in publish.get_json()["error"]["message"]
+
+
+def test_publish_rejects_image_with_no_decorative_field_and_blank_alt(client, editor_token, author_slug):
+    # No "decorative" key at all (legacy/pre-fix content shape) must be
+    # treated the same as decorative=False — never implicitly decorative.
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "Blank Alt No Decorative Field",
+            "authorSlug": author_slug,
+            "content": [{"type": "image", "media": {"id": 1, "mediaPath": "/media/x.jpg"}, "alt": ""}],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    slug = create.get_json()["data"]["slug"]
+
+    publish = _publish(client, editor_token, slug)
+    assert publish.status_code == 422
+    assert publish.get_json()["error"]["code"] == "publish_validation_failed"
+
+
+def test_publish_allows_decorative_image_with_blank_alt(client, editor_token, author_slug):
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "Decorative Image Publishes",
+            "authorSlug": author_slug,
+            "content": [{"type": "image", "media": {"id": 1, "mediaPath": "/media/x.jpg"}, "alt": "", "decorative": True}],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    slug = create.get_json()["data"]["slug"]
+    assert create.get_json()["data"]["content"][0]["decorative"] is True
+
+    publish = _publish(client, editor_token, slug)
+    assert publish.status_code == 200
+
+
+def test_decorative_flag_is_sanitized_to_a_real_boolean(client, editor_token, author_slug):
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "Decorative As String",
+            "authorSlug": author_slug,
+            "content": [{"type": "image", "media": {"id": 1, "mediaPath": "/media/x.jpg"}, "alt": "", "decorative": "false"}],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    slug = create.get_json()["data"]["slug"]
+    # A truthy Python string ("false") must never be allowed to behave as
+    # decorative=True — content_blocks.py normalizes it to a real False,
+    # so the blank alt below is still a publish-blocking error.
+    assert create.get_json()["data"]["content"][0]["decorative"] is False
+
+    publish = _publish(client, editor_token, slug)
+    assert publish.status_code == 422
+    assert publish.get_json()["error"]["code"] == "publish_validation_failed"
+
+
+def test_caption_or_credit_alone_never_satisfies_informative_alt_rule(client, editor_token, author_slug):
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "Caption Is Not Alt Text",
+            "authorSlug": author_slug,
+            "content": [
+                {
+                    "type": "image",
+                    "media": {"id": 1, "mediaPath": "/media/x.jpg"},
+                    "alt": "",
+                    "caption": "A panel of women speaking on stage",
+                    "credit": "Jane Doe / WSF",
+                }
+            ],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    slug = create.get_json()["data"]["slug"]
+
+    publish = _publish(client, editor_token, slug)
+    assert publish.status_code == 422
+    assert publish.get_json()["error"]["code"] == "publish_validation_failed"
+
+
 def test_publish_requires_human_review_when_ai_involved(client, editor_token, author_slug):
     create = client.post(
         "/api/v1/articles",

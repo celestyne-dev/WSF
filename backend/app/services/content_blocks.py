@@ -45,6 +45,14 @@ def _clean_plain_text(value):
     return bleach.clean(value, tags=[], attributes={}, strip=True).strip()
 
 
+# Only Python's own real boolean True counts — a string like "false" or
+# "0" is truthy in Python, so without this a client that sent decorative
+# as text could mark every image decorative by accident (and silently
+# bypass the publish-time alt-text requirement in articles.py).
+def _as_bool(value):
+    return value is True
+
+
 def sanitize_content_blocks(blocks):
     if not isinstance(blocks, list):
         return []
@@ -62,6 +70,8 @@ def sanitize_content_blocks(blocks):
         for field in _PLAIN_TEXT_FIELDS.get(block_type, ()):
             if field in block:
                 block[field] = _clean_plain_text(block[field])
+        if block_type == "image" and "decorative" in block:
+            block["decorative"] = _as_bool(block["decorative"])
         if block_type == "list" and isinstance(block.get("items"), list):
             block["items"] = [_clean_inline_html(item) for item in block["items"]]
 
