@@ -4,9 +4,20 @@ import PublicLayout from '../layouts/PublicLayout'
 import AccountLayout from '../layouts/AccountLayout'
 import AdminLayout from '../layouts/AdminLayout'
 import PageLoader from '../components/ui/PageLoader'
+// WSF SEO Phase 2D — these two are the only routes the server ever embeds
+// a bootstrap for ("/" and the flat article "/:slug"), and they're the
+// two routes the measured PageSpeed runs were against. Loading them
+// eagerly (not lazy()) means Vite includes them in the main entry's
+// static import graph, so the browser can start fetching/parsing this
+// code immediately rather than only after a lazy chunk request — and,
+// unlike lazy() chunks, Vite emits a <link rel="modulepreload"> for them
+// in the initial HTML, which is also what makes a same-document bootstrap
+// script tag line up with code that's already loading. Every other route
+// stays lazy() exactly as before — this is deliberately not a general
+// "stop code-splitting" change.
+import HomePage from '../pages/HomePage'
+import ArticlePage from '../pages/ArticlePage'
 
-const HomePage = lazy(() => import('../pages/HomePage'))
-const ArticlePage = lazy(() => import('../pages/ArticlePage'))
 const TopicsIndexPage = lazy(() => import('../pages/TopicsIndexPage'))
 const TopicDetailPage = lazy(() => import('../pages/TopicDetailPage'))
 const PeopleDirectoryPage = lazy(() => import('../pages/PeopleDirectoryPage'))

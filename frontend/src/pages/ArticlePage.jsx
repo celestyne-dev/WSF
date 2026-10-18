@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { Clock, Sparkles } from 'lucide-react'
-import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles } from '../api/articles'
+import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles, mapArticle } from '../api/articles'
 import { fetchPersonBySlug } from '../api/people'
+import { readBootstrap, consumeBootstrap } from '../utils/bootstrap'
 import { resolveImage, resolveMediaImage, resolveAltText } from '../utils/media'
 import { buildArticleStructuredData } from '../utils/articleStructuredData'
 import { formatDate } from '../utils/format'
@@ -103,7 +104,21 @@ function useArticleStructuredData(article, canonicalUrl, imageUrl) {
 
 export default function ArticlePage() {
   const { slug } = useParams()
-  const [article, setArticle] = useState(undefined)
+  // WSF SEO Phase 2D — a hard load of /{slug} already has this exact
+  // Article (the same public_article_schema() dump its own API would
+  // return — see spa_shell.py's render_article_shell) embedded in the
+  // initial HTML. Starting `article` from it here, in the lazy
+  // initializer, means there's no undefined->PageLoader flash to avoid on
+  // that hard load at all. A plain SPA navigation to a different slug (or
+  // back to one whose bootstrap was already consumed) never matches, so
+  // this only ever helps the one hard-load case it's meant for — the
+  // effect below is what actually does the "skip the duplicate fetch"
+  // work on every run, since this initializer doesn't re-run when `slug`
+  // changes under client-side navigation.
+  const [article, setArticle] = useState(() => {
+    const bootstrap = readBootstrap('article', slug)
+    return bootstrap ? mapArticle(bootstrap.data) : undefined
+  })
   const [relatedPerson, setRelatedPerson] = useState(null)
   const [related, setRelated] = useState([])
   const [relatedArticlesBySlug, setRelatedArticlesBySlug] = useState({})
@@ -117,16 +132,17 @@ export default function ArticlePage() {
 
   useEffect(() => {
     let active = true
-    setArticle(undefined)
     setRelatedPerson(null)
     setRelated([])
     setRelatedArticlesBySlug({})
     setNextArticle(null)
     setPopular([])
 
-    fetchArticleBySlug(slug).then((data) => {
-      if (!active) return
-      setArticle(data)
+    // Secondary requests (related person, related/content-block articles,
+    // next/popular) stay exactly as they were — non-critical, always
+    // fetched client-side — whether `data` came from the bootstrap or the
+    // primary fetch below.
+    function loadSecondary(data) {
       if (!data) return
 
       if (data.relatedPersonSlugs?.[0]) {
@@ -159,6 +175,31 @@ export default function ArticlePage() {
           setPopular(others.slice(0, 5))
         })
         .catch(() => {})
+    }
+
+    const bootstrap = readBootstrap('article', slug)
+    if (bootstrap) {
+      // This exact Article was already resolved server-side for this hard
+      // load (see the lazy initializer above) — consume the bootstrap
+      // (safe to call even if an earlier StrictMode dev double-invoke
+      // already did) and skip the otherwise-duplicate fetchArticleBySlug
+      // call entirely. Never reached on a later SPA navigation: the tag
+      // is gone and `readBootstrap` returns null, so that case falls
+      // through to the normal fetch below exactly as it did before.
+      consumeBootstrap('article')
+      const data = mapArticle(bootstrap.data)
+      setArticle(data)
+      loadSecondary(data)
+      return () => {
+        active = false
+      }
+    }
+
+    setArticle(undefined)
+    fetchArticleBySlug(slug).then((data) => {
+      if (!active) return
+      setArticle(data)
+      loadSecondary(data)
     })
 
     return () => {
@@ -328,7 +369,7 @@ export default function ArticlePage() {
           {(article.heroImageCaption || article.heroImageCredit) && (
             <p className="mt-3 text-sm text-charcoal-600">
               {article.heroImageCaption}
-              {article.heroImageCredit && <span className="ml-1 text-charcoal-600/60">— {article.heroImageCredit}</span>}
+              {article.heroImageCredit && <span className="ml-1 text-charcoal-600/70">— {article.heroImageCredit}</span>}
             </p>
           )}
         </div>

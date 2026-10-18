@@ -53,7 +53,7 @@ function mapNavigation(data) {
   }
 }
 
-function mapHomepageModule(m) {
+export function mapHomepageModule(m) {
   return {
     id: m.id,
     type: m.type,

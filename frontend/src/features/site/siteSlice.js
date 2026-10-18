@@ -9,20 +9,30 @@ export const loadCountries = createAsyncThunk('site/loadCountries', async () => 
 export const loadSiteSettings = createAsyncThunk('site/loadSiteSettings', async () => fetchSiteSettings())
 export const loadFooter = createAsyncThunk('site/loadFooter', async () => fetchFooter())
 
+// Exported so store/index.js can seed a hard-loaded "/"'s preloadedState
+// from the server's homepage bootstrap (see utils/bootstrap.js) without
+// duplicating — and risking drifting from — this shape. `leadArticle` is
+// WSF SEO Phase 2D's one addition: the hero module's already-resolved
+// public lead Article, present only when the server bootstrap provided
+// one — see HeroModule.jsx, which reads this before falling back to its
+// own fetchArticleBySlug.
+export const siteInitialState = {
+  navigation: null,
+  homepageModules: [],
+  leadArticle: null,
+  countries: [],
+  settings: {},
+  footer: null,
+  navigationStatus: 'idle',
+  homepageStatus: 'idle',
+  countriesStatus: 'idle',
+  settingsStatus: 'idle',
+  footerStatus: 'idle',
+}
+
 const siteSlice = createSlice({
   name: 'site',
-  initialState: {
-    navigation: null,
-    homepageModules: [],
-    countries: [],
-    settings: {},
-    footer: null,
-    navigationStatus: 'idle',
-    homepageStatus: 'idle',
-    countriesStatus: 'idle',
-    settingsStatus: 'idle',
-    footerStatus: 'idle',
-  },
+  initialState: siteInitialState,
   reducers: {},
   extraReducers: (builder) => {
     builder

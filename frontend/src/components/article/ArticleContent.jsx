@@ -94,7 +94,7 @@ function ImageBlock({ block, variant }) {
       />
       {(block.caption || block.credit) && (
         <figcaption className={isArticle ? 'mt-3 text-sm leading-relaxed text-charcoal-600' : 'mt-2 text-sm text-charcoal-600'}>
-          {block.caption} {block.credit && <span className={isArticle ? 'text-charcoal-600/60' : 'text-charcoal-600/70'}>— {block.credit}</span>}
+          {block.caption} {block.credit && <span className="text-charcoal-600/70">— {block.credit}</span>}
         </figcaption>
       )}
     </figure>
@@ -282,7 +282,7 @@ function SponsorBlock({ block }) {
 
 function AdSlot({ block }) {
   return (
-    <div className="my-10 flex h-24 items-center justify-center border border-dashed border-taupe-300 bg-taupe-100/60 text-xs uppercase tracking-wide text-charcoal-600/60 sm:h-32">
+    <div className="my-10 flex h-24 items-center justify-center border border-dashed border-taupe-300 bg-taupe-100/60 text-xs uppercase tracking-wide text-charcoal-600/70 sm:h-32">
       Advertisement — {block.slot || 'article_middle'}
     </div>
   )

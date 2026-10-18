@@ -1,11 +1,12 @@
 from flask import Blueprint, current_app
 from flask_restful import Api, Resource
 
-from app.models.cms import HomepageModule, Menu, SocialLink
+from app.models.cms import Menu, SocialLink
 from app.models.geography import Country
 from app.schemas.cms import HomepageModuleSchema, SocialLinkSchema
 from app.schemas.geography import CountrySchema
 from app.services.footer import build_public_footer
+from app.services.homepage import get_enabled_homepage_modules
 from app.services.navigation import serialize_public_menu
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 from app.utils.responses import success_response
@@ -53,7 +54,7 @@ class CountriesResource(Resource):
 
 class HomepageResource(Resource):
     def get(self):
-        modules = HomepageModule.query.filter_by(enabled=True).order_by(HomepageModule.sort_order).all()
+        modules = get_enabled_homepage_modules()
         # A cheap cache-invalidation hint for a CDN in front of this
         # high-traffic endpoint — no caching infrastructure added here,
         # just a deterministic timestamp a cache layer could key on.

@@ -79,7 +79,10 @@ from app.models.page import Page
 from app.models.people import Author, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Series, Topic
+from app.schemas.article import public_article_schema
+from app.schemas.cms import HomepageModuleSchema
 from app.services.event_registrations import is_event_publicly_visible
+from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 
@@ -247,6 +250,85 @@ def _set_image_preload(html_doc, *, media, public_site_url, sizes, preferred_var
             attrs.append(f'imagesrcset="{srcset}"')
             attrs.append(f'imagesizes="{_escape(sizes, quote=True)}"')
     tag = f"<link {' '.join(attrs)}>"
+    return _insert_before_head_close(html_doc, tag + "\n")
+
+
+_BOOTSTRAP_RE_CACHE = {}
+
+
+def _bootstrap_re(bootstrap_type):
+    pattern = _BOOTSTRAP_RE_CACHE.get(bootstrap_type)
+    if pattern is None:
+        pattern = re.compile(
+            rf'<script\b[^>]*data-wsf-bootstrap="{re.escape(bootstrap_type)}"[^>]*>.*?</script>',
+            re.IGNORECASE | re.DOTALL,
+        )
+        _BOOTSTRAP_RE_CACHE[bootstrap_type] = pattern
+    return pattern
+
+
+def _redact_internal_media_fields(value):
+    """WSF SEO Phase 2D — recursively strips `file_path`/`stored_filename`/
+    `uploaded_by_id` from any dict that looks like a dumped Media row
+    (identified structurally, by having both `public_url` and `file_path`
+    keys — MediaSchema's own fixed signature — rather than by hand-listing
+    every nesting path a Media reference could appear at across Article's
+    nested author/co_authors/related_people/related_organizations/
+    related_articles/sponsor_record). Applied only to the NEW bootstrap
+    JSON this phase embeds in raw initial HTML — never changes what the
+    live `public_article_schema()`-backed Article API or
+    `HomepageModuleSchema`-backed `/public/homepage` API themselves
+    return (those already include these columns today, via MediaSchema's
+    own auto-dump; unchanged, pre-existing behavior, out of scope for this
+    phase to alter). Everything else — public_url, alt_text, caption,
+    credit, width, height, variants, id — is kept untouched.
+    """
+    if isinstance(value, dict):
+        if "public_url" in value and "file_path" in value:
+            value = {k: v for k, v in value.items() if k not in ("file_path", "stored_filename", "uploaded_by_id")}
+        return {k: _redact_internal_media_fields(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_internal_media_fields(v) for v in value]
+    return value
+
+
+def _safe_public_article_payload(article):
+    """The SAME dump `GET /api/v1/articles/{slug}` already returns an
+    anonymous reader for this exact (published) Article — see
+    `public_article_schema()`'s own docstring for exactly which fields
+    that excludes (ai_editorial_notes, workflow metadata) — never a
+    second, hand-built Article serializer. Only post-processing: redact
+    any nested Media's internal filesystem/uploader columns before this
+    reaches raw, crawlable HTML (see `_redact_internal_media_fields`).
+    """
+    return _redact_internal_media_fields(public_article_schema().dump(article))
+
+
+def _safe_homepage_modules_payload(modules):
+    """The SAME dump `GET /api/v1/public/homepage` already returns —
+    see `get_enabled_homepage_modules()`'s own docstring — with the same
+    Media redaction as `_safe_public_article_payload`.
+    """
+    return _redact_internal_media_fields(HomepageModuleSchema(many=True).dump(modules))
+
+
+def _set_bootstrap_data(html_doc, bootstrap_type, payload):
+    """WSF SEO Phase 2D — embeds one small, non-executable
+    `<script type="application/json" data-wsf-bootstrap="{type}">` tag
+    carrying public-safe JSON the matching route's own first client-side
+    fetch would otherwise have to make (see frontend/src/utils/
+    bootstrap.js's readBootstrap(), which consumes this exactly once on
+    a hard load and never on a later SPA navigation). Same dedup-then-
+    insert shape as _set_structured_data/_set_image_preload: strips every
+    existing tag for this `bootstrap_type` first, then inserts exactly
+    one fresh tag when `payload` is given. Reuses `_safe_json_ld`'s own
+    </script>-breakout-safe JSON encoding — it's generic byte-for-byte
+    escaping, not specific to JSON-LD.
+    """
+    html_doc = _bootstrap_re(bootstrap_type).sub("", html_doc)
+    if payload is None:
+        return html_doc
+    tag = f'<script type="application/json" data-wsf-bootstrap="{bootstrap_type}">{_safe_json_ld(payload)}</script>'
     return _insert_before_head_close(html_doc, tag + "\n")
 
 
@@ -505,7 +587,55 @@ def render_article_shell(article):
         preferred_variant="hero",
     )
 
+    # WSF SEO Phase 2D — ArticlePage.jsx's effect currently makes its OWN
+    # fetchArticleBySlug(slug) call on a hard load, even though this same
+    # Article row was already resolved right here a moment ago. Embedding
+    # the exact same public_article_schema() dump this Article's own
+    # public API would return (see _safe_public_article_payload) lets
+    # readBootstrap('article', slug) on the client skip that first,
+    # otherwise-duplicate request entirely — see utils/bootstrap.js and
+    # ArticlePage.jsx's own effect. `key` is this Article's slug so a
+    # mismatched/stale bootstrap (should never happen — this IS the
+    # Article this exact request resolved to) is never consumed.
+    html_doc = _set_bootstrap_data(html_doc, "article", {"key": article.slug, "data": _safe_public_article_payload(article)})
+
     return _html_response(html_doc)
+
+
+def _resolve_homepage_hero_preload(modules, lead_article):
+    """WSF SEO Phase 2D — the ONE image, if any, HomePage.jsx's own Hero
+    module would mark `priority` for this exact state, mirroring that
+    frontend <MediaImage>'s own `variant`/`sizes` exactly so the browser's
+    early preload fetch agrees with the real one:
+      - a selected lead Article: HeroModule.jsx renders it through
+        <ArticleCard variant="lead">, whose own hero <MediaImage> uses
+        `variant="large"` / `sizes="(min-width: 1024px) 66vw, 100vw"` —
+        see ArticleCard.jsx. The media is that Article's own hero_media,
+        never anything from the HomepageModule row itself.
+      - no lead Article, but a manual/editorial hero with its own
+        `media`: HeroModule.jsx's manual branch uses `variant="hero"` /
+        `sizes="(min-width: 1024px) 50vw, 100vw"` directly on
+        `module.media`.
+      - no "hero" module at all, a lead-Article hero whose Article has
+        no hero_media, or a manual hero with no media: (None, None,
+        None) — `_set_image_preload` already no-ops on `media=None`.
+    Never a secondary/latest/featured-woman/series/partners image — this
+    only ever looks at the homepage's one possible "hero" module.
+    """
+    hero = next((m for m in modules if m.type == "hero"), None)
+    if hero is None:
+        return None, None, None
+    if lead_article is not None:
+        return lead_article.hero_media, "large", "(min-width: 1024px) 66vw, 100vw"
+    # Mirrors HeroModule.jsx's own guard exactly: with no lead Article,
+    # it renders the manual branch (and therefore `module.media`) only
+    # when `heading` is also set — `if (!module.heading) return null`
+    # comes first. A `media` row with no `heading` renders nothing at
+    # all client-side, so preloading it here would be preloading an
+    # image the page never actually shows.
+    if hero.heading and hero.media is not None:
+        return hero.media, "hero", "(min-width: 1024px) 50vw, 100vw"
+    return None, None, None
 
 
 def render_homepage_shell():
@@ -514,6 +644,26 @@ def render_homepage_shell():
     resolve_spa_response() — there's no slug/entity to resolve, just the
     same hardcoded copy HomePage.jsx's own useSeo() call already uses,
     now also present before any JavaScript runs.
+
+    WSF SEO Phase 2D adds two more things, both of them additive and
+    both reusing the exact same query/schema HomePage.jsx's own first
+    fetch (`GET /public/homepage`) already goes through — see
+    get_enabled_homepage_modules()/resolve_hero_lead_article() in
+    services/homepage.py:
+      - a bootstrap script carrying those same enabled modules (public
+        HomepageModuleSchema shape) plus, when the homepage's one
+        possible "hero" module has a selected lead Article, that same
+        Article's own public_article_schema() dump — see
+        frontend/src/store/index.js's preloadedState, which is what
+        actually consumes this (not a component effect — the Redux
+        store itself starts "already loaded" on a matching hard load,
+        so HomePage never flashes its loading state at all);
+      - a single LCP preload for whichever image the homepage's own
+        frontend would otherwise mark `priority` for this exact hero
+        state (a selected lead Article's hero_media, or a manual hero's
+        own `media` — see _resolve_homepage_hero_preload's own
+        docstring for exactly which `variant`/`sizes` each mirrors and
+        why) — never any other module's image.
     """
     public_site_url = current_app.config["PUBLIC_SITE_URL"]
     site_identity = get_site_identity_resolved()
@@ -539,6 +689,19 @@ def render_homepage_shell():
         site_name=site_name,
     )
     html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
+
+    modules = get_enabled_homepage_modules()
+    lead_article = resolve_hero_lead_article(modules)
+    bootstrap_payload = {
+        "modules": _safe_homepage_modules_payload(modules),
+        "leadArticle": _safe_public_article_payload(lead_article) if lead_article is not None else None,
+    }
+    html_doc = _set_bootstrap_data(html_doc, "homepage", bootstrap_payload)
+
+    hero_media, preferred_variant, sizes = _resolve_homepage_hero_preload(modules, lead_article)
+    html_doc = _set_image_preload(
+        html_doc, media=hero_media, public_site_url=public_site_url, sizes=sizes, preferred_variant=preferred_variant
+    )
     return _html_response(html_doc)
 
 

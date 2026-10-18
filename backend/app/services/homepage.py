@@ -3,9 +3,42 @@ import re
 from marshmallow import ValidationError
 
 from app.models.article import Article
-from app.models.cms import HOMEPAGE_MODULE_ITEM_COUNT_BOUNDS, HOMEPAGE_SINGLETON_TYPES
+from app.models.cms import HOMEPAGE_MODULE_ITEM_COUNT_BOUNDS, HOMEPAGE_SINGLETON_TYPES, HomepageModule
 from app.models.people import Organization, Person
 from app.models.taxonomy import Series, Topic
+
+
+def get_enabled_homepage_modules():
+    """The one query rule for "what does the public homepage show" —
+    shared by api/v1/public.py's HomepageResource (the JSON endpoint the
+    SPA calls on every normal navigation to "/") and
+    services/spa_shell.py's render_homepage_shell() (WSF SEO Phase 2D's
+    server-side bootstrap, embedding this SAME data into the initial
+    HTML so a hard load can skip that first API round-trip) — kept here
+    so neither ever drifts from the other.
+    """
+    return HomepageModule.query.filter_by(enabled=True).order_by(HomepageModule.sort_order).all()
+
+
+def resolve_hero_lead_article(modules):
+    """The first enabled "hero" module's selected lead Article, if it has
+    one AND that Article is still publicly visible (published) — None
+    otherwise (no hero module at all, a manual/editorial hero with no
+    `leadArticleSlug`, or a lead slug that's gone back to draft/been
+    removed, in which case HeroModule.jsx's own existing fallback
+    behavior applies unchanged, same as a client-side fetch miss would).
+    HOMEPAGE_SINGLETON_TYPES enforces at most one "hero" module, so
+    "first" is only ever a defensive `next()`, never a real choice among
+    several.
+    """
+    hero = next((m for m in modules if m.type == "hero"), None)
+    if hero is None:
+        return None
+    lead_slug = (hero.config or {}).get("leadArticleSlug")
+    if not lead_slug:
+        return None
+    return Article.query.filter_by(slug=lead_slug, status="published").first()
+
 
 # A CTA URL is either an internal route (starts with "/", never validated
 # against the exact set of live routes — that would recreate a routing

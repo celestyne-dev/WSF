@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { fetchArticleBySlug, fetchRelatedArticles } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 import MediaImage from '../ui/MediaImage'
@@ -14,20 +15,38 @@ import CtaLink from '../ui/CtaLink'
  *    the only place on the homepage that renders an <h1> — the article-
  *    driven path defers to ArticleCard's own heading, which intentionally
  *    stays an <h2> since that component is shared with non-hero contexts.
+ *
+ * WSF SEO Phase 2D: on a hard load of "/", the server has often already
+ * resolved this exact lead Article (see store/index.js's preloadedState,
+ * built from spa_shell.py's homepage bootstrap) — `state.site.leadArticle`
+ * is it, when present. Using it directly here skips what would otherwise
+ * be a second, serial fetch (homepage modules, THEN this Article) after
+ * the homepage's own first fetch already resolved it server-side. A
+ * plain client-side SPA navigation that never went through that bootstrap
+ * (or a `module.leadArticleSlug` that doesn't match it) falls back to the
+ * exact fetch this component always made.
  */
 export default function HeroModule({ module }) {
-  const [lead, setLead] = useState(module.leadArticleSlug ? undefined : null)
+  const bootstrapLeadArticle = useSelector((s) => s.site.leadArticle)
+  const matchesBootstrap = Boolean(bootstrapLeadArticle) && bootstrapLeadArticle.slug === module.leadArticleSlug
+  const [lead, setLead] = useState(() => {
+    if (matchesBootstrap) return bootstrapLeadArticle
+    return module.leadArticleSlug ? undefined : null
+  })
   const [secondary, setSecondary] = useState([])
 
   useEffect(() => {
+    let active = true
     if (!module.leadArticleSlug) {
       setLead(null)
-      return
+    } else if (!matchesBootstrap) {
+      fetchArticleBySlug(module.leadArticleSlug)
+        .then((data) => active && setLead(data))
+        .catch(() => active && setLead(null))
     }
-    let active = true
-    fetchArticleBySlug(module.leadArticleSlug)
-      .then((data) => active && setLead(data))
-      .catch(() => active && setLead(null))
+    // else: matchesBootstrap — `lead` is already the resolved Article
+    // from the lazy initializer above; no fetch needed.
+
     if (module.secondaryArticleSlugs?.length) {
       fetchRelatedArticles(module.secondaryArticleSlugs)
         .then((items) => active && setSecondary(items))
@@ -36,7 +55,7 @@ export default function HeroModule({ module }) {
     return () => {
       active = false
     }
-  }, [module.leadArticleSlug, module.secondaryArticleSlugs])
+  }, [module.leadArticleSlug, module.secondaryArticleSlugs, matchesBootstrap])
 
   if (lead === undefined) return null // still resolving the lead article
 
