@@ -14,9 +14,16 @@ metadata/structured-data/preload coverage:
     on "/", carrying the enabled HomepageModule rows (the exact same
     HomepageModuleSchema dump GET /api/v1/public/homepage already returns)
     plus, when the one possible "hero" module has a selected lead Article,
-    that Article's own public_article_schema() dump too (see
+    that Article's own `article_summary_schema()` dump — the SAME lighter,
+    card-oriented shape every public list/card endpoint already uses (no
+    `content`, no detail-only nested relationships — see
+    `_safe_article_summary_payload`), since the homepage only ever renders
+    this through HeroModule.jsx's own <ArticleCard variant="lead"> (see
     get_enabled_homepage_modules/resolve_hero_lead_article in
-    services/homepage.py, store/index.js, components/home/HeroModule.jsx);
+    services/homepage.py, store/index.js, components/home/HeroModule.jsx).
+    The Article DETAIL route (render_article_shell) keeps using the FULL
+    `public_article_schema()` dump unchanged — ArticlePage needs the
+    complete Article, including `content`;
 
   - a homepage LCP `<link rel=preload as=image>` (previously always
     absent — see test_image_seo_phase2c.py's test_homepage_has_no_preload,
@@ -137,6 +144,39 @@ def _make_homepage_module(app, type="hero", enabled=True, sort_order=0, heading=
         return module.id
 
 
+def _attach_full_article_relations(app, article_id):
+    """WSF SEO Phase 2D correction — gives an Article every detail-only
+    relation `article_summary_schema()` excludes (content, co_authors,
+    related_people, related_organizations, related_articles), so tests
+    can prove the homepage lead bootstrap genuinely omits them rather
+    than just happening to have nothing to omit.
+    """
+    from app.models.article import Article
+    from app.models.people import Author, Organization, Person
+
+    with app.app_context():
+        article = Article.query.get(article_id)
+        article.content = [{"type": "paragraph", "text": "Full article body — never needed by a homepage card."}]
+        co_author = Author(slug="co-author-only", name="Co-Author Only", status="active")
+        person = Person(slug="related-person-only", name="Related Person Only")
+        organization = Organization(slug="related-org-only", name="Related Org Only")
+        other_article = Article(
+            slug="other-related-story",
+            title="Other Related Story",
+            status="published",
+            author_id=article.author_id,
+            publish_date=db.func.now(),
+            content=[],
+        )
+        db.session.add_all([co_author, person, organization, other_article])
+        db.session.flush()
+        article.co_authors.append(co_author)
+        article.related_people.append(person)
+        article.related_organizations.append(organization)
+        article.related_articles.append(other_article)
+        db.session.commit()
+
+
 def _bootstrap_tags(html, bootstrap_type):
     return re.findall(
         rf'<script\b[^>]*data-wsf-bootstrap="{bootstrap_type}"[^>]*>.*?</script>', html, re.IGNORECASE | re.DOTALL
@@ -184,6 +224,30 @@ class TestArticleBootstrap:
         assert data["excerpt"] == "Stories from women reshaping their industries."
         assert data["author"]["name"] == "Amara Okafor"
         assert data["hero_media"]["public_url"] == "/media/originals/hero.jpg"
+        # Unlike the homepage lead bootstrap (article_summary_schema —
+        # see TestHomepageBootstrap), the Article DETAIL route keeps the
+        # FULL schema, `content` included — ArticlePage needs it.
+        assert "content" in data
+
+    def test_article_detail_bootstrap_still_contains_full_content_body(self, client, app):
+        # WSF SEO Phase 2D correction pass — explicit regression anchor:
+        # shrinking the HOMEPAGE lead bootstrap to article_summary_schema
+        # must never also shrink the Article DETAIL bootstrap. Give this
+        # article real content blocks and prove they survive intact.
+        _use_fixture_index(app)
+        content = [{"type": "paragraph", "text": "The first paragraph of the full article body."}]
+        article_id = _make_article(app, slug="full-body-story", title="Full Body Story")
+        with app.app_context():
+            from app.models.article import Article
+
+            article = Article.query.get(article_id)
+            article.content = content
+            db.session.commit()
+
+        html = client.get("/full-body-story").get_data(as_text=True)
+        payload = _bootstrap_json(html, "article")
+
+        assert payload["data"]["content"] == content
 
     def test_article_bootstrap_excludes_ai_editorial_notes_and_workflow_fields(self, client, app):
         _use_fixture_index(app)
@@ -317,16 +381,85 @@ class TestHomepageBootstrap:
 
     def test_homepage_bootstrap_includes_published_lead_article(self, client, app):
         _use_fixture_index(app)
-        article_id = _make_article(app, slug="lead-story", title="Lead Story", status="published")
+        author_id = _make_author(app, slug="amara-okafor", name="Amara Okafor")
+        article_id = _make_article(
+            app,
+            slug="lead-story",
+            title="Lead Story",
+            excerpt="A story worth leading with.",
+            author_id=author_id,
+            status="published",
+            reading_time=5,
+        )
+        _attach_full_article_relations(app, article_id)
         _make_homepage_module(app, type="hero", enabled=True, heading="Welcome", config={"leadArticleSlug": "lead-story"})
 
         html = client.get("/").get_data(as_text=True)
         payload = _bootstrap_json(html, "homepage")
 
-        assert payload["leadArticle"] is not None
-        assert payload["leadArticle"]["slug"] == "lead-story"
-        assert payload["leadArticle"]["title"] == "Lead Story"
-        assert article_id  # created successfully, used only for slug above
+        lead = payload["leadArticle"]
+        assert lead is not None
+        # Fields HeroModule.jsx's <ArticleCard variant="lead"> needs —
+        # see api/articles.js's mapArticle() and ArticleCard.jsx.
+        assert lead["slug"] == "lead-story"
+        assert lead["title"] == "Lead Story"
+        assert lead["excerpt"] == "A story worth leading with."
+        assert lead["author"]["name"] == "Amara Okafor"
+        assert lead["publish_date"] is not None
+        assert lead["reading_time"] is not None
+        # WSF SEO Phase 2D correction — article_summary_schema() excludes
+        # the full Article body and every detail-only nested relation;
+        # this card never needs them and must not ship them to raw HTML.
+        assert "content" not in lead
+        assert "related_people" not in lead
+        assert "related_organizations" not in lead
+        assert "related_articles" not in lead
+        assert "co_authors" not in lead
+        assert "ai_editorial_notes" not in lead
+        assert "scheduled_at" not in lead
+        assert "approved_at" not in lead
+        assert "approved_by" not in lead
+
+    def test_homepage_lead_bootstrap_matches_redacted_article_summary_schema_dump(self, client, app):
+        # Proves the homepage lead payload is the redacted result of the
+        # SAME article_summary_schema() public endpoints already use —
+        # never a separately hand-crafted projection (the "one public
+        # serialization source of truth" guarantee).
+        from app.schemas.article import article_summary_schema
+        from app.services.spa_shell import _redact_internal_media_fields
+
+        _use_fixture_index(app)
+        media_id = _make_media(app, public_url="/media/originals/lead-hero.jpg")
+        _add_variant(app, media_id, "large", "/media/large/lead-hero.webp", width=1280)
+        article_id = _make_article(app, slug="parity-story", title="Parity Story", status="published", hero_media_id=media_id)
+        _make_homepage_module(app, type="hero", enabled=True, heading="Welcome", config={"leadArticleSlug": "parity-story"})
+
+        html = client.get("/").get_data(as_text=True)
+        payload = _bootstrap_json(html, "homepage")
+
+        with app.app_context():
+            from app.models.article import Article
+
+            article = Article.query.get(article_id)
+            expected = _redact_internal_media_fields(article_summary_schema().dump(article))
+
+        assert payload["leadArticle"] == expected
+
+    def test_homepage_lead_bootstrap_redacts_internal_media_fields_on_lead_hero_media(self, client, app):
+        _use_fixture_index(app)
+        media_id = _make_media(app, public_url="/media/originals/lead-hero.jpg")
+        _add_variant(app, media_id, "large", "/media/large/lead-hero.webp", width=1280)
+        _make_article(app, slug="redacted-lead-story", status="published", hero_media_id=media_id)
+        _make_homepage_module(app, type="hero", enabled=True, heading="Welcome", config={"leadArticleSlug": "redacted-lead-story"})
+
+        html = client.get("/").get_data(as_text=True)
+        payload = _bootstrap_json(html, "homepage")
+
+        media = payload["leadArticle"]["hero_media"]
+        assert media["public_url"] == "/media/originals/lead-hero.jpg"
+        assert "file_path" not in media
+        assert "stored_filename" not in media
+        assert "uploaded_by_id" not in media
 
     def test_homepage_bootstrap_lead_article_null_when_lead_slug_is_draft(self, client, app):
         _use_fixture_index(app)

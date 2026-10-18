@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { loadHomepageModules } from '../features/site/siteSlice'
+import { loadHomepageModules, clearHomepageBootstrapLead } from '../features/site/siteSlice'
 import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
 import HeroModule from '../components/home/HeroModule'
@@ -51,6 +51,24 @@ export default function HomePage() {
   useEffect(() => {
     if (homepageStatus === 'idle') dispatch(loadHomepageModules())
   }, [homepageStatus, dispatch])
+
+  // WSF SEO Phase 2D correction — `state.site.leadArticle` only ever
+  // means "the server's homepage bootstrap resolved this Article for
+  // THIS hard load" (see store/index.js's preloadedState and
+  // HeroModule.jsx, which reads it before falling back to its own
+  // fetch). It must not outlive this one homepage visit: this effect's
+  // only job is to dispatch the narrow clearHomepageBootstrapLead()
+  // reducer on unmount, so a later SPA navigation back to "/" finds it
+  // already null and HeroModule takes its normal fetchArticleBySlug
+  // path instead of reusing a stale bootstrap Article. Deliberately its
+  // own effect with a dependency array of just `dispatch` — never tied
+  // to homepageStatus or anything else that changes while the page is
+  // still mounted, and never run on mount (only its cleanup matters).
+  useEffect(() => {
+    return () => {
+      dispatch(clearHomepageBootstrapLead())
+    }
+  }, [dispatch])
 
   useSeo({
     title: 'Women Shaping Futures — Stories, Opportunity & Growth for Women Worldwide',

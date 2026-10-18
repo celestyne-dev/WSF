@@ -79,7 +79,7 @@ from app.models.page import Page
 from app.models.people import Author, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Series, Topic
-from app.schemas.article import public_article_schema
+from app.schemas.article import article_summary_schema, public_article_schema
 from app.schemas.cms import HomepageModuleSchema
 from app.services.event_registrations import is_event_publicly_visible
 from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
@@ -302,6 +302,26 @@ def _safe_public_article_payload(article):
     reaches raw, crawlable HTML (see `_redact_internal_media_fields`).
     """
     return _redact_internal_media_fields(public_article_schema().dump(article))
+
+
+def _safe_article_summary_payload(article):
+    """WSF SEO Phase 2D correction — the homepage bootstrap's `leadArticle`
+    only ever needs to render through HeroModule.jsx's own <ArticleCard
+    variant="lead">, never the full Article detail page, so it should
+    never carry the full Article body (`content`) or its detail-only
+    nested relationships into raw initial HTML. `article_summary_schema()`
+    (app/schemas/article.py) is the SAME lighter shape every public
+    list/card endpoint already uses — excludes content/related_people/
+    related_organizations/related_articles/co_authors/ai_editorial_notes/
+    workflow fields, keeps everything an ArticleCard needs (id, slug,
+    title, excerpt, hero_media, author, topics, publish_date,
+    reading_time, ...). Never a hand-built second projection. Same Media
+    redaction as `_safe_public_article_payload`. `render_article_shell`
+    keeps using the FULL `_safe_public_article_payload` — ArticlePage
+    needs the complete Article, this helper is ONLY for the homepage's
+    lead-Article bootstrap.
+    """
+    return _redact_internal_media_fields(article_summary_schema().dump(article))
 
 
 def _safe_homepage_modules_payload(modules):
@@ -653,7 +673,11 @@ def render_homepage_shell():
       - a bootstrap script carrying those same enabled modules (public
         HomepageModuleSchema shape) plus, when the homepage's one
         possible "hero" module has a selected lead Article, that same
-        Article's own public_article_schema() dump — see
+        Article's own `article_summary_schema()` dump — the lighter,
+        card-oriented shape (no `content`, no detail-only nested
+        relationships — see `_safe_article_summary_payload`), since all
+        this ever needs to render is HeroModule.jsx's own <ArticleCard
+        variant="lead">, never the full Article detail page — see
         frontend/src/store/index.js's preloadedState, which is what
         actually consumes this (not a component effect — the Redux
         store itself starts "already loaded" on a matching hard load,
@@ -694,7 +718,7 @@ def render_homepage_shell():
     lead_article = resolve_hero_lead_article(modules)
     bootstrap_payload = {
         "modules": _safe_homepage_modules_payload(modules),
-        "leadArticle": _safe_public_article_payload(lead_article) if lead_article is not None else None,
+        "leadArticle": _safe_article_summary_payload(lead_article) if lead_article is not None else None,
     }
     html_doc = _set_bootstrap_data(html_doc, "homepage", bootstrap_payload)
 
