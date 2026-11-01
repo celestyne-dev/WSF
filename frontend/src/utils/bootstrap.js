@@ -1,11 +1,13 @@
 // WSF SEO Phase 2D — reads the small, non-executable
 // <script type="application/json" data-wsf-bootstrap="{type}"> tag the
 // server (backend/app/services/spa_shell.py's _set_bootstrap_data)
-// embeds in the initial HTML for a hard load of "/" or an Article's flat
-// /{slug} route, so that route's own first client-side fetch (GET
-// /public/homepage, or GET /articles/{slug}) can be skipped entirely —
-// see frontend/src/store/index.js (homepage) and pages/ArticlePage.jsx
-// (article) for the two call sites.
+// embeds in the initial HTML for a hard load of "/", an Article's flat
+// /{slug} route, or /people/{slug}, so that route's own first client-side
+// fetch (GET /public/homepage, GET /articles/{slug}, or GET
+// /people/{slug}) can be skipped entirely — see frontend/src/store/
+// index.js (homepage), pages/ArticlePage.jsx (article) and pages/
+// PersonProfilePage.jsx (person, added in AI Search / GEO Phase 1B) for
+// the call sites.
 //
 // `readBootstrap` is deliberately side-effect-free (it only reads
 // `textContent` and JSON.parses it — it never removes the script tag)
@@ -33,7 +35,7 @@ function bootstrapScriptSelector(type) {
 
 /**
  * Returns the parsed `{key, data}` bootstrap payload for `type`
- * ("article" | "homepage"), or `null` when there's nothing to use —
+ * ("article" | "homepage" | "person"), or `null` when there's nothing to use —
  * every one of these is a normal, expected "fall back to the API"
  * case, never thrown: no `document` (a non-browser environment, e.g. a
  * future test runner), no matching script tag (most routes never get

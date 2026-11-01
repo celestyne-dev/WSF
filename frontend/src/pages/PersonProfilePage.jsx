@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Globe, Quote } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
-import { fetchPersonBySlug } from '../api/people'
+import { fetchPersonBySlug, mapPerson } from '../api/people'
 import { fetchArticles } from '../api/articles'
 import { fetchSeriesBySlug } from '../api/taxonomies'
 import { resolveImage, resolveAltText } from '../utils/media'
 import useSeo from '../hooks/useSeo'
+import { readBootstrap, consumeBootstrap } from '../utils/bootstrap'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
@@ -62,13 +63,43 @@ function normalizeLabel(value) {
 
 export default function PersonProfilePage() {
   const { slug } = useParams()
-  const [person, setPerson] = useState(undefined)
+  // AI Search / GEO Phase 1B — a hard load of /people/{slug} embeds this
+  // exact public Person (spa_shell.py's _safe_public_person_payload) next
+  // to its server-rendered profile, so the page can render immediately
+  // instead of swapping that profile for a PageLoader while it refetches.
+  // Memoized per slug: readBootstrap only reads the DOM (no side effect,
+  // safe under StrictMode's double render), and a later SPA navigation —
+  // to another slug, or back to this one after the tag was consumed —
+  // gets null and fetches normally.
+  const bootstrapPerson = useMemo(() => {
+    const bootstrap = readBootstrap('person', slug)
+    return bootstrap ? mapPerson(bootstrap.data) : null
+  }, [slug])
+  const [person, setPerson] = useState(() => bootstrapPerson ?? undefined)
   const [relatedArticles, setRelatedArticles] = useState([])
-  const [seriesAppearances, setSeriesAppearances] = useState([])
+  // The bootstrap's series list is already published-only {slug, name}.
+  const [seriesAppearances, setSeriesAppearances] = useState(() => bootstrapPerson?.series || [])
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let active = true
+
+    function loadRelatedArticles() {
+      fetchArticles({ person: slug })
+        .then((res) => active && setRelatedArticles(res.items))
+        .catch(() => {})
+    }
+
+    if (bootstrapPerson) {
+      // Person + series already initialized from the bootstrap above —
+      // only drop the (now consumed) tag and load the related stories.
+      consumeBootstrap('person')
+      loadRelatedArticles()
+      return () => {
+        active = false
+      }
+    }
+
     setPerson(undefined)
     setError(null)
 
@@ -78,9 +109,7 @@ export default function PersonProfilePage() {
         setPerson(data)
         if (!data) return
 
-        fetchArticles({ person: slug })
-          .then((res) => active && setRelatedArticles(res.items))
-          .catch(() => {})
+        loadRelatedArticles()
 
         // The real API already nests each Series ({slug, name}) in the
         // Person payload — used directly, no extra requests. Only mock-mode
@@ -100,9 +129,13 @@ export default function PersonProfilePage() {
     return () => {
       active = false
     }
-  }, [slug])
+  }, [slug, bootstrapPerson])
 
   const canonicalUrl = `https://womenshapingfutures.org/people/${slug}`
+  // One effective canonical for useSeo, the Person JSON-LD and the
+  // breadcrumb — the same resolved value spa_shell.py's _person_meta gives
+  // all three server-side.
+  const effectiveCanonicalUrl = person?.seo?.canonical || canonicalUrl
 
   // Social-share image priority, matching spa_shell.py's _person_meta: the
   // editor-picked SEO/OG image (person.seo.ogImage, resolved server-side
@@ -118,7 +151,7 @@ export default function PersonProfilePage() {
       ? {
           title: person.seo?.title || `${person.name} | Women Shaping Futures`,
           description: person.seo?.description || person.shortBio,
-          canonical: person.seo?.canonical || canonicalUrl,
+          canonical: effectiveCanonicalUrl,
           image: socialImagePath ? resolveImage(socialImagePath, { width: 1200, height: 630 }) : undefined,
           imageAlt: socialImageAlt,
           robots: person.seo?.robots,
@@ -126,8 +159,8 @@ export default function PersonProfilePage() {
       : {},
   )
 
-  usePersonStructuredData(person, canonicalUrl)
-  useBreadcrumbStructuredData(person ? [{ label: 'People', to: '/people' }, { label: person.name }] : null, canonicalUrl)
+  usePersonStructuredData(person, effectiveCanonicalUrl)
+  useBreadcrumbStructuredData(person ? [{ label: 'People', to: '/people' }, { label: person.name }] : null, effectiveCanonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this profile" description={error} /></div>
   if (person === undefined) return <PageLoader />

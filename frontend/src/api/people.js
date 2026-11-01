@@ -12,7 +12,9 @@ async function loadMockPeople() {
   return _mockPeople
 }
 
-function mapPerson(p) {
+// Exported so PersonProfilePage can map the server's Person bootstrap
+// (the same PersonSchema shape the API returns) without a second mapper.
+export function mapPerson(p) {
   if (!p) return null
   return {
     id: p.id,

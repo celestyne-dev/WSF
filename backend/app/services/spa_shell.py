@@ -95,8 +95,10 @@ from app.models.taxonomy import Series, Topic
 from app.schemas.article import article_summary_schema, public_article_schema
 from app.schemas.cms import HomepageModuleSchema
 from app.schemas.commerce import ProductSchema
+from app.schemas.people import PersonSchema
 from app.services.event_registrations import is_event_publicly_visible
 from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
+from app.services.prerender import render_article_prerender, render_person_prerender
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 
@@ -267,6 +269,25 @@ def _set_image_preload(html_doc, *, media, public_site_url, sizes, preferred_var
     return _insert_before_head_close(html_doc, tag + "\n")
 
 
+# AI Search / GEO Phase 1B — the exact empty mount point Vite's
+# index.html ships. Only this precise empty element is ever filled; if it
+# isn't found exactly once (a changed template), the shell is returned
+# untouched rather than risking a corrupted document.
+_EMPTY_ROOT_RE = re.compile(r'<div id="root">\s*</div>')
+
+
+def _set_root_prerender(html_doc, inner_html):
+    """Puts visible, semantic page content INSIDE the SPA's own #root
+    (see app/services/prerender.py). main.jsx uses createRoot().render()
+    — no hydration — so React simply replaces these children on its first
+    commit: one copy of the content, never a second permanent one, and
+    the same HTML for every visitor (no User-Agent branch).
+    """
+    if not inner_html or len(_EMPTY_ROOT_RE.findall(html_doc)) != 1:
+        return html_doc
+    return _EMPTY_ROOT_RE.sub(lambda _m: f'<div id="root">{inner_html}</div>', html_doc, count=1)
+
+
 _BOOTSTRAP_RE_CACHE = {}
 
 
@@ -344,6 +365,21 @@ def _safe_homepage_modules_payload(modules):
     Media redaction as `_safe_public_article_payload`.
     """
     return _redact_internal_media_fields(HomepageModuleSchema(many=True).dump(modules))
+
+
+def _safe_public_person_payload(person):
+    """GEO Phase 1B — the SAME PersonSchema dump the public
+    `GET /api/v1/people/{slug}` returns, narrowed for raw initial HTML:
+    Media internals redacted; `organization_id` dropped (the nested
+    `organization` preview is already null unless that Organization is
+    published, but the bare FK id would still point at a draft one); and
+    `series` replaced by a minimal {slug, name} list of PUBLISHED Series
+    only, so an unpublished Series never reaches the page source.
+    """
+    payload = _redact_internal_media_fields(PersonSchema().dump(person))
+    payload.pop("organization_id", None)
+    payload["series"] = [{"slug": s.slug, "name": s.name} for s in person.series if s.status == "published"]
+    return payload
 
 
 def _set_bootstrap_data(html_doc, bootstrap_type, payload):
@@ -631,7 +667,13 @@ def render_article_shell(article):
     # ArticlePage.jsx's own effect. `key` is this Article's slug so a
     # mismatched/stale bootstrap (should never happen — this IS the
     # Article this exact request resolved to) is never consumed.
-    html_doc = _set_bootstrap_data(html_doc, "article", {"key": article.slug, "data": _safe_public_article_payload(article)})
+    article_payload = _safe_public_article_payload(article)
+    html_doc = _set_bootstrap_data(html_doc, "article", {"key": article.slug, "data": article_payload})
+
+    # AI Search / GEO Phase 1B — the Article's own title/byline/date and
+    # editorial blocks as visible, semantic HTML inside #root, built from
+    # that SAME public payload (see _set_root_prerender).
+    html_doc = _set_root_prerender(html_doc, render_article_prerender(article_payload))
 
     return _html_response(html_doc)
 
@@ -1352,7 +1394,10 @@ def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
     data = {"@context": "https://schema.org", "@type": "Person", "name": person.name, "url": canonical_url}
     if person.title:
         data["jobTitle"] = person.title
-    if person.organization is not None and person.organization.name:
+    # Only a PUBLISHED Organization — the same rule PersonSchema.
+    # get_organization applies, so a draft/archived Organization's name
+    # never reaches raw HTML through this JSON-LD either.
+    if person.organization is not None and person.organization.status == "published" and person.organization.name:
         data["worksFor"] = {"@type": "Organization", "name": person.organization.name}
     if person.photo is not None:
         image_url = _absolute_url(person.photo.public_url, public_site_url)
@@ -1943,6 +1988,14 @@ def _render_entity_detail(prefix, slug):
         html_doc = _set_image_preload(
             html_doc, media=get_media(entity), public_site_url=public_site_url, sizes=sizes, preferred_variant=preferred_variant
         )
+
+    if prefix == "people":
+        # AI Search / GEO Phase 1B — visible profile content inside #root,
+        # plus a one-shot bootstrap so PersonProfilePage renders the
+        # profile immediately instead of refetching it (see
+        # frontend/src/pages/PersonProfilePage.jsx).
+        html_doc = _set_bootstrap_data(html_doc, "person", {"key": entity.slug, "data": _safe_public_person_payload(entity)})
+        html_doc = _set_root_prerender(html_doc, render_person_prerender(entity))
 
     return _html_response(html_doc)
 
