@@ -22,6 +22,7 @@ from app.schemas.commerce import (
 )
 from app.schemas.media import MediaSchema
 from app.services.audit import log_action
+from app.services.public_visibility import is_public_organization
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -269,6 +270,11 @@ class SponsorAnalyticsResource(Resource):
 
 
 def build_public_sponsor_payload(sponsor, placement):
+    # The campaign stays public on its own eligibility (its logo — with the
+    # existing fallback to the Organization's logo — is part of the
+    # campaign's own presentation); only the linked Organization's profile
+    # preview (slug/name) requires that Organization to be published.
+    org_public = is_public_organization(sponsor.organization)
     logo = sponsor.logo or (sponsor.organization.logo if sponsor.organization else None)
     return {
         "id": sponsor.id,
@@ -277,7 +283,7 @@ def build_public_sponsor_payload(sponsor, placement):
         "publicDescription": sponsor.public_description,
         "organization": (
             {"slug": sponsor.organization.slug, "name": sponsor.organization.name}
-            if sponsor.organization else None
+            if org_public else None
         ),
         "logo": MediaSchema().dump(logo) if logo else None,
         "creative": MediaSchema().dump(sponsor.creative) if sponsor.creative else None,

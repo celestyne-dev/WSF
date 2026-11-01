@@ -71,6 +71,9 @@ def _fetch_public_job(content_id):
     data = _job_schema.dump(job)
     # Linked Organization preview only when published (company_name stays).
     data["organization"] = keep_if(data.get("organization"), job.organization, is_public_organization)
+    # Same as the public Job payload: no linked Sponsor record (internal tier).
+    data.pop("sponsor_id", None)
+    data.pop("sponsor", None)
     if not job.salary_visible:
         for field in _SALARY_FIELDS:
             data[field] = None

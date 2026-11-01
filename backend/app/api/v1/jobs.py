@@ -9,7 +9,6 @@ from app.extensions import db
 from app.models.commerce import Sponsor
 from app.models.opportunity import Job
 from app.models.people import Organization
-from app.schemas.commerce import SponsorSchema
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
 from app.schemas.opportunity import JobInputSchema, JobSchema
@@ -185,10 +184,9 @@ def build_public_job_payload(job, viewer, *, detail=False):
         "expiry_date": job.expiry_date.isoformat() if job.expiry_date else None,
         "featured": job.featured,
         "sponsored": job.sponsored,
-        "sponsor_id": job.sponsor_id,
-        "sponsor": (
-            SponsorSchema(only=("id", "tier", "organization")).dump(job.sponsor) if job.sponsor else None
-        ),
+        # No linked Sponsor record in public payloads (its admin schema
+        # carries the internal tier); the public disclosure only needs
+        # `sponsored` + the company name. Staff dumps keep sponsor_id/sponsor.
         "status": job.status,
         "is_closed": not is_job_application_open(job),
         "is_scheduled": job.status == "scheduled" and bool(job.published_date) and job.published_date > date.today(),

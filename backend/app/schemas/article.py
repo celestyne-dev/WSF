@@ -105,9 +105,16 @@ class PublicArticleSchema(ArticleSchema):
 
     @post_dump(pass_original=True)
     def _drop_nonpublic_relations(self, data, original, **kwargs):
-        from app.services.public_visibility import filter_dumped, public_article_dump
+        from app.services.public_visibility import filter_dumped, public_article_dump, public_sponsor_disclosure
 
         public_article_dump(data, original)
+        # A linked Sponsor campaign is a public relationship too: only an
+        # eligible campaign, in a minimal disclosure shape, and never the
+        # internal Sponsor id. The freeform `sponsor` disclosure stored on
+        # the Article itself is editorial content and stays.
+        data.pop("sponsor_id", None)
+        if "sponsorRecord" in data:
+            data["sponsorRecord"] = public_sponsor_disclosure(original.sponsor_record)
         if isinstance(data.get("related_articles"), list):
             data["related_articles"] = filter_dumped(
                 data["related_articles"], original.related_articles, lambda a: a is not None and a.status == "published"

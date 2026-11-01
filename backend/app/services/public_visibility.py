@@ -160,3 +160,23 @@ def public_learning_dump(data, program):
     if "topics" in data:
         data["topics"] = filter_dumped(data["topics"], program.topics, is_public_taxonomy)
     return data
+
+
+def public_sponsor_disclosure(sponsor):
+    """The minimal PUBLIC disclosure for a linked Sponsor campaign — only
+    while that campaign is itself publicly eligible (Sponsor.
+    is_publicly_eligible: active, public_visible, inside its date window).
+    Never tier, campaign name, commercial/internal fields or the admin id;
+    the Organization preview only when that Organization is published.
+    Keys match what ArticlePage's disclosure reads (publicName,
+    disclosure_label, organization.name)."""
+    if sponsor is None or not sponsor.is_publicly_eligible():
+        return None
+    organization = sponsor.organization
+    return {
+        "publicName": sponsor.resolved_public_name,
+        "disclosure_label": sponsor.disclosure_label,
+        "organization": (
+            {"slug": organization.slug, "name": organization.name} if is_public_organization(organization) else None
+        ),
+    }

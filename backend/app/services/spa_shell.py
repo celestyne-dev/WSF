@@ -1266,7 +1266,9 @@ def _build_job_json_ld(job, canonical_url, public_site_url, site_name):
         data["employmentType"] = _JOB_EMPLOYMENT_TYPE_SCHEMA[job.employment_type]
 
     hiring_org = {"@type": "Organization", "name": job.company_name}
-    logo_media = job.organization.logo if job.organization and job.organization.logo else job.logo
+    # The linked Organization's logo only when it is published (the
+    # public payload JobDetailPage reads drops an unpublished one too).
+    logo_media = job.organization.logo if is_public_organization(job.organization) and job.organization.logo else job.logo
     if logo_media is not None:
         logo_url = _absolute_url(logo_media.public_url, public_site_url)
         if logo_url:

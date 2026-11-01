@@ -85,10 +85,16 @@ class DirectoryListingPublicSchema(ma.Schema):
     service_modes = fields.List(fields.String(), dump_only=True)
     public_contact_email = fields.String(dump_only=True)
     public_contact_phone = fields.String(dump_only=True)
-    categories = fields.Nested(DirectoryCategorySchema, many=True, dump_only=True, only=("id", "slug", "name"))
+    # Published categories only — matching the public category endpoint
+    # (admin schemas below keep every category for editing).
+    categories = fields.Method("get_public_categories", dump_only=True)
     is_currently_featured = fields.Boolean(dump_only=True)
     published_at = fields.DateTime(dump_only=True)
     seo = fields.Dict(dump_only=True)
+
+    def get_public_categories(self, obj):
+        published = [c for c in (obj.categories or []) if c.status == "published"]
+        return DirectoryCategorySchema(many=True, only=("id", "slug", "name")).dump(published)
 
 
 class DirectoryListingAdminSchema(ma.SQLAlchemyAutoSchema):

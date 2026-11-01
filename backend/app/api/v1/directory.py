@@ -180,7 +180,10 @@ class DirectoryListingPublicListResource(Resource):
         args = request.args
         if args.get("category"):
             query = query.filter(
-                DirectoryListing.categories.any(DirectoryCategory.slug == args["category"])
+                # Only a published category can be used as a public filter.
+                DirectoryListing.categories.any(
+                    (DirectoryCategory.slug == args["category"]) & (DirectoryCategory.status == "published")
+                )
             )
         if args.get("classification"):
             query = query.filter(DirectoryListing.ownership_classification == args["classification"])

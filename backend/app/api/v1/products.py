@@ -94,6 +94,12 @@ def _dump_product(product, can_view_all):
     if not product.price_visible and not can_view_all:
         for field in _PRICE_FIELDS:
             data[field] = None
+    if not can_view_all:
+        # The linked Resource is a fulfillment detail no public page uses;
+        # never reveal its id/slug/name (it may not even be public). The
+        # relationship itself — and checkout/fulfillment — are untouched.
+        data.pop("resource", None)
+        data.pop("resource_id", None)
     return data
 
 
