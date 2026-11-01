@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { LogOut, ExternalLink } from 'lucide-react'
@@ -15,10 +15,17 @@ export default function AdminLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [signingOut, setSigningOut] = useState(false)
+  const mainRef = useRef(null)
 
   useEffect(() => {
     if (accessToken && !user) dispatch(restoreSession())
   }, [accessToken, user, dispatch])
+
+  // <main> (not the window) is the CMS scroll container, so a new admin
+  // screen would otherwise open at the previous screen's scroll offset.
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0)
+  }, [location.pathname])
 
   function handleLogout() {
     setSigningOut(true)
@@ -78,12 +85,16 @@ export default function AdminLayout() {
   const roleLabel = user?.role ? getRoleLabel(user.role) : null
 
   return (
-    <div className="flex min-h-screen bg-taupe-100 text-charcoal">
-      <aside className="hidden w-64 shrink-0 flex-col bg-charcoal-800 text-ivory lg:flex">
-        <div className="flex h-16 items-center border-b border-ivory/10 px-6">
+    // Viewport-height shell: only <main> scrolls, so the Studio sidebar
+    // (desktop) and the top header stay in view on long CMS screens.
+    // 100dvh where supported keeps mobile browser toolbars from hiding the
+    // bottom of <main>; h-screen (100vh) is the fallback.
+    <div className="flex h-screen overflow-hidden bg-taupe-100 text-charcoal supports-[height:100dvh]:h-dvh">
+      <aside className="hidden h-full w-64 shrink-0 flex-col bg-charcoal-800 text-ivory lg:flex">
+        <div className="flex h-16 shrink-0 items-center border-b border-ivory/10 px-6">
           <span className="font-serif text-lg font-semibold">WSF Studio</span>
         </div>
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
           {NAV_GROUPS.map((group) => {
             // A nonfunctional (403-on-open) admin menu item is worse than
             // no item, so every item whose page requires a permission is
@@ -117,15 +128,15 @@ export default function AdminLayout() {
             )
           })}
         </nav>
-        <div className="border-t border-ivory/10 p-4">
+        <div className="shrink-0 border-t border-ivory/10 p-4">
           <a href="/" target="_blank" rel="noreferrer" className="flex items-center gap-2 px-2 py-1.5 text-xs text-ivory/60 hover:text-ivory">
             <ExternalLink size={13} /> View live site
           </a>
         </div>
       </aside>
 
-      <div className="flex min-h-screen flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-taupe-300 bg-white px-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-taupe-300 bg-white px-6">
           <p className="font-serif text-lg font-semibold text-charcoal lg:hidden">WSF Studio</p>
           <div className="hidden text-sm text-charcoal-600 lg:block">Content Management System</div>
           <div className="flex items-center gap-3">
@@ -144,7 +155,7 @@ export default function AdminLayout() {
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">
+        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>

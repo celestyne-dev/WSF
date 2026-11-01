@@ -18,6 +18,8 @@ import {
   MousePointerClick,
   Newspaper,
   AlignLeft,
+  Plus,
+  X,
 } from 'lucide-react'
 import MediaPicker from './MediaPicker'
 import { fetchArticles } from '../../api/articles'
@@ -81,21 +83,30 @@ function RichTextField({ value, onChange, placeholder, className = '' }) {
   )
 }
 
+// The header is `sticky` inside its own block: while a tall block is being
+// scrolled through, its type label and Move/Delete controls stay pinned to
+// the top of the CMS scroll area (AdminLayout's <main>), and they scroll
+// away with the block once its end is reached — a sticky child can never
+// leave its parent, so the next block's header simply takes over and two
+// headers never stack. Opaque background + z-10 keep the field text
+// underneath from showing through (MediaPicker's own modal sits above it).
 function BlockShell({ label, icon: Icon, onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDown, children }) {
   return (
-    <div className="group relative border border-taupe-200 bg-white p-4">
-      <div className="mb-2 flex items-center justify-between">
+    <div className="group relative border border-taupe-200 bg-white px-4 pb-4">
+      <div className="sticky top-0 z-10 -mx-4 mb-2 flex items-center justify-between border-b border-taupe-100 bg-white px-4 py-2">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">
           <Icon size={13} /> {label}
         </span>
-        <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100">
-          <button type="button" onClick={onMoveUp} disabled={!canMoveUp} aria-label="Move up" className="p-1 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
+        {/* Always fully visible (touch devices have no hover); disabled
+            arrows stay subdued via disabled:opacity-30. */}
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={onMoveUp} disabled={!canMoveUp} aria-label="Move up" className="p-1.5 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
             <ChevronUp size={15} />
           </button>
-          <button type="button" onClick={onMoveDown} disabled={!canMoveDown} aria-label="Move down" className="p-1 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
+          <button type="button" onClick={onMoveDown} disabled={!canMoveDown} aria-label="Move down" className="p-1.5 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
             <ChevronDown size={15} />
           </button>
-          <button type="button" onClick={onRemove} aria-label="Delete block" className="p-1 text-charcoal-600 hover:text-rose-600">
+          <button type="button" onClick={onRemove} aria-label="Delete block" className="p-1.5 text-charcoal-600 hover:text-rose-600">
             <Trash2 size={15} />
           </button>
         </div>
@@ -103,6 +114,76 @@ function BlockShell({ label, icon: Icon, onMoveUp, onMoveDown, onRemove, canMove
       {children}
     </div>
   )
+}
+
+function BlockTypeChoices({ addMenu, onSelect }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {addMenu.map(({ type, label, icon: Icon }) => (
+        <button
+          key={type}
+          type="button"
+          onClick={() => onSelect(type)}
+          className="flex items-center gap-1.5 border border-taupe-300 bg-white px-2.5 py-1.5 text-xs font-medium text-charcoal-600 hover:border-burgundy-500 hover:text-burgundy-600"
+        >
+          <Icon size={13} /> {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// One insertion point between blocks (or before the first / after the
+// last). Collapsed it's a single subtle "+ Add block here" line; opened, it
+// shows the caller's allowed block types right at this position. Only one
+// is open at a time — ArticleBlockEditor owns that `insertAt` state.
+function InsertPoint({ addMenu, isOpen, onOpen, onClose, onSelect, label, ariaLabel }) {
+  if (isOpen) {
+    return (
+      <div
+        className="border border-dashed border-burgundy-500/60 bg-taupe-50 p-3"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose()
+        }}
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">{label}</p>
+          <button type="button" onClick={onClose} aria-label="Cancel adding a block" className="p-1 text-charcoal-600 hover:text-charcoal">
+            <X size={14} />
+          </button>
+        </div>
+        <BlockTypeChoices addMenu={addMenu} onSelect={onSelect} />
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-px flex-1 bg-taupe-200" aria-hidden="true" />
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={ariaLabel}
+        className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70 hover:text-burgundy-600"
+      >
+        <Plus size={12} /> {label}
+      </button>
+      <span className="h-px flex-1 bg-taupe-200" aria-hidden="true" />
+    </div>
+  )
+}
+
+// Editor-only React keys for the block list, kept OUTSIDE the saved block
+// JSON (nothing is ever written into a block). Index keys would let local
+// UI state (an article-card search box, a MediaPicker's open state, a
+// contentEditable's DOM) stay attached to a position instead of a block,
+// so an insert/move could show one block's in-progress state on its
+// neighbor. Keys follow this editor's own insert/move/delete; any change
+// in length from outside (initial load, a parent resetting the content)
+// just issues fresh keys.
+let nextBlockKey = 0
+function newBlockKey() {
+  nextBlockKey += 1
+  return `block-${nextBlockKey}`
 }
 
 // Width-free so callers can compose their own width utility instead of
@@ -478,39 +559,97 @@ const DEFAULT_BLOCK_TYPES = [
  */
 export default function ArticleBlockEditor({ blocks = [], onChange, blockTypes = DEFAULT_BLOCK_TYPES }) {
   const addMenu = ADD_MENU.filter((item) => blockTypes.includes(item.type))
+  // null = no insertion menu open; an integer = the position (0..length)
+  // a newly chosen block will be inserted at.
+  const [insertAt, setInsertAt] = useState(null)
+  const [keys, setKeys] = useState(() => blocks.map(newBlockKey))
+  let blockKeys = keys
+  if (keys.length !== blocks.length) {
+    // Derived-state reset during render (React's documented pattern for
+    // "props changed underneath this state") — see newBlockKey's comment.
+    blockKeys = blocks.map(newBlockKey)
+    setKeys(blockKeys)
+  }
+
   function updateBlock(i, next) {
     const copy = [...blocks]
     copy[i] = next
     onChange(copy)
   }
   function removeBlock(i) {
+    setInsertAt(null)
+    setKeys(blockKeys.filter((_, idx) => idx !== i))
     onChange(blocks.filter((_, idx) => idx !== i))
   }
   function moveBlock(i, dir) {
     const target = i + dir
     if (target < 0 || target >= blocks.length) return
+    setInsertAt(null)
     const copy = [...blocks]
     ;[copy[i], copy[target]] = [copy[target], copy[i]]
+    const keyCopy = [...blockKeys]
+    ;[keyCopy[i], keyCopy[target]] = [keyCopy[target], keyCopy[i]]
+    setKeys(keyCopy)
     onChange(copy)
   }
-  function addBlock(type) {
-    onChange([...blocks, blankBlock(type)])
+  // Inserts exactly one blankBlock(type) at `index` (0 = before the first
+  // block, blocks.length = after the last) — never mutates `blocks`.
+  function insertBlock(index, type) {
+    const copy = [...blocks]
+    copy.splice(index, 0, blankBlock(type))
+    const keyCopy = [...blockKeys]
+    keyCopy.splice(index, 0, newBlockKey())
+    setKeys(keyCopy)
+    setInsertAt(null)
+    onChange(copy)
+  }
+
+  if (blocks.length === 0) {
+    return (
+      <div className="border border-dashed border-taupe-300 p-4">
+        <p className="mb-3 text-sm text-charcoal-600/70">No content yet — choose your first block.</p>
+        <BlockTypeChoices addMenu={addMenu} onSelect={(type) => insertBlock(0, type)} />
+      </div>
+    )
+  }
+
+  function renderInsertPoint(index) {
+    const isEnd = index === blocks.length
+    return (
+      <InsertPoint
+        key={`insert-${index}`}
+        addMenu={addMenu}
+        isOpen={insertAt === index}
+        onOpen={() => setInsertAt(index)}
+        onClose={() => setInsertAt(null)}
+        onSelect={(type) => insertBlock(index, type)}
+        label={isEnd ? 'Add block at end' : 'Add block here'}
+        ariaLabel={
+          index === 0
+            ? 'Add block before the first content block'
+            : isEnd
+              ? 'Add block after the last content block'
+              : `Add block between content blocks ${index} and ${index + 1}`
+        }
+      />
+    )
   }
 
   return (
     <div className="space-y-3">
-      {blocks.length === 0 && (
-        <p className="border border-dashed border-taupe-300 px-4 py-8 text-center text-sm text-charcoal-600/60">
-          No content yet — add your first block below.
-        </p>
-      )}
-      {blocks.map((block, i) => {
+      {/* flatMap (not map returning pairs) so every insertion point and
+          BlockShell is a direct, individually keyed child — a nested array
+          would be keyed by position and remount blocks on reorder. */}
+      {blocks.flatMap((block, i) => {
         const kind = BLOCK_KINDS[block.type]
-        if (!kind) return null
+        // An unknown block type is still kept in the saved content (never
+        // dropped) — it just has no editor, as before.
+        if (!kind) return [renderInsertPoint(i)]
         const { Editor } = kind
-        return (
+        return [
+          renderInsertPoint(i),
           <BlockShell
-            key={i}
+            key={blockKeys[i]}
             label={kind.label}
             icon={kind.icon}
             onMoveUp={() => moveBlock(i, -1)}
@@ -520,25 +659,10 @@ export default function ArticleBlockEditor({ blocks = [], onChange, blockTypes =
             canMoveDown={i < blocks.length - 1}
           >
             <Editor block={block} onChange={(next) => updateBlock(i, next)} />
-          </BlockShell>
-        )
+          </BlockShell>,
+        ]
       })}
-
-      <div className="border border-dashed border-taupe-300 p-3">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">Add a block</p>
-        <div className="flex flex-wrap gap-2">
-          {addMenu.map(({ type, label, icon: Icon }) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => addBlock(type)}
-              className="flex items-center gap-1.5 border border-taupe-300 px-2.5 py-1.5 text-xs font-medium text-charcoal-600 hover:border-burgundy-500 hover:text-burgundy-600"
-            >
-              <Icon size={13} /> {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {renderInsertPoint(blocks.length)}
     </div>
   )
 }
