@@ -24,6 +24,8 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import ArticleSourcesEditor from '../../components/cms/ArticleSourcesEditor'
+import { blankSource, sourcesToPayload, validateSources } from '../../utils/articleSources'
 import ArticleWorkflowPanel from '../../components/cms/ArticleWorkflowPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
@@ -58,6 +60,7 @@ function blankForm(defaultAuthorSlug) {
     subtitle: '',
     excerpt: '',
     content: [],
+    sources: [],
     heroMedia: null,
     authorSlug: defaultAuthorSlug || '',
     categorySlug: '',
@@ -92,6 +95,8 @@ function toForm(article) {
     subtitle: article.subtitle || '',
     excerpt: article.excerpt || '',
     content: article.content || [],
+    // Every optional field as a string so the inputs stay controlled.
+    sources: (article.sources || []).map((s) => ({ ...blankSource(), ...s })),
     heroMedia: article.heroMediaId
       ? { id: article.heroMediaId, mediaPath: article.heroImage, altText: article.heroImageAlt, caption: article.heroImageCaption, credit: article.heroImageCredit }
       : null,
@@ -138,6 +143,18 @@ function Section({ title, description, children }) {
       <div className="mt-3 space-y-4">{children}</div>
     </div>
   )
+}
+
+// The backend reports source problems either as a list-level message
+// (duplicate URL / too many) or per item ({"1": {"url": ["Not a valid
+// URL."]}}) — turned into one readable line for the toast.
+function describeSourceErrors(details) {
+  if (!details) return null
+  if (Array.isArray(details)) return details[0] || null
+  const [index, fieldErrors] = Object.entries(details)[0] || []
+  if (index === undefined) return null
+  const [field, messages] = Object.entries(fieldErrors || {})[0] || []
+  return `Source ${Number(index) + 1}${field ? ` (${field})` : ''}: ${Array.isArray(messages) ? messages[0] : 'invalid'}`
 }
 
 function Field({ label, hint, children }) {
@@ -292,6 +309,11 @@ export default function AdminArticleEditor() {
       toast.error(slugError)
       return
     }
+    const sourcesError = validateSources(form.sources)
+    if (sourcesError) {
+      toast.error(sourcesError)
+      return
+    }
     setErrors({})
     setSaving(true)
 
@@ -323,6 +345,7 @@ export default function AdminArticleEditor() {
         ogImageMediaId: form.seoOgMedia?.id || null,
       },
       content: form.content,
+      sources: sourcesToPayload(form.sources),
       aiInvolvement: form.aiInvolvement,
       humanReviewed: form.humanReviewed,
       aiDisclosureRequired: form.aiDisclosureRequired,
@@ -336,7 +359,11 @@ export default function AdminArticleEditor() {
       if (isNew) navigate(`/admin/articles/${saved.slug}`)
       else setForm(toForm(saved))
     } catch (err) {
-      const message = err?.response?.data?.error?.message || err?.apiError?.message || 'Something went wrong saving this article. Please try again.'
+      const message =
+        describeSourceErrors(err?.response?.data?.error?.details?.sources) ||
+        err?.response?.data?.error?.message ||
+        err?.apiError?.message ||
+        'Something went wrong saving this article. Please try again.'
       toast.error(message)
     } finally {
       setSaving(false)
@@ -424,6 +451,13 @@ export default function AdminArticleEditor() {
 
           <Section title="Content" description="Write the full article body here — this is what publishes to the public page.">
             <ArticleBlockEditor blocks={form.content} onChange={(content) => updateField('content', content)} />
+          </Section>
+
+          <Section
+            title="Sources & references"
+            description="Add the reports, studies, official pages, datasets or other sources used to support this article. Sources are shown publicly."
+          >
+            <ArticleSourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
           </Section>
 
           <Section title="Media" description="The hero image leads the article and its cards across the site.">

@@ -137,3 +137,65 @@ test('url and mainEntityOfPage.@id use the editor-supplied CMS canonical overrid
   assert.deepEqual(data.mainEntityOfPage, { '@type': 'WebPage', '@id': overrideUrl })
   assert.notEqual(data.url, fallbackUrl)
 })
+
+// --- AI Search / GEO Phase 3A: citation / articleSection / about / mentions / keywords
+
+const RICH_ARTICLE = {
+  ...BASE_ARTICLE,
+  category: { slug: 'careers', name: 'Careers', status: 'published' },
+  topics: [
+    { slug: 'leadership', name: 'Leadership', status: 'published' },
+    { slug: 'secret', name: 'Secret Topic', status: 'archived' },
+  ],
+  tags: [
+    { slug: 'pay', name: 'Pay', status: 'published' },
+    { slug: 'leadership', name: 'leadership', status: 'published' },
+  ],
+  relatedPeople: [
+    { slug: 'amara', name: 'Amara', status: 'published' },
+    { slug: 'draft-person', name: 'Draft Person', status: 'draft' },
+  ],
+  relatedOrganizations: [
+    { slug: 'kaziwave', name: 'Kaziwave', status: 'published' },
+    { slug: 'old-org', name: 'Old Org', status: 'archived' },
+  ],
+  sources: [
+    { title: 'ILO Outlook', url: 'https://ilo.org/r', publisher: 'ILO', author: 'ILO Research', publishedDate: '2026-01-15', note: 'Context' },
+    { title: 'Second', url: 'https://example.org/2' },
+  ],
+}
+
+test('emits citation/articleSection/about/mentions/keywords from real public relationships only', () => {
+  const data = buildArticleStructuredData(RICH_ARTICLE, 'https://example.org/slug', { entityBaseUrl: 'https://example.org' })
+  assert.equal(data.articleSection, 'Careers')
+  assert.equal(data.keywords, 'Leadership, Pay')
+  assert.deepEqual(data.about, [
+    { '@type': 'Thing', name: 'Leadership', url: 'https://example.org/topics/leadership' },
+    { '@type': 'Thing', name: 'Careers' },
+  ])
+  assert.deepEqual(data.mentions, [
+    { '@type': 'Person', name: 'Amara', url: 'https://example.org/people/amara' },
+    { '@type': 'Organization', name: 'Kaziwave', url: 'https://example.org/organizations/kaziwave' },
+  ])
+  assert.deepEqual(data.citation, [
+    {
+      '@type': 'CreativeWork',
+      name: 'ILO Outlook',
+      url: 'https://ilo.org/r',
+      author: { '@type': 'Thing', name: 'ILO Research' },
+      publisher: { '@type': 'Organization', name: 'ILO' },
+      datePublished: '2026-01-15',
+    },
+    { '@type': 'CreativeWork', name: 'Second', url: 'https://example.org/2' },
+  ])
+  assert.equal(JSON.stringify(data).includes('Context'), false) // note stays out
+})
+
+test('falls back to the first published topic for articleSection and omits empty entity fields', () => {
+  const noCategory = buildArticleStructuredData({ ...RICH_ARTICLE, category: null }, 'https://example.org/slug')
+  assert.equal(noCategory.articleSection, 'Leadership')
+  const plain = buildArticleStructuredData(BASE_ARTICLE, 'https://example.org/slug')
+  for (const key of ['articleSection', 'keywords', 'about', 'mentions', 'citation']) {
+    assert.equal(key in plain, false)
+  }
+})

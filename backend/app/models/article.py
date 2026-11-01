@@ -99,6 +99,14 @@ class Article(db.Model):
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     content = db.Column(db.JSON, nullable=False, default=list)  # ordered block list
+    # AI Search / GEO Phase 3A — the editorial evidence behind the article,
+    # shown publicly ("Sources & references") and emitted as schema.org
+    # `citation`. Ordered list (array order = display order) of plain-text
+    # objects validated by schemas/article.py's ArticleSourceSchema:
+    #   {"title": str, "url": "http(s)://...", "publisher"?: str,
+    #    "author"?: str, "publishedDate"?: "YYYY-MM-DD", "note"?: str}
+    # Only title/url are required; never HTML, never fetched content.
+    sources = db.Column(db.JSON, nullable=False, default=list)
 
     # Editorial workflow / scheduled publishing (see app/services/
     # articles_workflow.py). scheduled_at is the planned UTC publication

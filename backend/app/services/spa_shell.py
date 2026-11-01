@@ -583,8 +583,79 @@ def _build_article_json_ld(article, canonical_url, image_url, site_identity, pub
         if logo_url:
             publisher["logo"] = {"@type": "ImageObject", "url": logo_url}
     data["publisher"] = publisher
+    data.update(_article_entity_fields(article, public_site_url))
 
     return data
+
+
+def _article_entity_fields(article, public_site_url):
+    """AI Search / GEO Phase 3A — articleSection/keywords/about/mentions/
+    citation, built ONLY from the article's own editorial relationships
+    and editor-entered sources (never inferred from its text). Every
+    related taxonomy term or entity must itself be public ("published"),
+    so a draft/archived Person, Organization, Topic, Tag or Category never
+    reaches JSON-LD. Mirrors frontend/src/utils/articleStructuredData.js's
+    articleEntityFields() key-for-key and in the same order.
+    """
+    base = public_site_url.rstrip("/")
+    fields = {}
+
+    category = article.category if article.category is not None and article.category.status == "published" else None
+    topics = [t for t in (article.topics or []) if t.status == "published"]
+    tags = [t for t in (article.tags or []) if t.status == "published"]
+
+    section = category.name if category is not None else (topics[0].name if topics else None)
+    if section:
+        fields["articleSection"] = section
+
+    keywords, seen = [], set()
+    for name in [t.name for t in topics] + [t.name for t in tags]:
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            keywords.append(name)
+    if keywords:
+        fields["keywords"] = ", ".join(keywords)
+
+    about = [{"@type": "Thing", "name": t.name, "url": f"{base}/topics/{t.slug}"} for t in topics]
+    if category is not None and category.name.lower() not in {t.name.lower() for t in topics}:
+        about.append({"@type": "Thing", "name": category.name})
+    if about:
+        fields["about"] = about
+
+    mentions = [
+        {"@type": "Person", "name": p.name, "url": f"{base}/people/{p.slug}"}
+        for p in (article.related_people or [])
+        if p.status == "published"
+    ] + [
+        {"@type": "Organization", "name": o.name, "url": f"{base}/organizations/{o.slug}"}
+        for o in (article.related_organizations or [])
+        if o.status == "published"
+    ]
+    if mentions:
+        fields["mentions"] = mentions
+
+    citations = [_source_citation(source) for source in (article.sources or []) if isinstance(source, dict)]
+    citations = [c for c in citations if c]
+    if citations:
+        fields["citation"] = citations
+    return fields
+
+
+def _source_citation(source):
+    """One editor-entered source -> a schema.org CreativeWork. The source
+    author's Person-vs-Organization nature is unknown, so it's a plain
+    Thing; the editor-entered publisher is an Organization. `note` is
+    reader context only and stays out of JSON-LD."""
+    if not source.get("title") or not source.get("url"):
+        return None
+    citation = {"@type": "CreativeWork", "name": source["title"], "url": source["url"]}
+    if source.get("author"):
+        citation["author"] = {"@type": "Thing", "name": source["author"]}
+    if source.get("publisher"):
+        citation["publisher"] = {"@type": "Organization", "name": source["publisher"]}
+    if source.get("publishedDate"):
+        citation["datePublished"] = source["publishedDate"]
+    return citation
 
 
 def render_article_shell(article):

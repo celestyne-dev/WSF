@@ -17,7 +17,7 @@
 export function buildArticleStructuredData(article, canonicalUrl, options = {}) {
   if (!article) return null
 
-  const { imageUrl, siteName, siteUrl, siteLogoUrl, authorBaseUrl } = options
+  const { imageUrl, siteName, siteUrl, siteLogoUrl, authorBaseUrl, entityBaseUrl } = options
 
   const headline = article.seo?.title || article.title
   const description = article.seo?.description || article.excerpt
@@ -46,5 +46,66 @@ export function buildArticleStructuredData(article, canonicalUrl, options = {}) 
       ...(siteUrl ? { url: siteUrl } : {}),
       ...(siteLogoUrl ? { logo: { '@type': 'ImageObject', url: siteLogoUrl } } : {}),
     },
+    ...articleEntityFields(article, entityBaseUrl),
   }
+}
+
+const isPublished = (item) => item?.status === 'published'
+
+// AI Search / GEO Phase 3A — articleSection/keywords/about/mentions/
+// citation, from the article's own editorial relationships and editor-
+// entered sources only (never inferred from its text). Only PUBLISHED
+// taxonomy terms / People / Organizations count. Mirrors
+// backend/app/services/spa_shell.py's _article_entity_fields() key-for-
+// key and in the same order, so React never swaps the server's JSON-LD
+// for a reduced version after mount. `entityBaseUrl` is the site origin
+// (ArticlePage passes the same one it uses for author URLs).
+export function articleEntityFields(article, entityBaseUrl) {
+  const base = (entityBaseUrl || '').replace(/\/$/, '')
+  const withUrl = (path) => (base ? { url: `${base}${path}` } : {})
+  const category = isPublished(article.category) ? article.category : null
+  const topics = (article.topics || []).filter(isPublished)
+  const tags = (article.tags || []).filter(isPublished)
+  const fields = {}
+
+  const section = category ? category.name : topics[0]?.name
+  if (section) fields.articleSection = section
+
+  const seen = new Set()
+  const keywords = []
+  for (const name of [...topics.map((t) => t.name), ...tags.map((t) => t.name)]) {
+    if (name && !seen.has(name.toLowerCase())) {
+      seen.add(name.toLowerCase())
+      keywords.push(name)
+    }
+  }
+  if (keywords.length) fields.keywords = keywords.join(', ')
+
+  const about = topics.map((t) => ({ '@type': 'Thing', name: t.name, ...withUrl(`/topics/${t.slug}`) }))
+  if (category && !topics.some((t) => t.name.toLowerCase() === category.name.toLowerCase())) {
+    about.push({ '@type': 'Thing', name: category.name })
+  }
+  if (about.length) fields.about = about
+
+  const mentions = [
+    ...(article.relatedPeople || []).filter(isPublished).map((p) => ({ '@type': 'Person', name: p.name, ...withUrl(`/people/${p.slug}`) })),
+    ...(article.relatedOrganizations || [])
+      .filter(isPublished)
+      .map((o) => ({ '@type': 'Organization', name: o.name, ...withUrl(`/organizations/${o.slug}`) })),
+  ]
+  if (mentions.length) fields.mentions = mentions
+
+  const citation = (article.sources || [])
+    .filter((s) => s?.title && s?.url)
+    .map((s) => ({
+      '@type': 'CreativeWork',
+      name: s.title,
+      url: s.url,
+      ...(s.author ? { author: { '@type': 'Thing', name: s.author } } : {}),
+      ...(s.publisher ? { publisher: { '@type': 'Organization', name: s.publisher } } : {}),
+      ...(s.publishedDate ? { datePublished: s.publishedDate } : {}),
+    }))
+  if (citation.length) fields.citation = citation
+
+  return fields
 }

@@ -226,6 +226,12 @@ def _apply_fields(article, data, relations):
     # endpoints below for every real transition).
     article.seo = data.get("seo")
     article.content = sanitize_content_blocks(data.get("content", []))
+    # Already validated/normalized by ArticleSourceSchema. Omitted from an
+    # update payload -> left as stored; a new article starts with [].
+    if "sources" in data:
+        article.sources = data["sources"]
+    elif article.sources is None:
+        article.sources = []
     article.ai_involvement = data.get("ai_involvement", "none")
     article.human_reviewed = data.get("human_reviewed", False)
     article.ai_disclosure_required = data.get("ai_disclosure_required", False)

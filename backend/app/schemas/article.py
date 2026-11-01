@@ -1,4 +1,4 @@
-from marshmallow import fields, validate
+from marshmallow import EXCLUDE, ValidationError, fields, post_load, pre_load, validate
 
 from app.extensions import db, ma
 from app.models.article import AI_INVOLVEMENT_VALUES, ARTICLE_STATUSES, Article
@@ -108,6 +108,7 @@ def article_summary_schema(many=False):
         many=many,
         exclude=(
             "content",
+            "sources",
             "related_people",
             "related_organizations",
             "related_articles",
@@ -128,6 +129,7 @@ def admin_article_summary_schema(many=False):
         many=many,
         exclude=(
             "content",
+            "sources",
             "related_people",
             "related_organizations",
             "related_articles",
@@ -135,6 +137,58 @@ def admin_article_summary_schema(many=False):
             "ai_editorial_notes",
         ),
     )
+
+
+MAX_ARTICLE_SOURCES = 50
+
+
+class ArticleSourceSchema(ma.Schema):
+    """One Article source/reference (AI Search / GEO Phase 3A). Plain text
+    only — every field is rendered escaped, never as markup — and the URL
+    must be http(s). Never fetched or checked for reachability: an editor
+    can always save even if the cited site is temporarily down.
+    """
+
+    title = fields.String(required=True, validate=validate.Length(min=1, max=300))
+    url = fields.String(
+        required=True,
+        validate=[validate.Length(min=1, max=2048), validate.URL(schemes={"http", "https"}, require_tld=True)],
+    )
+    publisher = fields.String(required=False, allow_none=True, validate=validate.Length(max=250))
+    author = fields.String(required=False, allow_none=True, validate=validate.Length(max=250))
+    published_date = fields.Date(required=False, allow_none=True, data_key="publishedDate")
+    note = fields.String(required=False, allow_none=True, validate=validate.Length(max=500))
+
+    class Meta:
+        unknown = EXCLUDE
+
+    @pre_load
+    def _trim(self, data, **kwargs):
+        if not isinstance(data, dict):
+            return data
+        return {k: (v.strip() if isinstance(v, str) else v) for k, v in data.items()}
+
+    @post_load
+    def _to_stored_shape(self, data, **kwargs):
+        """The exact JSON stored in Article.sources and returned publicly:
+        camelCase keys, empty optional fields dropped, date as YYYY-MM-DD."""
+        stored = {"title": data["title"], "url": data["url"]}
+        for key in ("publisher", "author", "note"):
+            if data.get(key):
+                stored[key] = data[key]
+        if data.get("published_date"):
+            stored["publishedDate"] = data["published_date"].isoformat()
+        return stored
+
+
+def _validate_sources(sources):
+    if len(sources) > MAX_ARTICLE_SOURCES:
+        raise ValidationError(f"An article can list at most {MAX_ARTICLE_SOURCES} sources.")
+    seen = set()
+    for source in sources:
+        if source["url"] in seen:
+            raise ValidationError(f'The source URL "{source["url"]}" is listed more than once.')
+        seen.add(source["url"])
 
 
 class ArticleInputSchema(ma.Schema):
@@ -186,6 +240,10 @@ class ArticleInputSchema(ma.Schema):
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(ARTICLE_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)
     content = fields.List(fields.Dict(), required=False, load_default=list)
+    # No load_default: an update payload that omits `sources` leaves the
+    # stored list untouched (see articles.py _apply_fields) rather than
+    # silently wiping it.
+    sources = fields.List(fields.Nested(ArticleSourceSchema), required=False, validate=_validate_sources)
 
     # Generative-AI editorial transparency (see Article.AI_INVOLVEMENT_VALUES).
     # ai_editorial_notes is internal-only; never rendered on the public site.

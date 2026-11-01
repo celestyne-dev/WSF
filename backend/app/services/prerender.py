@@ -66,6 +66,9 @@ _TIMELINE_CLASS = "mt-5 space-y-5 border-l border-taupe-300 pl-6"
 _TIMELINE_YEAR_CLASS = "text-sm font-semibold uppercase tracking-wide text-burgundy-600"
 _TIMELINE_TITLE_CLASS = "mt-0.5 text-base text-charcoal"
 _LINK_CLASS = "font-medium text-burgundy-600 hover:underline"
+_SOURCES_SECTION_CLASS = "mt-12 border-t border-taupe-200 pt-8"
+_SOURCES_H2_CLASS = "font-serif text-xl font-semibold text-charcoal"
+_SOURCES_LIST_CLASS = "mt-4 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-charcoal-600"
 
 
 def _text(value):
@@ -223,6 +226,43 @@ def _sponsor_disclosure(payload):
     return f'<p class="{_META_CLASS}">{_text(label)} {_text(name or "")}</p>'
 
 
+def _safe_source_url(value):
+    """Sources are validated as http(s) on save; re-checked here anyway."""
+    return value if isinstance(value, str) and (value.startswith("https://") or value.startswith("http://")) else None
+
+
+def render_article_sources(sources):
+    """AI Search / GEO Phase 3A — the article's editor-entered sources as
+    a visible "Sources & references" list (same data/order React shows).
+    Every field is escaped plain text; links are ordinary crawlable
+    anchors (editorial citations: no nofollow/sponsored/ugc)."""
+    items = []
+    for source in sources or []:
+        if not isinstance(source, dict) or not _is_nonblank(source.get("title")):
+            continue
+        url = _safe_source_url(source.get("url"))
+        title = _text(source["title"])
+        parts = [
+            f'<a href="{_attr(url)}" target="_blank" rel="noopener noreferrer" class="{_LINK_CLASS}">{title}</a>' if url else title
+        ]
+        meta = [_text(source[k]) for k in ("author", "publisher") if _is_nonblank(source.get(k))]
+        iso, label = _format_date(source.get("publishedDate")) if _is_nonblank(source.get("publishedDate")) else (None, None)
+        if iso:
+            meta.append(f'<time datetime="{_attr(source["publishedDate"])}">{_text(label)}</time>')
+        if meta:
+            parts.append(f'<span class="block">{" · ".join(meta)}</span>')
+        if _is_nonblank(source.get("note")):
+            parts.append(f'<span class="block">{_text(source["note"])}</span>')
+        items.append(f"<li>{''.join(parts)}</li>")
+    if not items:
+        return ""
+    return (
+        f'<section aria-labelledby="article-sources" class="{_SOURCES_SECTION_CLASS}">'
+        f'<h2 id="article-sources" class="{_SOURCES_H2_CLASS}">Sources &amp; references</h2>'
+        f'<ol class="{_SOURCES_LIST_CLASS}">{"".join(items)}</ol></section>'
+    )
+
+
 def render_article_prerender(payload):
     """`payload` is the same public_article_schema() dump the Article
     bootstrap embeds — so the prerender can only ever show what the
@@ -238,9 +278,10 @@ def render_article_prerender(payload):
     if iso:
         header.append(f'<p class="{_META_CLASS}"><time datetime="{_attr(iso)}">{_text(label)}</time></p>')
     body = render_content_blocks(payload.get("content") or [])
+    sources = render_article_sources(payload.get("sources") or [])
     return (
         f'<main data-wsf-prerender="article" class="{_MAIN_CLASS}"><article class="{_ARTICLE_CLASS}">'
-        f'<header>{"".join(header)}</header><section>{body}</section></article></main>'
+        f'<header>{"".join(header)}</header><section>{body}</section>{sources}</article></main>'
     )
 
 

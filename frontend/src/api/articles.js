@@ -78,6 +78,17 @@ export function mapArticle(a) {
     relatedPersonSlugs: (a.related_people || []).map((p) => p.slug),
     relatedOrganizationSlugs: (a.related_organizations || []).map((o) => o.slug),
     relatedArticleSlugs: (a.related_articles || []).map((x) => x.slug),
+    // AI Search / GEO Phase 3A — the minimal public facts the Article
+    // JSON-LD builder needs (status included so it can drop anything not
+    // published, exactly like the server's _article_entity_fields()).
+    category: a.category ? { slug: a.category.slug, name: a.category.name, status: a.category.status } : null,
+    topics: (a.topics || []).map((t) => ({ slug: t.slug, name: t.name, status: t.status })),
+    tags: (a.tags || []).map((t) => ({ slug: t.slug, name: t.name, status: t.status })),
+    relatedPeople: (a.related_people || []).map((p) => ({ slug: p.slug, name: p.name, status: p.status })),
+    relatedOrganizations: (a.related_organizations || []).map((o) => ({ slug: o.slug, name: o.name, status: o.status })),
+    // Editor-entered sources/references, already validated server-side
+    // (camelCase keys exactly as the API returns them).
+    sources: Array.isArray(a.sources) ? a.sources : [],
     featured: a.featured,
     promoted: a.promoted,
     isSponsored: a.is_sponsored,
