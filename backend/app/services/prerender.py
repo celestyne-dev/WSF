@@ -822,3 +822,223 @@ def render_newsletter_prerender(payload, published_article_slugs=frozenset()):
     blocks = sanitize_content_blocks(payload.get("content") or [])
     body = ["".join(_render_newsletter_block(b, published_article_slugs) for b in blocks)]
     return _main("newsletter", header, body)
+
+
+# --- AI Search / GEO Phase 3B3: public hubs & listing pages ------------------
+#
+# Each hub = the page's own header copy (verbatim from its React page) +
+# one small representative batch of public items (app/services/
+# public_hubs.py — the same anonymous builders/schemas + public linked-
+# entity filtering the public APIs use) as crawlable <a href> links.
+# Exactly one H1 (the page title); items use H3 inside a section H2.
+
+_HUB_ITEM_TITLE_CLASS = "font-serif text-lg font-semibold text-charcoal"
+_HUB_LIST_CLASS = "mt-4 space-y-5"
+
+
+def _hub_link(path, label):
+    return f'<a href="{_attr(path)}" class="{_LINK_CLASS}">{_text(label)}</a>'
+
+
+def _hub_item(path, title, meta_parts=(), summary=None):
+    meta = " · ".join(p for p in meta_parts if p)
+    return (
+        f'<li><article><h3 class="{_HUB_ITEM_TITLE_CLASS}">{_hub_link(path, title)}</h3>'
+        + (f'<p class="{_META_CLASS}">{meta}</p>' if meta else "")
+        + (_paragraph(summary, _META_CLASS) if _is_nonblank(summary) else "")
+        + "</article></li>"
+    )
+
+
+def _org_name(payload, *fallback_keys):
+    org = payload.get("organization") if isinstance(payload.get("organization"), dict) else None
+    if org and _is_nonblank(org.get("name")):
+        return _text(org["name"])
+    for key in fallback_keys:
+        if _is_nonblank(payload.get(key)):
+            return _text(payload[key])
+    return ""
+
+
+def _job_card(p):
+    return _hub_item(f"/jobs/{p['slug']}", p.get("title"), (
+        _text(p.get("company_name")), _text(p.get("location") or p.get("work_mode")),
+        f"Apply by {_date_html(p['deadline'])}" if _is_nonblank(p.get("deadline")) else "",
+    ), p.get("short_description"))
+
+
+def _opportunity_card(p):
+    return _hub_item(f"/opportunities/{p['slug']}", p.get("title"), (
+        _org_name(p, "organization_name"), _text(p.get("type")),
+        f"Deadline {_date_html(p['deadline'])}" if _is_nonblank(p.get("deadline")) else "",
+    ), p.get("short_description"))
+
+
+def _event_card(p):
+    where = p.get("location") or p.get("city") or ("Online" if p.get("format") == "virtual" else None)
+    return _hub_item(f"/events/{p['slug']}", p.get("title"), (
+        _date_html(p.get("date")), _org_name(p, "organizer_name"), _text(where),
+    ), p.get("short_description"))
+
+
+def _resource_card(p):
+    price = _text(f"{p.get('currency') or ''} {p['price']:,}".strip()) if p.get("accessType") == "premium" and isinstance(p.get("price"), int) else ""
+    return _hub_item(f"/resources/{p['slug']}", p.get("name"), (
+        _text(p.get("type")), _text(_RESOURCE_ACCESS_LABELS.get(p.get("accessType"), "")), price,
+    ), p.get("shortDescription"))
+
+
+def _learning_card(p):
+    duration = f"{p['duration_value']} {p.get('duration_unit') or ''}".strip() if p.get("duration_value") else ""
+    return _hub_item(f"/learning/{p['slug']}", p.get("title"), (
+        _text(_humanize(p.get("program_type"))), _text(_humanize(p.get("difficulty_level"))),
+        _text(duration), _text(_humanize(p.get("delivery_mode"))),
+    ), p.get("short_description"))
+
+
+def _person_card(p):
+    return _hub_item(f"/people/{p['slug']}", p.get("name"), (_text(p.get("title")), _org_name(p), _text(p.get("location"))), p.get("short_bio"))
+
+
+def _organization_card(p):
+    return _hub_item(f"/organizations/{p['slug']}", p.get("name"), (
+        _text(_humanize(p.get("org_type"))), _text(p.get("industry")), _text(p.get("location")),
+    ), p.get("short_description"))
+
+
+def _author_card(p):
+    return _hub_item(f"/authors/{p['slug']}", p.get("name"), (_text(p.get("role")),), p.get("short_bio"))
+
+
+def _topic_card(p):
+    return _hub_item(f"/topics/{p['slug']}", p.get("name"), (), p.get("description"))
+
+
+def _series_card(p):
+    return _hub_item(f"/series/{p['slug']}", p.get("name"), (_text(p.get("subtitle")),), p.get("description"))
+
+
+def _directory_card(p):
+    org = p.get("organization") if isinstance(p.get("organization"), dict) else {}
+    if not _is_nonblank(org.get("slug")):
+        return ""
+    categories = ", ".join(_text(c.get("name")) for c in (p.get("categories") or []) if isinstance(c, dict) and _is_nonblank(c.get("name")))
+    return _hub_item(f"/directory/{org['slug']}", org.get("name"), (
+        _text(_DIRECTORY_LISTING_TYPE_LABELS.get(p.get("listing_type"), "")),
+        _text(_DIRECTORY_OWNERSHIP_LABELS.get(p.get("ownership_classification"), "")),
+        _text(org.get("location")), categories,
+    ), p.get("service_summary"))
+
+
+def _product_card(p):
+    category = p.get("category") if isinstance(p.get("category"), dict) else {}
+    on_sale = isinstance(p.get("sale_price"), int) and isinstance(p.get("price"), int) and p["sale_price"] < p["price"]
+    price = _product_price(p.get("sale_price") if on_sale else p.get("price"), p.get("currency"))
+    availability = "Available" if p.get("is_available") else "Currently unavailable"
+    return _hub_item(f"/shop/{p['slug']}", p.get("name"), (_text(category.get("name") or p.get("type")), _text(price), availability), p.get("short_description"))
+
+
+def _newsletter_card(p):
+    number = f"WSF Weekly #{_text(p['issue_number'])}" if p.get("issue_number") else ""
+    sent = f"Sent {_date_html(p['sent_at'])}" if _is_nonblank(p.get("sent_at")) else ""
+    return _hub_item(f"/newsletter/{p['slug']}", p.get("subject"), (number, sent), p.get("preheader") or p.get("summary"))
+
+
+def _article_card(p):
+    author = p.get("author") if isinstance(p.get("author"), dict) else {}
+    return _hub_item(f"/{p['slug']}", p.get("title"), (_text(author.get("name")), _date_html(p.get("publish_date"))), p.get("excerpt"))
+
+
+HUB_CARD_RENDERERS = {
+    "jobs": _job_card, "opportunities": _opportunity_card, "events": _event_card, "resources": _resource_card,
+    "learning": _learning_card, "people": _person_card, "organizations": _organization_card, "authors": _author_card,
+    "topics": _topic_card, "series": _series_card, "directory": _directory_card, "shop": _product_card,
+    "newsletter": _newsletter_card,
+}
+
+
+def _item_list(cards):
+    cards = [c for c in cards if c]
+    return f'<ul class="{_HUB_LIST_CLASS}">{"".join(cards)}</ul>' if cards else ""
+
+
+def render_hub_prerender(marker, eyebrow, title, description, list_heading, kind, items, empty_text, extra_sections=()):
+    """A hub/listing page: its own header copy, then one representative
+    batch of public items (or a plain empty-state sentence — never a fake
+    item)."""
+    header = [f'<p class="eyebrow">{_text(eyebrow)}</p>' if _is_nonblank(eyebrow) else "", _h1(title), _paragraph(description)]
+    body = list(extra_sections)
+    if kind is not None:
+        render = HUB_CARD_RENDERERS[kind]
+        cards = _item_list(render(item) for item in items if isinstance(item, dict) and (_is_nonblank(item.get("slug")) or kind == "directory"))
+        body.append(_section(list_heading, cards or _paragraph(empty_text, _META_CLASS)))
+    return _main(marker, header, body)
+
+
+def _safe_cta_href(url):
+    """Homepage CTA targets were validated on save as an internal "/..."
+    path or http(s) — re-checked here; private areas never linked."""
+    if not isinstance(url, str):
+        return None
+    if url.startswith("/") and not url.startswith("//"):
+        return None if url.startswith(("/admin", "/account", "/api")) else url
+    return _http_url(url)
+
+
+def _cta_links(ctas):
+    links = []
+    for label, url in ctas or []:
+        href = _safe_cta_href(url)
+        if href and _is_nonblank(label):
+            links.append(f'<a href="{_attr(href)}" class="{_LINK_CLASS}">{_text(label)}</a>')
+    return f'<p class="mt-4">{" · ".join(links)}</p>' if links else ""
+
+
+_HOME_DEFAULT_HEADINGS = {
+    "featured_stories": "Editors' picks", "latest_stories": "Latest stories", "featured_woman": "Featured woman",
+    "jobs": "Jobs", "opportunities": "Opportunities", "events": "Events", "resources": "Resources",
+}
+_HOME_ITEM_KIND = {"jobs": "jobs", "opportunities": "opportunities", "events": "events", "resources": "resources"}
+
+
+def render_homepage_prerender(sections, site_name):
+    """The configured homepage modules (public_hubs.homepage_sections) in
+    builder order. Exactly one H1, matching HeroModule.jsx: the hero's lead
+    Article title, else the hero heading, else the site name."""
+    hero = next((s for s in sections if s["type"] == "hero"), None)
+    if hero and hero.get("lead"):
+        h1 = _h1(hero["lead"].get("title"))
+    elif hero and _is_nonblank(hero.get("heading")):
+        h1 = _h1(hero["heading"])
+    else:
+        h1 = _h1(site_name)
+    header = [h1]
+    body = []
+    for section in sections:
+        heading = section.get("heading") or _HOME_DEFAULT_HEADINGS.get(section["type"]) or ""
+        sub = _paragraph(section.get("subheading"), _META_CLASS)
+        if section["type"] == "hero":
+            if section.get("lead"):
+                lead = section["lead"]
+                header.append(_paragraph(lead.get("excerpt")))
+                header.append(f'<p class="mt-4">{_hub_link("/" + lead["slug"], "Read the story")}</p>')
+            else:
+                header.append(_paragraph(section.get("subheading")))
+                header.append(_cta_links(section.get("ctas")))
+            if section.get("articles"):
+                body.append(_section("More stories", _item_list(_article_card(a) for a in section["articles"])))
+        elif section.get("articles") is not None and section["type"] in ("featured_stories", "latest_stories"):
+            body.append(_section(heading, sub + _item_list(_article_card(a) for a in section["articles"])))
+        elif section["type"] == "featured_woman":
+            body.append(_section(heading or "Featured woman", sub + _item_list([_person_card(section["person"])])))
+        elif section.get("term"):
+            term = section["term"]
+            path = f"/{'series' if term['kind'] == 'series' else 'topics'}/{term['slug']}"
+            inner = sub + f'<p>{_hub_link(path, term["name"])}</p>' + _paragraph(term.get("description"), _META_CLASS)
+            body.append(_section(heading or term["name"], inner + _item_list(_article_card(a) for a in section.get("articles") or [])))
+        elif section["type"] in _HOME_ITEM_KIND:
+            render = HUB_CARD_RENDERERS[_HOME_ITEM_KIND[section["type"]]]
+            body.append(_section(heading, sub + _item_list(render(i) for i in section["items"])))
+        elif section.get("ctas") is not None and _is_nonblank(section.get("heading")):
+            body.append(_section(section["heading"], sub + _cta_links(section["ctas"])))
+    return _main("home", header, body)

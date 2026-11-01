@@ -104,6 +104,8 @@ from app.services.prerender import (
     render_directory_prerender,
     render_event_prerender,
     render_job_prerender,
+    render_homepage_prerender,
+    render_hub_prerender,
     render_learning_prerender,
     render_newsletter_prerender,
     render_opportunity_prerender,
@@ -869,6 +871,12 @@ def render_homepage_shell():
     html_doc = _set_image_preload(
         html_doc, media=hero_media, public_site_url=public_site_url, sizes=sizes, preferred_variant=preferred_variant
     )
+
+    # AI Search / GEO Phase 3B3 — the configured homepage modules as
+    # visible, crawlable HTML inside #root (same modules as the bootstrap).
+    from app.services.public_hubs import homepage_sections
+
+    html_doc = _set_root_prerender(html_doc, render_homepage_prerender(homepage_sections(modules, lead_article), site_name))
     return _html_response(html_doc)
 
 
@@ -1947,6 +1955,130 @@ def _render_system_page_shell(page_key, public_site_url, site_identity, site_nam
     return _html_response(html_doc)
 
 
+# AI Search / GEO Phase 3B3 — hub/listing pages with a visible prerender.
+# Header copy is each React page's own PageHeader (eyebrow/title/
+# description), verbatim; items come from app/services/public_hubs.py.
+_HUB_PAGES = {
+    "jobs": ("jobs-index", "Opportunity", "Jobs",
+             "Roles from employers we've vetted for pay transparency and growth potential — worldwide, remote, and hybrid. New listings added weekly.",
+             "Latest jobs", "jobs", "jobs_hub", "No jobs are listed right now — check back soon."),
+    "opportunities": ("opportunities-index", "Opportunity", "Opportunities",
+                      "Fellowships, scholarships, grants, and accelerators — reviewed by our editorial team and sorted by deadline.",
+                      "Current opportunities", "opportunities", "opportunities_hub", "No opportunities are listed right now — check back soon."),
+    "events": ("events-index", "Join Us", "Events",
+               "Conferences, workshops, and networking — hosted by Women Shaping Futures and our partners around the world.",
+               "Upcoming events", "events", "events_hub", "No upcoming events are listed right now — check back soon."),
+    "resources": ("resources-index", "Resource Library", "Guides, Workbooks & Toolkits Built for Your Next Move",
+                  "Practical tools from our editors and career coaches — career planning, negotiation, leadership, and business, free, WSF Circle, and premium.",
+                  "Featured resources", "resources", "resources_hub", "No resources are listed right now — check back soon."),
+    "learning": ("learning-index", "WSF Learning", "Courses, Masterclasses & Learning Programs",
+                 "Structured learning on leadership, entrepreneurship, and career growth — self-paced courses, live masterclasses, and guided programs.",
+                 "Programs", "learning", "learning_hub", "No learning programs are listed right now — check back soon."),
+    "people": ("people-index", "People", "The People Directory",
+               "Founders, executives, scientists, and public servants — the women building the future, profiled by WSF, from every region.",
+               "Profiles", "people", "people_hub", "No profiles are listed right now — check back soon."),
+    "organizations": ("organizations-index", "Network", "Organizations",
+                      "Companies, foundations, and institutions hiring, funding, and partnering with women across our network.",
+                      "Organizations", "organizations", "organizations_hub", "No organizations are listed right now — check back soon."),
+    "authors": ("authors-index", "Masthead", "Our Authors & Editors",
+                "The reporters and editors researching, interviewing, and writing every Women Shaping Futures story.",
+                "Authors & editors", "authors", "authors_hub", "No authors are listed right now — check back soon."),
+    "topics": ("topics-index", "Stories", "Browse by Topic",
+               "Every story we publish, organized around the themes that matter most to the women who read us.",
+               "Topics", "topics", "topics_hub", "No topics are listed right now — check back soon."),
+    "series": ("series-index", "Series", "Editorial Series",
+               "Ongoing collections of stories built around a single theme, question, or kind of woman we can't stop covering.",
+               "Series", "series", "series_hub", "No series are listed right now — check back soon."),
+    "directory": ("directory-index", "Directory", "Business & Professional Directory",
+                  "Discover women-owned, women-led, and women-founded businesses and aligned professional organizations from around the world.",
+                  "Listings", "directory", "directory_hub", "No directory listings are published right now — check back soon."),
+    "shop": ("shop-index", "Shop", "WSF Shop", "Digital guides, templates, and workbooks from Women Shaping Futures.",
+             "Products", "shop", "shop_hub", "No products are listed right now — check back soon."),
+    "newsletter": ("newsletter-index", "Newsletter", "WSF Weekly",
+                   "One email, every Thursday: the story worth your time, a woman worth knowing, and the jobs and opportunities worth applying for.",
+                   "Recent issues", "newsletter", "newsletter_hub", "No issues have been published to the archive yet."),
+}
+
+# CirclePage.jsx's own BENEFITS copy, verbatim.
+_CIRCLE_BENEFITS = (
+    ("WSF Learning", "Full access to WSF Circle learning programs and courses as the catalog grows."),
+    ("WSF Circle resources", "Guides, workbooks, and tools reserved for WSF Circle members — separate from one-off premium purchases."),
+    ("Opportunities & jobs", "Selected roles and opportunities reserved for WSF Circle members."),
+    ("WSF Circle events", "Community gatherings and sessions held exclusively for members."),
+)
+
+
+def _hub_prerender(subpath):
+    """Visible hub content for a static list/landing route, or None (that
+    route keeps its plain empty #root)."""
+    from app.services import public_hubs
+
+    if subpath in _HUB_PAGES:
+        marker, eyebrow, title, description, list_heading, kind, fetcher, empty = _HUB_PAGES[subpath]
+        items = getattr(public_hubs, fetcher)()
+        return render_hub_prerender(marker, eyebrow, title, description, list_heading, kind, items, empty)
+    if subpath == "circle":
+        return _circle_prerender(public_hubs.circle_plans_hub())
+    if subpath == "mentorship":
+        return _mentorship_prerender(public_hubs.mentorship_programs_hub())
+    return None
+
+
+def _circle_prerender(plans):
+    """Signed-out CirclePage copy + active plans. Never membership state,
+    checkout URLs/state, payments or member-only content."""
+    from app.services.prerender import _paragraph, _section, _string_list, _text
+
+    benefits = "".join(f"<li><h3>{_text(title)}</h3>{_paragraph(text)}</li>" for title, text in _CIRCLE_BENEFITS)
+    if plans:
+        cards = []
+        for plan in plans:
+            interval = "/ year" if plan.get("billingInterval") == "yearly" else "/ month"
+            price = f"{plan.get('currency') or ''} {plan['price']:,} {interval}".strip() if isinstance(plan.get("price"), int) else ""
+            cards.append(f"<li><h3>{_text(plan.get('name'))}</h3>{_paragraph(price)}{_paragraph(plan.get('shortDescription'))}{_string_list(plan.get('benefits'))}</li>")
+        membership = _paragraph("Choose Monthly for flexibility. Choose Yearly for the best value and exclusive annual-member bonuses.") + f"<ul>{''.join(cards)}</ul>"
+    else:
+        membership = _paragraph("WSF Circle membership plans are being finalized. Please check back soon, or contact WSF with questions.")
+    extra = [_section("Why WSF Circle", f"<ul>{benefits}</ul>"), _section("Membership", membership)]
+    return render_hub_prerender(
+        "circle", "WSF Circle", "A closer circle for women shaping their futures",
+        "WSF Circle is the premium membership experience for women who want deeper access to learning, career resources, curated opportunities, events and community experiences.",
+        None, None, [], None, extra_sections=extra,
+    )
+
+
+def _mentorship_prerender(programs):
+    """Signed-out MentorshipPage copy + public programs. Never applications,
+    matches, notes or mentor/mentee details."""
+    from app.services.prerender import _date_html, _paragraph, _section, _text, render_content_blocks
+
+    intro = [
+        _section("Find a mentor", _paragraph("Get matched with an experienced leader who can support your goals — from career transitions to leadership growth.")),
+        _section("Become a mentor", _paragraph("Share what you've learned. Mentors set their own capacity and the career stages they're comfortable supporting.")),
+    ]
+    if programs:
+        cards = []
+        for program in programs:
+            status = (
+                "Applications open" + (f" through {_date_html(program['applicationClosesAt'])}" if program.get("applicationClosesAt") else "") + "."
+                if program.get("applicationOpenNow") else "Applications are currently closed for this program."
+            )
+            topics = " · ".join(_text(t) for t in program.get("topics") or [])
+            cards.append(
+                f"<li><h3>{_text(program.get('name'))}</h3>{_paragraph(program.get('shortDescription'))}"
+                f"{render_content_blocks(program.get('fullDescription') or [])}{_paragraph(program.get('eligibilitySummary'))}"
+                f"{f'<p>{topics}</p>' if topics else ''}<p>{status}</p></li>"
+            )
+        current = f"<ul>{''.join(cards)}</ul>"
+    else:
+        current = _paragraph("No mentorship programs are open right now — check back soon.")
+    return render_hub_prerender(
+        "mentorship", "Mentorship", "WSF Mentorship",
+        "Structured mentorship connecting ambitious women with experienced leaders across industries, career stages, and countries.",
+        None, None, [], None, extra_sections=intro + [_section("Current programs", current)],
+    )
+
+
 def _render_static_route(subpath, entry):
     kind = entry[0]
     if kind == "passthrough":
@@ -2000,6 +2132,7 @@ def _render_static_route(subpath, entry):
         if breadcrumb_label is not None:
             breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(breadcrumb_label, canonical)])
             html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
+        html_doc = _set_root_prerender(html_doc, _hub_prerender(subpath))
         return _html_response(html_doc)
 
     # kind == "noindex" — a private/auth/utility page. No site-wide

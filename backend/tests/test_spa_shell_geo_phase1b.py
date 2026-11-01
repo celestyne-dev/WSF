@@ -241,7 +241,9 @@ def test_sponsored_article_prerender_keeps_disclosure(client, app):
 
 
 def test_non_prerendered_routes_keep_an_empty_root(client, app):
-    for path in ("/", "/topics", "/login", "/account", "/this-does-not-exist", "/newsletter/unsubscribe/tok123"):
+    # "/" and the hub pages gained their own prerender in GEO Phase 3B3
+    # (test_spa_shell_geo_phase3b3.py); these still keep an empty #root.
+    for path in ("/login", "/account", "/this-does-not-exist", "/newsletter/unsubscribe/tok123"):
         _, html = _get(client, path)
         assert "data-wsf-prerender" not in html, path
 

@@ -41,6 +41,7 @@ from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
 from app.services.notifications import notify_mentorship_application_received
+from app.services.public_visibility import is_public_taxonomy
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -129,7 +130,8 @@ def build_public_program_payload(program):
         "programEndsAt": program.program_ends_at.isoformat() if program.program_ends_at else None,
         "country": {"code": program.country.code, "name": program.country.name} if program.country else None,
         "eligibilitySummary": program.eligibility_summary,
-        "topics": [t.name for t in program.topics],
+        # Published Topics only (app/services/public_visibility.py).
+        "topics": [t.name for t in program.topics if is_public_taxonomy(t)],
         "heroMedia": MediaSchema().dump(program.hero_media) if program.hero_media else None,
         "seo": program.seo or {},
     }

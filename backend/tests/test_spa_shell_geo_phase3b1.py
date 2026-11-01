@@ -332,11 +332,11 @@ def test_redirected_old_slug_is_a_301_without_body(client, app):
     assert "data-wsf-prerender" not in resp.get_data(as_text=True)
 
 
-def test_list_and_utility_routes_keep_empty_root(client, app):
-    # Updated by GEO Phase 3B2: /topics/<slug> (and the other secondary
-    # detail families) now get their own prerender — see
-    # test_spa_shell_geo_phase3b2.py. List/landing and utility routes still
-    # keep a plain empty #root (collections are Phase 3B3).
-    for path in ("/jobs", "/topics", "/shop", "/newsletter", "/login"):
+def test_utility_routes_keep_empty_root(client, app):
+    # Updated by GEO Phase 3B3: hub/listing pages (/jobs, /topics, /shop,
+    # /newsletter, ...) now get their own prerender — see
+    # test_spa_shell_geo_phase3b3.py. Auth/utility/unknown routes still
+    # keep a plain empty #root.
+    for path in ("/login", "/register", "/search", "/account", "/advertise"):
         _, html = _html(client, path)
         assert "data-wsf-prerender" not in html, path
