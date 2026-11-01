@@ -86,7 +86,9 @@ function toForm(person) {
     seoTitle: person.seo?.title || '',
     seoDescription: person.seo?.description || '',
     seoCanonical: person.seo?.canonical || '',
-    seoOgMedia: person.seo?.ogImageMediaId ? { id: person.seo.ogImageMediaId } : null,
+    // Rebuilt by mapPerson from the server-resolved seo.ogImage/ogImageAlt
+    // (PersonSchema.get_seo) so MediaPicker shows the real picked image.
+    seoOgMedia: person.seoOgMedia || null,
   }
 }
 

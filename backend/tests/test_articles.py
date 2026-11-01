@@ -515,6 +515,34 @@ def test_decorative_flag_is_sanitized_to_a_real_boolean(client, editor_token, au
     assert publish.get_json()["error"]["code"] == "publish_validation_failed"
 
 
+def test_callout_list_persists_and_sanitizes_in_article_content(client, editor_token, author_slug):
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "Callout With A List",
+            "authorSlug": author_slug,
+            "content": [
+                {"type": "highlight", "title": "Old style", "text": "Text only"},
+                {
+                    "type": "highlight",
+                    "title": "Key lessons",
+                    "text": "What we learned:",
+                    "listStyle": "bullet",
+                    "items": ["<b>One</b>", '<a href="javascript:alert(1)">Two</a><script>x</script>'],
+                },
+            ],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    old, listed = create.get_json()["data"]["content"]
+    # A pre-existing text-only Callout gains no list fields.
+    assert old == {"type": "highlight", "title": "Old style", "text": "Text only"}
+    assert listed["listStyle"] == "bullet"
+    assert listed["items"][0] == "<b>One</b>"
+    assert "javascript:" not in listed["items"][1] and "<script" not in listed["items"][1]
+
+
 def test_caption_or_credit_alone_never_satisfies_informative_alt_rule(client, editor_token, author_slug):
     create = client.post(
         "/api/v1/articles",

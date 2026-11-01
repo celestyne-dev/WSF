@@ -184,11 +184,84 @@ function QuoteBlock({ block, onChange }) {
   )
 }
 
+const CALLOUT_LIST_OPTIONS = [
+  { value: null, label: 'No list', icon: Minus },
+  { value: 'bullet', label: 'Bulleted', icon: ListIcon },
+  { value: 'number', label: 'Numbered', icon: ListOrdered },
+]
+
+// A Callout may end with an optional bulleted/numbered list (saved as
+// block.listStyle + block.items — see content_blocks.py). Choosing
+// "No list" only hides the list: items are kept on the block, so
+// switching back to Bulleted/Numbered restores them.
 function HighlightBlock({ block, onChange }) {
+  const listStyle = block.listStyle === 'bullet' || block.listStyle === 'number' ? block.listStyle : null
+  const items = block.items?.length ? block.items : ['']
+
+  function setListStyle(next) {
+    onChange({ ...block, listStyle: next, items: next && !block.items?.length ? [''] : block.items || [] })
+  }
+  function updateItem(i, value) {
+    const next = [...items]
+    next[i] = value
+    onChange({ ...block, items: next })
+  }
+  function addItem() {
+    onChange({ ...block, items: [...items, ''] })
+  }
+  function removeItem(i) {
+    onChange({ ...block, items: items.filter((_, idx) => idx !== i) })
+  }
+  function moveItem(i, dir) {
+    const target = i + dir
+    if (target < 0 || target >= items.length) return
+    const next = [...items]
+    ;[next[i], next[target]] = [next[target], next[i]]
+    onChange({ ...block, items: next })
+  }
+
   return (
     <div className="space-y-2">
       <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} placeholder="Callout title (optional)" className={inputClass} />
       <RichTextField value={block.text} onChange={(text) => onChange({ ...block, text })} placeholder="Callout text…" />
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">List</span>
+        {CALLOUT_LIST_OPTIONS.map(({ value, label, icon: Icon }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => setListStyle(value)}
+            aria-pressed={listStyle === value}
+            className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium ${listStyle === value ? 'bg-plum-600 text-ivory' : 'bg-taupe-100 text-charcoal-600'}`}
+          >
+            <Icon size={13} /> {label}
+          </button>
+        ))}
+      </div>
+      {listStyle && (
+        <div>
+          <div className="space-y-2">
+            {items.map((item, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="w-4 shrink-0 text-xs text-charcoal-600/60">{listStyle === 'number' ? `${i + 1}.` : '•'}</span>
+                <input value={item} onChange={(e) => updateItem(i, e.target.value)} className={inputClass} placeholder="List item" />
+                <button type="button" onClick={() => moveItem(i, -1)} disabled={i === 0} aria-label="Move item up" className="p-1 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
+                  <ChevronUp size={14} />
+                </button>
+                <button type="button" onClick={() => moveItem(i, 1)} disabled={i === items.length - 1} aria-label="Move item down" className="p-1 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
+                  <ChevronDown size={14} />
+                </button>
+                <button type="button" onClick={() => removeItem(i)} disabled={items.length <= 1} aria-label="Remove item" className="p-1 text-charcoal-600 hover:text-rose-600 disabled:opacity-30">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addItem} className="mt-2 text-xs font-semibold text-burgundy-600 hover:text-burgundy-700">
+            + Add item
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -360,7 +433,7 @@ function blankBlock(type) {
     case 'image':
       return { type, media: null, alt: '', caption: '', credit: '', decorative: false }
     case 'highlight':
-      return { type, title: '', text: '' }
+      return { type, title: '', text: '', listStyle: null, items: [] }
     case 'button':
       return { type, label: '', url: '' }
     case 'articleCard':

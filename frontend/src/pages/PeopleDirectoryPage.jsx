@@ -46,7 +46,7 @@ export default function PeopleDirectoryPage() {
     let active = true
     setPeople(null)
     setError(null)
-    fetchPeople({ country, region, industry, query, pageSize: 100 })
+    fetchPeople({ country, region, industry, expertise, query, pageSize: 100 })
       .then((res) => {
         if (active) setPeople(res.items)
       })
@@ -56,9 +56,7 @@ export default function PeopleDirectoryPage() {
     return () => {
       active = false
     }
-  }, [country, region, industry, query])
-
-  const filtered = (people || []).filter((p) => !expertise || p.expertise.includes(expertise))
+  }, [country, region, industry, expertise, query])
 
   return (
     <div>
@@ -92,9 +90,9 @@ export default function PeopleDirectoryPage() {
         {!error && people === null && <PageLoader />}
 
         {!error && people !== null && (
-          filtered.length ? (
+          people.length ? (
             <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
-              {filtered.map((person) => (
+              {people.map((person) => (
                 <PersonCard key={person.id} person={person} />
               ))}
             </div>

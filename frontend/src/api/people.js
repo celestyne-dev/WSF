@@ -49,9 +49,19 @@ function mapPerson(p) {
     awards: p.awards || [],
     website: p.website,
     social: p.social || {},
+    // The nested Series objects PersonSchema already returns — kept as a
+    // lightweight {slug, name} list so PersonProfilePage's "Featured in"
+    // needs no per-series refetch. (Mock-mode data bypasses mapPerson and
+    // carries only seriesSlugs.)
+    series: (p.series || []).filter((s) => s?.slug).map((s) => ({ slug: s.slug, name: s.name })),
     seriesSlugs: (p.series || []).map((s) => s.slug),
     status: p.status || 'published',
+    // seo.ogImage/ogImageAlt are resolved server-side from
+    // seo.ogImageMediaId (PersonSchema.get_seo, same as Article's).
     seo: p.seo || null,
+    seoOgMedia: p.seo?.ogImageMediaId
+      ? mapMediaRef({ id: p.seo.ogImageMediaId, public_url: p.seo.ogImage || null, alt_text: p.seo.ogImageAlt })
+      : null,
     featured: p.featured,
   }
 }

@@ -26,9 +26,13 @@ function wordsInBlock(block) {
     case 'heading':
     case 'pullquote':
     case 'blockquote':
-    case 'highlight':
     case 'footerNote':
       return countWords(block.text)
+    case 'highlight': {
+      // A Callout's optional list only shows when listStyle is set.
+      const listed = block.listStyle === 'bullet' || block.listStyle === 'number' ? block.items || [] : []
+      return countWords(block.text) + listed.reduce((sum, item) => sum + countWords(item), 0)
+    }
     case 'list':
       return (block.items || []).reduce((sum, item) => sum + countWords(item), 0)
     case 'faq':

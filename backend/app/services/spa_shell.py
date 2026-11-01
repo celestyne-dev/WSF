@@ -396,16 +396,16 @@ def render_generic_shell():
 
 def _resolve_social_image(explicit_media, fallback_media, site_identity, public_site_url):
     """Three-tier social-image priority, shared by every server-rendered
-    page: an explicit SEO-image override (Article only — no other
-    content type's frontend page distinguishes a separate "social share
-    image" from its own primary image) -> the content's own primary
+    page: an explicit SEO-image override (Article and Person only — no
+    other content type's frontend page distinguishes a separate "social
+    share image" from its own primary image) -> the content's own primary
     image (hero/cover/logo/photo — `fallback_media`, already resolved to
     a Media row or None by the caller) -> the global Site Settings
     default image. Every other server-rendered page calls this with
     `explicit_media=None`, exactly matching what its own frontend
     useSeo() call does today (none of them reference `seo.ogImageMediaId`
     for their `image` prop — only ArticlePage/articleStructuredData.js
-    do).
+    and PersonProfilePage do).
     """
     if explicit_media is not None:
         return _absolute_url(explicit_media.public_url, public_site_url), explicit_media.alt_text or None
@@ -824,7 +824,8 @@ def _lookup_resource(slug):
 # each one was read from. None of these pass an explicit SEO-image
 # override (see _resolve_social_image's docstring): every one of these
 # frontend pages already uses its own primary image (logo/cover/photo)
-# directly, never a separate `seo.ogImageMediaId`.
+# directly, never a separate `seo.ogImageMediaId` — except Person, whose
+# PersonProfilePage prefers seo.ogImageMediaId over the portrait.
 
 
 def _topic_meta(topic, public_site_url, site_identity):
@@ -855,7 +856,8 @@ def _series_meta(series, public_site_url, site_identity):
 
 def _person_meta(person, public_site_url, site_identity):
     seo = person.seo or {}
-    image_url, image_alt = _resolve_social_image(None, person.photo, site_identity, public_site_url)
+    explicit_media = _explicit_seo_image_media(seo)
+    image_url, image_alt = _resolve_social_image(explicit_media, person.photo, site_identity, public_site_url)
     return {
         "title": seo.get("title") or f"{person.name} | Women Shaping Futures",
         "description": seo.get("description") or person.short_bio,
@@ -1182,11 +1184,12 @@ def _build_resource_json_ld(resource, canonical_url, public_site_url, site_name)
     return data
 
 
-def _social_same_as(entity):
+def _social_same_as(entity, include_instagram=False):
     """Shared by Person/Author — identical sameAs derivation as
     PersonProfilePage.jsx/AuthorProfilePage.jsx's own hooks: the real
-    website plus LinkedIn/Twitter profile URLs built from the stored
-    handle, only when actually present. Never a fabricated profile.
+    website plus LinkedIn/Twitter (and, for Person, Instagram) profile
+    URLs built from the stored handle, only when actually present. Never
+    a fabricated profile.
     """
     social = entity.social or {}
     candidates = [
@@ -1194,6 +1197,8 @@ def _social_same_as(entity):
         f"https://linkedin.com/in/{social['linkedin']}" if social.get("linkedin") else None,
         f"https://twitter.com/{social['twitter']}" if social.get("twitter") else None,
     ]
+    if include_instagram:
+        candidates.append(f"https://instagram.com/{social['instagram']}" if social.get("instagram") else None)
     return [url for url in candidates if url]
 
 
@@ -1212,7 +1217,7 @@ def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
         image_url = _absolute_url(person.photo.public_url, public_site_url)
         if image_url:
             data["image"] = image_url
-    same_as = _social_same_as(person)
+    same_as = _social_same_as(person, include_instagram=True)
     if same_as:
         data["sameAs"] = same_as
     return data

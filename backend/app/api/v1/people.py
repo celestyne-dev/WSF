@@ -1,6 +1,8 @@
 from flask import Blueprint, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
+from sqlalchemy import cast
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.extensions import db
 from app.models.article import Article
@@ -120,6 +122,11 @@ class PersonListResource(Resource):
             query = query.filter(Person.organization.has(slug=request.args["organization"]))
         if request.args.get("series"):
             query = query.filter(Person.series.any(slug=request.args["series"]))
+        if request.args.get("expertise"):
+            # Exact array-item match (JSONB `@>`), same approach as
+            # directory.py's service_modes filter — applied before
+            # paginate() so the filter covers every profile, not one page.
+            query = query.filter(cast(Person.expertise, JSONB).contains([request.args["expertise"]]))
         result = paginate(query, person_schema)
         return success_response(result["items"], meta=result["meta"])
 

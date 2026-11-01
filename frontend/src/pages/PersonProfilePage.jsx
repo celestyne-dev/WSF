@@ -30,12 +30,14 @@ function usePersonStructuredData(person, canonicalUrl) {
       ...(person.title ? { jobTitle: person.title } : {}),
       ...(person.organization ? { worksFor: { '@type': 'Organization', name: person.organization } } : {}),
       ...(person.photo ? { image: resolveImage(person.photo, { width: 600, height: 750 }) } : {}),
-      ...(person.website || person.social?.linkedin || person.social?.twitter
+      // Mirrors spa_shell.py's _social_same_as(person, include_instagram=True).
+      ...(person.website || person.social?.linkedin || person.social?.twitter || person.social?.instagram
         ? {
             sameAs: [
               person.website,
               person.social?.linkedin && `https://linkedin.com/in/${person.social.linkedin}`,
               person.social?.twitter && `https://twitter.com/${person.social.twitter}`,
+              person.social?.instagram && `https://instagram.com/${person.social.instagram}`,
             ].filter(Boolean),
           }
         : {}),
@@ -50,6 +52,12 @@ function usePersonStructuredData(person, canonicalUrl) {
     el.textContent = JSON.stringify(data)
     return () => el?.remove()
   }, [person, canonicalUrl])
+}
+
+// Conservative "same text" check so a profession identical to the title
+// (e.g. both "Founder & CEO") is never shown twice in the header.
+function normalizeLabel(value) {
+  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
 export default function PersonProfilePage() {
@@ -74,9 +82,16 @@ export default function PersonProfilePage() {
           .then((res) => active && setRelatedArticles(res.items))
           .catch(() => {})
 
-        Promise.all((data.seriesSlugs || []).map((s) => fetchSeriesBySlug(s)))
-          .then((results) => active && setSeriesAppearances(results.filter(Boolean)))
-          .catch(() => {})
+        // The real API already nests each Series ({slug, name}) in the
+        // Person payload — used directly, no extra requests. Only mock-mode
+        // data (slugs alone) still resolves names one by one.
+        if (data.series) {
+          setSeriesAppearances(data.series)
+        } else {
+          Promise.all((data.seriesSlugs || []).map((s) => fetchSeriesBySlug(s)))
+            .then((results) => active && setSeriesAppearances(results.filter(Boolean)))
+            .catch(() => {})
+        }
       })
       .catch(() => {
         if (active) setError('Something went wrong loading this profile. Please try again.')
@@ -89,13 +104,23 @@ export default function PersonProfilePage() {
 
   const canonicalUrl = `https://womenshapingfutures.org/people/${slug}`
 
+  // Social-share image priority, matching spa_shell.py's _person_meta: the
+  // editor-picked SEO/OG image (person.seo.ogImage, resolved server-side
+  // from seo.ogImageMediaId — see PersonSchema.get_seo) -> the portrait ->
+  // useSeo's own global default. Alt text always comes from that SAME
+  // image's Media record, never borrowed or derived from a filename.
+  const hasExplicitOgImage = !!person?.seo?.ogImage
+  const socialImagePath = hasExplicitOgImage ? person.seo.ogImage : person?.photo || null
+  const socialImageAlt = hasExplicitOgImage ? person.seo.ogImageAlt || undefined : person?.photoMedia?.altText || undefined
+
   useSeo(
     person
       ? {
           title: person.seo?.title || `${person.name} | Women Shaping Futures`,
           description: person.seo?.description || person.shortBio,
           canonical: person.seo?.canonical || canonicalUrl,
-          image: person.photo ? resolveImage(person.photo, { width: 1200, height: 630 }) : undefined,
+          image: socialImagePath ? resolveImage(socialImagePath, { width: 1200, height: 630 }) : undefined,
+          imageAlt: socialImageAlt,
           robots: person.seo?.robots,
         }
       : {},
@@ -108,6 +133,8 @@ export default function PersonProfilePage() {
   if (person === undefined) return <PageLoader />
   if (person === null) return <NotFoundPage />
 
+  const showProfession = !!person.profession && normalizeLabel(person.profession) !== normalizeLabel(person.title)
+
   return (
     <div>
       <div className="border-b border-taupe-200 bg-cream py-10">
@@ -119,23 +146,29 @@ export default function PersonProfilePage() {
               <h1 className="font-serif text-4xl font-semibold text-charcoal sm:text-5xl">
                 {person.name} {person.pronouns && <span className="text-xl font-normal text-charcoal-600/60">({person.pronouns})</span>}
               </h1>
-              <p className="mt-2 text-lg text-charcoal-600">
-                {person.title}
-                {person.organizationSlug ? (
-                  <>
-                    {' at '}
+              {(person.title || person.organization) && (
+                <p className="mt-2 text-lg text-charcoal-600">
+                  {person.title}
+                  {person.title && person.organization && ' at '}
+                  {person.organizationSlug ? (
                     <Link to={`/organizations/${person.organizationSlug}`} className="font-medium text-burgundy-600 hover:underline">
                       {person.organization}
                     </Link>
-                  </>
-                ) : (
-                  person.organization && ` at ${person.organization}`
-                )}
-              </p>
+                  ) : (
+                    person.organization
+                  )}
+                </p>
+              )}
+              {showProfession && (
+                <p className="mt-1 text-sm font-semibold uppercase tracking-wide text-charcoal-600/80">{person.profession}</p>
+              )}
               {(person.location || person.industry) && (
                 <p className="mt-1 text-sm text-charcoal-600">
                   {[person.location, person.industry].filter(Boolean).join(' · ')}
                 </p>
+              )}
+              {person.shortBio && (
+                <p className="mt-4 max-w-2xl font-serif text-lg leading-relaxed text-charcoal sm:text-xl">{person.shortBio}</p>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
                 {person.expertise.map((e) => (
@@ -183,7 +216,7 @@ export default function PersonProfilePage() {
           {person.bio?.length > 0 && (
             <div>
               <h2 className="mt-10 font-serif text-2xl font-semibold text-charcoal">About</h2>
-              <ArticleContent blocks={person.bio} />
+              <ArticleContent blocks={person.bio} variant="person" />
             </div>
           )}
 

@@ -39,7 +39,17 @@ function Heading({ block, headingId, variant }) {
   const isArticle = variant === 'article'
   const isResource = variant === 'resource'
   const useArticleScale = isArticle || isResource
-  const sizeClass = (useArticleScale ? articleSizes : sizes)[block.level] || (useArticleScale ? articleSizes[2] : sizes[2])
+  // variant="person" (PersonProfilePage biography): a step up from the
+  // generic scale so sections inside a long biography read as real
+  // breaks, but quieter than Article's — the profile page already has its
+  // own section headings (About, Career Timeline, …) around this body.
+  const personSizes = {
+    2: 'text-2xl leading-snug sm:text-[1.75rem]',
+    3: 'text-xl leading-snug',
+    4: 'text-lg leading-snug',
+  }
+  const scale = useArticleScale ? articleSizes : variant === 'person' ? personSizes : sizes
+  const sizeClass = scale[block.level] || scale[2]
   const spacingClass = useArticleScale && block.level === 2 ? (isResource ? 'mt-16' : 'mt-14') : 'mt-10'
   // `headingId`, when supplied by a caller (e.g. LegalPageLayout's "On
   // this page" nav), gives this heading a stable anchor; scroll-mt-28
@@ -69,6 +79,9 @@ function Paragraph({ block, variant, isLeadParagraph }) {
         className={`mt-6 font-sans ${sizeClass} text-charcoal ${ARTICLE_LINK_CLASSES}`}
       />
     )
+  }
+  if (variant === 'person') {
+    return <InlineHtml as="p" html={block.text} className={`mt-5 font-sans text-lg leading-[1.8] text-charcoal ${ARTICLE_LINK_CLASSES}`} />
   }
   return <InlineHtml as="p" html={block.text} className="mt-5 font-sans text-lg leading-[1.85] text-charcoal-600" />
 }
@@ -130,7 +143,7 @@ function PullQuote({ block, variant }) {
 }
 
 function BlockQuote({ block, variant }) {
-  if (variant === 'article') {
+  if (variant === 'article' || variant === 'person') {
     return (
       <blockquote className="my-10 border-l-[3px] border-burgundy-500 py-1 pl-8">
         <InlineHtml as="p" html={block.text} className="font-serif text-2xl italic leading-snug text-charcoal" />
@@ -170,6 +183,17 @@ function ListBlock({ block, variant }) {
       </Tag>
     )
   }
+  if (variant === 'person') {
+    return (
+      <Tag
+        className={`mt-5 space-y-2.5 pl-6 font-sans text-lg leading-[1.75] text-charcoal marker:text-burgundy-500 ${ARTICLE_LINK_CLASSES} ${block.style === 'number' ? 'list-decimal' : 'list-disc'}`}
+      >
+        {block.items.map((item, i) => (
+          <InlineHtml key={i} as="li" html={item} />
+        ))}
+      </Tag>
+    )
+  }
   if (variant === 'article') {
     return (
       <Tag
@@ -190,12 +214,34 @@ function ListBlock({ block, variant }) {
   )
 }
 
+// A Callout's optional list (block.listStyle "bullet"/"number" + items —
+// see content_blocks.py's _normalize_callout_list). Old Callouts carry
+// neither field and listStyle null/"none" means "no list", so both render
+// nothing here, exactly as before. Items keep the same sanitized inline
+// HTML as a regular List block's items.
+function CalloutList({ block, className = '' }) {
+  if (block.listStyle !== 'bullet' && block.listStyle !== 'number') return null
+  const items = (Array.isArray(block.items) ? block.items : []).filter((item) => typeof item === 'string' && item.trim())
+  if (!items.length) return null
+  const Tag = block.listStyle === 'number' ? 'ol' : 'ul'
+  return (
+    <Tag
+      className={`mt-3 space-y-1.5 pl-5 font-sans text-base leading-relaxed text-charcoal sm:text-[1.0625rem] ${ARTICLE_LINK_CLASSES} ${block.listStyle === 'number' ? 'list-decimal' : 'list-disc'} ${className}`}
+    >
+      {items.map((item, i) => (
+        <InlineHtml key={i} as="li" html={item} />
+      ))}
+    </Tag>
+  )
+}
+
 function Highlight({ block, variant }) {
   if (variant === 'article') {
     return (
       <div className="my-10 border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6 sm:p-8">
         {block.title && <p className="eyebrow mb-2">{block.title}</p>}
         <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal sm:text-xl" />
+        <CalloutList block={block} className="marker:text-burgundy-500" />
       </div>
     )
   }
@@ -204,6 +250,16 @@ function Highlight({ block, variant }) {
       <div className="my-10 max-w-[820px] border border-taupe-200 border-l-4 border-l-plum-600 bg-blush-50 p-7 sm:p-8">
         {block.title && <p className="eyebrow mb-2">{block.title}</p>}
         <InlineHtml as="p" html={block.text} className="font-serif text-lg italic leading-relaxed text-charcoal sm:text-xl" />
+        <CalloutList block={block} className="marker:text-plum-600" />
+      </div>
+    )
+  }
+  if (variant === 'person') {
+    return (
+      <div className="my-8 border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6">
+        {block.title && <p className="eyebrow mb-2">{block.title}</p>}
+        <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal" />
+        <CalloutList block={block} className="marker:text-burgundy-500" />
       </div>
     )
   }
@@ -211,6 +267,7 @@ function Highlight({ block, variant }) {
     <div className="my-8 border border-taupe-200 bg-cream p-6">
       {block.title && <p className="eyebrow mb-2">{block.title}</p>}
       <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal" />
+      <CalloutList block={block} />
     </div>
   )
 }
@@ -409,6 +466,10 @@ const RENDERERS = {
 // renderer above falls through to its original, unchanged markup/classes
 // whenever `variant` is omitted, so LegalPageLayout/AboutEditorialSections/
 // ContactPage and any other existing caller render exactly as before.
+// `variant="person"` (PersonProfilePage biography only) is a restrained
+// long-form treatment — darker body copy, slightly stronger headings,
+// clearer list markers, an accented Callout — with no lead-paragraph
+// styling; every block type it doesn't name falls back to the generic look.
 export default function ArticleContent({ blocks = [], relatedArticlesBySlug, headingIdForBlock, variant }) {
   // -1 unless variant is "article" or "resource" (every other caller), so
   // `i === firstParagraphIndex` below is never true for them — no lead-

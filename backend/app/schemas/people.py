@@ -1,7 +1,8 @@
 from marshmallow import fields, validate
 
-from app.extensions import ma
+from app.extensions import db, ma
 from app.models.article import Article
+from app.models.media import Media
 from app.models.people import (
     AUTHOR_STATUSES,
     ORGANIZATION_STATUSES,
@@ -41,10 +42,27 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
     # Organization through a Person response.
     organization = fields.Method("get_organization", dump_only=True)
     series = fields.Nested(SeriesSchema, many=True, dump_only=True, exclude=("article_count",))
+    # Same resolution as ArticleSchema.get_seo — `seo` is a free-form JSON
+    # column whose ogImageMediaId has no FK for the auto schema to follow,
+    # so the picked image's public URL/alt are injected alongside the id.
+    seo = fields.Method("get_seo", dump_only=True)
 
     class Meta:
         model = Person
         load_instance = False
+
+    def get_seo(self, obj):
+        if obj.seo is None:
+            return None
+        seo = dict(obj.seo)
+        media_id = seo.get("ogImageMediaId")
+        if media_id:
+            media = db.session.get(Media, media_id)
+            if media:
+                seo["ogImage"] = media.public_url
+                if media.alt_text:
+                    seo["ogImageAlt"] = media.alt_text
+        return seo
 
     def get_organization(self, obj):
         if not obj.organization or obj.organization.status != "published":
@@ -134,7 +152,7 @@ class PersonInputSchema(ma.Schema):
     achievements = fields.List(fields.String(), required=False, load_default=list)
     career_timeline = fields.List(fields.Dict(), required=False, load_default=list, data_key="careerTimeline")
     awards = fields.List(fields.String(), required=False, load_default=list)
-    website = fields.String(required=False, allow_none=True)
+    website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
     social = fields.Dict(required=False, allow_none=True)
     series_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="seriesSlugs")
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(PERSON_STATUSES))

@@ -11,6 +11,8 @@ ArticleContent.jsx but not produced by the block editor) are passed through
 unchanged; they're either structural (no free text) or out of this
 editor's scope.
 """
+import html
+
 import bleach
 
 _INLINE_TAGS = ["b", "strong", "i", "em", "u", "a", "br"]
@@ -45,6 +47,31 @@ def _clean_plain_text(value):
     return bleach.clean(value, tags=[], attributes={}, strip=True).strip()
 
 
+# A Callout (highlight) may carry an optional list below its text —
+# {listStyle: "bullet"|"number"|None, items: [str, ...]}. "none"/""/any
+# unknown value all normalize to None (no list shown) while the items are
+# kept, so an editor toggling "No list" and back doesn't lose them.
+_CALLOUT_LIST_STYLES = ("bullet", "number")
+
+
+# The Callout title is rendered as a React text node (never as HTML), so
+# it's stored as genuine plain text: tags stripped, and bleach's entity
+# escaping undone so "Q&A" doesn't come back to the editor as "Q&amp;A".
+def _clean_callout_title(value):
+    if not isinstance(value, str):
+        return value
+    return html.unescape(_clean_plain_text(value))
+
+
+def _normalize_callout_list(block):
+    if "listStyle" in block:
+        style = block["listStyle"]
+        block["listStyle"] = style if style in _CALLOUT_LIST_STYLES else None
+    if "items" in block:
+        items = block["items"] if isinstance(block["items"], list) else []
+        block["items"] = [_clean_inline_html(item) for item in items if isinstance(item, str)]
+
+
 # Only Python's own real boolean True counts — a string like "false" or
 # "0" is truthy in Python, so without this a client that sent decorative
 # as text could mark every image decorative by accident (and silently
@@ -74,6 +101,10 @@ def sanitize_content_blocks(blocks):
             block["decorative"] = _as_bool(block["decorative"])
         if block_type == "list" and isinstance(block.get("items"), list):
             block["items"] = [_clean_inline_html(item) for item in block["items"]]
+        if block_type == "highlight":
+            if "title" in block:
+                block["title"] = _clean_callout_title(block["title"])
+            _normalize_callout_list(block)
 
         sanitized.append(block)
     return sanitized
