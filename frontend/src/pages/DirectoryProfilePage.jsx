@@ -77,13 +77,17 @@ export default function DirectoryProfilePage() {
   }, [slug])
 
   const canonicalUrl = `https://womenshapingfutures.org/directory/${slug}`
+  // One effective canonical for useSeo, the entity JSON-LD and the
+  // breadcrumb — the same resolved value spa_shell.py's meta["canonical"]
+  // gives all three server-side.
+  const effectiveCanonicalUrl = listing?.seo?.canonical || canonicalUrl
 
   useSeo(
     listing
       ? {
           title: listing.seo?.title || `${listing.organization.name} | Business & Professional Directory | Women Shaping Futures`,
           description: listing.seo?.description || listing.serviceSummary || listing.organization.shortDescription,
-          canonical: listing.seo?.canonical || canonicalUrl,
+          canonical: effectiveCanonicalUrl,
           // organization.logo is a mapMediaRef object here, so its path is
           // passed — handing resolveImage the object itself yielded a
           // placeholder instead of the real logo (server: _directory_meta).
@@ -93,10 +97,10 @@ export default function DirectoryProfilePage() {
       : {},
   )
 
-  useDirectoryStructuredData(listing, canonicalUrl)
+  useDirectoryStructuredData(listing, effectiveCanonicalUrl)
   useBreadcrumbStructuredData(
     listing ? [{ label: 'Directory', to: '/directory' }, { label: listing.organization.name }] : null,
-    listing?.seo?.canonical || canonicalUrl,
+    effectiveCanonicalUrl,
   )
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this listing" description={error} /></div>

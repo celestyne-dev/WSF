@@ -594,3 +594,51 @@ def test_every_sitemap_url_hard_loads_200(client, app):
         assert status == 200, loc
         assert _meta(html, "name", "robots") is not None, loc
         assert _count("data-site-structured-data", html) == 1, loc
+
+
+# --- explicit SEO canonical: one effective canonical everywhere -------------
+
+
+def _assert_one_effective_canonical(html, override, entity_attr):
+    assert _canonical(html) == override
+    assert _meta(html, "property", "og:url") == override
+    crumbs = _json_ld(html, "data-breadcrumb-structured-data")["itemListElement"]
+    assert crumbs[-1]["item"] == override
+    entity = _json_ld(html, entity_attr)
+    assert entity["url"] == override
+    return entity
+
+
+def test_organization_seo_canonical_reaches_link_breadcrumb_and_json_ld(client, app):
+    override = "https://example.org/canonical/kaziwave"
+    _org(app, "kaziwave", seo={"canonical": override})
+    status, html = _get(client, "/organizations/kaziwave")
+    assert status == 200
+    _assert_one_effective_canonical(html, override, "data-org-structured-data")
+
+
+def test_directory_seo_canonical_reaches_link_breadcrumb_and_json_ld(client, app):
+    override = "https://example.org/canonical/amani"
+    org_id = _org(app, "amani-studio", name="Amani Studio")
+    _listing(app, org_id, service_summary="Brand design.", seo={"canonical": override})
+    status, html = _get(client, "/directory/amani-studio")
+    assert status == 200
+    _assert_one_effective_canonical(html, override, "data-directory-structured-data")
+
+
+def test_product_seo_canonical_reaches_link_breadcrumb_and_json_ld(client, app):
+    override = "https://example.org/canonical/workbook"
+    _product(app, "with-purchase", price=100, purchase_url="https://pay.example.com/buy", seo={"canonical": override})
+    _product(app, "no-purchase", price=100, seo={"canonical": override})
+
+    status, html = _get(client, "/shop/with-purchase")
+    assert status == 200
+    entity = _assert_one_effective_canonical(html, override, "data-product-structured-data")
+    # Offer.url is unchanged: the purchase URL still wins when present...
+    assert entity["offers"]["url"] == "https://pay.example.com/buy"
+
+    status, html = _get(client, "/shop/no-purchase")
+    assert status == 200
+    entity = _assert_one_effective_canonical(html, override, "data-product-structured-data")
+    # ...and the (effective) canonical is only its fallback.
+    assert entity["offers"]["url"] == override

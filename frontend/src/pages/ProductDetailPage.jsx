@@ -94,21 +94,25 @@ export default function ProductDetailPage() {
   }, [slug])
 
   const canonicalUrl = `https://womenshapingfutures.org/shop/${slug}`
+  // One effective canonical for useSeo, the entity JSON-LD and the
+  // breadcrumb — the same resolved value spa_shell.py's meta["canonical"]
+  // gives all three server-side.
+  const effectiveCanonicalUrl = product?.seo?.canonical || canonicalUrl
 
   useSeo(
     product
       ? {
           title: product.seo?.title || `${product.name} | Women Shaping Futures Shop`,
           description: product.seo?.description || product.shortDescription,
-          canonical: product.seo?.canonical || canonicalUrl,
+          canonical: effectiveCanonicalUrl,
           image: product.coverImage ? resolveImage(product.coverImage, { width: 1200, height: 1200 }) : undefined,
           robots: product.seo?.robots,
         }
       : {},
   )
 
-  useProductStructuredData(product, canonicalUrl)
-  useBreadcrumbStructuredData(product ? [{ label: 'Shop', to: '/shop' }, { label: product.name }] : null, product?.seo?.canonical || canonicalUrl)
+  useProductStructuredData(product, effectiveCanonicalUrl)
+  useBreadcrumbStructuredData(product ? [{ label: 'Shop', to: '/shop' }, { label: product.name }] : null, effectiveCanonicalUrl)
 
   function handleCtaClick() {
     trackEvent('product_cta_click', { productSlug: product.slug })

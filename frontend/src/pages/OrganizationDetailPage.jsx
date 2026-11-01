@@ -105,21 +105,25 @@ export default function OrganizationDetailPage() {
   }, [slug])
 
   const canonicalUrl = `https://womenshapingfutures.org/organizations/${slug}`
+  // One effective canonical for useSeo, the entity JSON-LD and the
+  // breadcrumb — the same resolved value spa_shell.py's meta["canonical"]
+  // gives all three server-side.
+  const effectiveCanonicalUrl = org?.seo?.canonical || canonicalUrl
 
   useSeo(
     org
       ? {
           title: org.seo?.title || `${org.name} | Women Shaping Futures`,
           description: org.seo?.description || org.shortDescription,
-          canonical: org.seo?.canonical || canonicalUrl,
+          canonical: effectiveCanonicalUrl,
           image: org.logo ? resolveImage(org.logo, { width: 1200, height: 630 }) : undefined,
           robots: org.seo?.robots,
         }
       : {},
   )
 
-  useOrgStructuredData(org, canonicalUrl)
-  useBreadcrumbStructuredData(org ? [{ label: 'Organizations', to: '/organizations' }, { label: org.name }] : null, org?.seo?.canonical || canonicalUrl)
+  useOrgStructuredData(org, effectiveCanonicalUrl)
+  useBreadcrumbStructuredData(org ? [{ label: 'Organizations', to: '/organizations' }, { label: org.name }] : null, effectiveCanonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this organization" description={error} /></div>
   if (org === undefined) return <PageLoader />
