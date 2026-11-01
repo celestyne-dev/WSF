@@ -635,3 +635,189 @@ def render_organization_prerender(payload):
     ]))
     body = [render_content_blocks(payload.get("description") or [])]
     return _main("organization", header, body)
+
+
+# --- AI Search / GEO Phase 3B2: secondary public detail pages ----------------
+#
+# Same contract as Phase 3B1: each renderer reads the anonymous public
+# representation the matching public API returns (AuthorSchema,
+# TopicSchema, SeriesSchema, DirectoryListingPublicSchema, the product
+# API's _dump_product(..., can_view_all=False), NewsletterIssuePublicSchema)
+# and shows only what that page visibly renders. No article/job grids —
+# collections are Phase 3B3.
+
+
+def _social_links(social):
+    """Same handle -> URL patterns as AuthorProfilePage/PersonProfilePage."""
+    social = social if isinstance(social, dict) else {}
+    patterns = (("linkedin", "LinkedIn", "https://linkedin.com/in/{}"), ("twitter", "Twitter", "https://twitter.com/{}"),
+                ("instagram", "Instagram", "https://instagram.com/{}"))
+    return [(label, pattern.format(social[key])) for key, label, pattern in patterns if _is_nonblank(social.get(key))]
+
+
+def _link_list(links):
+    items = "".join(
+        f'<li><a href="{_attr(url)}" target="_blank" rel="noopener noreferrer" class="{_LINK_CLASS}">{_text(label)}</a></li>'
+        for label, url in links
+        if _http_url(url)
+    )
+    return f'<ul class="{_CHIPS_CLASS}">{items}</ul>' if items else ""
+
+
+def render_author_prerender(payload):
+    """`payload` = AuthorSchema().dump(author) — its `person` is already
+    null unless the linked Person is published (get_person)."""
+    header = [_h1(payload.get("name")), _paragraph(payload.get("role"))]
+    country = payload.get("country") if isinstance(payload.get("country"), dict) else {}
+    place = payload.get("location") or country.get("name")
+    if _is_nonblank(place):
+        header.append(f'<p class="{_META_CLASS}">{_text(place)}</p>')
+    topics = [t for t in (payload.get("topics") or []) if isinstance(t, dict) and t.get("status") == "published" and _is_nonblank(t.get("slug"))]
+    if topics:
+        chips = "".join(f'<li class="{_CHIP_CLASS}"><a href="/topics/{_attr(t["slug"])}">{_text(t.get("name"))}</a></li>' for t in topics)
+        header.append(f'<ul class="{_CHIPS_CLASS}" aria-label="Topics">{chips}</ul>')
+    links = ([("Website", payload.get("website"))] if _http_url(payload.get("website")) else []) + _social_links(payload.get("social"))
+    header.append(_link_list(links))
+    person = payload.get("person") if isinstance(payload.get("person"), dict) else None
+    if person and _is_nonblank(person.get("slug")):
+        header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View profile</a></p>')
+    body = [render_content_blocks(payload.get("bio") or [])]
+    return _main("author", header, body)
+
+
+def render_topic_prerender(payload):
+    """`payload` = TopicSchema().dump(topic)."""
+    header = [f'<p class="eyebrow">Topic</p>', _h1(payload.get("name")), _paragraph(payload.get("description"))]
+    return _main("topic", header, [])
+
+
+def render_series_prerender(payload):
+    """`payload` = SeriesSchema().dump(series). The public SeriesSchema
+    never serializes sponsor_organization, so no sponsor is shown here
+    either (the real page shows none from the live API)."""
+    header = [f'<p class="eyebrow">Series</p>', _h1(payload.get("name")), _paragraph(payload.get("subtitle"))]
+    body = [_paragraph(payload.get("description"), _PARAGRAPH_CLASS)]
+    return _main("series", header, body)
+
+
+_DIRECTORY_LISTING_TYPE_LABELS = {
+    "business": "Business", "nonprofit": "Nonprofit", "professional_service": "Professional service",
+    "social_enterprise": "Social enterprise", "association": "Professional association",
+}
+_DIRECTORY_OWNERSHIP_LABELS = {
+    "women_owned": "Women-owned", "women_led": "Women-led", "women_founded": "Women-founded", "women_focused": "Women-focused",
+}
+_DIRECTORY_SERVICE_MODE_LABELS = {
+    "local": "Local", "national": "National", "international": "International",
+    "remote": "Remote", "online": "Online", "in_person": "In person",
+}
+
+
+def render_directory_prerender(payload):
+    """`payload` = DirectoryListingPublicSchema().dump(listing) — excludes
+    verification notes, rejection reasons, reviewer/verifier identity and
+    all submitter data by construction. Labels mirror
+    frontend/src/constants/directory.js."""
+    org = payload.get("organization") if isinstance(payload.get("organization"), dict) else {}
+    country = org.get("country") if isinstance(org.get("country"), dict) else {}
+    place = ", ".join(_text(v) for v in (org.get("location"), country.get("name")) if _is_nonblank(v))
+    meta = " · ".join(v for v in (_text(_DIRECTORY_LISTING_TYPE_LABELS.get(payload.get("listing_type"), "")), _text(org.get("industry")), place) if v)
+    header = [_h1(org.get("name"))]
+    if meta:
+        header.append(f'<p class="{_META_CLASS}">{meta}</p>')
+    if _http_url(org.get("website")):
+        header.append(_external_link(org["website"], "Visit website"))
+    badges = [_DIRECTORY_OWNERSHIP_LABELS.get(payload.get("ownership_classification"), "")]
+    if payload.get("verification_status") == "verified":
+        badges.append("Verified by WSF")
+    badges += [c.get("name") for c in (payload.get("categories") or []) if isinstance(c, dict)]
+    chips = "".join(f'<li class="{_CHIP_CLASS}">{_text(b)}</li>' for b in badges if _is_nonblank(b))
+    if chips:
+        header.append(f'<ul class="{_CHIPS_CLASS}">{chips}</ul>')
+    modes = ", ".join(_DIRECTORY_SERVICE_MODE_LABELS.get(m, "") for m in (payload.get("service_modes") or []) if _DIRECTORY_SERVICE_MODE_LABELS.get(m))
+    contact = []
+    email = payload.get("public_contact_email")
+    if _is_nonblank(email) and "@" in email:
+        contact.append(f'<p><a href="mailto:{_attr(email)}" class="{_LINK_CLASS}">{_text(email)}</a></p>')
+    if _is_nonblank(payload.get("public_contact_phone")):
+        contact.append(_paragraph(payload["public_contact_phone"], _META_CLASS))
+    body = [
+        _paragraph(payload.get("service_summary"), _PARAGRAPH_CLASS),
+        _section("Key services", _string_list(payload.get("key_services"))),
+        _section("Service coverage", _paragraph(modes, _PARAGRAPH_CLASS) if modes else ""),
+        _section("Contact", "".join(contact)),
+    ]
+    return _main("directory", header, body)
+
+
+def _product_price(amount, currency):
+    if not isinstance(amount, int):
+        return ""
+    if amount == 0:
+        return "Free"
+    return f"${amount:,.2f}" if currency == "USD" else f"{currency or 'KES'} {amount:,.2f}"
+
+
+def render_product_prerender(payload):
+    """`payload` = the product API's anonymous dump (_dump_product with
+    can_view_all=False): price fields are already None when price_visible
+    is False, and the nested `resource` is only {id, slug, name} — never
+    a file/external URL, protected path or download token."""
+    category = payload.get("category") if isinstance(payload.get("category"), dict) else {}
+    eyebrow = category.get("name") or payload.get("type")
+    header = [f'<p class="eyebrow">{_text(eyebrow)}</p>' if _is_nonblank(eyebrow) else "", _h1(payload.get("name"))]
+    price, sale = payload.get("price"), payload.get("sale_price")
+    on_sale = isinstance(sale, int) and isinstance(price, int) and sale < price
+    shown = _product_price(sale if on_sale else price, payload.get("currency"))
+    if shown:
+        was = f' <s>{_text(_product_price(price, payload.get("currency")))}</s>' if on_sale else ""
+        header.append(f'<p class="{_DECK_CLASS}">{_text(shown)}{was}</p>')
+    available = bool(payload.get("is_available"))
+    status_label = "Available" if available else ("No longer available" if payload.get("status") == "archived" else "Currently unavailable")
+    header.append(f'<p class="{_META_CLASS}">{status_label}</p>')
+    body = [_paragraph(payload.get("short_description"), _PARAGRAPH_CLASS), render_content_blocks(payload.get("description") or [])]
+    if available and _http_url(payload.get("purchase_url")):
+        body.append(_external_link(payload["purchase_url"], "Get it free" if payload.get("price") == 0 else "Buy now"))
+    return _main("product", header, body)
+
+
+def _render_newsletter_block(block, published_article_slugs):
+    """The email-safe block types the archive page also renders
+    (ArticleContent's articleCard/button/footerNote) — static display
+    only: no merge fields, no unsubscribe placeholders, http(s) links
+    only, and an article card links only to a still-published article."""
+    from app.services.content_blocks import _clean_inline_html
+
+    kind = block.get("type")
+    if kind == "articleCard":
+        if not _is_nonblank(block.get("title")):
+            return ""
+        title = _text(block["title"])
+        slug = block.get("articleSlug")
+        title_html = f'<a href="/{_attr(slug)}" class="{_LINK_CLASS}">{title}</a>' if slug in published_article_slugs else title
+        excerpt = _paragraph(block.get("excerpt"), _META_CLASS)
+        return f'<div class="my-8 border border-taupe-200 p-4"><p class="eyebrow">Read the story</p><p>{title_html}</p>{excerpt}</div>'
+    if kind == "button":
+        return _external_link(block.get("url"), block.get("label") or "Learn more") if _is_nonblank(block.get("label")) else ""
+    if kind == "footerNote":
+        text = _clean_inline_html(block.get("text")) if _is_nonblank(block.get("text")) else ""
+        return f'<p class="mt-10 text-xs text-charcoal-600/70">{text}</p>' if text else ""
+    return _render_block(block)
+
+
+def render_newsletter_prerender(payload, published_article_slugs=frozenset()):
+    """`payload` = NewsletterIssuePublicSchema().dump(issue) — subject,
+    issue number, preheader, summary, content, cover, sent date only;
+    never the internal title, status, audience filter, scheduling,
+    provider/delivery metadata, or anything about subscribers."""
+    number = payload.get("issue_number")
+    header = [
+        f'<p class="eyebrow">WSF Weekly #{_text(number)}</p>' if number else '<p class="eyebrow">WSF Weekly</p>',
+        _h1(payload.get("subject")),
+    ]
+    sent = _date_html(payload.get("sent_at"))
+    if sent:
+        header.append(f'<p class="{_META_CLASS}">Sent {sent}</p>')
+    blocks = sanitize_content_blocks(payload.get("content") or [])
+    body = ["".join(_render_newsletter_block(b, published_article_slugs) for b in blocks)]
+    return _main("newsletter", header, body)

@@ -100,13 +100,19 @@ from app.services.event_registrations import is_event_publicly_visible
 from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
 from app.services.prerender import (
     render_article_prerender,
+    render_author_prerender,
+    render_directory_prerender,
     render_event_prerender,
     render_job_prerender,
     render_learning_prerender,
+    render_newsletter_prerender,
     render_opportunity_prerender,
     render_organization_prerender,
     render_person_prerender,
+    render_product_prerender,
     render_resource_prerender,
+    render_series_prerender,
+    render_topic_prerender,
 )
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
@@ -2090,8 +2096,9 @@ def _public_detail_prerender(prefix, entity):
     builder, viewer=None), so the prerender can never show more than that
     API already does; Learning reads catalog columns only (its public
     payload can carry the curriculum, which never enters this HTML).
-    Families without one (topics/series/authors/directory/shop/
-    newsletter) keep the plain empty #root.
+    GEO Phase 3B2 adds authors/topics/series/directory/shop/newsletter
+    the same way (each family's own public schema/dump); any other
+    family keeps the plain empty #root.
     """
     if prefix == "jobs":
         from app.api.v1.jobs import build_public_job_payload
@@ -2115,6 +2122,40 @@ def _public_detail_prerender(prefix, entity):
         from app.schemas.people import OrganizationSchema
 
         return render_organization_prerender(OrganizationSchema().dump(entity))
+    if prefix == "authors":
+        from app.schemas.people import AuthorSchema
+
+        # Same schema AuthorDetailResource uses (user_id excluded; the
+        # linked Person only when published). No article grid here.
+        return render_author_prerender(AuthorSchema().dump(entity))
+    if prefix == "topics":
+        from app.schemas.taxonomy import TopicSchema
+
+        return render_topic_prerender(TopicSchema().dump(entity))
+    if prefix == "series":
+        from app.schemas.taxonomy import SeriesSchema
+
+        return render_series_prerender(SeriesSchema().dump(entity))
+    if prefix == "directory":
+        from app.schemas.directory import DirectoryListingPublicSchema
+
+        return render_directory_prerender(DirectoryListingPublicSchema().dump(entity))
+    if prefix == "shop":
+        from app.api.v1.products import _dump_product
+
+        return render_product_prerender(_dump_product(entity, False))
+    if prefix == "newsletter":
+        from app.schemas.newsletter import NewsletterIssuePublicSchema
+
+        payload = NewsletterIssuePublicSchema().dump(entity)
+        # An archived issue's article cards are snapshots; only link the
+        # ones whose Article is still published.
+        card_slugs = {b.get("articleSlug") for b in (entity.content or []) if isinstance(b, dict) and b.get("type") == "articleCard"}
+        card_slugs.discard(None)
+        published = {
+            row.slug for row in Article.query.filter(Article.slug.in_(card_slugs), Article.status == "published").all()
+        } if card_slugs else set()
+        return render_newsletter_prerender(payload, frozenset(published))
     return None
 
 
