@@ -38,6 +38,7 @@ from app.schemas.mentorship import (
 from app.schemas.media import MediaSchema
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
 from app.services.notifications import notify_mentorship_application_received
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
@@ -165,6 +166,9 @@ class ProgramListResource(Resource):
         db.session.add(program)
         db.session.commit()
         log_action(current_user, "mentorship.program_create", "MentorshipProgram", program.id)
+        # Programs have no public detail route — a public one freshens
+        # /mentorship (applications/matches/notes never notify).
+        notify_public_change({}, program)
         return success_response(program_schema.dump(program), status=201)
 
 
@@ -176,6 +180,7 @@ class ProgramDetailResource(Resource):
     @permission_required("mentorship.manage")
     def patch(self, program_id):
         program = _get_program_or_404(program_id)
+        public_before = capture_public_urls(program)
         data = MentorshipProgramUpdateSchema().load(request.get_json(silent=True) or {})
         if "full_description" in data:
             data["full_description"] = sanitize_content_blocks(data["full_description"])
@@ -186,11 +191,13 @@ class ProgramDetailResource(Resource):
             program.topics = _resolve_topics(topic_slugs)
         db.session.commit()
         log_action(current_user, "mentorship.program_update", "MentorshipProgram", program.id)
+        notify_public_change(public_before, program)
         return success_response(program_schema.dump(program))
 
     @permission_required("mentorship.manage")
     def delete(self, program_id):
         program = _get_program_or_404(program_id)
+        public_before = capture_public_urls(program)
         if program.status != "draft":
             raise ApiError("Only Draft programs can be deleted. Archive established programs instead.", 409, code="delete_restricted")
         if MentorshipApplication.query.filter_by(program_id=program.id).count():
@@ -198,6 +205,7 @@ class ProgramDetailResource(Resource):
         db.session.delete(program)
         db.session.commit()
         log_action(current_user, "mentorship.program_delete", "MentorshipProgram", program_id)
+        notify_public_change(public_before, None)
         return success_response(None, status=204)
 
 
@@ -205,6 +213,7 @@ class ProgramStatusResource(Resource):
     @permission_required("mentorship.manage")
     def patch(self, program_id):
         program = _get_program_or_404(program_id)
+        public_before = capture_public_urls(program)
         data = MentorshipProgramStatusInputSchema().load(request.get_json(silent=True) or {})
         previous_status = program.status
         program.status = data["status"]
@@ -213,6 +222,7 @@ class ProgramStatusResource(Resource):
             current_user, "mentorship.program_status_change", "MentorshipProgram", program.id,
             changes={"from": previous_status, "to": program.status},
         )
+        notify_public_change(public_before, program)
         return success_response(program_schema.dump(program))
 
 

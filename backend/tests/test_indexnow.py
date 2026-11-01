@@ -505,3 +505,202 @@ def test_job_event_resource_reuse_their_visibility_predicates(app, monkeypatch):
     resource = Resource(slug="r", name="R")
     monkeypatch.setattr(Resource, "is_publicly_visible", lambda self: True)
     assert indexnow.public_urls_for(resource) == {"/resources/r": "/resources"}
+
+
+# --- public hubs: homepage, /circle, /mentorship ----------------------------------
+
+
+def _homepage_payload():
+    return {"modules": [{"type": "latest_stories", "enabled": True, "config": {"itemCount": 8}}]}
+
+
+def test_homepage_publish_notifies_root_after_commit(client, admin_token, sent):
+    resp = client.put("/api/v1/admin/homepage", json=_homepage_payload(), headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    assert sent.urls == [f"{SITE}/"]
+    sent.calls.clear()
+    client.get("/api/v1/admin/homepage", headers=auth_headers(admin_token))
+    client.get("/api/v1/public/homepage")
+    client.get("/")
+    assert sent.calls == []
+
+
+def test_homepage_publish_survives_indexnow_failure(client, app, admin_token, sent):
+    from app.models.cms import HomepageModule
+
+    sent.exc = ConnectionError("search engine down")
+    resp = client.put("/api/v1/admin/homepage", json=_homepage_payload(), headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    with app.app_context():
+        assert HomepageModule.query.count() == 1
+
+
+def _plan(**overrides):
+    payload = {"name": "WSF Circle Membership", "billingInterval": "monthly", "price": 1000, "currency": "USD", "status": "active"}
+    payload.update(overrides)
+    return payload
+
+
+def test_circle_plan_changes_freshen_only_the_circle_page(client, admin_token, sent, monkeypatch):
+    every_url = []
+    original = indexnow._post_json
+
+    def spy(url, payload, timeout):
+        every_url.extend(payload["urlList"])
+        return original(url, payload, timeout)
+
+    monkeypatch.setattr(indexnow, "_post_json", spy)
+    h = auth_headers(admin_token)
+    client.post("/api/v1/circle/plans", json=_plan(name="Draft Plan", status="draft"), headers=h)
+    assert sent.calls == []  # draft create
+    client.patch("/api/v1/circle/plans/draft-plan", json={"name": "Draft Plan Renamed"}, headers=h)
+    assert sent.calls == []  # private-only edit
+
+    client.post("/api/v1/circle/plans", json=_plan(), headers=h)
+    assert sent.urls == [f"{SITE}/circle"]  # public create
+
+    for change in ({"price": 1200}, {"slug": "renamed-plan"}):
+        sent.calls.clear()
+        assert client.patch("/api/v1/circle/plans/wsf-circle-membership", json=change, headers=h).status_code == 200
+        assert sent.urls == [f"{SITE}/circle"]  # public edit / public slug change
+
+    sent.calls.clear()
+    client.patch("/api/v1/circle/plans/renamed-plan", json={"status": "archived"}, headers=h)
+    assert sent.urls == [f"{SITE}/circle"]  # public -> archived
+
+    sent.calls.clear()
+    client.patch("/api/v1/circle/plans/draft-plan", json={"status": "active"}, headers=h)
+    assert sent.urls == [f"{SITE}/circle"]  # private -> public
+
+    sent.calls.clear()
+    assert client.delete("/api/v1/circle/plans/draft-plan", headers=h).status_code == 204
+    assert sent.urls == [f"{SITE}/circle"]  # public delete
+
+    sent.calls.clear()
+    client.post("/api/v1/circle/plans", json=_plan(name="Never Public", status="draft"), headers=h)
+    assert client.delete("/api/v1/circle/plans/never-public", headers=h).status_code == 204
+    assert sent.calls == []  # private-only delete
+    # Only ever the landing page — never a fabricated /circle/<slug>.
+    assert every_url and set(every_url) == {f"{SITE}/circle"}
+
+
+def _program(**overrides):
+    payload = {"slug": "wsf-mentors", "name": "WSF Mentors", "publicVisible": False}
+    payload.update(overrides)
+    return payload
+
+
+def test_mentorship_program_changes_freshen_only_the_mentorship_page(client, admin_token, sent):
+    h = auth_headers(admin_token)
+    resp = client.post("/api/v1/mentorship/programs", json=_program(), headers=h)
+    assert resp.status_code == 201, resp.get_json()
+    program_id = resp.get_json()["data"]["id"]
+    assert sent.calls == []  # draft/private create
+    client.patch(f"/api/v1/mentorship/programs/{program_id}", json={"name": "Renamed"}, headers=h)
+    assert sent.calls == []  # private-only edit
+
+    client.patch(f"/api/v1/mentorship/programs/{program_id}/status", json={"status": "applications_open"}, headers=h)
+    assert sent.calls == []  # still not public_visible
+    client.patch(f"/api/v1/mentorship/programs/{program_id}", json={"publicVisible": True}, headers=h)
+    assert sent.urls == [f"{SITE}/mentorship"]  # private -> public
+
+    sent.calls.clear()
+    client.patch(f"/api/v1/mentorship/programs/{program_id}", json={"shortDescription": "Updated"}, headers=h)
+    assert sent.urls == [f"{SITE}/mentorship"]  # public edit
+
+    # Applications (and their notes/status) never notify.
+    sent.calls.clear()
+    application = client.post("/api/v1/mentorship/applications", json={
+        "programId": program_id, "role": "mentor", "firstName": "Amara", "lastName": "Diallo",
+        "email": "mentor-ix@example.com", "countryCode": "KE", "consentGiven": True, "yearsExperience": 10,
+        "careerStagesSupported": ["Early Career"],
+    })
+    assert application.status_code == 201, application.get_json()
+    from app.models.mentorship import MentorshipApplication
+
+    with client.application.app_context():
+        app_id = MentorshipApplication.query.filter_by(email="mentor-ix@example.com").first().id
+    client.post(f"/api/v1/mentorship/applications/{app_id}/notes", json={"note": "Strong fit"}, headers=h)
+    client.patch(f"/api/v1/mentorship/applications/{app_id}/status", json={"status": "under_review"}, headers=h)
+    assert sent.calls == []
+
+    client.patch(f"/api/v1/mentorship/programs/{program_id}/status", json={"status": "archived"}, headers=h)
+    assert sent.urls == [f"{SITE}/mentorship"]  # public -> archived
+
+    # Programs are always created as draft (the create schema takes no
+    # status), so even publicVisible=True on create isn't public yet...
+    sent.calls.clear()
+    created = client.post("/api/v1/mentorship/programs", json=_program(slug="open-now", name="Open Now", publicVisible=True), headers=h)
+    assert created.status_code == 201
+    assert sent.calls == []
+    # ...until it leaves draft: private -> public via the status endpoint.
+    client.patch(f"/api/v1/mentorship/programs/{created.get_json()['data']['id']}/status", json={"status": "applications_open"}, headers=h)
+    assert sent.urls == [f"{SITE}/mentorship"]
+
+    sent.calls.clear()
+    draft = client.post("/api/v1/mentorship/programs", json=_program(slug="scratch", name="Scratch"), headers=h)
+    assert client.delete(f"/api/v1/mentorship/programs/{draft.get_json()['data']['id']}", headers=h).status_code == 204
+    assert sent.calls == []  # never-public draft delete
+
+
+# --- /circle as a dependent page of public circle_only catalog items ---------------
+
+
+def _catalog(kind, access_type, public):
+    from app.models.learning import LearningProgram
+    from app.models.opportunity import Event, Job, Opportunity
+    from app.models.resource import Resource
+
+    if kind == "learning":
+        return LearningProgram(slug="x", title="X", status="published" if public else "draft", access_type=access_type)
+    if kind == "opportunity":
+        return Opportunity(slug="x", title="X", status="published" if public else "draft", access_type=access_type)
+    if kind == "job":
+        return Job(slug="x", title="X", status="published" if public else "draft", access_type=access_type)
+    if kind == "event":
+        return Event(slug="x", title="X", status="published" if public else "draft", access_type=access_type)
+    return Resource(slug="x", name="X", status="published" if public else "draft", access_type=access_type)
+
+
+@pytest.mark.parametrize("kind,ordinary", [
+    ("learning", "free"), ("opportunity", "public"), ("job", "public"), ("event", "public"), ("resource", "direct_download"),
+])
+def test_circle_only_public_items_depend_on_circle_page(app, monkeypatch, kind, ordinary):
+    from app.models.resource import Resource
+
+    import app.services.event_registrations as event_svc
+    import app.services.job_access as job_svc
+
+    # Isolate the /circle rule from each type's date-based visibility rule.
+    monkeypatch.setattr(job_svc, "is_job_publicly_visible", lambda j: j.status == "published")
+    monkeypatch.setattr(event_svc, "is_event_publicly_visible", lambda e: e.status == "published")
+    monkeypatch.setattr(Resource, "is_publicly_visible", lambda self: self.status == "published")
+
+    assert "/circle" in indexnow.public_urls_for(_catalog(kind, "circle_only", public=True))
+    assert "/circle" not in indexnow.public_urls_for(_catalog(kind, ordinary, public=True))
+    assert indexnow.public_urls_for(_catalog(kind, "circle_only", public=False)) == {}
+
+
+@pytest.mark.parametrize("before_access,after_access", [("circle_only", "free"), ("free", "circle_only"), ("circle_only", "circle_only")])
+def test_circle_dependency_transitions(app, sent, before_access, after_access):
+    from app.models.learning import LearningProgram
+
+    before = indexnow.capture_public_urls(LearningProgram(slug="x", title="X", status="published", access_type=before_access))
+    indexnow.notify_public_change(before, LearningProgram(slug="x", title="X", status="published", access_type=after_access))
+    assert sent.urls == [f"{SITE}/learning/x", f"{SITE}/circle"]
+
+
+def test_circle_dependency_removal_and_addition(app, sent):
+    from app.models.learning import LearningProgram
+
+    public_circle = indexnow.capture_public_urls(LearningProgram(slug="x", title="X", status="published", access_type="circle_only"))
+    indexnow.notify_public_change(public_circle, LearningProgram(slug="x", title="X", status="archived", access_type="circle_only"))
+    indexnow.notify_public_change({}, LearningProgram(slug="x", title="X", status="published", access_type="circle_only"))
+    indexnow.notify_public_change({}, LearningProgram(slug="x", title="X", status="draft", access_type="circle_only"))
+    assert [c["payload"]["urlList"] for c in sent.calls] == [
+        [f"{SITE}/learning/x", f"{SITE}/learning", f"{SITE}/circle"],
+        [f"{SITE}/learning/x", f"{SITE}/learning", f"{SITE}/circle"],
+    ]
+    # /circle never appears twice in one request.
+    for call in sent.calls:
+        assert call["payload"]["urlList"].count(f"{SITE}/circle") == 1

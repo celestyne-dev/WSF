@@ -39,6 +39,7 @@ from app.services.cms import (
 )
 from app.services.footer import FOOTER_MENU_KEY_PREFIX, FOOTER_SETTINGS_KEY, get_footer_menus, get_footer_settings
 from app.services.homepage import modules_with_warnings
+from app.services.indexnow import submit_indexnow_urls
 from app.services.navigation import find_duplicate_top_level_destinations
 from app.services.site_settings import SITE_IDENTITY_KEY, get_site_identity_resolved, save_site_identity
 from app.utils.filtering import apply_search
@@ -203,6 +204,9 @@ class AdminHomepageResource(Resource):
             changes={"module_count": len(data["modules"]), "types": [m["type"] for m in data["modules"]]},
         )
         db.session.commit()
+        # Best effort, after commit — a search-engine outage never fails a
+        # homepage publish (see app/services/indexnow.py).
+        submit_indexnow_urls(["/"])
         modules = HomepageModule.query.order_by(HomepageModule.sort_order).all()
         return success_response(homepage_module_schema.dump(modules, many=True))
 

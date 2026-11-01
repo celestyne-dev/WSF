@@ -167,16 +167,40 @@ def _detail(prefix, parent=None):
     return lambda slug: (f"{prefix}/{slug}", parent)
 
 
+# The five catalog types CirclePage.jsx previews when they are public AND
+# circle_only — so /circle is a dependent public page for exactly those.
+_CIRCLE_PREVIEW_TYPES = ("LearningProgram", "Resource", "Opportunity", "Job", "Event")
+
+
 def public_urls_for(entity):
     """{public path: parent listing path or None} for `entity` as it is
     RIGHT NOW — empty when it isn't publicly visible. One rule per type,
-    each the same one sitemap.py (and the matching public API) uses."""
+    each the same one sitemap.py (and the matching public API) uses.
+
+    A publicly visible circle_only Learning program/Resource/Opportunity/
+    Job/Event also carries the dependent "/circle" page (CirclePage.jsx
+    previews them), so moving into/out of circle_only, or out of public
+    view, freshens /circle too. Never added for a non-public entity.
+    """
+    urls = _own_public_urls(entity)
+    if (
+        urls
+        and type(entity).__name__ in _CIRCLE_PREVIEW_TYPES
+        and getattr(entity, "access_type", None) == "circle_only"
+    ):
+        urls = {**urls, "/circle": None}
+    return urls
+
+
+def _own_public_urls(entity):
     from app.models.article import Article
+    from app.models.circle import CirclePlan
     from app.models.cms import AdvertisePage
     from app.models.commerce import Product
     from app.models.community import CommunityPage
     from app.models.directory import DirectoryListing
     from app.models.learning import LearningProgram
+    from app.models.mentorship import MentorshipProgram
     from app.models.newsletter import NewsletterIssue
     from app.models.opportunity import Event, Job, Opportunity
     from app.models.page import SYSTEM_PAGE_KEYS, Page
@@ -236,6 +260,15 @@ def public_urls_for(entity):
         return {"/advertise": None} if entity.status == "published" else {}
     if isinstance(entity, CommunityPage):
         return {"/community": None} if entity.status == "published" else {}
+    # No public per-plan / per-program route exists — a public plan or
+    # program only ever appears on its landing page, so that page is the
+    # one URL to freshen (never a fabricated /circle/<slug>).
+    if isinstance(entity, CirclePlan):
+        return {"/circle": None} if entity.is_publicly_visible() else {}
+    if isinstance(entity, MentorshipProgram):
+        # PublicProgramListResource's exact rule.
+        visible = entity.public_visible is True and entity.status not in ("draft", "archived")
+        return {"/mentorship": None} if visible else {}
     return {}
 
 

@@ -44,6 +44,7 @@ from app.services.circle import (
 from app.services.circle_payments import get_payment_status, start_circle_checkout
 from app.services.contact import generate_contact_reference
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.notifications import notify_contact_received
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -204,6 +205,8 @@ class CirclePlanListResource(Resource):
         db.session.add(plan)
         db.session.commit()
         log_action(current_user, "circle_plan.create", "CirclePlan", plan.id)
+        # Plans have no public detail route — a public plan freshens /circle.
+        notify_public_change({}, plan)
         return success_response(plan_schema.dump(plan), status=201)
 
 
@@ -220,6 +223,7 @@ class CirclePlanDetailResource(Resource):
     @permission_required("circle.manage")
     def patch(self, slug):
         plan = _get_plan_or_404(slug)
+        public_before = capture_public_urls(plan)
         data = CirclePlanUpdateSchema().load(request.get_json(silent=True) or {}, partial=True)
         if "slug" in data and data["slug"] and data["slug"] != plan.slug:
             plan.slug = validate_explicit_slug(CirclePlan, data["slug"], current_id=plan.id)
@@ -236,11 +240,13 @@ class CirclePlanDetailResource(Resource):
 
         db.session.commit()
         log_action(current_user, "circle_plan.update", "CirclePlan", plan.id)
+        notify_public_change(public_before, plan)
         return success_response(plan_schema.dump(plan))
 
     @permission_required("circle.manage")
     def delete(self, slug):
         plan = _get_plan_or_404(slug)
+        public_before = capture_public_urls(plan)
         if _plan_is_referenced(plan):
             raise ApiError(
                 "This plan is referenced by one or more subscriptions and can't be deleted. "
@@ -251,6 +257,7 @@ class CirclePlanDetailResource(Resource):
         db.session.delete(plan)
         db.session.commit()
         log_action(current_user, "circle_plan.delete", "CirclePlan", plan.id)
+        notify_public_change(public_before, None)
         return success_response(None, status=204)
 
 
