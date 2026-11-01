@@ -333,7 +333,9 @@ def test_person_prerender_structure(client, app):
     _assert_visible_and_not_cloaked(root)
     assert "<noscript" not in html.lower()
     data = _one(html, "data-person-structured-data")
-    assert data["worksFor"] == {"@type": "Organization", "name": "Kaziwave Labs"}
+    # GEO Phase 4A: worksFor now links the published Organization's WSF page.
+    assert data["worksFor"] == {"@type": "Organization", "name": "Kaziwave Labs",
+                                "url": "https://womenshapingfutures.org/organizations/kaziwave"}
 
 
 def test_person_profession_identical_to_title_is_not_repeated(client, app):

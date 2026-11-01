@@ -51,6 +51,9 @@ export function mapPerson(p) {
     awards: p.awards || [],
     website: p.website,
     social: p.social || {},
+    // GEO Phase 4A — editorial sources & references (PersonDetailSchema);
+    // only the single-profile payload carries them, list items get [].
+    sources: Array.isArray(p.sources) ? p.sources : [],
     // The nested Series objects PersonSchema already returns — kept as a
     // lightweight {slug, name} list so PersonProfilePage's "Featured in"
     // needs no per-series refetch. (Mock-mode data bypasses mapPerson and

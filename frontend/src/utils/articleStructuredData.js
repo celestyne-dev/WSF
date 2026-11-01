@@ -95,7 +95,19 @@ export function articleEntityFields(article, entityBaseUrl) {
   ]
   if (mentions.length) fields.mentions = mentions
 
-  const citation = (article.sources || [])
+  const citation = sourceCreativeWorks(article.sources)
+  if (citation.length) fields.citation = citation
+
+  return fields
+}
+
+// One editor-entered source -> a schema.org CreativeWork (Article
+// `citation`, Person/Author `subjectOf`). Mirrors spa_shell.py's
+// _source_citation(): the source author's Person-vs-Organization nature is
+// unknown, so it's a plain Thing; `note` is reader context only and never
+// reaches JSON-LD.
+export function sourceCreativeWorks(sources) {
+  return (sources || [])
     .filter((s) => s?.title && s?.url)
     .map((s) => ({
       '@type': 'CreativeWork',
@@ -105,7 +117,4 @@ export function articleEntityFields(article, entityBaseUrl) {
       ...(s.publisher ? { publisher: { '@type': 'Organization', name: s.publisher } } : {}),
       ...(s.publishedDate ? { datePublished: s.publishedDate } : {}),
     }))
-  if (citation.length) fields.citation = citation
-
-  return fields
 }

@@ -10,6 +10,8 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import SourcesEditor from '../../components/cms/SourcesEditor'
+import { blankSource, describeSourceErrors, sourcesToPayload, validateSources } from '../../utils/sources'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -41,6 +43,7 @@ function blankForm() {
     socialLinkedin: '',
     socialTwitter: '',
     socialInstagram: '',
+    sources: [],
     status: 'draft',
     seoTitle: '',
     seoDescription: '',
@@ -65,6 +68,7 @@ function toForm(author) {
     socialLinkedin: author.social?.linkedin || '',
     socialTwitter: author.social?.twitter || '',
     socialInstagram: author.social?.instagram || '',
+    sources: (author.sources || []).map((s) => ({ ...blankSource(), ...s })),
     status: author.status || 'draft',
     seoTitle: author.seo?.title || '',
     seoDescription: author.seo?.description || '',
@@ -173,6 +177,11 @@ export default function AdminAuthorEditor() {
       toast.error('Add a short bio or biography before activating this author.')
       return
     }
+    const sourcesError = validateSources(form.sources, 'An author profile')
+    if (sourcesError) {
+      toast.error(sourcesError)
+      return
+    }
     setErrors({})
     setSaving(true)
 
@@ -193,6 +202,7 @@ export default function AdminAuthorEditor() {
         twitter: form.socialTwitter || null,
         instagram: form.socialInstagram || null,
       },
+      sources: sourcesToPayload(form.sources),
       status: nextStatus,
       seo: {
         title: form.seoTitle || null,
@@ -208,7 +218,11 @@ export default function AdminAuthorEditor() {
       if (isNew) navigate(`/admin/authors/${saved.slug}`)
       else setForm(toForm(saved))
     } catch (err) {
-      const message = err?.response?.data?.error?.message || err?.apiError?.message || 'Something went wrong saving this author. Please try again.'
+      const message =
+        describeSourceErrors(err?.response?.data?.error?.details?.sources) ||
+        err?.response?.data?.error?.message ||
+        err?.apiError?.message ||
+        'Something went wrong saving this author. Please try again.'
       toast.error(message)
     } finally {
       setSaving(false)
@@ -287,6 +301,16 @@ export default function AdminAuthorEditor() {
 
           <Section title="Biography" description="The full profile biography shown on the public author page.">
             <ArticleBlockEditor blocks={form.bio} onChange={(bio) => updateField('bio', bio)} />
+          </Section>
+
+          <Section
+            title="Sources & references"
+            description="Optional independent references about this author — official biographies, news coverage, award pages, reports. Shown publicly as an editorial reference list; never presented as identity verification."
+          >
+            {form.sources.length === 0 && (
+              <p className="text-xs text-charcoal-600/70">Adding independent references can strengthen this profile&apos;s credibility.</p>
+            )}
+            <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
           </Section>
 
           <Section title="Profile image">

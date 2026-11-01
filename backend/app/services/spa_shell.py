@@ -95,7 +95,7 @@ from app.models.taxonomy import Series, Topic
 from app.schemas.article import article_summary_schema, public_article_schema
 from app.schemas.cms import HomepageModuleSchema
 from app.schemas.commerce import ProductSchema
-from app.schemas.people import PersonSchema
+from app.schemas.people import PersonDetailSchema
 from app.services.event_registrations import is_event_publicly_visible
 from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
 from app.services.prerender import (
@@ -386,7 +386,7 @@ def _safe_homepage_modules_payload(modules):
 
 
 def _safe_public_person_payload(person):
-    """GEO Phase 1B — the SAME PersonSchema dump the public
+    """GEO Phase 1B — the SAME PersonDetailSchema dump the public
     `GET /api/v1/people/{slug}` returns, narrowed for raw initial HTML:
     Media internals redacted; `organization_id` dropped (the nested
     `organization` preview is already null unless that Organization is
@@ -394,7 +394,7 @@ def _safe_public_person_payload(person):
     `series` replaced by a minimal {slug, name} list of PUBLISHED Series
     only, so an unpublished Series never reaches the page source.
     """
-    payload = _redact_internal_media_fields(PersonSchema().dump(person))
+    payload = _redact_internal_media_fields(PersonDetailSchema().dump(person))
     payload.pop("organization_id", None)
     payload["series"] = [{"slug": s.slug, "name": s.name} for s in person.series if s.status == "published"]
     return payload
@@ -1466,54 +1466,90 @@ def _build_resource_json_ld(resource, canonical_url, public_site_url, site_name)
     return data
 
 
-def _social_same_as(entity, include_instagram=False):
+def _social_same_as(entity):
     """Shared by Person/Author — identical sameAs derivation as
-    PersonProfilePage.jsx/AuthorProfilePage.jsx's own hooks: the real
-    website plus LinkedIn/Twitter (and, for Person, Instagram) profile
-    URLs built from the stored handle, only when actually present. Never
-    a fabricated profile.
-    """
+    frontend/src/utils/profileStructuredData.js's profileSameAs(): the real
+    website plus LinkedIn/Twitter/Instagram profile URLs built from the
+    stored handle, only when actually present, deduplicated. Identity URLs
+    only — editorial sources/references never go here (see subjectOf)."""
     social = entity.social or {}
     candidates = [
         entity.website,
         f"https://linkedin.com/in/{social['linkedin']}" if social.get("linkedin") else None,
         f"https://twitter.com/{social['twitter']}" if social.get("twitter") else None,
+        f"https://instagram.com/{social['instagram']}" if social.get("instagram") else None,
     ]
-    if include_instagram:
-        candidates.append(f"https://instagram.com/{social['instagram']}" if social.get("instagram") else None)
-    return [url for url in candidates if url]
+    return _dedupe([url for url in candidates if url])
+
+
+def _dedupe(values, key=lambda v: v):
+    seen, out = set(), []
+    for value in values:
+        k = key(value)
+        if k not in seen:
+            seen.add(k)
+            out.append(value)
+    return out
+
+
+def _clean_strings(values):
+    """Non-empty trimmed strings, case-insensitively deduplicated (first
+    spelling kept) — mirrors profileStructuredData.js's cleanStrings()."""
+    strings = [v.strip() for v in (values or []) if isinstance(v, str) and v.strip()]
+    return _dedupe(strings, key=str.lower)
+
+
+def _profile_subject_of(sources):
+    """GEO Phase 4A — a profile's editor-entered sources & references as
+    schema.org `subjectOf` CreativeWorks (same per-source shape as an
+    Article's `citation`; `note` stays out). Works ABOUT the person, never
+    claimed as WSF's own and never treated as identity (not sameAs)."""
+    works = [_source_citation(source) for source in (sources or []) if isinstance(source, dict)]
+    return [w for w in works if w]
 
 
 def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
-    """Mirrors frontend/src/pages/PersonProfilePage.jsx's
-    usePersonStructuredData field-for-field. Never exposes email or any
-    internal account/role ID — none of those are referenced here, same
-    as the frontend hook.
+    """Mirrors frontend/src/utils/profileStructuredData.js's
+    buildPersonStructuredData() key-for-key. Built only from stored,
+    public facts — never an inferred employer, award or credential, and
+    never email or any internal account/role ID.
     """
+    base = public_site_url.rstrip("/")
     data = {"@context": "https://schema.org", "@type": "Person", "name": person.name, "url": canonical_url}
     if person.title:
         data["jobTitle"] = person.title
     # Only a PUBLISHED Organization — the same rule PersonSchema.
     # get_organization applies, so a draft/archived Organization's name
     # never reaches raw HTML through this JSON-LD either.
-    if person.organization is not None and person.organization.status == "published" and person.organization.name:
-        data["worksFor"] = {"@type": "Organization", "name": person.organization.name}
+    org = person.organization
+    if org is not None and org.status == "published" and org.name:
+        data["worksFor"] = {"@type": "Organization", "name": org.name, "url": f"{base}/organizations/{org.slug}"}
     if person.photo is not None:
         image_url = _absolute_url(person.photo.public_url, public_site_url)
         if image_url:
             data["image"] = image_url
-    same_as = _social_same_as(person, include_instagram=True)
+    same_as = _social_same_as(person)
     if same_as:
         data["sameAs"] = same_as
+    knows_about = _clean_strings(person.expertise)
+    if knows_about:
+        data["knowsAbout"] = knows_about
+    awards = _clean_strings(person.awards)
+    if awards:
+        data["award"] = awards
+    subject_of = _profile_subject_of(person.sources)
+    if subject_of:
+        data["subjectOf"] = subject_of
     return data
 
 
 def _build_author_json_ld(author, canonical_url, public_site_url, site_name):
-    """Mirrors frontend/src/pages/AuthorProfilePage.jsx's
-    useAuthorStructuredData field-for-field. Never exposes email or any
-    internal account/role ID — none of those are referenced here, same
-    as the frontend hook.
+    """Mirrors frontend/src/utils/profileStructuredData.js's
+    buildAuthorStructuredData() key-for-key. No employer (a byline role
+    like "Contributor" is not employment), no award, no credential; never
+    email or any internal account/role ID.
     """
+    base = public_site_url.rstrip("/")
     data = {"@context": "https://schema.org", "@type": "Person", "name": author.name, "url": canonical_url}
     if author.role:
         data["jobTitle"] = author.role
@@ -1524,6 +1560,17 @@ def _build_author_json_ld(author, canonical_url, public_site_url, site_name):
     same_as = _social_same_as(author)
     if same_as:
         data["sameAs"] = same_as
+    # Published Topics (linked Things) first, then legacy freeform
+    # expertise as Text — one entry per name, case-insensitively.
+    topics = [t for t in (author.topics or []) if t.status == "published" and t.name]
+    knows_about = [{"@type": "Thing", "name": t.name, "url": f"{base}/topics/{t.slug}"} for t in topics]
+    knows_about += _clean_strings(author.expertise)
+    knows_about = _dedupe(knows_about, key=lambda v: (v["name"] if isinstance(v, dict) else v).strip().lower())
+    if knows_about:
+        data["knowsAbout"] = knows_about
+    subject_of = _profile_subject_of(author.sources)
+    if subject_of:
+        data["subjectOf"] = subject_of
     return data
 
 
@@ -2261,14 +2308,14 @@ def _public_detail_prerender(prefix, entity):
 
         return render_organization_prerender(OrganizationSchema().dump(entity))
     if prefix == "authors":
-        from app.schemas.people import AuthorSchema
+        from app.schemas.people import AuthorDetailSchema
 
         from app.services.public_visibility import public_author_dump
 
         # The same public payload AuthorDetailResource gives an anonymous
         # visitor: user_id excluded, the linked Person only when published,
-        # Topics only when published. No article grid here.
-        return render_author_prerender(public_author_dump(AuthorSchema().dump(entity), entity))
+        # Topics only when published, plus its sources. No article grid here.
+        return render_author_prerender(public_author_dump(AuthorDetailSchema().dump(entity), entity))
     if prefix == "topics":
         from app.schemas.taxonomy import TopicSchema
 

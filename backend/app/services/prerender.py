@@ -233,9 +233,15 @@ def _safe_source_url(value):
 
 def render_article_sources(sources):
     """AI Search / GEO Phase 3A — the article's editor-entered sources as
-    a visible "Sources & references" list (same data/order React shows).
-    Every field is escaped plain text; links are ordinary crawlable
-    anchors (editorial citations: no nofollow/sponsored/ugc)."""
+    a visible "Sources & references" list (same data/order React shows)."""
+    return render_source_references(sources, "article-sources")
+
+
+def render_source_references(sources, section_id):
+    """Shared by Article (3A) and Person/Author profiles (4A) — the same
+    markup React's SourceReferences component renders, with that page's
+    own section id. Every field is escaped plain text; links are ordinary
+    crawlable anchors (editorial citations: no nofollow/sponsored/ugc)."""
     items = []
     for source in sources or []:
         if not isinstance(source, dict) or not _is_nonblank(source.get("title")):
@@ -257,8 +263,8 @@ def render_article_sources(sources):
     if not items:
         return ""
     return (
-        f'<section aria-labelledby="article-sources" class="{_SOURCES_SECTION_CLASS}">'
-        f'<h2 id="article-sources" class="{_SOURCES_H2_CLASS}">Sources &amp; references</h2>'
+        f'<section aria-labelledby="{_attr(section_id)}" class="{_SOURCES_SECTION_CLASS}">'
+        f'<h2 id="{_attr(section_id)}" class="{_SOURCES_H2_CLASS}">Sources &amp; references</h2>'
         f'<ol class="{_SOURCES_LIST_CLASS}">{"".join(items)}</ol></section>'
     )
 
@@ -338,6 +344,8 @@ def render_person_prerender(person):
         if items:
             rows = "".join(f"<li>{_text(v)}</li>" for v in items)
             sections.append(f'<section><h2 class="{_SECTION_H2_CLASS}">{heading}</h2><ul class="{_PLAIN_LIST_CLASS}">{rows}</ul></section>')
+    # GEO Phase 4A — after the biography/achievements/awards, as on the page.
+    sections.append(render_source_references(person.sources or [], "person-sources"))
 
     return (
         f'<main data-wsf-prerender="person" class="{_MAIN_CLASS}"><article class="{_ARTICLE_CLASS}">'
@@ -682,7 +690,7 @@ def render_author_prerender(payload):
     person = payload.get("person") if isinstance(payload.get("person"), dict) else None
     if person and _is_nonblank(person.get("slug")):
         header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View profile</a></p>')
-    body = [render_content_blocks(payload.get("bio") or [])]
+    body = [render_content_blocks(payload.get("bio") or []), render_source_references(payload.get("sources") or [], "author-sources")]
     return _main("author", header, body)
 
 

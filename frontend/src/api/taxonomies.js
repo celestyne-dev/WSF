@@ -120,6 +120,9 @@ function mapAuthor(a) {
     country: a.country ? { code: a.country.code, name: a.country.name, region: a.country.region } : null,
     social: a.social || {},
     website: a.website,
+    // GEO Phase 4A — editorial sources & references (AuthorDetailSchema);
+    // only the single-Author payload carries them, list items get [].
+    sources: Array.isArray(a.sources) ? a.sources : [],
     personId: a.person_id || null,
     person: a.person ? { slug: a.person.slug, name: a.person.name, title: a.person.title, photoMedia: mapMediaRef(a.person.photo) } : null,
     status: a.status || 'active',

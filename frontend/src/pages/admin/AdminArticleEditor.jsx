@@ -24,8 +24,8 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
-import ArticleSourcesEditor from '../../components/cms/ArticleSourcesEditor'
-import { blankSource, sourcesToPayload, validateSources } from '../../utils/articleSources'
+import SourcesEditor from '../../components/cms/SourcesEditor'
+import { blankSource, describeSourceErrors, sourcesToPayload, validateSources } from '../../utils/sources'
 import ArticleWorkflowPanel from '../../components/cms/ArticleWorkflowPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
@@ -143,18 +143,6 @@ function Section({ title, description, children }) {
       <div className="mt-3 space-y-4">{children}</div>
     </div>
   )
-}
-
-// The backend reports source problems either as a list-level message
-// (duplicate URL / too many) or per item ({"1": {"url": ["Not a valid
-// URL."]}}) — turned into one readable line for the toast.
-function describeSourceErrors(details) {
-  if (!details) return null
-  if (Array.isArray(details)) return details[0] || null
-  const [index, fieldErrors] = Object.entries(details)[0] || []
-  if (index === undefined) return null
-  const [field, messages] = Object.entries(fieldErrors || {})[0] || []
-  return `Source ${Number(index) + 1}${field ? ` (${field})` : ''}: ${Array.isArray(messages) ? messages[0] : 'invalid'}`
 }
 
 function Field({ label, hint, children }) {
@@ -457,7 +445,7 @@ export default function AdminArticleEditor() {
             title="Sources & references"
             description="Add the reports, studies, official pages, datasets or other sources used to support this article. Sources are shown publicly."
           >
-            <ArticleSourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
+            <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
           </Section>
 
           <Section title="Media" description="The hero image leads the article and its cards across the site.">

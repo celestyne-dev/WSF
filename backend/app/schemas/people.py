@@ -14,6 +14,7 @@ from app.models.people import (
 )
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
+from app.schemas.sources import sources_field
 from app.schemas.taxonomy import SeriesSchema, TopicSchema
 
 
@@ -50,6 +51,10 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Person
         load_instance = False
+        # AI Search / GEO Phase 4A — `sources` is profile-DETAIL evidence
+        # only: never in list/card/hub/search/nested previews (every one of
+        # which uses this schema). PersonDetailSchema below adds it back.
+        exclude = ("sources",)
 
     def get_seo(self, obj):
         if obj.seo is None:
@@ -75,6 +80,16 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
         }
 
 
+class PersonDetailSchema(PersonSchema):
+    """The single-profile payload (public detail, staff detail/editor
+    responses, the Person hard-load bootstrap): PersonSchema + sources."""
+
+    sources = fields.Function(lambda obj: list(obj.sources or []), dump_only=True)
+
+    class Meta(PersonSchema.Meta):
+        exclude = ()
+
+
 class AuthorSchema(ma.SQLAlchemyAutoSchema):
     photo = fields.Nested(MediaSchema, dump_only=True)
     country = fields.Nested(CountrySchema, dump_only=True)
@@ -96,7 +111,8 @@ class AuthorSchema(ma.SQLAlchemyAutoSchema):
         load_instance = False
         # user_id is the internal staff-login link — never part of any
         # Author payload, public or CMS (this task doesn't manage it).
-        exclude = ("user_id",)
+        # `sources` (GEO Phase 4A) is detail-only — see AuthorDetailSchema.
+        exclude = ("user_id", "sources")
 
     def get_article_count(self, obj):
         return Article.query.filter_by(author_id=obj.id, status="published").count()
@@ -110,6 +126,17 @@ class AuthorSchema(ma.SQLAlchemyAutoSchema):
             "title": obj.person.title,
             "photo": MediaSchema().dump(obj.person.photo) if obj.person.photo else None,
         }
+
+
+class AuthorDetailSchema(AuthorSchema):
+    """The single-Author payload (public detail `author` object, staff
+    detail/editor responses, the Author prerender): AuthorSchema + sources.
+    user_id stays excluded."""
+
+    sources = fields.Function(lambda obj: list(obj.sources or []), dump_only=True)
+
+    class Meta(AuthorSchema.Meta):
+        exclude = ("user_id",)
 
 
 class OrganizationInputSchema(ma.Schema):
@@ -155,6 +182,8 @@ class PersonInputSchema(ma.Schema):
     website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
     social = fields.Dict(required=False, allow_none=True)
     series_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="seriesSlugs")
+    # Omitted -> stored sources untouched; explicit [] -> cleared.
+    sources = sources_field("A profile")
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(PERSON_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)
     featured = fields.Boolean(required=False, load_default=False)
@@ -176,5 +205,7 @@ class AuthorInputSchema(ma.Schema):
     social = fields.Dict(required=False, allow_none=True)
     website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
     person_id = fields.Integer(required=False, allow_none=True, data_key="personId")
+    # Omitted -> stored sources untouched; explicit [] -> cleared.
+    sources = sources_field("An author profile")
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(AUTHOR_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)

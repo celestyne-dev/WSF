@@ -9,7 +9,7 @@ from app.models.article import Article
 from app.models.people import Author, Person
 from app.models.taxonomy import Topic
 from app.schemas.article import article_summary_schema
-from app.schemas.people import AuthorInputSchema, AuthorSchema
+from app.schemas.people import AuthorDetailSchema, AuthorInputSchema, AuthorSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
@@ -22,6 +22,8 @@ from app.utils.responses import ApiError, success_response
 authors_bp = Blueprint("authors", __name__)
 api = Api(authors_bp)
 author_schema = AuthorSchema()
+# Single-Author responses carry `sources` (GEO Phase 4A); lists never do.
+author_detail_schema = AuthorDetailSchema()
 
 
 def _require_active_user():
@@ -87,6 +89,12 @@ def _apply_fields(author, data, topics, person):
     author.country_code = data.get("country_code")
     author.social = data.get("social")
     author.website = data.get("website")
+    # Already validated/normalized by SourceSchema. Omitted from an update
+    # payload -> left exactly as stored (same as Article.sources).
+    if "sources" in data:
+        author.sources = data["sources"]
+    elif author.sources is None:
+        author.sources = []
     author.person = person
     author.status = data.get("status", "draft")
     author.seo = data.get("seo")
@@ -149,7 +157,7 @@ class AuthorListResource(Resource):
         db.session.add(author)
         db.session.commit()
         notify_public_change({}, author)
-        return success_response(author_schema.dump(author), status=201)
+        return success_response(author_detail_schema.dump(author), status=201)
 
 
 class AuthorDetailResource(Resource):
@@ -168,7 +176,7 @@ class AuthorDetailResource(Resource):
         articles = article_summary_schema(many=True).dump(result["items"])
         # Editors (the CMS) keep every linked Topic; the public payload only
         # the published ones (see app/services/public_visibility.py).
-        author_data = author_schema.dump(author)
+        author_data = author_detail_schema.dump(author)
         if not editor:
             author_data = public_author_dump(author_data, author)
         return success_response({"author": author_data, "articles": articles}, meta=result["meta"])
@@ -202,7 +210,7 @@ class AuthorDetailResource(Resource):
 
         db.session.commit()
         notify_public_change(public_before, author)
-        return success_response(author_schema.dump(author))
+        return success_response(author_detail_schema.dump(author))
 
     def delete(self, slug):
         _require_manage()

@@ -1,17 +1,18 @@
 import { ChevronUp, ChevronDown, Trash2, Plus } from 'lucide-react'
-import { MAX_SOURCES, blankSource } from '../../utils/articleSources'
+import { MAX_SOURCES, blankSource } from '../../utils/sources'
 
-// AI Search / GEO Phase 3A — editor for Article.sources: the ordered
-// reports/studies/official pages/datasets an article relies on. Plain-text
-// fields only (rendered as text everywhere, never HTML); the backend's
-// ArticleSourceSchema is authoritative for validation (http(s) URLs only,
+// AI Search / GEO Phase 3A/4A — shared editor for Article.sources,
+// Person.sources and Author.sources: the ordered reports/studies/official
+// pages/news coverage a page relies on. Plain-text fields only (rendered
+// as text everywhere, never HTML); the backend's schemas/sources.py
+// SourceSchema is authoritative for validation (http(s) URLs only,
 // title/url required, no duplicate URLs, at most 50). Array order is the
 // public display order — Move up/down, no drag-and-drop dependency.
 
 const inputClass = 'w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
 const labelClass = 'text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/80'
 
-export default function ArticleSourcesEditor({ sources = [], onChange }) {
+export default function SourcesEditor({ sources = [], onChange }) {
   function update(i, field, value) {
     const next = [...sources]
     next[i] = { ...next[i], [field]: value }

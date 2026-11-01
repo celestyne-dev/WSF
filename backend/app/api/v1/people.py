@@ -8,7 +8,7 @@ from app.extensions import db
 from app.models.article import Article
 from app.models.people import Person
 from app.models.taxonomy import Series
-from app.schemas.people import PersonInputSchema, PersonSchema
+from app.schemas.people import PersonDetailSchema, PersonInputSchema, PersonSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
@@ -21,6 +21,8 @@ from app.utils.responses import ApiError, success_response
 people_bp = Blueprint("people", __name__)
 api = Api(people_bp)
 person_schema = PersonSchema()
+# Single-profile responses carry `sources` (GEO Phase 4A); lists never do.
+person_detail_schema = PersonDetailSchema()
 
 
 def _require_active_user():
@@ -85,6 +87,12 @@ def _apply_fields(person, data, series):
     person.awards = data.get("awards", [])
     person.website = data.get("website")
     person.social = data.get("social")
+    # Already validated/normalized by SourceSchema. Omitted from an update
+    # payload -> left exactly as stored (same as Article.sources).
+    if "sources" in data:
+        person.sources = data["sources"]
+    elif person.sources is None:
+        person.sources = []
     person.series = series
     person.status = data.get("status", "draft")
     person.seo = data.get("seo")
@@ -154,7 +162,7 @@ class PersonListResource(Resource):
         db.session.add(person)
         db.session.commit()
         notify_public_change({}, person)
-        return success_response(person_schema.dump(person), status=201)
+        return success_response(person_detail_schema.dump(person), status=201)
 
 
 class PersonDetailResource(Resource):
@@ -165,7 +173,7 @@ class PersonDetailResource(Resource):
         editor = _can_edit_or_none()
         if person.status != "published" and not editor:
             raise ApiError("Person not found.", 404, code="not_found")
-        data = person_schema.dump(person)
+        data = person_detail_schema.dump(person)
         # Editors keep every linked Series; the public payload only the
         # published ones (see app/services/public_visibility.py).
         return success_response(data if editor else public_person_dump(data, person))
@@ -197,7 +205,7 @@ class PersonDetailResource(Resource):
 
         db.session.commit()
         notify_public_change(public_before, person)
-        return success_response(person_schema.dump(person))
+        return success_response(person_detail_schema.dump(person))
 
     def delete(self, slug):
         _require_manage()

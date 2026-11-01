@@ -117,6 +117,12 @@ class Person(db.Model):
     awards = db.Column(db.JSON)  # list[str]
     website = db.Column(db.String(300))
     social = db.Column(db.JSON)
+    # AI Search / GEO Phase 4A — ordered editorial sources & references
+    # about this person, same shape as Article.sources (validated by
+    # schemas/sources.py's SourceSchema). Public on the profile detail only
+    # (never in list/card payloads); context an editor chose to cite, never
+    # an identity-verification claim.
+    sources = db.Column(db.JSON, nullable=False, default=list)
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     featured = db.Column(db.Boolean, nullable=False, default=False)
@@ -160,6 +166,8 @@ class Author(db.Model):
     country_code = db.Column(db.String(10), db.ForeignKey("countries.code"), nullable=True)
     social = db.Column(db.JSON)
     website = db.Column(db.String(300))
+    # AI Search / GEO Phase 4A — same shape/rules as Person.sources.
+    sources = db.Column(db.JSON, nullable=False, default=list)
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     person_id = db.Column(db.Integer, db.ForeignKey("people.id"), nullable=True)

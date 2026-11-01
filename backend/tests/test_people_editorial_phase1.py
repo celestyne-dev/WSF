@@ -351,4 +351,5 @@ def test_author_same_as_unchanged(client, app):
     html = client.get("/authors/wsf-editorial").get_data(as_text=True)
     match = re.search(r"<script\b[^>]*data-author-structured-data[^>]*>(.*?)</script>", html, re.IGNORECASE | re.DOTALL)
     assert match is not None
-    assert json.loads(match.group(1))["sameAs"] == ["https://twitter.com/wsf"]
+    # GEO Phase 4A: an Author's visible Instagram is now an identity URL too.
+    assert json.loads(match.group(1))["sameAs"] == ["https://twitter.com/wsf", "https://instagram.com/wsf_ig"]

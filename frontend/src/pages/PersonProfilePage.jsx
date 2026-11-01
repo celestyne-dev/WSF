@@ -13,36 +13,21 @@ import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
+import SourceReferences from '../components/article/SourceReferences'
+import { buildPersonStructuredData } from '../utils/profileStructuredData'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 
-// Minimal schema.org Person structured data — built only from fields the
-// profile actually carries, never inferring or fabricating employment,
-// awards, or credentials the CMS didn't record.
+// schema.org Person structured data — the data shape is the pure
+// buildPersonStructuredData() (utils/profileStructuredData.js, mirroring
+// spa_shell.py's _build_person_json_ld); this hook only owns the <script>.
 function usePersonStructuredData(person, canonicalUrl) {
   useEffect(() => {
     if (!person) return
-    const data = {
-      '@context': 'https://schema.org',
-      '@type': 'Person',
-      name: person.name,
-      url: canonicalUrl,
-      ...(person.title ? { jobTitle: person.title } : {}),
-      ...(person.organization ? { worksFor: { '@type': 'Organization', name: person.organization } } : {}),
-      ...(person.photo ? { image: resolveImage(person.photo, { width: 600, height: 750 }) } : {}),
-      // Mirrors spa_shell.py's _social_same_as(person, include_instagram=True).
-      ...(person.website || person.social?.linkedin || person.social?.twitter || person.social?.instagram
-        ? {
-            sameAs: [
-              person.website,
-              person.social?.linkedin && `https://linkedin.com/in/${person.social.linkedin}`,
-              person.social?.twitter && `https://twitter.com/${person.social.twitter}`,
-              person.social?.instagram && `https://instagram.com/${person.social.instagram}`,
-            ].filter(Boolean),
-          }
-        : {}),
-    }
+    const data = buildPersonStructuredData(person, canonicalUrl, {
+      imageUrl: person.photo ? resolveImage(person.photo, { width: 600, height: 750 }) : undefined,
+    })
     let el = document.head.querySelector('script[data-person-structured-data]')
     if (!el) {
       el = document.createElement('script')
@@ -289,6 +274,8 @@ export default function PersonProfilePage() {
               </ul>
             </div>
           )}
+
+          <SourceReferences sources={person.sources} id="person-sources" />
         </div>
 
         <aside className="space-y-8">

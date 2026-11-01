@@ -11,32 +11,22 @@ import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
+import SourceReferences from '../components/article/SourceReferences'
+import { buildAuthorStructuredData } from '../utils/profileStructuredData'
 import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
 import NotFoundPage from './NotFoundPage'
 
-// Minimal schema.org Person structured data for the byline — built only
-// from fields the author profile actually carries.
+// schema.org Person structured data for the byline — the data shape is
+// the pure buildAuthorStructuredData() (utils/profileStructuredData.js,
+// mirroring spa_shell.py's _build_author_json_ld); this hook only owns the
+// <script>.
 function useAuthorStructuredData(author, canonicalUrl) {
   useEffect(() => {
     if (!author) return
-    const data = {
-      '@context': 'https://schema.org',
-      '@type': 'Person',
-      name: author.name,
-      url: canonicalUrl,
-      ...(author.role ? { jobTitle: author.role } : {}),
-      ...(author.photo ? { image: resolveImage(author.photo, { width: 400, height: 400 }) } : {}),
-      ...(author.website || author.social?.linkedin || author.social?.twitter
-        ? {
-            sameAs: [
-              author.website,
-              author.social?.linkedin && `https://linkedin.com/in/${author.social.linkedin}`,
-              author.social?.twitter && `https://twitter.com/${author.social.twitter}`,
-            ].filter(Boolean),
-          }
-        : {}),
-    }
+    const data = buildAuthorStructuredData(author, canonicalUrl, {
+      imageUrl: author.photo ? resolveImage(author.photo, { width: 400, height: 400 }) : undefined,
+    })
     let el = document.head.querySelector('script[data-author-structured-data]')
     if (!el) {
       el = document.createElement('script')
@@ -168,6 +158,12 @@ export default function AuthorProfilePage() {
           {author.bio?.length > 0 && (
             <div className="mt-6 max-w-2xl">
               <ArticleContent blocks={author.bio} />
+            </div>
+          )}
+
+          {author.sources?.length > 0 && (
+            <div className="max-w-2xl">
+              <SourceReferences sources={author.sources} id="author-sources" />
             </div>
           )}
         </div>

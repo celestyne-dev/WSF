@@ -10,6 +10,8 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import SourcesEditor from '../../components/cms/SourcesEditor'
+import { blankSource, describeSourceErrors, sourcesToPayload, validateSources } from '../../utils/sources'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -48,6 +50,7 @@ function blankForm() {
     socialTwitter: '',
     socialInstagram: '',
     seriesSlugs: [],
+    sources: [],
     featured: false,
     status: 'draft',
     seoTitle: '',
@@ -81,6 +84,7 @@ function toForm(person) {
     socialTwitter: person.social?.twitter || '',
     socialInstagram: person.social?.instagram || '',
     seriesSlugs: person.seriesSlugs || [],
+    sources: (person.sources || []).map((s) => ({ ...blankSource(), ...s })),
     featured: !!person.featured,
     status: person.status || 'draft',
     seoTitle: person.seo?.title || '',
@@ -261,6 +265,11 @@ export default function AdminPersonEditor() {
       toast.error('Add a short introduction or biography before publishing this profile.')
       return
     }
+    const sourcesError = validateSources(form.sources, 'A profile')
+    if (sourcesError) {
+      toast.error(sourcesError)
+      return
+    }
     setErrors({})
     setSaving(true)
 
@@ -289,6 +298,7 @@ export default function AdminPersonEditor() {
         instagram: form.socialInstagram || null,
       },
       seriesSlugs: form.seriesSlugs,
+      sources: sourcesToPayload(form.sources),
       featured: form.featured,
       status: nextStatus,
       seo: {
@@ -305,7 +315,11 @@ export default function AdminPersonEditor() {
       if (isNew) navigate(`/admin/people/${saved.slug}`)
       else setForm(toForm(saved))
     } catch (err) {
-      const message = err?.response?.data?.error?.message || err?.apiError?.message || 'Something went wrong saving this profile. Please try again.'
+      const message =
+        describeSourceErrors(err?.response?.data?.error?.details?.sources) ||
+        err?.response?.data?.error?.message ||
+        err?.apiError?.message ||
+        'Something went wrong saving this profile. Please try again.'
       toast.error(message)
     } finally {
       setSaving(false)
@@ -417,6 +431,16 @@ export default function AdminPersonEditor() {
             <Field label="Career timeline">
               <TimelineEditor value={form.careerTimeline} onChange={(v) => updateField('careerTimeline', v)} />
             </Field>
+          </Section>
+
+          <Section
+            title="Sources & references"
+            description="Optional independent references about this person — official biographies, news coverage, award pages, reports. Shown publicly as an editorial reference list; never presented as identity verification."
+          >
+            {form.sources.length === 0 && (
+              <p className="text-xs text-charcoal-600/70">Adding independent references can strengthen this profile&apos;s credibility.</p>
+            )}
+            <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
           </Section>
 
           <Section title="Geography" description="Women Shaping Futures profiles women from every region — search any country.">

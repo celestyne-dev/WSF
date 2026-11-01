@@ -17,7 +17,7 @@ import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ShareBar from '../components/ui/ShareBar'
 import ArticleContent from '../components/article/ArticleContent'
-import ArticleSources from '../components/article/ArticleSources'
+import SourceReferences from '../components/article/SourceReferences'
 import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
 import ArticleCard from '../components/cards/ArticleCard'
 import SaveButton from '../components/account/SaveButton'
@@ -391,7 +391,7 @@ export default function ArticlePage() {
         <div className={hasSidebar ? 'mx-auto max-w-[1064px] lg:grid lg:grid-cols-[minmax(0,720px)_280px] lg:gap-16' : 'mx-auto max-w-reading'}>
           <div>
             <ArticleContent variant="article" blocks={article.content} relatedArticlesBySlug={relatedArticlesBySlug} />
-            <ArticleSources sources={article.sources} />
+            <SourceReferences sources={article.sources} />
 
             {relatedPerson && (
               <div className="my-14 border border-taupe-200 bg-ivory p-6 sm:p-7">
