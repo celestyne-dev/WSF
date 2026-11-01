@@ -343,3 +343,295 @@ def render_person_prerender(person):
         f'<main data-wsf-prerender="person" class="{_MAIN_CLASS}"><article class="{_ARTICLE_CLASS}">'
         f'<header>{"".join(header)}</header>{"".join(sections)}</article></main>'
     )
+
+
+# --- AI Search / GEO Phase 3B1: public entity detail pages -------------------
+#
+# Each renderer below takes the SAME anonymous public payload the matching
+# public API detail endpoint returns to a signed-out visitor (built in
+# spa_shell.py from that endpoint's own public builder with viewer=None) —
+# so nothing can appear here that an anonymous API caller can't already
+# read. Learning is the one exception: its public payload can carry the
+# curriculum, so render_learning_prerender reads explicit catalog columns
+# only and never touches modules/lessons. Plain-text fields are escaped;
+# content-block fields go through render_content_blocks (re-sanitized);
+# links are emitted only for http(s) URLs the public payload itself
+# carries (a job's mailto only when the payload carries that email).
+
+_SECTION_LIST_CLASS = "mt-4 list-disc space-y-2 pl-5 text-base text-charcoal-600"
+
+
+def _humanize(value):
+    """Stored enums are either display labels already ("Full-time",
+    "On-site", "Fellowship") or snake_case ("self_paced") — only the
+    latter needs touching: underscores -> spaces, first letter upper."""
+    if not _is_nonblank(value):
+        return ""
+    text = value.replace("_", " ").strip()
+    return text[:1].upper() + text[1:]
+
+
+def _http_url(value):
+    return value if isinstance(value, str) and (value.startswith("https://") or value.startswith("http://")) else None
+
+
+def _section(heading, inner):
+    if not inner:
+        return ""
+    return f'<section><h2 class="{_SECTION_H2_CLASS}">{_text(heading)}</h2>{inner}</section>'
+
+
+def _string_list(values):
+    items = [v for v in (values or []) if _is_nonblank(v)]
+    if not items:
+        return ""
+    return f'<ul class="{_SECTION_LIST_CLASS}">{"".join(f"<li>{_text(v)}</li>" for v in items)}</ul>'
+
+
+def _facts(pairs):
+    """A short <dl> of label/value facts (already-escaped values)."""
+    rows = "".join(f"<dt class=\"font-semibold text-charcoal\">{_text(label)}</dt><dd>{value}</dd>" for label, value in pairs if value)
+    return f'<dl class="{_META_CLASS}">{rows}</dl>' if rows else ""
+
+
+def _date_html(value):
+    iso, label = _format_date(value) if _is_nonblank(value) else (None, None)
+    return f'<time datetime="{_attr(value)}">{_text(label)}</time>' if iso else ""
+
+
+def _external_link(url, label):
+    url = _http_url(url)
+    if not url:
+        return ""
+    return f'<p class="mt-4"><a href="{_attr(url)}" target="_blank" rel="noopener noreferrer" class="{_LINK_CLASS}">{_text(label)}</a></p>'
+
+
+def _org_link(org):
+    if not isinstance(org, dict) or not _is_nonblank(org.get("name")):
+        return ""
+    if _is_nonblank(org.get("slug")):
+        return f'<a href="/organizations/{_attr(org["slug"])}" class="{_LINK_CLASS}">{_text(org["name"])}</a>'
+    return _text(org["name"])
+
+
+def _paragraph(value, cls=None):
+    return f'<p class="{cls or _DECK_CLASS}">{_text(value)}</p>' if _is_nonblank(value) else ""
+
+
+def _main(kind, header, body):
+    return (
+        f'<main data-wsf-prerender="{kind}" class="{_MAIN_CLASS}"><article class="{_ARTICLE_CLASS}">'
+        f'<header>{"".join(header)}</header>{"".join(body)}</article></main>'
+    )
+
+
+def _h1(title):
+    return f'<h1 class="{_H1_CLASS}">{_text(title)}</h1>'
+
+
+def _salary(payload):
+    low, high, currency = payload.get("salary_min"), payload.get("salary_max"), payload.get("currency") or ""
+    if low is None and high is None:
+        return ""
+    amounts = " – ".join(f"{v:,}" for v in (low, high) if isinstance(v, int))
+    period = f" per {_humanize(payload.get('salary_period')).lower()}" if _is_nonblank(payload.get("salary_period")) else ""
+    return _text(f"{currency} {amounts}{period}".strip())
+
+
+def render_job_prerender(payload):
+    """`payload` = build_public_job_payload(job, None, detail=True)."""
+    company = _org_link(payload.get("organization")) or _text(payload.get("company_name"))
+    header = [_h1(payload.get("title"))]
+    if company:
+        header.append(f'<p class="{_DECK_CLASS}">{company}</p>')
+    header.append(_facts([
+        ("Location", _text(payload.get("location"))),
+        ("Work mode", _text(_humanize(payload.get("work_mode")))),
+        ("Employment type", _text(_humanize(payload.get("employment_type")))),
+        ("Career level", _text(_humanize(payload.get("career_level")))),
+        ("Industry", _text(payload.get("industry"))),
+        ("Salary", _salary(payload) if payload.get("salary_visible") else ""),
+        ("Apply by", _date_html(payload.get("deadline"))),
+    ]))
+    body = [
+        _paragraph(payload.get("short_description"), _PARAGRAPH_CLASS),
+        render_content_blocks(payload.get("description") or []),
+        _section("Responsibilities", _string_list(payload.get("responsibilities"))),
+        _section("Requirements", _string_list(payload.get("requirements"))),
+        _section("Qualifications", _string_list(payload.get("qualifications"))),
+        _section("Skills", _string_list(payload.get("skills"))),
+        _section("Benefits", _string_list(payload.get("benefits"))),
+    ]
+    # Only present when the public builder itself attached it (public,
+    # open, safe channel) — never for circle_only or closed jobs.
+    if _http_url(payload.get("application_url")):
+        body.append(_external_link(payload["application_url"], "Apply for this role"))
+    elif _is_nonblank(payload.get("application_email")):
+        email = payload["application_email"]
+        body.append(f'<p class="mt-4"><a href="mailto:{_attr(email)}" class="{_LINK_CLASS}">Email your application</a></p>')
+    return _main("job", header, body)
+
+
+def render_opportunity_prerender(payload):
+    """`payload` = build_public_opportunity_payload(opp, None, detail=True)."""
+    provider = _org_link(payload.get("organization")) or _text(payload.get("organization_name"))
+    header = [_h1(payload.get("title"))]
+    if provider:
+        header.append(f'<p class="{_DECK_CLASS}">{provider}</p>')
+    funding = _text(payload.get("funding_value")) if _is_nonblank(payload.get("funding_value")) else ""
+    header.append(_facts([
+        ("Type", _text(_humanize(payload.get("type")))),
+        ("Location", _text(payload.get("location"))),
+        ("Career stage", _text(_humanize(payload.get("career_stage")))),
+        ("Funding", funding),
+        ("Opens", _date_html(payload.get("opening_date"))),
+        ("Deadline", _date_html(payload.get("deadline"))),
+    ]))
+    eligibility = _paragraph(payload.get("eligibility"), _PARAGRAPH_CLASS) + _paragraph(payload.get("eligibility_notes"), _PARAGRAPH_CLASS)
+    body = [
+        _paragraph(payload.get("short_description"), _PARAGRAPH_CLASS),
+        render_content_blocks(payload.get("description") or []),
+        _section("Eligibility", eligibility),
+        _external_link(payload.get("application_url"), "Apply now"),
+    ]
+    return _main("opportunity", header, body)
+
+
+def render_event_prerender(payload):
+    """`payload` = serialize_event_for_viewer(event, None) — virtual_link
+    is withheld there for anonymous viewers and never read here anyway."""
+    organizer = _org_link(payload.get("organizer")) or _text(payload.get("organizer_name"))
+    header = [_h1(payload.get("title"))]
+    if organizer:
+        header.append(f'<p class="{_DECK_CLASS}">Hosted by {organizer}</p>')
+    when = _date_html(payload.get("date"))
+    if when and _is_nonblank(payload.get("end_date")) and payload.get("end_date") != payload.get("date"):
+        when += f" – {_date_html(payload['end_date'])}"
+    times = " – ".join(_text(str(t)[:5]) for t in (payload.get("start_time"), payload.get("end_time")) if t)
+    place_parts = [_text(v) for v in (payload.get("venue"), payload.get("address"), payload.get("city")) if _is_nonblank(v)]
+    place = f"<address class=\"not-italic\">{', '.join(place_parts)}</address>" if place_parts else ""
+    if not place and payload.get("format") in ("virtual", "hybrid"):
+        place = "Online"
+    header.append(_facts([
+        ("Date", when),
+        ("Time", f"{times} {_text(payload.get('timezone') or '')}".strip() if times else ""),
+        ("Format", _text(_humanize(payload.get("format")))),
+        ("Where", place),
+        ("Register by", _date_html(payload.get("registration_deadline"))),
+    ]))
+    agenda = "".join(
+        f"<li>{_text(item.get('time') or '')}{' — ' if item.get('time') else ''}{_text(item.get('title') or '')}</li>"
+        for item in (payload.get("agenda") or [])
+        if isinstance(item, dict) and _is_nonblank(item.get("title"))
+    )
+    speakers = "".join(_speaker_item(s) for s in (payload.get("speakers") or []) if isinstance(s, dict))
+    body = [
+        _paragraph(payload.get("short_description"), _PARAGRAPH_CLASS),
+        render_content_blocks(payload.get("description") or []),
+        _section("Agenda", f'<ul class="{_SECTION_LIST_CLASS}">{agenda}</ul>' if agenda else ""),
+        _section("Speakers", f'<ul class="{_SECTION_LIST_CLASS}">{speakers}</ul>' if speakers else ""),
+    ]
+    if not payload.get("is_past") and payload.get("status") not in ("cancelled", "postponed"):
+        body.append(_external_link(payload.get("registration_url"), "Register"))
+    return _main("event", header, body)
+
+
+def _speaker_item(speaker):
+    """Same fallbacks as frontend/src/api/events.js's mapSpeaker()."""
+    person = speaker.get("person") if isinstance(speaker.get("person"), dict) else {}
+    name = person.get("name") or speaker.get("name")
+    if not _is_nonblank(name):
+        return ""
+    detail = [v for v in (person.get("title") or speaker.get("title"), speaker.get("organization_name")) if _is_nonblank(v)]
+    return f"<li>{_text(name)}{' — ' + ' · '.join(_text(v) for v in detail) if detail else ''}</li>"
+
+
+_RESOURCE_ACCESS_LABELS = {
+    "direct_download": "Free download",
+    "email_gate": "Free with email",
+    "external_link": "Free",
+    "member_only": "Free for members",
+    "circle_only": "WSF Circle members",
+    "premium": "Premium",
+}
+
+
+def render_resource_prerender(payload):
+    """`payload` = build_public_resource_payload(resource, None) — never
+    carries file_url/external_url/protected paths; only the catalog/
+    marketing description an anonymous visitor already sees."""
+    header = [_h1(payload.get("name"))]
+    header.append(_paragraph(payload.get("subtitle")))
+    author = payload.get("author") if isinstance(payload.get("author"), dict) else None
+    by = (
+        f'<a href="/authors/{_attr(author["slug"])}" class="{_LINK_CLASS}">{_text(author["name"])}</a>'
+        if author and _is_nonblank(author.get("slug")) and _is_nonblank(author.get("name"))
+        else _text(payload.get("authorName"))
+    )
+    price = ""
+    if payload.get("accessType") == "premium" and isinstance(payload.get("price"), int):
+        price = _text(f"{payload.get('currency') or ''} {payload['price']:,}".strip())
+    topics = ", ".join(_text(t.get("name")) for t in (payload.get("topics") or []) if isinstance(t, dict) and _is_nonblank(t.get("name")))
+    header.append(_facts([
+        ("Type", _text(payload.get("type"))),
+        ("By", by),
+        ("Access", _text(_RESOURCE_ACCESS_LABELS.get(payload.get("accessType"), ""))),
+        ("Price", price),
+        ("Topics", topics),
+    ]))
+    body = [
+        _paragraph(payload.get("shortDescription"), _PARAGRAPH_CLASS),
+        render_content_blocks(payload.get("description") or []),
+    ]
+    return _main("resource", header, body)
+
+
+def render_learning_prerender(program):
+    """`program` is the published LearningProgram row. Public CATALOG
+    columns only — modules, lessons, assessments, enrollment and the
+    external/product delivery targets are never read here."""
+    header = [_h1(program.title), _paragraph(program.subtitle)]
+    instructor = program.primary_instructor
+    by = (
+        f'<a href="/authors/{_attr(instructor.slug)}" class="{_LINK_CLASS}">{_text(instructor.name)}</a>'
+        if instructor is not None and instructor.status == "active"
+        else ""
+    )
+    provider = program.provider_organization
+    provider_html = _text(provider.name) if provider is not None and provider.status == "published" else ""
+    duration = _text(f"{program.duration_value} {program.duration_unit or ''}".strip()) if program.duration_value else ""
+    access = {"free": "Free", "circle_only": "WSF Circle members"}.get(program.access_type, "")
+    header.append(_facts([
+        ("Type", _text(_humanize(program.program_type))),
+        ("Level", _text(_humanize(program.difficulty_level))),
+        ("Instructor", by),
+        ("Provided by", provider_html),
+        ("Duration", duration),
+        ("Format", _text(_humanize(program.delivery_mode))),
+        ("Access", _text(access)),
+    ]))
+    body = [
+        _paragraph(program.short_description, _PARAGRAPH_CLASS),
+        render_content_blocks(program.overview or []),
+        _section("What you'll learn", _string_list(program.learning_outcomes)),
+        _section("Prerequisites", _string_list(program.prerequisites)),
+    ]
+    return _main("learning", header, body)
+
+
+def render_organization_prerender(payload):
+    """`payload` = OrganizationSchema().dump(org) — the same public dump
+    the Organization detail API returns."""
+    header = [_h1(payload.get("name")), _paragraph(payload.get("short_description"))]
+    country = payload.get("country") if isinstance(payload.get("country"), dict) else {}
+    location = ", ".join(_text(v) for v in (payload.get("location"), country.get("name")) if _is_nonblank(v))
+    website = _http_url(payload.get("website"))
+    header.append(_facts([
+        ("Type", _text(_humanize(payload.get("org_type")))),
+        ("Industry", _text(payload.get("industry"))),
+        ("Location", location),
+        ("Founded", _text(payload.get("founded_year")) if payload.get("founded_year") else ""),
+        ("Website", f'<a href="{_attr(website)}" target="_blank" rel="noopener noreferrer" class="{_LINK_CLASS}">{_text(website)}</a>' if website else ""),
+    ]))
+    body = [render_content_blocks(payload.get("description") or [])]
+    return _main("organization", header, body)

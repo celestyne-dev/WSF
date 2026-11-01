@@ -98,7 +98,16 @@ from app.schemas.commerce import ProductSchema
 from app.schemas.people import PersonSchema
 from app.services.event_registrations import is_event_publicly_visible
 from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
-from app.services.prerender import render_article_prerender, render_person_prerender
+from app.services.prerender import (
+    render_article_prerender,
+    render_event_prerender,
+    render_job_prerender,
+    render_learning_prerender,
+    render_opportunity_prerender,
+    render_organization_prerender,
+    render_person_prerender,
+    render_resource_prerender,
+)
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 
@@ -2067,8 +2076,46 @@ def _render_entity_detail(prefix, slug):
         # frontend/src/pages/PersonProfilePage.jsx).
         html_doc = _set_bootstrap_data(html_doc, "person", {"key": entity.slug, "data": _safe_public_person_payload(entity)})
         html_doc = _set_root_prerender(html_doc, render_person_prerender(entity))
+    else:
+        html_doc = _set_root_prerender(html_doc, _public_detail_prerender(prefix, entity))
 
     return _html_response(html_doc)
+
+
+def _public_detail_prerender(prefix, entity):
+    """AI Search / GEO Phase 3B1 — visible page content for six more
+    detail families. `entity` already passed that family's own public
+    lookup above. Each renderer reads the SAME anonymous payload the
+    family's public detail API returns to a signed-out visitor (its own
+    builder, viewer=None), so the prerender can never show more than that
+    API already does; Learning reads catalog columns only (its public
+    payload can carry the curriculum, which never enters this HTML).
+    Families without one (topics/series/authors/directory/shop/
+    newsletter) keep the plain empty #root.
+    """
+    if prefix == "jobs":
+        from app.api.v1.jobs import build_public_job_payload
+
+        return render_job_prerender(build_public_job_payload(entity, None, detail=True))
+    if prefix == "opportunities":
+        from app.api.v1.opportunities import build_public_opportunity_payload
+
+        return render_opportunity_prerender(build_public_opportunity_payload(entity, None, detail=True))
+    if prefix == "events":
+        from app.services.event_registrations import serialize_event_for_viewer
+
+        return render_event_prerender(serialize_event_for_viewer(entity, None))
+    if prefix == "resources":
+        from app.api.v1.resources import build_public_resource_payload
+
+        return render_resource_prerender(build_public_resource_payload(entity, None))
+    if prefix == "learning":
+        return render_learning_prerender(entity)
+    if prefix == "organizations":
+        from app.schemas.people import OrganizationSchema
+
+        return render_organization_prerender(OrganizationSchema().dump(entity))
+    return None
 
 
 def _render_unsubscribe_shell():
