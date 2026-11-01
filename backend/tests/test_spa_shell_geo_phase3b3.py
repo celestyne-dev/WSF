@@ -42,7 +42,8 @@ def _assert_hub(html, marker, title, canonical):
     assert root.startswith(f'<main data-wsf-prerender="{marker}"'), marker
     assert html.count("data-wsf-prerender=") == 1
     assert len(re.findall(r"<h1\b", root)) == 1
-    assert re.search(rf"<h1[^>]*>{re.escape(title)}</h1>", root)
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", root, re.DOTALL)
+    assert h1 and re.sub(r"<[^>]+>", "", h1.group(1)) == title
     assert re.search(r'<link\s+rel=["\']canonical["\']\s+href=["\']' + re.escape(canonical), html)
     assert len(re.findall(r"<script\b[^>]*data-site-structured-data", html)) == 1
     lowered = root.lower()
@@ -323,3 +324,94 @@ def test_hub_with_query_string_keeps_base_canonical(client, app):
     html = _raw(client, "/jobs?page=4&q=anything")
     assert re.search(r'<link\s+rel=["\']canonical["\']\s+href=["\']' + re.escape(f"{SITE}/jobs") + '["\']', html)
     assert "anything" not in _root(html)
+
+
+# --- homepage hero parity + CTA safety (pre-deploy correction) -------------------------------------
+
+
+def _hero(app, **kwargs):
+    from app.models.cms import HomepageModule
+
+    _add(app, HomepageModule(type="hero", enabled=True, sort_order=0, **kwargs))
+
+
+def _h1_html(root):
+    return re.search(r"<h1[^>]*>(.*?)</h1>", root, re.DOTALL).group(1)
+
+
+def test_lead_hero_without_override_uses_article_title_linked(client, app):
+    _article(app, "original-story", "Original Story")
+    _hero(app, config={"leadArticleSlug": "original-story"})
+    root = _assert_hub(_raw(client, "/"), "home", "Original Story", f"{SITE}/")
+    assert 'href="/original-story"' in _h1_html(root)
+    assert "Read the story" not in root
+
+
+def test_lead_hero_heading_override_wins_and_keeps_article_link(client, app):
+    _article(app, "original-story", "Original Story")
+    _hero(app, heading="Women Leading Change", config={"leadArticleSlug": "original-story"})
+    root = _assert_hub(_raw(client, "/"), "home", "Women Leading Change", f"{SITE}/")
+    assert 'href="/original-story"' in _h1_html(root)
+    assert "Original Story excerpt." in root
+    assert "Original Story<" not in root  # the original title is not the visible headline
+    assert "Read the story" not in root
+
+
+def test_lead_hero_renders_primary_cta_only(client, app):
+    _article(app, "original-story", "Original Story")
+    _hero(app, config={"leadArticleSlug": "original-story"},
+          cta_label="Explore the series", cta_url="/series/leaders",
+          secondary_cta_label="Secondary Lead CTA", secondary_cta_url="/jobs")
+    root = _root(_raw(client, "/"))
+    assert 'href="/series/leaders"' in root and "Explore the series" in root
+    _absent(root, "Secondary Lead CTA", 'href="/jobs"')
+
+
+def test_manual_hero_keeps_primary_and_secondary_ctas(client, app):
+    _hero(app, heading="Manual Hero Heading", subheading="Manual sub.",
+          cta_label="Find jobs", cta_url="/jobs",
+          secondary_cta_label="Read the guide", secondary_cta_url="https://example.org/guide")
+    root = _assert_hub(_raw(client, "/"), "home", "Manual Hero Heading", f"{SITE}/")
+    assert 'href="/jobs"' in root and "Find jobs" in root
+    assert 'href="https://example.org/guide"' in root and "Read the guide" in root
+
+
+PRIVATE_CTA_URLS = [
+    "/admin/foo", "/account", "/account/profile", "/api/v1/x", "/login", "/register", "/forgot-password",
+    "/reset-password/token", "/change-password", "/newsletter/unsubscribe/token", "/resources/checkout",
+    "/circle/checkout?plan=monthly", "/search?q=x", "/media/private.pdf", "/assets/file.js",
+    "/ADMIN", "/login#top", "/account/", "javascript:alert(1)", "data:text/html,x", "//evil.example",
+]
+
+
+def test_private_and_unsafe_cta_paths_never_prerendered(client, app):
+    from app.models.cms import HomepageModule
+
+    _hero(app, heading="Manual Hero Heading", cta_label="Private Primary", cta_url="/account",
+          secondary_cta_label="Private Secondary", secondary_cta_url="/circle/checkout?plan=monthly")
+    _add(app, *[HomepageModule(type="community_cta", enabled=True, sort_order=i + 1, heading=f"Block {i}",
+                               subheading=f"Block sub {i}.", cta_label=f"Private CTA {i}", cta_url=url) for i, url in enumerate(PRIVATE_CTA_URLS)])
+    root = _root(_raw(client, "/"))
+    assert "Block 0" in root and f"Block sub {len(PRIVATE_CTA_URLS) - 1}." in root  # blocks render; links withheld
+    _absent(root, "Private Primary", "Private Secondary", "javascript:", "data:text", "evil.example")
+    for i, url in enumerate(PRIVATE_CTA_URLS):
+        assert f"Private CTA {i}<" not in root, url
+    assert not re.search(r'href="/(admin|account|api|login|register|forgot-password|reset-password|change-password|'
+                         r'newsletter/unsubscribe|resources/checkout|circle/checkout|search|media|assets)\b', root, re.I)
+
+
+def test_cta_boundary_paths_and_external_https_allowed(client, app):
+    from app.models.cms import HomepageModule
+
+    _add(app,
+         HomepageModule(type="community_cta", enabled=True, sort_order=1, heading="Boundary A",
+                        cta_label="Accountability", cta_url="/accountability",
+                        secondary_cta_label="Searching", secondary_cta_url="/searching"),
+         HomepageModule(type="editorial_callout", enabled=True, sort_order=2, heading="External",
+                        cta_label="Partner site", cta_url="https://partner.example.org/page?x=1"),
+         HomepageModule(type="newsletter", enabled=True, sort_order=3, heading="Newsletter Block",
+                        cta_label="Newsletter archive", cta_url="/newsletter"))
+    root = _root(_raw(client, "/"))
+    assert 'href="/accountability"' in root and 'href="/searching"' in root
+    assert 'href="https://partner.example.org/page?x=1"' in root
+    assert 'href="/newsletter"' in root

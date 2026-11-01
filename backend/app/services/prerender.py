@@ -975,13 +975,29 @@ def render_hub_prerender(marker, eyebrow, title, description, list_heading, kind
     return _main(marker, header, body)
 
 
+# Internal areas that are private, transactional or non-indexable: a
+# homepage CTA into one is never emitted as a crawlable prerender link
+# (CMS validation still lets editors configure them for the React page).
+_PRIVATE_CTA_PREFIXES = (
+    "/admin", "/account", "/api", "/media", "/assets", "/login", "/register",
+    "/forgot-password", "/reset-password", "/change-password",
+    "/newsletter/unsubscribe", "/resources/checkout", "/circle/checkout", "/search",
+)
+
+
+def _is_private_cta_path(url):
+    # React Router matches case-insensitively, so compare lowercased.
+    path = url.split("#", 1)[0].split("?", 1)[0].lower().rstrip("/") or "/"
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in _PRIVATE_CTA_PREFIXES)
+
+
 def _safe_cta_href(url):
     """Homepage CTA targets were validated on save as an internal "/..."
     path or http(s) — re-checked here; private areas never linked."""
     if not isinstance(url, str):
         return None
-    if url.startswith("/") and not url.startswith("//"):
-        return None if url.startswith(("/admin", "/account", "/api")) else url
+    if url.startswith("/") and not url.startswith("//") and "\\" not in url:
+        return None if _is_private_cta_path(url) else url
     return _http_url(url)
 
 
@@ -1003,11 +1019,16 @@ _HOME_ITEM_KIND = {"jobs": "jobs", "opportunities": "opportunities", "events": "
 
 def render_homepage_prerender(sections, site_name):
     """The configured homepage modules (public_hubs.homepage_sections) in
-    builder order. Exactly one H1, matching HeroModule.jsx: the hero's lead
-    Article title, else the hero heading, else the site name."""
+    builder order. Exactly one H1, matching HeroModule.jsx: with a lead
+    Article, the module heading override else the Article title (linked to
+    the Article); else the manual hero heading; else the site name."""
     hero = next((s for s in sections if s["type"] == "hero"), None)
     if hero and hero.get("lead"):
-        h1 = _h1(hero["lead"].get("title"))
+        # ArticleCard receives {...lead, title: module.heading} when an
+        # override is set, and its headline links to the Article.
+        lead = hero["lead"]
+        title = hero["heading"] if _is_nonblank(hero.get("heading")) else lead.get("title")
+        h1 = f'<h1 class="{_H1_CLASS}">{_hub_link("/" + lead["slug"], title)}</h1>'
     elif hero and _is_nonblank(hero.get("heading")):
         h1 = _h1(hero["heading"])
     else:
@@ -1021,7 +1042,7 @@ def render_homepage_prerender(sections, site_name):
             if section.get("lead"):
                 lead = section["lead"]
                 header.append(_paragraph(lead.get("excerpt")))
-                header.append(f'<p class="mt-4">{_hub_link("/" + lead["slug"], "Read the story")}</p>')
+                header.append(_cta_links(section.get("ctas")))
             else:
                 header.append(_paragraph(section.get("subheading")))
                 header.append(_cta_links(section.get("ctas")))

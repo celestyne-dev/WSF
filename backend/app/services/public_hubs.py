@@ -293,7 +293,9 @@ def homepage_sections(modules, lead_article):
         if module.type == "hero":
             secondary = _articles_by_slugs(config.get("secondaryArticleSlugs"), 4)
             if lead_article is not None:
-                sections.append({**base, "lead": article_summary_schema().dump(lead_article), "articles": secondary})
+                # HeroModule.jsx's lead branch renders only the primary CTA.
+                ctas = [(module.cta_label, module.cta_url)] if module.cta_label and module.cta_url else []
+                sections.append({**base, "lead": article_summary_schema().dump(lead_article), "ctas": ctas, "articles": secondary})
             elif module.heading:
                 ctas = [(module.cta_label, module.cta_url), (module.secondary_cta_label, module.secondary_cta_url)]
                 sections.append({**base, "ctas": [(label, url) for label, url in ctas if label and url], "articles": secondary})
