@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { fetchLearningPrograms } from '../api/learning'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import LearningProgramCard from '../components/cards/LearningProgramCard'
@@ -47,6 +48,9 @@ export default function LearningPage() {
     description: 'Courses, masterclasses, and learning programs on leadership, entrepreneurship, and career growth.',
     canonical: 'https://womenshapingfutures.org/learning',
   })
+  // Home > Learning — matches the server's own 2-level breadcrumb for this
+  // list page (spa_shell.py's _LIST_PAGE_BREADCRUMB_LABELS).
+  useBreadcrumbStructuredData([{ label: 'Learning' }], 'https://womenshapingfutures.org/learning')
 
   useEffect(() => {
     let active = true

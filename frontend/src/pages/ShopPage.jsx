@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { fetchProducts, fetchProductCategories } from '../api/products'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import ProductCard from '../components/cards/ProductCard'
@@ -30,6 +31,9 @@ export default function ShopPage() {
     description: 'Digital products, guides, templates, and workbooks from Women Shaping Futures.',
     canonical: 'https://womenshapingfutures.org/shop',
   })
+  // Home > Shop — matches the server's own 2-level breadcrumb for this
+  // list page (spa_shell.py's _LIST_PAGE_BREADCRUMB_LABELS).
+  useBreadcrumbStructuredData([{ label: 'Shop' }], 'https://womenshapingfutures.org/shop')
 
   useEffect(() => {
     fetchProductCategories().then(setCategories).catch(() => {})

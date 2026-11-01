@@ -11,6 +11,7 @@ import {
   DIRECTORY_VERIFIED_EXPLANATION,
 } from '../constants/directory'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import JobCard from '../components/cards/JobCard'
@@ -31,7 +32,7 @@ function useDirectoryStructuredData(listing, canonicalUrl) {
       name: org.name,
       url: canonicalUrl,
       ...(org.website ? { sameAs: [org.website] } : {}),
-      ...(org.logo ? { logo: resolveImage(org.logo, { width: 400, height: 400 }) } : {}),
+      ...(org.logo?.mediaPath ? { logo: resolveImage(org.logo.mediaPath, { width: 400, height: 400 }) } : {}),
       ...(org.foundedYear ? { foundingDate: String(org.foundedYear) } : {}),
       ...(listing.serviceSummary ? { description: listing.serviceSummary } : {}),
     }
@@ -83,13 +84,20 @@ export default function DirectoryProfilePage() {
           title: listing.seo?.title || `${listing.organization.name} | Business & Professional Directory | Women Shaping Futures`,
           description: listing.seo?.description || listing.serviceSummary || listing.organization.shortDescription,
           canonical: listing.seo?.canonical || canonicalUrl,
-          image: listing.organization.logo ? resolveImage(listing.organization.logo, { width: 1200, height: 630 }) : undefined,
+          // organization.logo is a mapMediaRef object here, so its path is
+          // passed — handing resolveImage the object itself yielded a
+          // placeholder instead of the real logo (server: _directory_meta).
+          image: listing.organization.logo?.mediaPath ? resolveImage(listing.organization.logo.mediaPath, { width: 1200, height: 630 }) : undefined,
           robots: listing.seo?.robots,
         }
       : {},
   )
 
   useDirectoryStructuredData(listing, canonicalUrl)
+  useBreadcrumbStructuredData(
+    listing ? [{ label: 'Directory', to: '/directory' }, { label: listing.organization.name }] : null,
+    listing?.seo?.canonical || canonicalUrl,
+  )
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this listing" description={error} /></div>
   if (listing === undefined) return <PageLoader />

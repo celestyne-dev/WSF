@@ -589,13 +589,14 @@ class TestBreadcrumbCoverage:
         assert [i["name"] for i in items] == ["Home", "Jobs"]
         assert items[1]["item"] == "https://womenshapingfutures.org/jobs"
 
-    def test_circle_and_newsletter_list_pages_have_no_breadcrumb(self, client, app):
-        # Deliberately excluded from this phase's list-page breadcrumb
-        # scope (not one of the 8 named list pages).
+    def test_circle_list_page_has_no_breadcrumb(self, client, app):
+        # Circle stays excluded from list-page breadcrumbs. (Newsletter
+        # joined in AI Search / GEO Phase 1A, alongside its issue pages'
+        # Home > Newsletter > Issue trail — see
+        # test_spa_shell_geo_phase1a.py.)
         _use_fixture_index(app)
-        for path in ("/circle", "/newsletter"):
-            html = client.get(path).get_data(as_text=True)
-            assert "data-breadcrumb-structured-data" not in html
+        html = client.get("/circle").get_data(as_text=True)
+        assert "data-breadcrumb-structured-data" not in html
 
 
 class TestNoindexAndNotFoundNeverGetBreadcrumbsOrEntitySchema:

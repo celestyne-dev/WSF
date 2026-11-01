@@ -5,6 +5,7 @@ import { fetchDirectoryListings, fetchDirectoryCategories } from '../api/directo
 import { regionOptions } from '../api/geography'
 import { DIRECTORY_OWNERSHIP_CLASSIFICATIONS, DIRECTORY_OWNERSHIP_LABELS } from '../constants/directory'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import DirectoryCard from '../components/cards/DirectoryCard'
@@ -35,6 +36,9 @@ export default function DirectoryIndexPage() {
     description: 'Discover women-owned, women-led, and women-founded businesses and professional organizations in the Women Shaping Futures network.',
     canonical: 'https://womenshapingfutures.org/directory',
   })
+  // Home > Directory — matches the server's own 2-level breadcrumb for this
+  // list page (spa_shell.py's _LIST_PAGE_BREADCRUMB_LABELS).
+  useBreadcrumbStructuredData([{ label: 'Directory' }], 'https://womenshapingfutures.org/directory')
 
   useEffect(() => {
     fetchDirectoryCategories().then(setCategories).catch(() => {})

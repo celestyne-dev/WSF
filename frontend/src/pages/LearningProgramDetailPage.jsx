@@ -15,6 +15,7 @@ import { resolveImage } from '../utils/media'
 import { formatCurrency, formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
@@ -311,10 +312,13 @@ export default function LearningProgramDetailPage() {
           title: program.seo?.title || `${program.title} | Women Shaping Futures Learning`,
           description: program.seo?.description || program.shortDescription || program.subtitle || program.title,
           canonical: program.seo?.canonical || canonicalUrl,
-          image: resolveImage(program.heroMedia?.mediaPath, { width: 1200, height: 630 }),
+          // No hero -> no page image (useSeo's global default applies,
+          // same as the server) rather than resolveImage's SVG placeholder.
+          image: program.heroMedia?.mediaPath ? resolveImage(program.heroMedia.mediaPath, { width: 1200, height: 630 }) : undefined,
         }
       : {},
   )
+  useBreadcrumbStructuredData(program ? [{ label: 'Learning', to: '/learning' }, { label: program.title }] : null, program?.seo?.canonical || canonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this program" description={error} /></div>
   if (program === undefined) return <PageLoader />

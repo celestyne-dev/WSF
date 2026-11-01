@@ -453,19 +453,21 @@ class TestAuthAndAccountRawNoindex:
 
 
 class TestRouteClassBoundaries:
-    def test_unenhanced_entity_prefix_detail_route_stays_generic_200(self, client, app):
-        # organizations/<slug> is a real, working SPA route this phase
-        # doesn't enhance — must never be wrongly 404'd just because no
-        # entity-visibility rule was vetted for it yet.
+    def test_unknown_organization_slug_is_a_real_404(self, client, app):
+        # Updated by AI Search / GEO Phase 1A: organizations/<slug> is now
+        # server-enhanced with Organization's own public-visibility rule,
+        # so a slug that resolves to nothing public is a real 404 (no
+        # longer the old generic-shell soft-404) — published-org coverage
+        # lives in test_spa_shell_geo_phase1a.py.
         _use_fixture_index(app)
         resp = client.get("/organizations/some-org")
-        assert resp.status_code == 200
-        assert "<title>Women Shaping Futures</title>" in resp.get_data(as_text=True)
+        assert resp.status_code == 404
 
-    def test_newsletter_issue_detail_route_stays_generic_200(self, client, app):
+    def test_unknown_newsletter_issue_slug_is_a_real_404(self, client, app):
+        # Updated by GEO Phase 1A — same reasoning; a sent issue still 200s.
         _use_fixture_index(app)
         resp = client.get("/newsletter/some-issue-slug")
-        assert resp.status_code == 200
+        assert resp.status_code == 404
 
     def test_newsletter_unsubscribe_token_route_stays_generic_200(self, client, app):
         _use_fixture_index(app)

@@ -9,6 +9,7 @@ import { subscribe, resetNewsletterStatus } from '../features/newsletter/newslet
 import { withAcquisitionMetadata } from '../utils/analytics'
 import { formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 
 export default function NewsletterPage() {
@@ -39,6 +40,9 @@ export default function NewsletterPage() {
     description: 'Subscribe to WSF Weekly for stories, jobs, and opportunities delivered every Thursday.',
     canonical: 'https://womenshapingfutures.org/newsletter',
   })
+  // Home > Newsletter — matches the server's own 2-level breadcrumb for this
+  // list page (spa_shell.py's _LIST_PAGE_BREADCRUMB_LABELS).
+  useBreadcrumbStructuredData([{ label: 'Newsletter' }], 'https://womenshapingfutures.org/newsletter')
 
   function toggleTopic(slug) {
     setTopicSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]))

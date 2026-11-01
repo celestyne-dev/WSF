@@ -5,6 +5,7 @@ import { resolveImage } from '../utils/media'
 import { formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
@@ -49,6 +50,7 @@ export default function NewsletterIssuePage() {
         }
       : {},
   )
+  useBreadcrumbStructuredData(issue ? [{ label: 'Newsletter', to: '/newsletter' }, { label: issue.subject }] : null, canonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this issue" description={error} /></div>
   if (issue === undefined) return <PageLoader />

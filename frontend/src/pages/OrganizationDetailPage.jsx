@@ -9,6 +9,7 @@ import { fetchPeople } from '../api/people'
 import { fetchArticles } from '../api/articles'
 import { resolveImage, resolveAltText } from '../utils/media'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
@@ -118,6 +119,7 @@ export default function OrganizationDetailPage() {
   )
 
   useOrgStructuredData(org, canonicalUrl)
+  useBreadcrumbStructuredData(org ? [{ label: 'Organizations', to: '/organizations' }, { label: org.name }] : null, org?.seo?.canonical || canonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this organization" description={error} /></div>
   if (org === undefined) return <PageLoader />

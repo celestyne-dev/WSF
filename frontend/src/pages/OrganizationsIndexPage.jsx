@@ -3,6 +3,7 @@ import { Search } from 'lucide-react'
 import { fetchOrganizations } from '../api/taxonomies'
 import { regionOptions } from '../api/geography'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
 import OrganizationCard from '../components/cards/OrganizationCard'
@@ -34,6 +35,9 @@ export default function OrganizationsIndexPage() {
     description: 'Companies, foundations, universities, and institutions in the Women Shaping Futures network.',
     canonical: 'https://womenshapingfutures.org/organizations',
   })
+  // Home > Organizations — matches the server's own 2-level breadcrumb for this
+  // list page (spa_shell.py's _LIST_PAGE_BREADCRUMB_LABELS).
+  useBreadcrumbStructuredData([{ label: 'Organizations' }], 'https://womenshapingfutures.org/organizations')
 
   useEffect(() => {
     let active = true

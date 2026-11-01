@@ -25,12 +25,19 @@ anything else) to:
     resolve_spa_response()'s own docstring for the full route-class
     breakdown this replaced the old blanket-200 soft-404 with
 
-Every route not covered above (an organizations/directory/learning/shop/
-newsletter-issue detail page, /admin/*, every other already-working SPA
-route) is deliberately left exactly as it already behaved — generic
-shell, HTTP 200 — because no per-entity visibility rule for those has
-been vetted here; expanding them is future work, not a regression risk
-to take on in this phase.
+Every route not covered above (/admin/*) is deliberately left exactly as
+it already behaved — generic shell, HTTP 200.
+
+AI Search / GEO Phase 1A extends the same coverage to the last public
+sections Phase 1 had left on the generic shell — Organization/
+Directory/Learning/Shop/Newsletter-issue list + detail pages — plus the
+public singleton pages the sitemap already listed (Advertise/
+Partnerships/Community/Mentorship/Submit/Nominate/Directory-submit),
+which had been falling into the single-segment Article lookup and
+404ing. The newsletter unsubscribe-token route gets its own narrow,
+noindex, token-free shell. Each new detail lookup reuses that entity's
+own public API visibility rule; no protected Learning curriculum,
+subscriber, order, or commerce-internal field is ever read here.
 
 Every visitor — human or crawler — still receives the SAME initial HTML;
 nothing here ever special-cases a request by User-Agent. Still
@@ -72,15 +79,22 @@ from flask import Response, abort, current_app, redirect
 
 from app.extensions import db
 from app.models.article import Article, Redirect
+from app.models.cms import AdvertisePage
+from app.models.commerce import Product
+from app.models.community import CommunityPage
+from app.models.directory import DirectoryListing
 from app.models.entity_redirect import EntityRedirect
+from app.models.learning import LearningProgram
 from app.models.media import Media
+from app.models.newsletter import NewsletterIssue
 from app.models.opportunity import Event, Job, Opportunity
 from app.models.page import Page
-from app.models.people import Author, Person
+from app.models.people import Author, Organization, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Series, Topic
 from app.schemas.article import article_summary_schema, public_article_schema
 from app.schemas.cms import HomepageModuleSchema
+from app.schemas.commerce import ProductSchema
 from app.services.event_registrations import is_event_publicly_visible
 from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
@@ -817,6 +831,54 @@ def _lookup_resource(slug):
     return resource if resource is not None and resource.is_publicly_visible() else None
 
 
+def _lookup_organization(slug):
+    """Same status check as app/api/v1/organizations.py's public
+    Organization detail route (and sitemap.py's _organization_entries).
+    """
+    organization = Organization.query.filter_by(slug=slug).first()
+    return organization if organization is not None and organization.status == "published" else None
+
+
+def _lookup_directory_listing(slug):
+    """Same rule as app/api/v1/directory.py's DirectoryListingPublicDetail
+    Resource: the URL slug is the linked Organization's slug, and both
+    the listing AND its Organization must be "published" (sitemap.py's
+    _directory_entries applies the identical pair of conditions).
+    """
+    organization = Organization.query.filter_by(slug=slug).first()
+    if organization is None or organization.status != "published":
+        return None
+    listing = DirectoryListing.query.filter_by(organization_id=organization.id).first()
+    return listing if listing is not None and listing.status == "published" else None
+
+
+def _lookup_learning_program(slug):
+    """Same filter as app/api/v1/learning.py's LearningProgramPublicDetail
+    Resource. Only public catalog fields are ever read from the result
+    (title/subtitle/short_description/seo/hero_media) — never the
+    curriculum, which stays behind its own entitlement-checked endpoint.
+    """
+    return LearningProgram.query.filter_by(slug=slug, status="published").first()
+
+
+def _lookup_product(slug):
+    """Same status check as app/api/v1/products.py's ProductDetailResource
+    — "unavailable" still has a real public detail page (sitemap.py's
+    _product_entries lists both statuses too).
+    """
+    product = Product.query.filter_by(slug=slug).first()
+    return product if product is not None and product.status in ("active", "unavailable") else None
+
+
+def _lookup_newsletter_issue(slug):
+    """Same status check as app/api/v1/newsletter.py's NewsletterIssue
+    DetailResource for an anonymous reader: only a "sent" issue is part
+    of the public archive.
+    """
+    issue = NewsletterIssue.query.filter_by(slug=slug).first()
+    return issue if issue is not None and issue.status == "sent" else None
+
+
 # --- Per-entity metadata builders. Each mirrors that entity's OWN
 # frontend useSeo() fallback chain exactly (seo.<field> || generated),
 # using the same generated-fallback wording the frontend already shows
@@ -936,6 +998,85 @@ def _resource_meta(resource, public_site_url, site_identity):
         # resource's own MARKETING page stays indexable even though its
         # download is gated; only an explicit seo.robots overrides this.
         "robots": seo.get("robots") or "index, follow",
+        "image_url": image_url,
+        "image_alt": image_alt,
+    }
+
+
+def _organization_meta(organization, public_site_url, site_identity):
+    """Mirrors OrganizationDetailPage.jsx's useSeo() — logo as image."""
+    seo = organization.seo or {}
+    image_url, image_alt = _resolve_social_image(None, organization.logo, site_identity, public_site_url)
+    return {
+        "title": seo.get("title") or f"{organization.name} | Women Shaping Futures",
+        "description": seo.get("description") or organization.short_description,
+        "canonical": seo.get("canonical") or f"{public_site_url.rstrip('/')}/organizations/{organization.slug}",
+        "robots": seo.get("robots") or "index, follow",
+        "image_url": image_url,
+        "image_alt": image_alt,
+    }
+
+
+def _directory_meta(listing, public_site_url, site_identity):
+    """Mirrors DirectoryProfilePage.jsx's useSeo() — the listing's own
+    seo JSON, then service_summary, then the Organization's short
+    description; the Organization's logo as image.
+    """
+    organization = listing.organization
+    seo = listing.seo or {}
+    image_url, image_alt = _resolve_social_image(None, organization.logo, site_identity, public_site_url)
+    return {
+        "title": seo.get("title") or f"{organization.name} | Business & Professional Directory | Women Shaping Futures",
+        "description": seo.get("description") or listing.service_summary or organization.short_description,
+        "canonical": seo.get("canonical") or f"{public_site_url.rstrip('/')}/directory/{organization.slug}",
+        "robots": seo.get("robots") or "index, follow",
+        "image_url": image_url,
+        "image_alt": image_alt,
+    }
+
+
+def _learning_program_meta(program, public_site_url, site_identity):
+    """Mirrors LearningProgramDetailPage.jsx's useSeo(), which passes no
+    `robots` (so seo.robots is deliberately not honored here either).
+    """
+    seo = program.seo or {}
+    image_url, image_alt = _resolve_social_image(None, program.hero_media, site_identity, public_site_url)
+    return {
+        "title": seo.get("title") or f"{program.title} | Women Shaping Futures Learning",
+        "description": seo.get("description") or program.short_description or program.subtitle or program.title,
+        "canonical": seo.get("canonical") or f"{public_site_url.rstrip('/')}/learning/{program.slug}",
+        "robots": "index, follow",
+        "image_url": image_url,
+        "image_alt": image_alt,
+    }
+
+
+def _product_meta(product, public_site_url, site_identity):
+    """Mirrors ProductDetailPage.jsx's useSeo() — cover image only."""
+    seo = product.seo or {}
+    image_url, image_alt = _resolve_social_image(None, product.cover_media, site_identity, public_site_url)
+    return {
+        "title": seo.get("title") or f"{product.name} | Women Shaping Futures Shop",
+        "description": seo.get("description") or product.short_description,
+        "canonical": seo.get("canonical") or f"{public_site_url.rstrip('/')}/shop/{product.slug}",
+        "robots": seo.get("robots") or "index, follow",
+        "image_url": image_url,
+        "image_alt": image_alt,
+    }
+
+
+def _newsletter_issue_meta(issue, public_site_url, site_identity):
+    """Mirrors NewsletterIssuePage.jsx's useSeo(), which has no per-issue
+    SEO override at all — subject-based title, preheader/summary/subject
+    description, fixed canonical, cover image. Only public archive fields
+    are read (never audience filters, provider IDs, or send stats).
+    """
+    image_url, image_alt = _resolve_social_image(None, issue.cover_media, site_identity, public_site_url)
+    return {
+        "title": f"{issue.subject} | WSF Weekly Archive",
+        "description": issue.preheader or issue.summary or issue.subject,
+        "canonical": f"{public_site_url.rstrip('/')}/newsletter/{issue.slug}",
+        "robots": "index, follow",
         "image_url": image_url,
         "image_alt": image_alt,
     }
@@ -1242,13 +1383,86 @@ def _build_author_json_ld(author, canonical_url, public_site_url, site_name):
     return data
 
 
+def _build_organization_json_ld(organization, canonical_url, public_site_url, site_name):
+    """Mirrors OrganizationDetailPage.jsx's useOrgStructuredData
+    field-for-field (name/url/website-as-sameAs/logo/foundingDate) —
+    never an inferred business fact.
+    """
+    data = {"@context": "https://schema.org", "@type": "Organization", "name": organization.name, "url": canonical_url}
+    if organization.website:
+        data["sameAs"] = [organization.website]
+    if organization.logo is not None:
+        logo_url = _absolute_url(organization.logo.public_url, public_site_url)
+        if logo_url:
+            data["logo"] = logo_url
+    if organization.founded_year:
+        data["foundingDate"] = str(organization.founded_year)
+    return data
+
+
+def _build_directory_json_ld(listing, canonical_url, public_site_url, site_name):
+    """Mirrors DirectoryProfilePage.jsx's useDirectoryStructuredData —
+    the same Organization shape plus the listing's service_summary as
+    description. Never LocalBusiness, never admin/review/verification
+    fields.
+    """
+    data = _build_organization_json_ld(listing.organization, canonical_url, public_site_url, site_name)
+    if listing.service_summary:
+        data["description"] = listing.service_summary
+    return data
+
+
+def _build_product_json_ld(product, canonical_url, public_site_url, site_name):
+    """Mirrors ProductDetailPage.jsx's useProductStructuredData. An Offer
+    only when price_visible (the public API strips price fields
+    otherwise, so the client never has one either); availability uses
+    the same ProductSchema.get_is_available the API returns. Never
+    reads orders, inventory counts, shipping notes, or download files.
+    """
+    data = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": product.name,
+        "description": product.short_description or product.name,
+    }
+    if product.cover_media is not None:
+        image_url = _absolute_url(product.cover_media.public_url, public_site_url)
+        if image_url:
+            data["image"] = image_url
+    if product.sku:
+        data["sku"] = product.sku
+    if product.category is not None and product.category.name:
+        data["category"] = product.category.name
+    data["url"] = canonical_url
+    if product.price_visible:
+        is_available = ProductSchema().get_is_available(product)
+        data["offers"] = {
+            "@type": "Offer",
+            "url": product.purchase_url or canonical_url,
+            "price": product.sale_price if product.sale_price is not None else product.price,
+            "priceCurrency": product.currency or "KES",
+            "availability": "https://schema.org/InStock" if is_available else "https://schema.org/OutOfStock",
+        }
+    return data
+
+
+def _product_primary_media(product):
+    """The image ProductDetailPage.jsx renders first (and `priority`):
+    its gallery starts with cover_media, then the ordered extra images.
+    """
+    if product.cover_media is not None:
+        return product.cover_media
+    for image in product.images:
+        if image.media is not None:
+            return image.media
+    return None
+
+
 # Maps each in-scope entity-detail URL prefix (/<prefix>/<slug>) to its
 # (lookup, metadata-builder, breadcrumb section label, display-name
-# getter) tuple. A prefix NOT in this dict but still a real two-segment
-# SPA route (organizations, directory, learning, shop, newsletter) is
-# handled by _UNENHANCED_PREFIXES below instead — left exactly as it
-# already behaved, never enhanced and never 404'd. The breadcrumb
-# section label doubles as that section's own path segment
+# getter) tuple — all 13 public two-segment detail routes (the last five,
+# organizations/directory/learning/shop/newsletter, added by AI Search /
+# GEO Phase 1A). The breadcrumb section label doubles as that section's own path segment
 # (f"/{prefix}") — see _render_entity_detail.
 _ENTITY_DETAIL_PREFIXES = {
     "topics": (_lookup_topic, _topic_meta, "Topics", lambda e: e.name),
@@ -1259,6 +1473,11 @@ _ENTITY_DETAIL_PREFIXES = {
     "jobs": (_lookup_job, _job_meta, "Jobs", lambda e: e.title),
     "resources": (_lookup_resource, _resource_meta, "Resources", lambda e: e.name),
     "events": (_lookup_event, _event_meta, "Events", lambda e: e.title),
+    "organizations": (_lookup_organization, _organization_meta, "Organizations", lambda e: e.name),
+    "directory": (_lookup_directory_listing, _directory_meta, "Directory", lambda e: e.organization.name),
+    "learning": (_lookup_learning_program, _learning_program_meta, "Learning", lambda e: e.title),
+    "shop": (_lookup_product, _product_meta, "Shop", lambda e: e.name),
+    "newsletter": (_lookup_newsletter_issue, _newsletter_issue_meta, "Newsletter", lambda e: e.subject),
 }
 
 # WSF SEO Phase 2B — maps each nested entity-detail route prefix to the
@@ -1277,9 +1496,12 @@ _ENTITY_TYPE_BY_PREFIX = {
     "jobs": "job",
     "resources": "resource",
     "events": "event",
+    # organizations/directory/learning/shop/newsletter have no slug
+    # redirect history (EntityRedirect isn't written for them), so a
+    # missed lookup there is simply a 404 — see _render_entity_detail.
 }
 
-# The 5 entity-detail prefixes that additionally get their OWN
+# The entity-detail prefixes that additionally get their OWN
 # entity-specific JSON-LD (mirroring that entity's existing frontend
 # structured-data hook — see each builder's own docstring), under the
 # SAME data-*-structured-data attribute name that entity's existing
@@ -1297,6 +1519,11 @@ _ENTITY_STRUCTURED_DATA_BUILDERS = {
     "resources": ("data-resource-structured-data", _build_resource_json_ld),
     "people": ("data-person-structured-data", _build_person_json_ld),
     "authors": ("data-author-structured-data", _build_author_json_ld),
+    "organizations": ("data-org-structured-data", _build_organization_json_ld),
+    "directory": ("data-directory-structured-data", _build_directory_json_ld),
+    "shop": ("data-product-structured-data", _build_product_json_ld),
+    # Learning/Newsletter have no frontend structured-data hook, so no
+    # entity schema is invented for them here — BreadcrumbList only.
 }
 
 # WSF SEO Phase 2C — the 3 non-Article entity-detail prefixes whose
@@ -1317,12 +1544,16 @@ _ENTITY_IMAGE_PRELOAD = {
     "series": (lambda e: e.cover_media, "(min-width: 1024px) 45vw, 100vw", "hero"),
     "resources": (lambda e: e.cover_media, "(min-width: 640px) 360px, 100vw", "medium"),
     "events": (lambda e: e.cover_media, "100vw", "hero"),
+    # ProductDetailPage's first gallery image is `priority`, variant
+    # "large", no explicit sizes (MediaImage then uses "100vw").
+    "shop": (_product_primary_media, "100vw", "large"),
 }
 
-# The 8 list/landing pages that get a 2-level ("Home" > Section)
-# BreadcrumbList — a subset of _STATIC_ROUTES's "list"-kind entries:
-# circle/newsletter are deliberately excluded (not part of this phase's
-# breadcrumb scope — see _render_static_route).
+# The list/landing pages that get a 2-level ("Home" > Section)
+# BreadcrumbList — a subset of _STATIC_ROUTES's "list"-kind entries.
+# Newsletter joined in GEO Phase 1A (its issue pages now carry
+# Home > Newsletter > Issue); Circle and the singleton marketing/form
+# pages stay without one — none of them shows a visible breadcrumb.
 _LIST_PAGE_BREADCRUMB_LABELS = {
     "topics": "Topics",
     "series": "Series",
@@ -1332,15 +1563,20 @@ _LIST_PAGE_BREADCRUMB_LABELS = {
     "jobs": "Jobs",
     "resources": "Resources",
     "events": "Events",
+    "organizations": "Organizations",
+    "directory": "Directory",
+    "learning": "Learning",
+    "shop": "Shop",
+    "newsletter": "Newsletter",
 }
 
-# First path segment of an already-working SPA route this phase does
-# NOT enhance (no vetted public-visibility rule gathered for these yet)
-# — matched regardless of total segment count, so this also covers e.g.
-# newsletter/unsubscribe/<token>, not just newsletter/<slug>. Checked
-# before the final "genuinely unknown -> 404" fallback so none of these
-# real, working pages are ever wrongly 404'd.
-_UNENHANCED_PREFIXES = {"organizations", "directory", "newsletter", "learning", "shop"}
+# (AI Search / GEO Phase 1A removed _UNENHANCED_PREFIXES: every React
+# route under organizations/directory/learning/shop/newsletter is now
+# handled exactly — list pages and directory/submit via _STATIC_ROUTES,
+# /<prefix>/<slug> via _ENTITY_DETAIL_PREFIXES, and
+# newsletter/unsubscribe/<token> via _render_unsubscribe_shell — so any
+# other path under those prefixes matches no React route and is a real
+# 404, like every other unknown path.)
 
 # The stable keys this app's CMS Page model already uses (see
 # app/models/page.py's SYSTEM_PAGE_KEYS) — About/Legal pages fall back to
@@ -1360,6 +1596,10 @@ _SYSTEM_PAGE_KEYS = ("about", "contact", "privacy", "terms", "cookies", "editori
 #   ("passthrough",)                   — a real, working route with no
 #                                         indexable content of its own —
 #                                         just the untouched generic shell
+#   ("cms_landing", model, title, description) — a public singleton page
+#                                         whose frontend useSeo() prefers
+#                                         its own CMS row's seo/hero image
+#                                         when that row is published
 # Canonical for "list"/"noindex" entries is always {PUBLIC_SITE_URL}/
 # {subpath} — computed once in _render_static_route, not repeated here.
 _STATIC_ROUTES = {
@@ -1408,6 +1648,65 @@ _STATIC_ROUTES = {
         "list",
         "WSF Weekly Newsletter | Women Shaping Futures",
         "Subscribe to WSF Weekly for stories, jobs, and opportunities delivered every Thursday.",
+    ),
+    # List/landing pages added by AI Search / GEO Phase 1A — copy is each
+    # page's own useSeo() call, verbatim.
+    "organizations": (
+        "list",
+        "Organizations | Women Shaping Futures",
+        "Companies, foundations, universities, and institutions in the Women Shaping Futures network.",
+    ),
+    "directory": (
+        "list",
+        "Business & Professional Directory | Women Shaping Futures",
+        "Discover women-owned, women-led, and women-founded businesses and professional organizations in the Women Shaping Futures network.",
+    ),
+    "learning": (
+        "list",
+        "Learning | Women Shaping Futures",
+        "Courses, masterclasses, and learning programs on leadership, entrepreneurship, and career growth.",
+    ),
+    "shop": ("list", "Shop | Women Shaping Futures", "Digital products, guides, templates, and workbooks from Women Shaping Futures."),
+    # Public singleton pages already listed in sitemap.py's
+    # SINGLETON_PUBLIC_PAGE_ROUTES — before this phase the single-segment
+    # ones fell into the Article lookup and 404'd. Copy from each page's
+    # own useSeo() call, verbatim.
+    "partnerships": (
+        "list",
+        "Partnerships | Women Shaping Futures",
+        "Partner with Women Shaping Futures on sponsored content, events, newsletter placements, and more.",
+    ),
+    "mentorship": (
+        "list",
+        "Mentorship | Women Shaping Futures",
+        "WSF Mentorship — find a mentor, become a mentor, and join a structured mentorship program.",
+    ),
+    "submit": (
+        "list",
+        "Submit Your Story | Women Shaping Futures",
+        "Share your career, leadership, business, or personal story with Women Shaping Futures — submissions from women around the world are welcome.",
+    ),
+    "nominate": (
+        "list",
+        "Nominate a Woman | Women Shaping Futures",
+        "Nominate a woman making meaningful impact in leadership, business, career, community, or beyond — Women Shaping Futures features nominees from around the world.",
+    ),
+    "directory/submit": (
+        "list",
+        "Submit Your Business | Business & Professional Directory | Women Shaping Futures",
+        "Submit your women-owned, women-led, or women-founded business or professional organization to the WSF Business & Professional Directory.",
+    ),
+    "advertise": (
+        "cms_landing",
+        AdvertisePage,
+        "Advertise | Women Shaping Futures",
+        "Advertise and partner with Women Shaping Futures — a trusted editorial platform for ambitious, career-driven women.",
+    ),
+    "community": (
+        "cms_landing",
+        CommunityPage,
+        "Community | Women Shaping Futures",
+        "The Women Shaping Futures community — connect with members across industries, career stages, and countries.",
     ),
     "search": (
         "noindex",
@@ -1527,17 +1826,37 @@ def _render_static_route(subpath, entry):
     canonical = f"{public_site_url.rstrip('/')}/{subpath}"
     html_doc = _read_index_html()
 
-    if kind == "list":
-        _, title, description = entry
+    if kind in ("list", "cms_landing"):
+        robots, image_url, image_alt = "index, follow", None, None
+        if kind == "list":
+            _, title, description = entry
+        else:
+            # AdvertisePage.jsx/CommunityPage.jsx: their public API only
+            # returns the singleton CMS row (id 1) when it's "published"
+            # — then seo.title/description/robots and the hero image
+            # win; otherwise the page falls back to its fixed copy and no
+            # page image. The canonical is always the fixed route URL
+            # (neither page reads seo.canonical).
+            _, model, title, description = entry
+            page = db.session.get(model, 1)
+            if page is not None and page.status == "published":
+                seo = page.seo or {}
+                title = seo.get("title") or title
+                description = seo.get("description") or description
+                robots = seo.get("robots") or robots
+                fallback_media = page.hero_media
+            else:
+                fallback_media = None
+            image_url, image_alt = _resolve_social_image(None, fallback_media, site_identity, public_site_url)
         html_doc = _apply_base_seo(
             html_doc,
             title=title,
             description=description,
             canonical=canonical,
-            robots="index, follow",
+            robots=robots,
             og_type="website",
-            image_url=None,
-            image_alt=None,
+            image_url=image_url,
+            image_alt=image_alt,
             site_name=site_name,
         )
         html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
@@ -1579,9 +1898,10 @@ def _render_entity_detail(prefix, slug):
         # never bypasses that), so only a redirect actually created by
         # a publicly-visible-before-and-after slug change is ever
         # followed here.
-        redirect_row = EntityRedirect.query.filter_by(
-            entity_type=_ENTITY_TYPE_BY_PREFIX[prefix], from_slug=slug
-        ).first()
+        entity_type = _ENTITY_TYPE_BY_PREFIX.get(prefix)
+        redirect_row = (
+            EntityRedirect.query.filter_by(entity_type=entity_type, from_slug=slug).first() if entity_type else None
+        )
         if redirect_row is not None:
             return redirect(f"/{prefix}/{redirect_row.to_slug}", code=301)
         return _render_404_shell()
@@ -1627,6 +1947,31 @@ def _render_entity_detail(prefix, slug):
     return _html_response(html_doc)
 
 
+def _render_unsubscribe_shell():
+    """/newsletter/unsubscribe/<token> — a real, working React route
+    (NewsletterUnsubscribePage.jsx: title "Unsubscribe | Women Shaping
+    Futures", robots "noindex, nofollow"). The token is a private,
+    per-subscriber secret: it is never looked up here (so a valid and an
+    invalid token are indistinguishable at this layer) and never written
+    into the title, description, canonical, og:url, or any structured
+    data — this shell has none of the last three at all.
+    """
+    site_identity = get_site_identity_resolved()
+    site_name = site_identity.get("site_name") or "Women Shaping Futures"
+    html_doc = _apply_base_seo(
+        _read_index_html(),
+        title="Unsubscribe | Women Shaping Futures",
+        description=None,
+        canonical=None,
+        robots="noindex, nofollow",
+        og_type="website",
+        image_url=None,
+        image_alt=None,
+        site_name=site_name,
+    )
+    return _html_response(html_doc)
+
+
 def is_reserved_path(subpath):
     return subpath in _RESERVED_EXACT or any(subpath.startswith(p) for p in _RESERVED_PREFIXES)
 
@@ -1645,15 +1990,13 @@ def resolve_spa_response(subpath):
       4. an exact match in _STATIC_ROUTES (every other known static/
          list/landing/utility route this phase covers) -> that route's
          own server-rendered metadata, 200
-      5. a known entity-detail pattern (/<prefix>/<slug> where prefix is
-         one of the 8 in-scope types) -> that entity's real metadata if
+      5. /newsletter/unsubscribe/<token> -> a noindex, token-free
+         shell, 200 (GEO Phase 1A — see _render_unsubscribe_shell)
+      6. a known entity-detail pattern (/<prefix>/<slug> where prefix is
+         one of the 13 in-scope types) -> that entity's real metadata if
          it resolves and is publicly visible, else a real 404 (Phase
          1's fix for the soft-404 the audit found — "nonexistent public
          entity-detail route" no longer returns the generic shell)
-      6. a first segment this phase deliberately doesn't enhance
-         (_UNENHANCED_PREFIXES: organizations/directory/learning/shop/
-         newsletter) -> untouched generic shell, 200 (unchanged —
-         expanding these is future work, not touched here)
       7. a single remaining segment -> the EXISTING, unchanged Article
          flow: a published Article at that slug -> its full server SEO;
          a Redirect row for that slug -> 301; otherwise a real 404 (this
@@ -1694,11 +2037,11 @@ def resolve_spa_response(subpath):
     if static_entry is not None:
         return _render_static_route(subpath, static_entry)
 
+    if len(segments) == 3 and segments[0] == "newsletter" and segments[1] == "unsubscribe" and segments[2]:
+        return _render_unsubscribe_shell()
+
     if len(segments) == 2 and segments[0] in _ENTITY_DETAIL_PREFIXES and segments[1]:
         return _render_entity_detail(segments[0], segments[1])
-
-    if segments[0] in _UNENHANCED_PREFIXES:
-        return render_generic_shell()
 
     if len(segments) == 1 and segments[0]:
         slug = segments[0]

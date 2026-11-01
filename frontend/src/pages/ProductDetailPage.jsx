@@ -6,6 +6,7 @@ import { formatProductPrice, formatDiscountPercent } from '../utils/format'
 import { resolveImage } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
+import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
@@ -107,6 +108,7 @@ export default function ProductDetailPage() {
   )
 
   useProductStructuredData(product, canonicalUrl)
+  useBreadcrumbStructuredData(product ? [{ label: 'Shop', to: '/shop' }, { label: product.name }] : null, product?.seo?.canonical || canonicalUrl)
 
   function handleCtaClick() {
     trackEvent('product_cta_click', { productSlug: product.slug })
