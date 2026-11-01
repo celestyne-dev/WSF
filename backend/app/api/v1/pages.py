@@ -19,6 +19,7 @@ from app.schemas.page import (
 )
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -154,6 +155,7 @@ class PageDetailResource(Resource):
     @permission_required("pages.manage")
     def put(self, page_id):
         page = _get_page_or_404(page_id)
+        public_before = capture_public_urls(page)
         data = PageUpdateSchema().load(request.get_json(silent=True) or {})
 
         if "slug" in data and data["slug"] and page.page_type == "general" and data["slug"] != page.slug:
@@ -175,6 +177,9 @@ class PageDetailResource(Resource):
         _snapshot(page, current_user, note="Updated")
         db.session.commit()
         log_action(current_user, "page.update", "Page", page.id, _json_safe_changes(data))
+        # Only the system pages (About/Contact/Legal) have a public route —
+        # see indexnow.public_urls_for; a general page notifies nothing.
+        notify_public_change(public_before, page)
         return success_response(page_schema.dump(page))
 
     @permission_required("pages.manage")
@@ -196,6 +201,7 @@ class PageStatusResource(Resource):
     @permission_required("pages.manage")
     def put(self, page_id):
         page = _get_page_or_404(page_id)
+        public_before = capture_public_urls(page)
         data = PageStatusUpdateSchema().load(request.get_json(silent=True) or {})
         new_status = data["status"]
 
@@ -218,6 +224,7 @@ class PageStatusResource(Resource):
         _snapshot(page, current_user, note=f"Status: {previous_status} → {new_status}")
         db.session.commit()
         log_action(current_user, "page.status_change", "Page", page.id, {"from": previous_status, "to": new_status})
+        notify_public_change(public_before, page)
         return success_response(page_schema.dump(page))
 
 

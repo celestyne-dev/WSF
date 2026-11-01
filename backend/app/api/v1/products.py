@@ -11,6 +11,7 @@ from app.models.media import Media
 from app.models.resource import Resource as ResourceModel
 from app.schemas.commerce import ProductCategorySchema, ProductInputSchema, ProductSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -174,6 +175,7 @@ class ProductListResource(Resource):
         _apply_fields(product, data, resource, category, gallery_images)
         db.session.add(product)
         db.session.commit()
+        notify_public_change({}, product)
         return success_response(_dump_product(product, True), status=201)
 
 
@@ -192,6 +194,7 @@ class ProductDetailResource(Resource):
         product = Product.query.filter_by(slug=slug).first()
         if product is None:
             raise ApiError("Product not found.", 404, code="not_found")
+        public_before = capture_public_urls(product)
         _require_manage()
 
         data = ProductInputSchema().load(request.get_json(silent=True) or {})
@@ -204,12 +207,14 @@ class ProductDetailResource(Resource):
 
         _apply_fields(product, data, resource, category, gallery_images)
         db.session.commit()
+        notify_public_change(public_before, product)
         return success_response(_dump_product(product, True))
 
     def delete(self, slug):
         product = Product.query.filter_by(slug=slug).first()
         if product is None:
             raise ApiError("Product not found.", 404, code="not_found")
+        public_before = capture_public_urls(product)
         _require_manage()
 
         if _is_referenced(product):
@@ -222,6 +227,7 @@ class ProductDetailResource(Resource):
 
         db.session.delete(product)
         db.session.commit()
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 

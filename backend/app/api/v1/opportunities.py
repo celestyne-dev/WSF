@@ -15,6 +15,7 @@ from app.schemas.people import OrganizationSchema
 from app.schemas.taxonomy import TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.opportunity_access import (
     check_opportunity_application_access,
     has_safe_application_target,
@@ -304,6 +305,7 @@ class OpportunityListResource(Resource):
             _validate_for_publish(opportunity)
         db.session.add(opportunity)
         db.session.commit()
+        notify_public_change({}, opportunity)
         return success_response(_dump_opportunity_for_staff(opportunity), status=201)
 
 
@@ -323,6 +325,7 @@ class OpportunityDetailResource(Resource):
         opportunity = Opportunity.query.filter_by(slug=slug).first()
         if opportunity is None:
             raise ApiError("Opportunity not found.", 404, code="not_found")
+        public_before = capture_public_urls(opportunity)
         _require_manage()
 
         old_slug = opportunity.slug
@@ -346,16 +349,19 @@ class OpportunityDetailResource(Resource):
             create_entity_redirect_for_slug_change("opportunity", old_slug, opportunity.slug)
 
         db.session.commit()
+        notify_public_change(public_before, opportunity)
         return success_response(_dump_opportunity_for_staff(opportunity))
 
     def delete(self, slug):
         opportunity = Opportunity.query.filter_by(slug=slug).first()
         if opportunity is None:
             raise ApiError("Opportunity not found.", 404, code="not_found")
+        public_before = capture_public_urls(opportunity)
         _require_manage()
 
         db.session.delete(opportunity)
         db.session.commit()
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 

@@ -56,6 +56,7 @@ from app.services.directory import (
     normalize_business_name,
     normalize_website_domain,
 )
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -333,9 +334,11 @@ class AdminDirectoryListingDetailResource(Resource):
         listing = db.session.get(DirectoryListing, listing_id)
         if listing is None:
             raise ApiError("Directory listing not found.", 404, code="not_found")
+        public_before = capture_public_urls(listing)
         data = DirectoryListingUpdateSchema().load(request.get_json(silent=True) or {})
         _apply_listing_editable_fields(listing, data)
         db.session.commit()
+        notify_public_change(public_before, listing)
         return success_response(listing_admin_schema.dump(listing))
 
     @permission_required("directory.manage")
@@ -343,6 +346,7 @@ class AdminDirectoryListingDetailResource(Resource):
         listing = db.session.get(DirectoryListing, listing_id)
         if listing is None:
             raise ApiError("Directory listing not found.", 404, code="not_found")
+        public_before = capture_public_urls(listing)
 
         # Deleting a listing must never delete the Organization it points
         # to — only detach the directory-specific configuration. Archiving
@@ -354,6 +358,7 @@ class AdminDirectoryListingDetailResource(Resource):
         db.session.commit()
 
         log_action(current_user, "directory.listing_deleted", "DirectoryListing", listing_id, {"organization_id": organization_id})
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 
@@ -363,6 +368,7 @@ class AdminDirectoryListingStatusResource(Resource):
         listing = db.session.get(DirectoryListing, listing_id)
         if listing is None:
             raise ApiError("Directory listing not found.", 404, code="not_found")
+        public_before = capture_public_urls(listing)
 
         data = DirectoryListingStatusInputSchema().load(request.get_json(silent=True) or {})
         new_status = data["status"]
@@ -388,6 +394,7 @@ class AdminDirectoryListingStatusResource(Resource):
             "rejected": "directory.listing_rejected",
         }.get(new_status, "directory.listing_status_changed")
         log_action(current_user, action, "DirectoryListing", listing.id, {"from_status": from_status, "to_status": new_status})
+        notify_public_change(public_before, listing)
         return success_response(listing_admin_schema.dump(listing))
 
 
@@ -397,6 +404,7 @@ class AdminDirectoryListingVerificationResource(Resource):
         listing = db.session.get(DirectoryListing, listing_id)
         if listing is None:
             raise ApiError("Directory listing not found.", 404, code="not_found")
+        public_before = capture_public_urls(listing)
 
         data = DirectoryListingVerificationInputSchema().load(request.get_json(silent=True) or {})
         from_status = listing.verification_status
@@ -414,6 +422,7 @@ class AdminDirectoryListingVerificationResource(Resource):
             current_user, "directory.verification_changed", "DirectoryListing", listing.id,
             {"from_status": from_status, "to_status": listing.verification_status},
         )
+        notify_public_change(public_before, listing)
         return success_response(listing_admin_schema.dump(listing))
 
 

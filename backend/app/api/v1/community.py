@@ -35,6 +35,7 @@ from app.services.community_accounts import (
     update_self_profile,
 )
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -533,6 +534,7 @@ class CommunityPageResource(Resource):
     @permission_required("community.manage")
     def patch(self):
         page = _get_community_page()
+        public_before = capture_public_urls(page)
         data = CommunityPageInputSchema().load(request.get_json(silent=True) or {})
         if "intro_content" in data:
             data["intro_content"] = sanitize_content_blocks(data["intro_content"])
@@ -540,6 +542,7 @@ class CommunityPageResource(Resource):
             setattr(page, field, value)
         db.session.commit()
         log_action(current_user, "community_page.update", "CommunityPage", page.id)
+        notify_public_change(public_before, page)
         return success_response(page_schema.dump(page))
 
 
@@ -547,6 +550,7 @@ class CommunityPageStatusResource(Resource):
     @permission_required("community.manage")
     def patch(self):
         page = _get_community_page()
+        public_before = capture_public_urls(page)
         data = CommunityPageStatusInputSchema().load(request.get_json(silent=True) or {})
         previous_status = page.status
         page.status = data["status"]
@@ -555,6 +559,7 @@ class CommunityPageStatusResource(Resource):
             current_user, "community_page.status_change", "CommunityPage", page.id,
             changes={"from": previous_status, "to": page.status},
         )
+        notify_public_change(public_before, page)
         return success_response(page_schema.dump(page))
 
 

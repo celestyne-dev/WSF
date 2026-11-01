@@ -21,6 +21,7 @@ from app.services import articles_workflow
 from app.services.audit import log_action
 from app.services.notifications import notify_article_approved, notify_article_review_requested
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import create_redirect_for_slug_change, generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
@@ -113,6 +114,7 @@ def _perform_transition(article, to_status, user, action_name, audit_changes=Non
     if from_status == to_status:
         return success_response(article_schema.dump(article))
 
+    public_before = capture_public_urls(article)
     article.status = to_status
     db.session.flush()
     articles_workflow.snapshot(article, user, note=note)
@@ -122,6 +124,9 @@ def _perform_transition(article, to_status, user, action_name, audit_changes=Non
     if audit_changes:
         changes.update(audit_changes)
     log_action(user, action_name, "Article", article.id, changes)
+    # Best effort, after commit: e.g. published -> archived submits the
+    # now-removed URL (see app/services/indexnow.py).
+    notify_public_change(public_before, article)
 
     # Notification hooks — see app/services/notifications.py. Placed after
     # the transition's own commit so a notification issue can never lose
@@ -331,6 +336,7 @@ class ArticleListResource(Resource):
         db.session.commit()
 
         log_action(user, "article.create", "Article", article.id)
+        notify_public_change({}, article)
         return success_response(article_schema.dump(article), status=201)
 
 
@@ -390,6 +396,7 @@ class ArticleDetailResource(Resource):
                 code="invalid_transition",
             )
 
+        public_before = capture_public_urls(article)
         old_slug = article.slug
         if data.get("slug") and data["slug"] != old_slug:
             article.slug = validate_explicit_slug(Article, data["slug"], current_id=article.id)
@@ -405,6 +412,8 @@ class ArticleDetailResource(Resource):
 
         db.session.commit()
         log_action(user, "article.update", "Article", article.id)
+        # A public slug change submits both the old (now 301) and new URL.
+        notify_public_change(public_before, article)
         return success_response(article_schema.dump(article))
 
 
@@ -594,6 +603,7 @@ class ArticlePublishResource(Resource):
 
         from_status = article.status
         _validate_for_publish(article)
+        public_before = capture_public_urls(article)
         article.status = "published"
         article.publish_date = datetime.now(timezone.utc)
         db.session.flush()
@@ -601,6 +611,7 @@ class ArticlePublishResource(Resource):
         db.session.commit()
 
         log_action(user, "article.publish", "Article", article.id, {"from_status": from_status, "to_status": "published"})
+        notify_public_change(public_before, article)
         return success_response(article_schema.dump(article))
 
 

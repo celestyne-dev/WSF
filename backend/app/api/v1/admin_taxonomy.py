@@ -23,6 +23,7 @@ from app.schemas.taxonomy import (
 )
 from app.services.audit import log_action
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.services.taxonomy import (
     category_usage_counts,
@@ -107,6 +108,7 @@ class TopicAdminListResource(Resource):
         db.session.add(topic)
         db.session.commit()
         log_action(current_user, "topic.create", "Topic", topic.id, {"name": topic.name})
+        notify_public_change({}, topic)
         return success_response(topic_schema.dump(topic), status=201)
 
 
@@ -125,6 +127,7 @@ class TopicAdminDetailResource(Resource):
         topic = Topic.query.get(topic_id)
         if topic is None:
             raise ApiError("Topic not found.", 404, code="not_found")
+        public_before = capture_public_urls(topic)
 
         old_slug = topic.slug
         was_public = topic.status == "published"
@@ -148,6 +151,7 @@ class TopicAdminDetailResource(Resource):
 
         db.session.commit()
         log_action(current_user, "topic.update", "Topic", topic.id, data)
+        notify_public_change(public_before, topic)
         return success_response(topic_schema.dump(topic))
 
     @permission_required("taxonomy.manage")
@@ -155,6 +159,7 @@ class TopicAdminDetailResource(Resource):
         topic = Topic.query.get(topic_id)
         if topic is None:
             raise ApiError("Topic not found.", 404, code="not_found")
+        public_before = capture_public_urls(topic)
 
         usage = topic_usage_counts([topic.id]).get(topic.id, 0)
         if usage > 0:
@@ -168,6 +173,7 @@ class TopicAdminDetailResource(Resource):
         db.session.delete(topic)
         db.session.commit()
         log_action(current_user, "topic.delete", "Topic", topic_id, {"name": topic.name})
+        notify_public_change(public_before, None)
         return "", 204
 
 
@@ -177,10 +183,12 @@ class TopicAdminStatusResource(Resource):
         topic = Topic.query.get(topic_id)
         if topic is None:
             raise ApiError("Topic not found.", 404, code="not_found")
+        public_before = capture_public_urls(topic)
         data = TaxonomyStatusUpdateSchema().load(request.get_json(silent=True) or {})
         topic.status = data["status"]
         db.session.commit()
         log_action(current_user, "topic.status_change", "Topic", topic.id, {"status": topic.status})
+        notify_public_change(public_before, topic)
         return success_response(topic_schema.dump(topic))
 
 
@@ -311,6 +319,7 @@ class SeriesAdminListResource(Resource):
         db.session.add(series)
         db.session.commit()
         log_action(current_user, "series.create", "Series", series.id, {"name": series.name})
+        notify_public_change({}, series)
         return success_response(series_schema.dump(series), status=201)
 
 
@@ -329,6 +338,7 @@ class SeriesAdminDetailResource(Resource):
         series = Series.query.get(series_id)
         if series is None:
             raise ApiError("Series not found.", 404, code="not_found")
+        public_before = capture_public_urls(series)
 
         old_slug = series.slug
         was_public = series.status == "published"
@@ -359,6 +369,7 @@ class SeriesAdminDetailResource(Resource):
 
         db.session.commit()
         log_action(current_user, "series.update", "Series", series.id, data)
+        notify_public_change(public_before, series)
         return success_response(series_schema.dump(series))
 
     @permission_required("taxonomy.manage")
@@ -366,6 +377,7 @@ class SeriesAdminDetailResource(Resource):
         series = Series.query.get(series_id)
         if series is None:
             raise ApiError("Series not found.", 404, code="not_found")
+        public_before = capture_public_urls(series)
 
         usage = series_usage_counts([series.id]).get(series.id, 0)
         if usage > 0:
@@ -379,6 +391,7 @@ class SeriesAdminDetailResource(Resource):
         db.session.delete(series)
         db.session.commit()
         log_action(current_user, "series.delete", "Series", series_id, {"name": series.name})
+        notify_public_change(public_before, None)
         return "", 204
 
 
@@ -388,10 +401,12 @@ class SeriesAdminStatusResource(Resource):
         series = Series.query.get(series_id)
         if series is None:
             raise ApiError("Series not found.", 404, code="not_found")
+        public_before = capture_public_urls(series)
         data = TaxonomyStatusUpdateSchema().load(request.get_json(silent=True) or {})
         series.status = data["status"]
         db.session.commit()
         log_action(current_user, "series.status_change", "Series", series.id, {"status": series.status})
+        notify_public_change(public_before, series)
         return success_response(series_schema.dump(series))
 
 

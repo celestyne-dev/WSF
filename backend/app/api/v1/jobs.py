@@ -16,6 +16,7 @@ from app.schemas.opportunity import JobInputSchema, JobSchema
 from app.schemas.people import OrganizationSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.job_access import (
     check_job_application_access,
     has_valid_application_channel,
@@ -355,6 +356,7 @@ class JobListResource(Resource):
             _validate_for_publish(job)
         db.session.add(job)
         db.session.commit()
+        notify_public_change({}, job)
         return success_response(_dump_job_for_editor(job), status=201)
 
 
@@ -374,6 +376,7 @@ class JobDetailResource(Resource):
         job = Job.query.filter_by(slug=slug).first()
         if job is None:
             raise ApiError("Job not found.", 404, code="not_found")
+        public_before = capture_public_urls(job)
         _can_edit(job)
 
         old_slug = job.slug
@@ -398,16 +401,19 @@ class JobDetailResource(Resource):
             create_entity_redirect_for_slug_change("job", old_slug, job.slug)
 
         db.session.commit()
+        notify_public_change(public_before, job)
         return success_response(_dump_job_for_editor(job))
 
     def delete(self, slug):
         job = Job.query.filter_by(slug=slug).first()
         if job is None:
             raise ApiError("Job not found.", 404, code="not_found")
+        public_before = capture_public_urls(job)
         _can_edit(job)
 
         db.session.delete(job)
         db.session.commit()
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 
@@ -458,6 +464,7 @@ class JobDuplicateResource(Resource):
         copy.slug = generate_unique_slug(Job, f"{job.title} copy")
         db.session.add(copy)
         db.session.commit()
+        notify_public_change({}, copy)
         return success_response(_dump_job_for_editor(copy), status=201)
 
 

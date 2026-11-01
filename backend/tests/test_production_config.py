@@ -403,3 +403,26 @@ def test_health_endpoint_never_leaks_secret_values(client):
     assert "SECRET_KEY" not in body
     assert "DATABASE_URL" not in body
     assert "dev-secret-change-me" not in body
+
+
+# --- AI Search / GEO Phase 2: IndexNow ----------------------------------------
+
+
+def test_indexnow_disabled_needs_no_key():
+    require_production_settings(_bare_app(INDEXNOW_ENABLED=False, INDEXNOW_KEY=None))
+
+
+def test_indexnow_enabled_without_key_fails():
+    with pytest.raises(RuntimeError, match="INDEXNOW_KEY is not set"):
+        require_production_settings(_bare_app(INDEXNOW_ENABLED=True, INDEXNOW_KEY=None))
+
+
+@pytest.mark.parametrize("bad_key", ["short", "has spaces in key", "under_score_key", "x" * 129])
+def test_indexnow_enabled_with_malformed_key_fails_without_echoing_it(bad_key):
+    with pytest.raises(RuntimeError, match="INDEXNOW_KEY is malformed") as excinfo:
+        require_production_settings(_bare_app(INDEXNOW_ENABLED=True, INDEXNOW_KEY=bad_key))
+    assert bad_key not in str(excinfo.value)
+
+
+def test_indexnow_enabled_with_valid_key_passes():
+    require_production_settings(_bare_app(INDEXNOW_ENABLED=True, INDEXNOW_KEY="a1b2c3d4-e5f6-7890-abcd-ef1234567890"))

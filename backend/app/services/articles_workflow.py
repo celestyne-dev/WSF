@@ -163,5 +163,14 @@ def publish_due_articles(as_of=None):
         except Exception as exc:  # noqa: BLE001 - one bad row must never abort the rest
             db.session.rollback()
             failed.append({"article_id": article_id, "error": str(exc)})
+            continue
+
+        # AI Search / GEO Phase 2 — deliberately OUTSIDE the try above:
+        # the publish is already committed and counted, and IndexNow is
+        # best effort (notify_public_change never raises), so a search-
+        # engine failure can never mark this article "failed".
+        from app.services.indexnow import notify_public_change
+
+        notify_public_change({}, article)
 
     return {"published": published, "skipped": skipped, "failed": failed}

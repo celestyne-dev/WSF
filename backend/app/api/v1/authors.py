@@ -12,6 +12,7 @@ from app.schemas.article import article_summary_schema
 from app.schemas.people import AuthorInputSchema, AuthorSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_search
 from app.utils.pagination import paginate
@@ -141,6 +142,7 @@ class AuthorListResource(Resource):
             _validate_for_publish(author)
         db.session.add(author)
         db.session.commit()
+        notify_public_change({}, author)
         return success_response(author_schema.dump(author), status=201)
 
 
@@ -166,6 +168,7 @@ class AuthorDetailResource(Resource):
         author = Author.query.filter_by(slug=slug).first()
         if author is None:
             raise ApiError("Author not found.", 404, code="not_found")
+        public_before = capture_public_urls(author)
 
         old_slug = author.slug
         was_public = author.status == "active"
@@ -188,6 +191,7 @@ class AuthorDetailResource(Resource):
             create_entity_redirect_for_slug_change("author", old_slug, author.slug)
 
         db.session.commit()
+        notify_public_change(public_before, author)
         return success_response(author_schema.dump(author))
 
     def delete(self, slug):
@@ -195,6 +199,7 @@ class AuthorDetailResource(Resource):
         author = Author.query.filter_by(slug=slug).first()
         if author is None:
             raise ApiError("Author not found.", 404, code="not_found")
+        public_before = capture_public_urls(author)
 
         if _is_referenced_by_articles(author):
             raise ApiError(
@@ -206,6 +211,7 @@ class AuthorDetailResource(Resource):
 
         db.session.delete(author)
         db.session.commit()
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 

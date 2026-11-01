@@ -36,6 +36,7 @@ from app.schemas.learning import (
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.homepage import validate_cta_url
 from app.services.audit import log_action
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.learning_access import can_access_program_content
 from app.services.learning_enrollments import progress_summary
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
@@ -339,6 +340,7 @@ class AdminLearningProgramListResource(Resource):
         db.session.commit()
 
         log_action(user, "learning.create", "LearningProgram", program.id, {"status": program.status})
+        notify_public_change({}, program)
         return success_response(program_schema.dump(program), status=201)
 
 
@@ -355,6 +357,7 @@ class AdminLearningProgramDetailResource(Resource):
         program = LearningProgram.query.get(program_id)
         if program is None:
             raise ApiError("Learning program not found.", 404, code="not_found")
+        public_before = capture_public_urls(program)
 
         data = LearningProgramInputSchema().load(request.get_json(silent=True) or {})
         relations = _resolve_program_relations(data)
@@ -386,6 +389,7 @@ class AdminLearningProgramDetailResource(Resource):
             changes["access_type_changed"] = {"from": old_access_type, "to": program.access_type}
         log_action(user, "learning.update", "LearningProgram", program.id, changes or None)
 
+        notify_public_change(public_before, program)
         return success_response(program_schema.dump(program))
 
 
@@ -421,6 +425,7 @@ class AdminLearningCurriculumResource(Resource):
         program = LearningProgram.query.get(program_id)
         if program is None:
             raise ApiError("Learning program not found.", 404, code="not_found")
+        public_before = capture_public_urls(program)
 
         data = LearningCurriculumInputSchema().load(request.get_json(silent=True) or {})
 
@@ -526,6 +531,7 @@ class AdminLearningCurriculumResource(Resource):
             program.id,
             {"module_count": len(new_modules), "lesson_count": sum(len(m.lessons) for m in new_modules)},
         )
+        notify_public_change(public_before, program)
         return success_response(program_schema.dump(program))
 
 

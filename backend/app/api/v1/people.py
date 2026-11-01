@@ -11,6 +11,7 @@ from app.models.taxonomy import Series
 from app.schemas.people import PersonInputSchema, PersonSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -146,6 +147,7 @@ class PersonListResource(Resource):
             _validate_for_publish(person)
         db.session.add(person)
         db.session.commit()
+        notify_public_change({}, person)
         return success_response(person_schema.dump(person), status=201)
 
 
@@ -163,6 +165,7 @@ class PersonDetailResource(Resource):
         person = Person.query.filter_by(slug=slug).first()
         if person is None:
             raise ApiError("Person not found.", 404, code="not_found")
+        public_before = capture_public_urls(person)
 
         old_slug = person.slug
         was_public = person.status == "published"
@@ -183,6 +186,7 @@ class PersonDetailResource(Resource):
             create_entity_redirect_for_slug_change("person", old_slug, person.slug)
 
         db.session.commit()
+        notify_public_change(public_before, person)
         return success_response(person_schema.dump(person))
 
     def delete(self, slug):
@@ -190,6 +194,7 @@ class PersonDetailResource(Resource):
         person = Person.query.filter_by(slug=slug).first()
         if person is None:
             raise ApiError("Person not found.", 404, code="not_found")
+        public_before = capture_public_urls(person)
 
         if _is_referenced_by_articles(person):
             raise ApiError(
@@ -201,6 +206,7 @@ class PersonDetailResource(Resource):
 
         db.session.delete(person)
         db.session.commit()
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 

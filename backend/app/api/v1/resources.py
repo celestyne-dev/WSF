@@ -40,6 +40,7 @@ from app.schemas.resource import ResourceInputSchema, ResourceLeadInputSchema, R
 from app.schemas.taxonomy import TagSchema, TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
 from app.services.resource_access import check_resource_access, get_viewer_access_source, viewer_can_access
 from app.services.resource_downloads import (
@@ -526,6 +527,7 @@ class ResourceListResource(Resource):
         _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
         db.session.add(resource)
         db.session.commit()
+        notify_public_change({}, resource)
         return success_response(resource_schema.dump(resource), status=201)
 
 
@@ -545,6 +547,7 @@ class ResourceDetailResource(Resource):
         resource = ResourceModel.query.filter_by(slug=slug).first()
         if resource is None:
             raise ApiError("Resource not found.", 404, code="not_found")
+        public_before = capture_public_urls(resource)
         _require_manage()
 
         old_slug = resource.slug
@@ -582,12 +585,14 @@ class ResourceDetailResource(Resource):
         if old_protected_path and old_protected_path != resource.protected_file_path:
             _cleanup_orphaned_protected_file(old_protected_path)
 
+        notify_public_change(public_before, resource)
         return success_response(resource_schema.dump(resource))
 
     def delete(self, slug):
         resource = ResourceModel.query.filter_by(slug=slug).first()
         if resource is None:
             raise ApiError("Resource not found.", 404, code="not_found")
+        public_before = capture_public_urls(resource)
         _require_manage()
 
         if _is_referenced(resource):
@@ -605,6 +610,7 @@ class ResourceDetailResource(Resource):
         if protected_path:
             _cleanup_orphaned_protected_file(protected_path)
 
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 

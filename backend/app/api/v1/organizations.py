@@ -12,6 +12,7 @@ from app.models.people import Organization, Person
 from app.models.taxonomy import Series
 from app.schemas.people import OrganizationInputSchema, OrganizationSchema
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -125,6 +126,7 @@ class OrganizationListResource(Resource):
             _validate_for_publish(organization)
         db.session.add(organization)
         db.session.commit()
+        notify_public_change({}, organization)
         return success_response(organization_schema.dump(organization), status=201)
 
 
@@ -142,6 +144,7 @@ class OrganizationDetailResource(Resource):
         organization = Organization.query.filter_by(slug=slug).first()
         if organization is None:
             raise ApiError("Organization not found.", 404, code="not_found")
+        public_before = capture_public_urls(organization)
 
         data = OrganizationInputSchema().load(request.get_json(silent=True) or {})
 
@@ -152,6 +155,7 @@ class OrganizationDetailResource(Resource):
         if organization.status == "published":
             _validate_for_publish(organization)
         db.session.commit()
+        notify_public_change(public_before, organization)
         return success_response(organization_schema.dump(organization))
 
     def delete(self, slug):
@@ -159,6 +163,7 @@ class OrganizationDetailResource(Resource):
         organization = Organization.query.filter_by(slug=slug).first()
         if organization is None:
             raise ApiError("Organization not found.", 404, code="not_found")
+        public_before = capture_public_urls(organization)
 
         if _is_referenced(organization):
             raise ApiError(
@@ -171,6 +176,7 @@ class OrganizationDetailResource(Resource):
 
         db.session.delete(organization)
         db.session.commit()
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 

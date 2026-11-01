@@ -26,6 +26,7 @@ from app.schemas.newsletter import (
 )
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import audience_query, count_audience, upsert_subscriber
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -214,6 +215,7 @@ class NewsletterIssueListResource(Resource):
         db.session.add(issue)
         db.session.commit()
         log_action(current_user, "newsletter_issue_created", "NewsletterIssue", issue.id)
+        notify_public_change({}, issue)
         return success_response(issue_schema.dump(issue), status=201)
 
 
@@ -259,6 +261,7 @@ class NewsletterIssueDetailResource(Resource):
         issue = NewsletterIssue.query.filter_by(slug=slug).first()
         if issue is None:
             raise ApiError("Newsletter issue not found.", 404, code="not_found")
+        public_before = capture_public_urls(issue)
 
         data = NewsletterIssueInputSchema().load(request.get_json(silent=True) or {})
         featured_article = _resolve_featured_article(data.get("featured_article_slug"))
@@ -275,6 +278,7 @@ class NewsletterIssueDetailResource(Resource):
                 changes={"from": previous_status, "to": issue.status},
             )
         db.session.commit()
+        notify_public_change(public_before, issue)
         return success_response(issue_schema.dump(issue))
 
 
@@ -291,6 +295,7 @@ class NewsletterIssueMarkSentResource(Resource):
         issue = NewsletterIssue.query.filter_by(slug=slug).first()
         if issue is None:
             raise ApiError("Newsletter issue not found.", 404, code="not_found")
+        public_before = capture_public_urls(issue)
         if issue.status == "sent":
             raise ApiError("This issue is already marked as sent.", 409, code="already_sent")
         if not issue.subject:
@@ -306,6 +311,7 @@ class NewsletterIssueMarkSentResource(Resource):
             current_user, "newsletter_issue_marked_sent", "NewsletterIssue", issue.id,
             changes={"from": previous_status, "to": "sent"},
         )
+        notify_public_change(public_before, issue)
         return success_response(issue_schema.dump(issue))
 
 
@@ -315,6 +321,7 @@ class NewsletterIssueArchiveResource(Resource):
         issue = NewsletterIssue.query.filter_by(slug=slug).first()
         if issue is None:
             raise ApiError("Newsletter issue not found.", 404, code="not_found")
+        public_before = capture_public_urls(issue)
 
         previous_status = issue.status
         issue.status = "archived"
@@ -323,6 +330,7 @@ class NewsletterIssueArchiveResource(Resource):
             current_user, "newsletter_issue_archived", "NewsletterIssue", issue.id,
             changes={"from": previous_status, "to": "archived"},
         )
+        notify_public_change(public_before, issue)
         return success_response(issue_schema.dump(issue))
 
 

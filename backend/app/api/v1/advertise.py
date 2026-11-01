@@ -20,6 +20,7 @@ from app.schemas.cms import (
 from app.schemas.media import MediaSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.audit import log_action
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.utils.responses import ApiError, success_response
 
 advertise_bp = Blueprint("advertise", __name__)
@@ -51,6 +52,16 @@ def _get_offering_or_404(offering_id):
     return offering
 
 
+def _notify_advertise_page_content_changed():
+    """Metrics/offerings are shown on the public /advertise page — an edit
+    to them is an update to that page while it's published (indexnow's
+    public_urls_for returns nothing otherwise). Call after commit."""
+    page = db.session.get(AdvertisePage, 1)
+    if page is not None:
+        urls = capture_public_urls(page)
+        notify_public_change(urls, page)
+
+
 class AdvertisePageResource(Resource):
     @permission_required("partnerships.manage")
     def get(self):
@@ -59,6 +70,7 @@ class AdvertisePageResource(Resource):
     @permission_required("partnerships.manage")
     def patch(self):
         page = _get_page()
+        public_before = capture_public_urls(page)
         data = AdvertisePageInputSchema().load(request.get_json(silent=True) or {})
         if "intro_content" in data:
             data["intro_content"] = sanitize_content_blocks(data["intro_content"])
@@ -68,6 +80,7 @@ class AdvertisePageResource(Resource):
             setattr(page, field, value)
         db.session.commit()
         log_action(current_user, "advertise.page_update", "AdvertisePage", page.id)
+        notify_public_change(public_before, page)
         return success_response(page_schema.dump(page))
 
 
@@ -75,6 +88,7 @@ class AdvertisePageStatusResource(Resource):
     @permission_required("partnerships.manage")
     def patch(self):
         page = _get_page()
+        public_before = capture_public_urls(page)
         data = AdvertisePageStatusInputSchema().load(request.get_json(silent=True) or {})
         previous_status = page.status
         page.status = data["status"]
@@ -83,6 +97,7 @@ class AdvertisePageStatusResource(Resource):
             current_user, "advertise.page_status_change", "AdvertisePage", page.id,
             changes={"from": previous_status, "to": page.status},
         )
+        notify_public_change(public_before, page)
         return success_response(page_schema.dump(page))
 
 
@@ -99,6 +114,7 @@ class AdvertiseMetricListResource(Resource):
         db.session.add(metric)
         db.session.commit()
         log_action(current_user, "advertise.metric_create", "AdvertiseMetric", metric.id)
+        _notify_advertise_page_content_changed()
         return success_response(metric_schema.dump(metric), status=201)
 
 
@@ -111,6 +127,7 @@ class AdvertiseMetricDetailResource(Resource):
             setattr(metric, field, value)
         db.session.commit()
         log_action(current_user, "advertise.metric_update", "AdvertiseMetric", metric.id)
+        _notify_advertise_page_content_changed()
         return success_response(metric_schema.dump(metric))
 
     @permission_required("partnerships.manage")
@@ -119,6 +136,7 @@ class AdvertiseMetricDetailResource(Resource):
         db.session.delete(metric)
         db.session.commit()
         log_action(current_user, "advertise.metric_delete", "AdvertiseMetric", metric_id)
+        _notify_advertise_page_content_changed()
         return success_response(None, status=204)
 
 
@@ -135,6 +153,7 @@ class AdvertiseOfferingListResource(Resource):
         db.session.add(offering)
         db.session.commit()
         log_action(current_user, "advertise.offering_create", "AdvertiseOffering", offering.id)
+        _notify_advertise_page_content_changed()
         return success_response(offering_schema.dump(offering), status=201)
 
 
@@ -147,6 +166,7 @@ class AdvertiseOfferingDetailResource(Resource):
             setattr(offering, field, value)
         db.session.commit()
         log_action(current_user, "advertise.offering_update", "AdvertiseOffering", offering.id)
+        _notify_advertise_page_content_changed()
         return success_response(offering_schema.dump(offering))
 
     @permission_required("partnerships.manage")
@@ -155,6 +175,7 @@ class AdvertiseOfferingDetailResource(Resource):
         db.session.delete(offering)
         db.session.commit()
         log_action(current_user, "advertise.offering_delete", "AdvertiseOffering", offering_id)
+        _notify_advertise_page_content_changed()
         return success_response(None, status=204)
 
 

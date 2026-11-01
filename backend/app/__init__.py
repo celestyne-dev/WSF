@@ -212,6 +212,31 @@ def create_app(config_name="development"):
 
         return Response(build_robots_txt(app.config["PUBLIC_SITE_URL"]), mimetype="text/plain")
 
+    @app.get("/<string:key>.txt")
+    def indexnow_key_file(key):
+        # AI Search / GEO Phase 2 — IndexNow ownership verification
+        # ({PUBLIC_SITE_URL}/{INDEXNOW_KEY}.txt). Only ever answers with
+        # the configured key, as bare text, when IndexNow is enabled with a
+        # valid key AND the requested name matches it exactly; every other
+        # *.txt name is a plain 404 (never a diagnostic, never another
+        # key). /robots.txt above is a more specific static rule, so it
+        # always wins over this one; this rule in turn wins over the SPA
+        # catch-all below, so a .txt name never reaches the Article-slug
+        # lookup. In production Nginx's `location /` try_files misses
+        # (no such file on disk) and proxies here via @spa_shell.
+        import hmac
+
+        from flask import Response, abort
+
+        from app.services.indexnow import active_indexnow_key
+
+        configured = active_indexnow_key()
+        if configured is None or not hmac.compare_digest(key.encode(), configured.encode()):
+            abort(404)
+        response = Response(configured, mimetype="text/plain")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
     @app.get("/")
     def spa_shell_root():
         # Module 12B / SEO Phase 1: the homepage gets its own real

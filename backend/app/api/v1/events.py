@@ -24,6 +24,7 @@ from app.services.event_registrations import (
     registration_availability,
     serialize_event_for_viewer,
 )
+from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_search
 from app.utils.pagination import paginate
@@ -326,6 +327,7 @@ class EventListResource(Resource):
             _validate_for_publish(event)
         db.session.add(event)
         db.session.commit()
+        notify_public_change({}, event)
         return success_response(_dump_event_for_staff(event), status=201)
 
 
@@ -353,6 +355,7 @@ class EventDetailResource(Resource):
         event = Event.query.filter_by(slug=slug).first()
         if event is None:
             raise ApiError("Event not found.", 404, code="not_found")
+        public_before = capture_public_urls(event)
         _require_manage()
 
         old_slug = event.slug
@@ -378,16 +381,19 @@ class EventDetailResource(Resource):
             create_entity_redirect_for_slug_change("event", old_slug, event.slug)
 
         db.session.commit()
+        notify_public_change(public_before, event)
         return success_response(_dump_event_for_staff(event))
 
     def delete(self, slug):
         event = Event.query.filter_by(slug=slug).first()
         if event is None:
             raise ApiError("Event not found.", 404, code="not_found")
+        public_before = capture_public_urls(event)
         _require_manage()
 
         db.session.delete(event)
         db.session.commit()
+        notify_public_change(public_before, None)
         return success_response({"deleted": True})
 
 
