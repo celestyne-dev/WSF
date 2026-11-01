@@ -1,4 +1,4 @@
-from marshmallow import EXCLUDE, ValidationError, fields, post_load, pre_load, validate
+from marshmallow import EXCLUDE, ValidationError, fields, post_dump, post_load, pre_load, validate
 
 from app.extensions import db, ma
 from app.models.article import AI_INVOLVEMENT_VALUES, ARTICLE_STATUSES, Article
@@ -94,8 +94,29 @@ class ArticleSchema(ma.SQLAlchemyAutoSchema):
 # provenance metadata, not a secret. Views pick this schema whenever the
 # requester is not an editor with permission to edit the article — see
 # ArticleDetailResource.get() in api/v1/articles.py.
+class PublicArticleSchema(ArticleSchema):
+    """ArticleSchema for anonymous/public payloads (the public Article API,
+    the hard-load Article bootstrap, public lists, Saved Items): linked
+    Category/Series/Topics/Tags/related People/related Organizations/
+    related Articles are kept only when each is itself public (see
+    app/services/public_visibility.py). The staff editor keeps using the
+    plain ArticleSchema, so draft relationships stay editable.
+    """
+
+    @post_dump(pass_original=True)
+    def _drop_nonpublic_relations(self, data, original, **kwargs):
+        from app.services.public_visibility import filter_dumped, public_article_dump
+
+        public_article_dump(data, original)
+        if isinstance(data.get("related_articles"), list):
+            data["related_articles"] = filter_dumped(
+                data["related_articles"], original.related_articles, lambda a: a is not None and a.status == "published"
+            )
+        return data
+
+
 def public_article_schema(many=False):
-    return ArticleSchema(many=many, exclude=("ai_editorial_notes",) + _WORKFLOW_FIELDS)
+    return PublicArticleSchema(many=many, exclude=("ai_editorial_notes",) + _WORKFLOW_FIELDS)
 
 
 def article_summary_schema(many=False):
@@ -103,8 +124,9 @@ def article_summary_schema(many=False):
     full nested relations, just enough for an ArticleCard, and no
     workflow/approval metadata (see admin_article_summary_schema() below
     for the staff-only equivalent used by the admin list and calendar).
+    Same public relation filtering as public_article_schema().
     """
-    return ArticleSchema(
+    return PublicArticleSchema(
         many=many,
         exclude=(
             "content",

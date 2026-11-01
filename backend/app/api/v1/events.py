@@ -25,6 +25,7 @@ from app.services.event_registrations import (
     serialize_event_for_viewer,
 )
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.public_visibility import public_event_dump
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_search
 from app.utils.pagination import paginate
@@ -306,7 +307,10 @@ class EventListResource(Resource):
         # so this stays the same one-query-per-page cost as before.
         result = paginate(query, schema=None)
         viewer = _current_user_or_none()
-        items = [{**event_schema.dump(e), **public_event_access_fields(e, viewer)} for e in result["items"]]
+        items = [
+            {**(event_schema.dump(e) if can_manage else public_event_dump(event_schema.dump(e), e)), **public_event_access_fields(e, viewer)}
+            for e in result["items"]
+        ]
         return success_response(items, meta=result["meta"])
 
     def post(self):

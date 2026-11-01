@@ -16,6 +16,7 @@ from app.schemas.taxonomy import TopicSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.public_visibility import is_public_taxonomy, public_organization_preview
 from app.services.opportunity_access import (
     check_opportunity_application_access,
     has_safe_application_target,
@@ -195,10 +196,10 @@ def build_public_opportunity_payload(opportunity, viewer, *, detail=False):
         "slug": opportunity.slug,
         "title": opportunity.title,
         "organization_id": opportunity.organization_id,
-        "organization": (
-            OrganizationSchema(only=("id", "slug", "name", "logo")).dump(opportunity.organization)
-            if opportunity.organization
-            else None
+        # Linked Organization preview / Topics only when each is itself
+        # public; organization_name (stored on the Opportunity) stays.
+        "organization": public_organization_preview(
+            opportunity.organization, OrganizationSchema(only=("id", "slug", "name", "logo")).dump
         ),
         "organization_name": opportunity.organization_name,
         "logo": MediaSchema().dump(opportunity.logo) if opportunity.logo else None,
@@ -224,7 +225,9 @@ def build_public_opportunity_payload(opportunity, viewer, *, detail=False):
         "status": opportunity.status,
         "is_closed": not is_application_open(opportunity),
         "seo": opportunity.seo or {},
-        "topics": TopicSchema(many=True, exclude=("article_count",)).dump(opportunity.topics),
+        "topics": TopicSchema(many=True, exclude=("article_count",)).dump(
+            [t for t in opportunity.topics if is_public_taxonomy(t)]
+        ),
         "access_type": opportunity.access_type,
         "requiresCircle": opportunity.access_type == "circle_only",
     }

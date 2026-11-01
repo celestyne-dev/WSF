@@ -13,6 +13,7 @@ from app.schemas.people import AuthorInputSchema, AuthorSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.public_visibility import public_author_dump
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_search
 from app.utils.pagination import paginate
@@ -122,8 +123,13 @@ class AuthorListResource(Resource):
         query = apply_search(query, Author, request.args, ["name", "role"], param="query")
         if request.args.get("topic"):
             query = query.filter(Author.topics.any(slug=request.args["topic"]))
-        result = paginate(query, author_schema)
-        return success_response(result["items"], meta=result["meta"])
+        if editor:
+            result = paginate(query, author_schema)
+            return success_response(result["items"], meta=result["meta"])
+        # Public list: each Author's unpublished Topics never appear.
+        result = paginate(query, schema=None)
+        items = [public_author_dump(author_schema.dump(a), a) for a in result["items"]]
+        return success_response(items, meta=result["meta"])
 
     @permission_required("people.manage")
     def post(self):
@@ -151,7 +157,8 @@ class AuthorDetailResource(Resource):
         author = Author.query.filter_by(slug=slug).first()
         if author is None:
             raise ApiError("Author not found.", 404, code="not_found")
-        if author.status != "active" and not _can_edit_or_none():
+        editor = _can_edit_or_none()
+        if author.status != "active" and not editor:
             raise ApiError("Author not found.", 404, code="not_found")
 
         query = Article.query.filter_by(author_id=author.id, status="published").order_by(
@@ -159,9 +166,12 @@ class AuthorDetailResource(Resource):
         )
         result = paginate(query, None)
         articles = article_summary_schema(many=True).dump(result["items"])
-        return success_response(
-            {"author": author_schema.dump(author), "articles": articles}, meta=result["meta"]
-        )
+        # Editors (the CMS) keep every linked Topic; the public payload only
+        # the published ones (see app/services/public_visibility.py).
+        author_data = author_schema.dump(author)
+        if not editor:
+            author_data = public_author_dump(author_data, author)
+        return success_response({"author": author_data, "articles": articles}, meta=result["meta"])
 
     def put(self, slug):
         _require_manage()

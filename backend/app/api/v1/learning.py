@@ -39,6 +39,7 @@ from app.services.audit import log_action
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.learning_access import can_access_program_content
 from app.services.learning_enrollments import progress_summary
+from app.services.public_visibility import public_learning_dump
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -259,8 +260,11 @@ class LearningProgramPublicListResource(Resource):
             )
 
         query = query.order_by(LearningProgram.featured.desc(), LearningProgram.created_at.desc())
-        result = paginate(query, learning_program_summary_schema())
-        return success_response(result["items"], meta=result["meta"])
+        result = paginate(query, schema=None)
+        summary_schema = learning_program_summary_schema()
+        # Linked instructors/provider/topics only when each is itself public.
+        items = [public_learning_dump(summary_schema.dump(p), p) for p in result["items"]]
+        return success_response(items, meta=result["meta"])
 
 
 def build_public_program_payload(program, viewer):
@@ -271,7 +275,7 @@ def build_public_program_payload(program, viewer):
     app/services/learning_access.py's can_access_program_content, never
     re-derived here; backend endpoints remain the actual authority.
     """
-    payload = public_learning_program_schema(program).dump(program)
+    payload = public_learning_dump(public_learning_program_schema(program).dump(program), program)
     payload["requiresCircle"] = program.access_type == "circle_only"
     payload["viewerCanAccess"] = can_access_program_content(program, viewer)
     return payload

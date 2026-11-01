@@ -12,6 +12,7 @@ from app.schemas.people import PersonInputSchema, PersonSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.public_visibility import public_person_dump
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -128,8 +129,13 @@ class PersonListResource(Resource):
             # directory.py's service_modes filter — applied before
             # paginate() so the filter covers every profile, not one page.
             query = query.filter(cast(Person.expertise, JSONB).contains([request.args["expertise"]]))
-        result = paginate(query, person_schema)
-        return success_response(result["items"], meta=result["meta"])
+        if editor:
+            result = paginate(query, person_schema)
+            return success_response(result["items"], meta=result["meta"])
+        # Public list: unpublished Series never appear in a Person preview.
+        result = paginate(query, schema=None)
+        items = [public_person_dump(person_schema.dump(p), p) for p in result["items"]]
+        return success_response(items, meta=result["meta"])
 
     def post(self):
         _require_manage()
@@ -156,9 +162,13 @@ class PersonDetailResource(Resource):
         person = Person.query.filter_by(slug=slug).first()
         if person is None:
             raise ApiError("Person not found.", 404, code="not_found")
-        if person.status != "published" and not _can_edit_or_none():
+        editor = _can_edit_or_none()
+        if person.status != "published" and not editor:
             raise ApiError("Person not found.", 404, code="not_found")
-        return success_response(person_schema.dump(person))
+        data = person_schema.dump(person)
+        # Editors keep every linked Series; the public payload only the
+        # published ones (see app/services/public_visibility.py).
+        return success_response(data if editor else public_person_dump(data, person))
 
     def put(self, slug):
         _require_manage()

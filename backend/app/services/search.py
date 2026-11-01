@@ -35,6 +35,7 @@ from app.models.page import Page
 from app.models.people import Author, Organization, Person
 from app.models.resource import Resource
 from app.models.taxonomy import Series, Topic
+from app.services.public_visibility import is_public_organization, is_public_taxonomy
 from app.utils.filtering import apply_country_or_region_filter
 
 MIN_QUERY_LENGTH = 2
@@ -188,8 +189,10 @@ def _search_articles(term, filters):
             Article.title.ilike(like),
             Article.subtitle.ilike(like),
             Article.excerpt.ilike(like),
-            Article.topics.any(Topic.name.ilike(like)),
-            Article.series.has(Series.name.ilike(like)),
+            # Matching through a linked entity counts only when that entity
+            # is itself public (app/services/public_visibility.py).
+            Article.topics.any((Topic.name.ilike(like)) & (Topic.status == "published")),
+            Article.series.has((Series.name.ilike(like)) & (Series.status == "published")),
             Article.author.has(Author.name.ilike(like)),
         )
     )
@@ -197,7 +200,8 @@ def _search_articles(term, filters):
 
     results = []
     for a in rows:
-        topic_name = a.topics[0].name if a.topics else None
+        public_topics = [t for t in a.topics if is_public_taxonomy(t)]
+        topic_name = public_topics[0].name if public_topics else None
         results.append(
             _result(
                 "articles",
@@ -223,14 +227,14 @@ def _search_people(term, filters):
             Person.industry.ilike(like),
             Person.profession.ilike(like),
             Person.short_bio.ilike(like),
-            Person.organization.has(Organization.name.ilike(like)),
+            Person.organization.has((Organization.name.ilike(like)) & (Organization.status == "published")),
         )
     )
     rows = query.limit(CANDIDATE_POOL_PER_TYPE).all()
 
     results = []
     for p in rows:
-        org_name = p.organization.name if p.organization else None
+        org_name = p.organization.name if is_public_organization(p.organization) else None
         excerpt = " — ".join(filter(None, [p.title, org_name])) or _truncate(p.short_bio)
         results.append(
             _result(
@@ -444,7 +448,7 @@ def _search_events(term, filters):
 
     results = []
     for e in rows:
-        organizer = e.organizer.name if e.organizer else e.organizer_name
+        organizer = e.organizer.name if is_public_organization(e.organizer) else e.organizer_name
         excerpt = " — ".join(filter(None, [e.location, "Virtual" if e.format == "virtual" else None]))
         results.append(
             _result(

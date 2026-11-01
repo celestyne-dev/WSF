@@ -665,14 +665,15 @@ def _link_list(links):
 
 
 def render_author_prerender(payload):
-    """`payload` = AuthorSchema().dump(author) — its `person` is already
-    null unless the linked Person is published (get_person)."""
+    """`payload` = the public Author payload (AuthorSchema dump + public
+    filtering): `person` is null unless published, `topics` holds only
+    published Topics."""
     header = [_h1(payload.get("name")), _paragraph(payload.get("role"))]
     country = payload.get("country") if isinstance(payload.get("country"), dict) else {}
     place = payload.get("location") or country.get("name")
     if _is_nonblank(place):
         header.append(f'<p class="{_META_CLASS}">{_text(place)}</p>')
-    topics = [t for t in (payload.get("topics") or []) if isinstance(t, dict) and t.get("status") == "published" and _is_nonblank(t.get("slug"))]
+    topics = [t for t in (payload.get("topics") or []) if isinstance(t, dict) and _is_nonblank(t.get("slug"))]
     if topics:
         chips = "".join(f'<li class="{_CHIP_CLASS}"><a href="/topics/{_attr(t["slug"])}">{_text(t.get("name"))}</a></li>' for t in topics)
         header.append(f'<ul class="{_CHIPS_CLASS}" aria-label="Topics">{chips}</ul>')

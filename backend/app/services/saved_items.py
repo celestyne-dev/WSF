@@ -39,6 +39,7 @@ from app.schemas.article import article_summary_schema
 from app.schemas.learning import learning_program_summary_schema
 from app.schemas.opportunity import EventSchema, JobSchema
 from app.schemas.resource import ResourceSchema
+from app.services.public_visibility import is_public_organization, keep_if, public_event_dump, public_learning_dump, public_resource_relations
 
 SAVED_CONTENT_TYPES = ("article", "job", "opportunity", "resource", "event", "learning_program")
 
@@ -68,6 +69,8 @@ def _fetch_public_job(content_id):
     if not publicly_visible:
         return None
     data = _job_schema.dump(job)
+    # Linked Organization preview only when published (company_name stays).
+    data["organization"] = keep_if(data.get("organization"), job.organization, is_public_organization)
     if not job.salary_visible:
         for field in _SALARY_FIELDS:
             data[field] = None
@@ -100,7 +103,7 @@ def _fetch_public_event(content_id):
     )
     if not publicly_visible:
         return None
-    return _event_schema.dump(event)
+    return public_event_dump(_event_schema.dump(event), event)
 
 
 def _fetch_public_resource(content_id):
@@ -114,14 +117,14 @@ def _fetch_public_resource(content_id):
     )
     if not publicly_visible:
         return None
-    return _resource_schema.dump(resource)
+    return public_resource_relations(_resource_schema.dump(resource), resource)
 
 
 def _fetch_public_learning_program(content_id):
     program = db.session.get(LearningProgram, content_id)
     if program is None or program.status != "published":
         return None
-    return learning_program_summary_schema().dump(program)
+    return public_learning_dump(learning_program_summary_schema().dump(program), program)
 
 
 _FETCHERS = {

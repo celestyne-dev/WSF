@@ -42,6 +42,7 @@ from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
+from app.services.public_visibility import is_public_author, is_public_taxonomy, public_author_dump, public_organization_preview
 from app.services.resource_access import check_resource_access, get_viewer_access_source, viewer_can_access
 from app.services.resource_downloads import (
     is_safe_protected_path,
@@ -441,9 +442,18 @@ def build_public_resource_payload(resource, viewer):
             for img in resource.images
         ],
         "type": resource.type,
-        "topics": TopicSchema(many=True, exclude=("article_count",)).dump(resource.topics),
-        "tags": TagSchema(many=True).dump(resource.tags),
-        "author": AuthorSchema(exclude=("article_count",)).dump(resource.author) if resource.author else None,
+        # Linked Topics/Tags/Author/sponsor previews only when each is itself
+        # public (app/services/public_visibility.py); authorName (stored on
+        # the Resource) stays as public fallback text.
+        "topics": TopicSchema(many=True, exclude=("article_count",)).dump(
+            [t for t in resource.topics if is_public_taxonomy(t)]
+        ),
+        "tags": TagSchema(many=True).dump([t for t in resource.tags if is_public_taxonomy(t)]),
+        "author": (
+            public_author_dump(AuthorSchema(exclude=("article_count",)).dump(resource.author), resource.author)
+            if is_public_author(resource.author)
+            else None
+        ),
         "authorName": resource.author_name,
         "price": resource.price,
         "currency": resource.currency,
@@ -476,11 +486,7 @@ def build_public_resource_payload(resource, viewer):
         "fileFormat": resource.file_format,
         "fileSize": resource.file_size,
         "pageCount": resource.page_count,
-        "sponsor": (
-            OrganizationSchema(only=("id", "slug", "name", "logo")).dump(resource.sponsor)
-            if resource.sponsor
-            else None
-        ),
+        "sponsor": public_organization_preview(resource.sponsor, OrganizationSchema(only=("id", "slug", "name", "logo")).dump),
         "sponsored": resource.sponsored,
         "downloadCount": resource.download_count,
         "featured": resource.featured,

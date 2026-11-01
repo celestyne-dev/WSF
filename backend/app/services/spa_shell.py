@@ -114,6 +114,7 @@ from app.services.prerender import (
     render_series_prerender,
     render_topic_prerender,
 )
+from app.services.public_visibility import is_public_author, is_public_organization, is_public_person
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 
@@ -1349,7 +1350,9 @@ def _build_event_json_ld(event, canonical_url, public_site_url, site_name):
     if event.format and event.format in _EVENT_ATTENDANCE_MODE:
         data["eventAttendanceMode"] = _EVENT_ATTENDANCE_MODE[event.format]
 
-    organizer_name = event.organizer.name if event.organizer else (event.organizer_name or site_name)
+    # Linked organizer only when published — same as the public Event
+    # payload EventDetailPage builds its JSON-LD from (public_visibility).
+    organizer_name = event.organizer.name if is_public_organization(event.organizer) else (event.organizer_name or site_name)
     data["organizer"] = {"@type": "Organization", "name": organizer_name}
 
     if event.format == "virtual":
@@ -1387,7 +1390,7 @@ def _build_event_json_ld(event, canonical_url, public_site_url, site_name):
         data["offers"] = offer
 
     speakers = [
-        {"@type": "Person", "name": (s.person.name if s.person else s.name)} for s in (event.speakers or [])
+        {"@type": "Person", "name": (s.person.name if is_public_person(s.person) else s.name)} for s in (event.speakers or [])
     ]
     speakers = [p for p in speakers if p["name"]]
     if speakers:
@@ -1421,7 +1424,7 @@ def _build_resource_json_ld(resource, canonical_url, public_site_url, site_name)
         if image_url:
             data["image"] = image_url
 
-    if resource.author is not None and resource.author.name:
+    if is_public_author(resource.author) and resource.author.name:
         data["author"] = {"@type": "Person", "name": resource.author.name}
     elif resource.author_name:
         data["author"] = {"@type": "Organization", "name": resource.author_name}
@@ -2125,9 +2128,12 @@ def _public_detail_prerender(prefix, entity):
     if prefix == "authors":
         from app.schemas.people import AuthorSchema
 
-        # Same schema AuthorDetailResource uses (user_id excluded; the
-        # linked Person only when published). No article grid here.
-        return render_author_prerender(AuthorSchema().dump(entity))
+        from app.services.public_visibility import public_author_dump
+
+        # The same public payload AuthorDetailResource gives an anonymous
+        # visitor: user_id excluded, the linked Person only when published,
+        # Topics only when published. No article grid here.
+        return render_author_prerender(public_author_dump(AuthorSchema().dump(entity), entity))
     if prefix == "topics":
         from app.schemas.taxonomy import TopicSchema
 

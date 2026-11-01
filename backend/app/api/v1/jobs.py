@@ -17,6 +17,7 @@ from app.schemas.people import OrganizationSchema
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.public_visibility import public_organization_preview
 from app.services.job_access import (
     check_job_application_access,
     has_valid_application_channel,
@@ -150,10 +151,10 @@ def build_public_job_payload(job, viewer, *, detail=False):
         "slug": job.slug,
         "title": job.title,
         "organization_id": job.organization_id,
-        "organization": (
-            OrganizationSchema(only=("id", "slug", "name", "logo")).dump(job.organization)
-            if job.organization
-            else None
+        # The linked Organization preview only when it is itself published;
+        # company_name (stored on the Job) stays as the public display name.
+        "organization": public_organization_preview(
+            job.organization, OrganizationSchema(only=("id", "slug", "name", "logo")).dump
         ),
         "company_name": job.company_name,
         "logo": MediaSchema().dump(job.logo) if job.logo else None,

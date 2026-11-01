@@ -30,6 +30,7 @@ from app.models.event_registration import EVENT_REGISTRATION_STATUSES, EventRegi
 from app.models.opportunity import Event
 from app.schemas.opportunity import EventSchema
 from app.services.event_access import can_access_event
+from app.services.public_visibility import public_event_dump
 from app.utils.responses import ApiError
 
 _event_schema = EventSchema()
@@ -140,7 +141,9 @@ def serialize_event_for_viewer(event, user):
     (spec section N) — never authoritative themselves; backend
     registration and virtual-link authorization remain the real gate.
     """
-    data = _event_schema.dump(event)
+    # Linked organizer/speaker/sponsor previews only when each linked
+    # entity is itself public (app/services/public_visibility.py).
+    data = public_event_dump(_event_schema.dump(event), event)
     data["virtual_link"] = event.virtual_link if is_authorized_for_virtual_link(event, user) else None
     data["requiresCircle"] = event.access_type == "circle_only"
     data["viewerCanAccess"] = can_access_event(event, user)
