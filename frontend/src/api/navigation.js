@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { navItemToInput } from '../utils/navigation'
 
 // Navigation CMS admin surface — real-data-only, same as Pages/Taxonomy's
 // admin areas (there's no mock/navigation.js admin equivalent; public
@@ -19,6 +20,7 @@ function mapMenuItemAdmin(item) {
     sortOrder: item.sort_order,
     visible: item.visible,
     effectiveUrl: item.effectiveUrl,
+    linkedLabel: item.linkedLabel || null,
     warnings: item.warnings || [],
     children: (item.children || []).map(mapMenuItemAdmin),
   }
@@ -33,25 +35,11 @@ function mapMenuAdmin(menu) {
   }
 }
 
-// Strips the admin-only computed fields (effectiveUrl/warnings/sortOrder)
-// back out before sending to PUT — the backend derives/recomputes all of
-// those, and `id` is dropped too since the write path is a full replace
-// per menu key (see backend services/cms.py:replace_menu), not a per-row
-// upsert keyed by id.
-function toItemInput(item) {
-  return {
-    label: item.label,
-    itemType: item.itemType,
-    url: item.url || null,
-    topicId: item.topicId || null,
-    seriesId: item.seriesId || null,
-    pageId: item.pageId || null,
-    openNewTab: !!item.openNewTab,
-    style: item.style || 'standard',
-    visible: item.visible !== false,
-    children: (item.children || []).map(toItemInput),
-  }
-}
+// Admin-only computed fields (effectiveUrl/linkedLabel/warnings/sortOrder)
+// and `id` are never sent back — the write path is a full replace per menu
+// key (backend services/cms.py:replace_menu). utils/navigation.js's
+// navItemToInput() sends ONLY the destination field the item's type uses.
+const toItemInput = navItemToInput
 
 export async function fetchAdminNavigation() {
   const { data } = await apiClient.get('/admin/navigation')

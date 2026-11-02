@@ -1,4 +1,4 @@
-from marshmallow import RAISE, fields, validate, validates_schema, ValidationError
+from marshmallow import RAISE, fields, pre_load, validate, validates_schema, ValidationError
 
 from app.extensions import db, ma
 from app.models.cms import (
@@ -25,6 +25,7 @@ from app.services.navigation import (
     compute_item_warnings,
     validate_depth,
     validate_external_url,
+    normalize_item_input,
     validate_item_type_requirements,
 )
 
@@ -77,11 +78,20 @@ class MenuItemSchema(ma.Schema):
     sort_order = fields.Integer()
     visible = fields.Boolean()
     effective_url = fields.Method("get_effective_url", data_key="effectiveUrl")
+    # Read-only display name of the linked Page/Topic/Series, so the editor
+    # shows "About" rather than a bare id for an already-saved entity link.
+    linked_label = fields.Method("get_linked_label", data_key="linkedLabel")
     warnings = fields.Method("get_warnings")
     children = fields.Method("get_children")
 
     def get_effective_url(self, obj):
         return obj.effective_url()
+
+    def get_linked_label(self, obj):
+        entity = obj.linked_entity()
+        if entity is None:
+            return None
+        return getattr(entity, "title", None) or getattr(entity, "name", None)
 
     def get_warnings(self, obj):
         return compute_item_warnings(obj)
@@ -231,6 +241,10 @@ class MenuItemInputSchema(ma.Schema):
     style = fields.String(required=False, load_default="standard", validate=validate.OneOf(MENU_ITEM_STYLES))
     visible = fields.Boolean(required=False, load_default=True)
     children = fields.List(fields.Nested(lambda: MenuItemInputSchema()), required=False, load_default=list)
+
+    @pre_load
+    def normalize_legacy_input(self, data, **kwargs):
+        return normalize_item_input(data)
 
     @validates_schema
     def validate_item(self, data, **kwargs):

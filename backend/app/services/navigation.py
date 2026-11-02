@@ -14,6 +14,84 @@ from app.models.taxonomy import Series, Topic
 _UNSAFE_INTERNAL_PREFIXES = ("/admin", "/api")
 _EXTERNAL_URL_RE = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 
+# Navigation destination types (MENU_ITEM_TYPES) and, for each, the ONE
+# stored field that holds its destination. Everything else is cleared on
+# every write (clean_item_destination) so a value left over from a
+# previous type can never become a hidden, active destination.
+DESTINATION_FIELD_BY_TYPE = {
+    "route": "url",
+    "external": "url",
+    "page": "page_id",
+    "topic": "topic_id",
+    "series": "series_id",
+    "group": None,
+}
+_DESTINATION_FIELDS = ("url", "page_id", "topic_id", "series_id")
+
+# Older/alternate spellings an API client or legacy payload may use — the
+# DB CHECK constraint only ever allows the canonical MENU_ITEM_TYPES, so
+# these are normalized on input, never stored.
+ITEM_TYPE_ALIASES = {
+    "internal": "route",
+    "internal_route": "route",
+    "link": "route",
+    "external_url": "external",
+    "url": "external",
+    "dropdown": "group",
+    "none": "group",
+}
+# Legacy/alternate field names -> the canonical camelCase input keys.
+FIELD_ALIASES = {
+    "item_type": "itemType",
+    "type": "itemType",
+    "destinationType": "itemType",
+    "route": "url",
+    "href": "url",
+    "externalUrl": "url",
+    "external_url": "url",
+    "page_id": "pageId",
+    "topic_id": "topicId",
+    "series_id": "seriesId",
+    "open_new_tab": "openNewTab",
+}
+
+
+def normalize_item_input(raw):
+    """Pre-load normalization for one navigation item payload: legacy field
+    names and item-type spellings are mapped onto the canonical contract,
+    so an older client keeps working instead of silently losing its
+    destination. The canonical key always wins if both are present."""
+    if not isinstance(raw, dict):
+        return raw
+    data = dict(raw)
+    for alias, canonical in FIELD_ALIASES.items():
+        if alias in data:
+            value = data.pop(alias)
+            data.setdefault(canonical, value)
+    item_type = data.get("itemType")
+    if isinstance(item_type, str):
+        lowered = item_type.strip().lower()
+        data["itemType"] = ITEM_TYPE_ALIASES.get(lowered, lowered)
+    return data
+
+
+def clean_item_destination(data):
+    """Only the destination field the item's type actually uses survives;
+    every other destination field is set to None (and a non-external item
+    never keeps open_new_tab). Applied on every write path — admin saves,
+    footer saves and default-navigation healing alike."""
+    item_type = data.get("item_type", "route")
+    keep = DESTINATION_FIELD_BY_TYPE.get(item_type)
+    cleaned = dict(data)
+    for field in _DESTINATION_FIELDS:
+        if field != keep:
+            cleaned[field] = None
+    if item_type in ("route", "external") and isinstance(cleaned.get("url"), str):
+        cleaned["url"] = cleaned["url"].strip() or None
+    if item_type != "external":
+        cleaned["open_new_tab"] = False
+    return cleaned
+
 
 def validate_route_url(url, field_name="url"):
     if not url:
@@ -105,7 +183,9 @@ def compute_item_warnings(item):
         elif item.page.status != "published":
             warnings.append("Destination is not currently public (Page is not published).")
     elif item.item_type in ("route", "external") and not item.url:
-        warnings.append("No destination set yet.")
+        warnings.append("No destination set — this item is hidden from the public site until one is chosen.")
+    elif item.item_type == "route" and item.url == "/":
+        warnings.append('Links to the homepage ("/") — check this is intended, not a missing destination.')
     return warnings
 
 
@@ -125,14 +205,27 @@ def serialize_public_menu_item(item):
     """
     children = [serialize_public_menu_item(c) for c in item.children if _item_is_public(c)]
     children = [c for c in children if c is not None]
-    if item.item_type == "group" and not children:
-        return None
+    url = item.effective_url()
+    if item.item_type == "group" or not url:
+        # A group never has a destination. A navigable item whose
+        # destination is missing (legacy row, deleted target) is NEVER sent
+        # with a fallback URL: it degrades to a non-navigating dropdown
+        # label when it still has public children, otherwise it's dropped.
+        if not children:
+            return None
+        url, link_type = None, "group"
+    else:
+        link_type = "external" if item.item_type == "external" else "internal"
     return {
         "id": item.id,
         "label": item.label,
-        "url": item.effective_url(),
+        "url": url,
         "itemType": item.item_type,
-        "openNewTab": item.open_new_tab,
+        # The one field a renderer needs: "internal" (client-side router
+        # link), "external" (plain <a>), or "group" (dropdown trigger, no
+        # destination). Entity types are already resolved into `url`.
+        "linkType": link_type,
+        "openNewTab": bool(item.open_new_tab) if link_type == "external" else False,
         "style": item.style,
         "children": children,
     }
@@ -293,6 +386,7 @@ def _dedupe_canonical_destinations(existing_items, canonical_dest_keys):
 
 
 def _build_menu_item(menu_id, data, parent_id=None):
+    data = clean_item_destination(data)
     item = MenuItem(
         menu_id=menu_id,
         parent_id=parent_id,
@@ -313,6 +407,39 @@ def _build_menu_item(menu_id, data, parent_id=None):
         child = _build_menu_item(menu_id, child_data, parent_id=item.id)
         child.sort_order = index
     return item
+
+
+def _repair_homepage_placeholders(existing_items, canonical_items):
+    """Repairs ONE exact regression signature: a top-level internal-route
+    item whose destination is "/" (the homepage) but whose label is the
+    label of a canonical item that points somewhere else — e.g.
+    "Community" -> "/" or "Shop" -> "/". AdminNavigation used to pre-fill
+    every new item with "/" and to write "/" when an item was switched to
+    "Internal route", so an item saved without an explicit path silently
+    became a homepage link. Such a row is pointed back at its canonical
+    destination (Community -> /community, Shop -> /shop) instead of a
+    duplicate being added next to it.
+
+    Deliberately narrow so legitimate admin configuration is never
+    overwritten: only route items, only url == "/", only an exact
+    (case-insensitive) canonical label match, only when the canonical
+    destination is a different internal route, and only when that
+    canonical destination isn't already present in the menu. Idempotent:
+    once repaired the row no longer matches."""
+    present = {it.effective_url() for it in existing_items}
+    canonical_by_label = {
+        (c.get("label") or "").strip().lower(): c
+        for c in canonical_items
+        if c.get("item_type", "route") == "route" and c.get("url") not in (None, "/")
+    }
+    for item in existing_items:
+        if item.item_type != "route" or item.url != "/":
+            continue
+        canonical = canonical_by_label.get((item.label or "").strip().lower())
+        if canonical is None or canonical["url"] in present:
+            continue
+        item.url = canonical["url"]
+        present.add(canonical["url"])
 
 
 def heal_menu_defaults(key, canonical_items):
@@ -359,6 +486,8 @@ def heal_menu_defaults(key, canonical_items):
     removed_ids = _dedupe_canonical_destinations(existing_items, canonical_dest_keys)
     if removed_ids:
         existing_items = [it for it in existing_items if it.id not in removed_ids]
+
+    _repair_homepage_placeholders(existing_items, canonical_items)
 
     existing_keys = {_existing_item_key(it) for it in existing_items}
     rank_by_key = {k: idx for idx, k in enumerate(canonical_keys)}

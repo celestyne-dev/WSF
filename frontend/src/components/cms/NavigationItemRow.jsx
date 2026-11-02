@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronUp, ChevronDown, Trash2, Plus, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import NavigationItemFields from './NavigationItemFields'
 import { MENU_ITEM_TYPE_LABELS, MENU_MAX_DEPTH, newNavItem } from '../../constants/navigationItems'
+import { changeNavItemType, navItemPreview } from '../../utils/navigation'
 
 /** One row in the navigation tree editor, recursive over `item.children`.
  * `depth` is 1 for a top-level item — MENU_MAX_DEPTH caps how deep "Add
@@ -53,7 +54,7 @@ export default function NavigationItemRow({ item, depth, siblingCount, index, on
             <p className="text-sm font-semibold text-charcoal">{item.label || <span className="italic text-charcoal-600/60">Untitled</span>}</p>
             <p className="text-xs text-charcoal-600">
               {MENU_ITEM_TYPE_LABELS[item.itemType]}
-              {item.effectiveUrl ? ` · ${item.effectiveUrl}` : ''}
+              {navItemPreview(item) ? ` · ${navItemPreview(item)}` : ''}
             </p>
           </button>
           {item.warnings?.length > 0 && (
@@ -73,7 +74,13 @@ export default function NavigationItemRow({ item, depth, siblingCount, index, on
           </button>
           <select
             value={item.itemType}
-            onChange={(e) => onChange({ ...item, itemType: e.target.value, url: e.target.value === 'route' ? item.url || '/' : null })}
+            aria-label="Destination type"
+            onChange={(e) => {
+              // Clears every destination field of the previous type — the
+              // new type starts empty (never "/") and is filled in explicitly.
+              onChange(changeNavItemType(item, e.target.value))
+              setExpanded(true)
+            }}
             className="border border-taupe-300 bg-white px-2 py-1 text-xs focus:border-burgundy-500 focus:outline-none"
           >
             {Object.entries(MENU_ITEM_TYPE_LABELS).map(([type, label]) => (

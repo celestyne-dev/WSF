@@ -5,10 +5,7 @@ import { Search, Menu, User } from 'lucide-react'
 import Logo from './Logo'
 import { toggleMobileNav, toggleSearch } from '../../features/navigation/uiSlice'
 import { hasCmsAccess, getDefaultCmsRoute } from '../../utils/permissions'
-
-function isExternal(url) {
-  return !!url && /^https?:\/\//i.test(url)
-}
+import { externalRel, publicNavLink } from '../../utils/navigation'
 
 /** A CMS nav item is either a real link (`url` set) or a non-clickable
  * "group" grouping label (`itemType === 'group'`, `url` null) that exists
@@ -16,10 +13,14 @@ function isExternal(url) {
  * carry children.
  */
 function NavTrigger({ item, isOpen, onToggle }) {
-  const external = isExternal(item.url)
+  const link = publicNavLink(item)
   const sharedClassName = `flex items-center gap-1 py-7 text-sm font-semibold uppercase tracking-wide text-charcoal transition-colors hover:text-burgundy-600`
 
-  if (!item.url) {
+  if (!link) return null
+
+  // A group (no destination of its own) is a dropdown trigger button —
+  // never a link, and never a fallback to "/".
+  if (link.kind === 'group') {
     return (
       <button
         type="button"
@@ -33,12 +34,12 @@ function NavTrigger({ item, isOpen, onToggle }) {
     )
   }
 
-  if (external) {
+  if (link.kind === 'external') {
     return (
       <a
-        href={item.url}
-        target={item.openNewTab ? '_blank' : undefined}
-        rel={item.openNewTab ? 'noopener noreferrer' : undefined}
+        href={link.href}
+        target={link.newTab ? '_blank' : undefined}
+        rel={externalRel(link.newTab)}
         aria-expanded={item.children?.length ? isOpen : undefined}
         aria-haspopup={item.children?.length ? 'true' : undefined}
         className={sharedClassName}
@@ -50,7 +51,7 @@ function NavTrigger({ item, isOpen, onToggle }) {
 
   return (
     <NavLink
-      to={item.url}
+      to={link.to}
       aria-expanded={item.children?.length ? isOpen : undefined}
       aria-haspopup={item.children?.length ? 'true' : undefined}
       className={({ isActive }) => `${sharedClassName} ${isActive ? 'text-burgundy-600' : ''}`}
@@ -114,25 +115,30 @@ export default function Header() {
       {secondary.length > 0 && (
         <div className="hidden border-b border-taupe-200 bg-charcoal text-ivory lg:block">
           <div className="container-editorial flex h-9 items-center justify-end gap-5 text-xs">
-            {secondary.map((item) =>
-              item.url ? (
-                isExternal(item.url) ? (
+            {secondary.map((item) => {
+              const link = publicNavLink(item)
+              if (link?.kind === 'external') {
+                return (
                   <a
                     key={item.id}
-                    href={item.url}
-                    target={item.openNewTab ? '_blank' : undefined}
-                    rel={item.openNewTab ? 'noopener noreferrer' : undefined}
+                    href={link.href}
+                    target={link.newTab ? '_blank' : undefined}
+                    rel={externalRel(link.newTab)}
                     className="tracking-wide hover:text-blush-200"
                   >
                     {item.label}
                   </a>
-                ) : (
-                  <Link key={item.id} to={item.url} className="tracking-wide hover:text-blush-200">
+                )
+              }
+              if (link?.kind === 'internal') {
+                return (
+                  <Link key={item.id} to={link.to} className="tracking-wide hover:text-blush-200">
                     {item.label}
                   </Link>
                 )
-              ) : null
-            )}
+              }
+              return null // the utility bar has no dropdowns
+            })}
           </div>
         </div>
       )}
@@ -176,29 +182,36 @@ export default function Header() {
                         aria-label={`${item.label} submenu`}
                         className="absolute left-1/2 top-full w-56 -translate-x-1/2 border border-taupe-200 bg-ivory py-2 shadow-card"
                       >
-                        {item.children.map((child) =>
-                          isExternal(child.url) ? (
-                            <a
-                              key={child.id}
-                              role="menuitem"
-                              href={child.url}
-                              target={child.openNewTab ? '_blank' : undefined}
-                              rel={child.openNewTab ? 'noopener noreferrer' : undefined}
-                              className="block px-4 py-2 text-sm text-charcoal-600 hover:bg-blush-50 hover:text-burgundy-600"
-                            >
-                              {child.label}
-                            </a>
-                          ) : (
-                            <Link
-                              key={child.id}
-                              role="menuitem"
-                              to={child.url}
-                              className="block px-4 py-2 text-sm text-charcoal-600 hover:bg-blush-50 hover:text-burgundy-600"
-                            >
-                              {child.label}
-                            </Link>
-                          )
-                        )}
+                        {item.children.map((child) => {
+                          const link = publicNavLink(child)
+                          if (link?.kind === 'external') {
+                            return (
+                              <a
+                                key={child.id}
+                                role="menuitem"
+                                href={link.href}
+                                target={link.newTab ? '_blank' : undefined}
+                                rel={externalRel(link.newTab)}
+                                className="block px-4 py-2 text-sm text-charcoal-600 hover:bg-blush-50 hover:text-burgundy-600"
+                              >
+                                {child.label}
+                              </a>
+                            )
+                          }
+                          if (link?.kind === 'internal') {
+                            return (
+                              <Link
+                                key={child.id}
+                                role="menuitem"
+                                to={link.to}
+                                className="block px-4 py-2 text-sm text-charcoal-600 hover:bg-blush-50 hover:text-burgundy-600"
+                              >
+                                {child.label}
+                              </Link>
+                            )
+                          }
+                          return null // children are links only (max depth 2)
+                        })}
                       </div>
                     )}
                   </li>

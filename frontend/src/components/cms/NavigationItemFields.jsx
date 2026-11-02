@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import EntitySelect from './EntitySelect'
+import { navEditorFields } from '../../utils/navigation'
 import { fetchTopics, fetchSeries } from '../../api/taxonomies'
 import { fetchPagesAdmin } from '../../api/pages'
 import { MENU_ITEM_STYLES } from '../../constants/navigationItems'
@@ -22,13 +24,21 @@ async function searchPages(query) {
 
 // EntitySelect's slug-based single-select works for numeric ids just as
 // well (it never assumes a string) — this wraps it so callers here pass
-// an id, get an id back, and see a real name instead of "42" once chosen.
-function IdSelect({ value, onChange, loadOptions, placeholder }) {
+// an id, get (id, label) back, and see the real name rather than a bare id:
+// from this session's search results, or `savedLabel` (the server's
+// linkedLabel) for an item loaded already linked.
+function IdSelect({ value, savedLabel, onChange, loadOptions, placeholder }) {
+  const [labels, setLabels] = useState({})
   return (
     <EntitySelect
       value={value ? String(value) : null}
-      onChange={(v) => onChange(v ? Number(v) : null)}
-      loadOptions={async (q) => (await loadOptions(q)).map((o) => ({ ...o, value: String(o.value) }))}
+      onChange={(v) => onChange(v ? Number(v) : null, v ? labels[v] || null : null)}
+      loadOptions={async (q) => {
+        const options = (await loadOptions(q)).map((o) => ({ ...o, value: String(o.value) }))
+        setLabels((prev) => ({ ...prev, ...Object.fromEntries(options.map((o) => [o.value, o.label])) }))
+        return options
+      }}
+      resolveLabel={(v) => labels[v] || savedLabel || `#${v}`}
       placeholder={placeholder}
     />
   )
@@ -51,6 +61,11 @@ export default function NavigationItemFields({ item, onChange }) {
   function patch(fields) {
     onChange({ ...item, ...fields })
   }
+  // Picking a different Page/Topic/Series invalidates the server's preview.
+  function pickEntity(field, id, label) {
+    patch({ [field]: id, linkedLabel: label, effectiveUrl: null })
+  }
+  const shown = navEditorFields(item.itemType)
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -66,12 +81,14 @@ export default function NavigationItemFields({ item, onChange }) {
       )}
 
       {item.itemType === 'route' &&
+        shown.includes('url') &&
         field(
           'Internal path',
           <input
             value={item.url || ''}
             onChange={(e) => patch({ url: e.target.value })}
-            placeholder="/opportunities"
+            required
+            placeholder="/community"
             className="w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
           />
         )}
@@ -97,14 +114,23 @@ export default function NavigationItemFields({ item, onChange }) {
         </>
       )}
 
-      {item.itemType === 'topic' &&
-        field('Topic', <IdSelect value={item.topicId} onChange={(v) => patch({ topicId: v })} loadOptions={searchTopics} placeholder="Search topics…" />)}
+      {shown.includes('topicId') &&
+        field(
+          'Topic',
+          <IdSelect value={item.topicId} savedLabel={item.linkedLabel} onChange={(v, label) => pickEntity('topicId', v, label)} loadOptions={searchTopics} placeholder="Search topics…" />,
+        )}
 
-      {item.itemType === 'series' &&
-        field('Series', <IdSelect value={item.seriesId} onChange={(v) => patch({ seriesId: v })} loadOptions={searchSeries} placeholder="Search series…" />)}
+      {shown.includes('seriesId') &&
+        field(
+          'Series',
+          <IdSelect value={item.seriesId} savedLabel={item.linkedLabel} onChange={(v, label) => pickEntity('seriesId', v, label)} loadOptions={searchSeries} placeholder="Search series…" />,
+        )}
 
-      {item.itemType === 'page' &&
-        field('Page', <IdSelect value={item.pageId} onChange={(v) => patch({ pageId: v })} loadOptions={searchPages} placeholder="Search pages…" />)}
+      {shown.includes('pageId') &&
+        field(
+          'Page',
+          <IdSelect value={item.pageId} savedLabel={item.linkedLabel} onChange={(v, label) => pickEntity('pageId', v, label)} loadOptions={searchPages} placeholder="Search pages…" />,
+        )}
 
       {item.itemType === 'group' && (
         <p className="self-end pb-2 text-xs text-charcoal-600">A grouping label with no link of its own — used to hold a dropdown.</p>

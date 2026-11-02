@@ -34,6 +34,10 @@ function mapNavItem(item) {
     label: item.label,
     url: item.url,
     itemType: item.itemType,
+    // "internal" | "external" | "group" — resolved server-side (see
+    // utils/navigation.js's publicNavLink, which also infers it for older
+    // or mock payloads that lack it).
+    linkType: item.linkType || null,
     openNewTab: item.openNewTab,
     style: item.style,
     children: (item.children || []).map(mapNavItem),

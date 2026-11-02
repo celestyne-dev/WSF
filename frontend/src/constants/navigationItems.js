@@ -33,12 +33,15 @@ export function tempItemId() {
   return tempIdCounter
 }
 
+// A new item starts with NO destination — never "/" (that silently turned
+// any item saved without an explicit path into a homepage link, e.g.
+// Community/Shop -> "/"). The editor's validation requires one before save.
 export function newNavItem(type = 'route') {
   return {
     id: tempItemId(),
     label: '',
     itemType: type,
-    url: type === 'route' ? '/' : null,
+    url: null,
     topicId: null,
     seriesId: null,
     pageId: null,

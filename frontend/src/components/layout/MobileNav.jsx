@@ -5,31 +5,28 @@ import { X, ChevronDown } from 'lucide-react'
 import { toggleMobileNav } from '../../features/navigation/uiSlice'
 import { logoutUser } from '../../features/auth/authSlice'
 import { hasCmsAccess, getDefaultCmsRoute } from '../../utils/permissions'
+import { externalRel, publicNavLink } from '../../utils/navigation'
 
-function isExternal(url) {
-  return !!url && /^https?:\/\//i.test(url)
-}
-
+// Same destination decision as Header.jsx's NavTrigger (utils/navigation.js
+// publicNavLink): internal -> router Link, external -> plain <a>, group or
+// no destination -> nothing navigable (never a fallback to "/").
 function NavItemLink({ item, onClick, className }) {
-  if (!item.url) return null
-  if (isExternal(item.url)) {
+  const link = publicNavLink(item)
+  if (link?.kind === 'external') {
     return (
-      <a
-        href={item.url}
-        onClick={onClick}
-        target={item.openNewTab ? '_blank' : undefined}
-        rel={item.openNewTab ? 'noopener noreferrer' : undefined}
-        className={className}
-      >
+      <a href={link.href} onClick={onClick} target={link.newTab ? '_blank' : undefined} rel={externalRel(link.newTab)} className={className}>
         {item.label}
       </a>
     )
   }
-  return (
-    <Link to={item.url} onClick={onClick} className={className}>
-      {item.label}
-    </Link>
-  )
+  if (link?.kind === 'internal') {
+    return (
+      <Link to={link.to} onClick={onClick} className={className}>
+        {item.label}
+      </Link>
+    )
+  }
+  return null
 }
 
 export default function MobileNav() {

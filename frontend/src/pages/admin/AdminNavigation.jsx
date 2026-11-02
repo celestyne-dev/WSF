@@ -7,6 +7,7 @@ import NavigationItemRow from '../../components/cms/NavigationItemRow'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { EDITABLE_MENUS, newNavItem } from '../../constants/navigationItems'
+import { validateNavItems } from '../../utils/navigation'
 
 export default function AdminNavigation() {
   const [menus, setMenus] = useState(undefined)
@@ -59,6 +60,13 @@ export default function AdminNavigation() {
   }
 
   async function handleSave() {
+    // Never publish an item without a real destination (the backend rejects
+    // it too) — no silent "/" fallback.
+    const problem = validateNavItems(items)
+    if (problem) {
+      toast.error(problem)
+      return
+    }
     setSaving(true)
     try {
       const saved = await saveMenu(activeKey, heading, items)

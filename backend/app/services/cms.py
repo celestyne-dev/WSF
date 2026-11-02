@@ -30,7 +30,12 @@ def replace_homepage_modules(modules_data):
 
 
 def _create_menu_items(menu_id, items_data, parent_id=None):
+    from app.services.navigation import clean_item_destination
+
     for index, item_data in enumerate(items_data):
+        # Only the destination field this item's type uses is stored — a
+        # leftover url/page/topic/series from a previous type never persists.
+        item_data = clean_item_destination(item_data)
         item = MenuItem(
             menu_id=menu_id,
             parent_id=parent_id,
