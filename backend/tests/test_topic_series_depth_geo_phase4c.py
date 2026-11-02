@@ -26,8 +26,7 @@ CONTENT = [
 HOSTILE_CONTENT = [
     {"type": "paragraph", "text": 'Safe <script>alert(1)</script><b onclick="x()">bold</b> <a href="javascript:alert(1)">bad</a>'},
     {"type": "heading", "level": 2, "text": "Head <img src=x onerror=alert(1)>"},
-    {"type": "list", "items": ["one", "<script>two</script>"]},
-    {"type": "raw_html", "html": "<iframe src=https://evil.example></iframe>"},
+    {"type": "list", "items": ["one", "<script>two</script>", '<a href="javascript:alert(2)" onclick="y()">three</a>']},
 ]
 # kind -> (admin collection path, public prefix, public detail key, people key)
 KINDS = {
@@ -156,16 +155,77 @@ def test_new_rows_default_to_empty_depth(app):
 
 
 @pytest.mark.parametrize("kind", KINDS)
-def test_content_is_sanitized_and_unknown_blocks_never_render(client, token, kind):
+def test_supported_hostile_content_is_sanitized(client, token, kind):
     entity = _create(client, token, kind, content=HOSTILE_CONTENT)
     stored = json.dumps(entity["content"])
-    assert "<script>" not in stored and "onclick" not in stored and "javascript:" not in stored and "onerror" not in stored
-    assert entity["content"][0]["text"].startswith("Safe")
-    html = client.get(f"/{KINDS[kind][1]}/{entity['slug']}").get_data(as_text=True)
-    root = _root(html)
+    for unsafe in ("<script", "onclick", "javascript:", "onerror"):
+        assert unsafe not in stored, unsafe
+    paragraph, heading, items = entity["content"][0]["text"], entity["content"][1]["text"], entity["content"][2]["items"]
+    assert paragraph.startswith("Safe") and "<b>bold</b>" in paragraph and "<a>bad</a>" in paragraph
+    assert heading == "Head"  # headings are plain text
+    assert items == ["one", "two", "<a>three</a>"]
+    root = _root(client.get(f"/{KINDS[kind][1]}/{entity['slug']}").get_data(as_text=True))
     assert "Safe" in root and "<b>bold</b>" in root
-    for unsafe in ("<script>alert", "onclick", "javascript:", "onerror", "<iframe", "evil.example"):
+    for unsafe in ("<script", "onclick", "javascript:", "onerror"):
         assert unsafe not in root, unsafe
+
+
+UNSUPPORTED_BLOCKS = [
+    {"type": "raw_html", "html": "<iframe src=https://evil.example></iframe>"},
+    {"type": "button", "label": "Go", "url": "https://example.org"},
+    {"type": "articleCard", "slug": "some-story"},
+    {"type": "footerNote", "text": "Footer"},
+    {"type": "newsletterCta"},
+    {"type": "madeUpBlock", "text": "x"},
+]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("block", UNSUPPORTED_BLOCKS, ids=lambda b: b["type"])
+def test_unsupported_block_types_rejected_and_nothing_persisted(client, app, token, kind, block):
+    from app.models.taxonomy import Series, Topic
+
+    model = Topic if kind == "topics" else Series
+    resp = client.post(KINDS[kind][0], json={"name": f"Rejected {block['type']}", "content": [CONTENT[1], block]},
+                       headers=auth_headers(token))
+    assert resp.status_code in (400, 422)
+    assert resp.get_json()["error"]["details"]["content"] == [f"Unsupported content block type: {block['type']}."]
+    with app.app_context():
+        assert model.query.filter_by(name=f"Rejected {block['type']}").first() is None
+    # Update is rejected too, and the stored content is left untouched.
+    entity = _create(client, token, kind, name=f"Kept {block['type']}", content=CONTENT)
+    resp = _update(client, token, kind, entity["id"], content=[block])
+    assert resp.status_code in (400, 422)
+    with app.app_context():
+        assert db.session.get(model, entity["id"]).content == entity["content"]
+    assert [b["type"] for b in _public(client, kind, entity["slug"])[0]["content"]] == ["heading", "paragraph"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("bad", [["not a block"], [{"text": "no type"}], [{"type": 7}]])
+def test_malformed_blocks_rejected(client, token, kind, bad):
+    resp = client.post(KINDS[kind][0], json={"name": "Malformed", "content": bad}, headers=auth_headers(token))
+    assert resp.status_code in (400, 422) and "content" in resp.get_json()["error"]["details"]
+
+
+ALL_SUPPORTED_BLOCKS = [
+    {"type": "paragraph", "text": "Paragraph text."},
+    {"type": "heading", "level": 2, "text": "A heading"},
+    {"type": "list", "style": "bullet", "items": ["One", "Two"]},
+    {"type": "blockquote", "text": "A quote.", "attribution": "Someone"},
+    {"type": "pullquote", "text": "A pullquote."},
+    {"type": "image", "src": "https://example.org/a.jpg", "alt": "Alt text", "caption": "Caption"},
+    {"type": "highlight", "title": "Note", "text": "Highlighted."},
+    {"type": "divider"},
+]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_all_eight_supported_block_types_accepted(client, token, kind):
+    entity = _create(client, token, kind, content=ALL_SUPPORTED_BLOCKS)
+    assert [b["type"] for b in entity["content"]] == [b["type"] for b in ALL_SUPPORTED_BLOCKS]
+    body = _update(client, token, kind, entity["id"], content=ALL_SUPPORTED_BLOCKS[:3]).get_json()["data"]
+    assert [b["type"] for b in body["content"]] == ["paragraph", "heading", "list"]
 
 
 @pytest.mark.parametrize("kind", KINDS)

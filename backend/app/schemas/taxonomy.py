@@ -1,4 +1,4 @@
-from marshmallow import fields, validate
+from marshmallow import ValidationError, fields, validate
 
 from app.extensions import ma
 from app.models.article import Article
@@ -181,12 +181,34 @@ class SeriesAdminSchema(SeriesSchema):
         exclude = ()
 
 
+# Exactly the blocks the Topic/Series editors can create (ArticleBlockEditor's
+# DEFAULT_BLOCK_TYPES). Checked here, before the shared
+# sanitize_content_blocks() runs in admin_taxonomy._apply_editorial — that
+# sanitizer deliberately passes unknown types through for its other callers
+# (Articles, Newsletter, ...), so Topic/Series content opts into this
+# stricter allowlist instead of changing it globally.
+TOPIC_SERIES_CONTENT_BLOCK_TYPES = frozenset(
+    {"paragraph", "heading", "list", "blockquote", "pullquote", "image", "highlight", "divider"}
+)
+
+
+def validate_topic_series_content(blocks):
+    """Reject (never silently drop) any block that isn't a dict with one of
+    the allowed string types — raw_html, button, articleCard, footerNote,
+    newsletterCta, sponsorBlock, ad, table, faq or anything unknown."""
+    for index, block in enumerate(blocks):
+        if not isinstance(block, dict) or not isinstance(block.get("type"), str):
+            raise ValidationError(f"Content block {index + 1} needs a block type.")
+        if block["type"] not in TOPIC_SERIES_CONTENT_BLOCK_TYPES:
+            raise ValidationError(f"Unsupported content block type: {block['type']}.")
+
+
 def _editorial_input_fields():
     """Shared Topic/Series editorial input fields. None of them has a
     load_default: omitted on update -> stored value untouched; content []
     / sources [] / featuredArticleId null -> cleared."""
     return {
-        "content": fields.List(fields.Dict(), required=False),
+        "content": fields.List(fields.Raw(), required=False, validate=validate_topic_series_content),
         "sources": sources_field("A topic or series"),
         "featured_article_id": fields.Integer(required=False, allow_none=True, data_key="featuredArticleId"),
     }
