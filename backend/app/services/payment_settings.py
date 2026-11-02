@@ -30,13 +30,17 @@ PAYMENT_SETTINGS_KEY = "payment_settings"
 
 # Production defaults when no row has ever been saved: keep today's
 # working Paystack checkout (card + mobile money for KES) alive after
-# deploy, add USD, and keep Apple Pay OFF until an admin turns it on —
-# Paystack Apple Pay needs account/domain setup WSF can't verify here.
+# deploy, add USD, and keep the wallets (Apple Pay, Google Pay) OFF until an
+# admin turns them on — their Paystack dashboard/domain setup isn't
+# something WSF can verify here.
 DEFAULT_PAYMENT_SETTINGS = {
     "defaultCurrency": "USD",
     "enabledCurrencies": ["USD", "KES"],
     "providers": {
-        "paystack": {"enabled": True, "methods": {"card": True, "apple_pay": False, "mobile_money": True}},
+        "paystack": {
+            "enabled": True,
+            "methods": {"card": True, "google_pay": False, "apple_pay": False, "mobile_money": True},
+        },
     },
 }
 
@@ -100,6 +104,8 @@ def validate_payment_settings(raw):
             if not isinstance(value, bool):
                 raise PaymentSettingsError(f"{key}.methods.{method} must be true or false.")
             methods[method] = value
+        if methods.get("google_pay") and not methods.get("card"):
+            raise PaymentSettingsError(f"{key}: Google Pay requires Card to be enabled (Google Pay is card-based).")
         providers[key] = {"enabled": entry["enabled"], "methods": methods}
 
     return {"defaultCurrency": default, "enabledCurrencies": normalized, "providers": providers}

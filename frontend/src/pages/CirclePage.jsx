@@ -9,7 +9,7 @@ import { fetchOpportunities } from '../api/opportunities'
 import { fetchEvents } from '../api/events'
 import { getMembershipAction, getCheckoutErrorPresentation } from '../utils/circlePayment'
 import { formatProductPrice } from '../utils/format'
-import { pickDefaultPrice } from '../utils/money'
+import { UNAVAILABLE_CURRENCY_MESSAGE, canCheckoutPrice, pickDefaultPrice } from '../utils/money'
 import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -117,7 +117,7 @@ function RequestAssistanceToggle({ plan, label = 'Request assistance' }) {
   )
 }
 
-function PlanCta({ plan, accessToken, membership, hasAccess, checkingOutSlug, checkoutError, onPaySecurely }) {
+function PlanCta({ plan, accessToken, membership, hasAccess, checkingOutSlug, checkoutError, onPaySecurely, checkoutBlocked }) {
   if (!accessToken) {
     // The plan itself is already fully public — only enrollment requires
     // an account. The chosen plan's slug (never price/payment/user data)
@@ -182,6 +182,20 @@ function PlanCta({ plan, accessToken, membership, hasAccess, checkingOutSlug, ch
   // extends the current one.
   const isCheckingOut = checkingOutSlug === plan.slug
   const disableButton = !!checkingOutSlug
+
+  // Checkout Phase 1: the selected price (or a plan's only price) can't be
+  // paid online right now — no working Pay button, no checkout request;
+  // the assisted-membership path stays available.
+  if (checkoutBlocked) {
+    return (
+      <div className="mt-4 text-sm">
+        <p className="text-charcoal-600" role="status">
+          {UNAVAILABLE_CURRENCY_MESSAGE}
+        </p>
+        <RequestAssistanceToggle plan={plan} />
+      </div>
+    )
+  }
 
   return (
     <div className="mt-4">
@@ -361,6 +375,8 @@ export default function CirclePage() {
   // — while one is already in flight.
   async function handlePaySecurely(plan) {
     if (checkingOutSlug) return
+    // Never POST for a price that isn't payable online (backend would refuse too).
+    if (!canCheckoutPrice(plan.prices, currencyBySlug[plan.slug], plan.defaultCurrency)) return
     setCheckoutError(null)
     setCheckingOutSlug(plan.slug)
     trackEvent('circle_checkout_initiated', { planSlug: plan.slug })
@@ -512,6 +528,7 @@ export default function CirclePage() {
                       checkingOutSlug={checkingOutSlug}
                       checkoutError={checkoutError}
                       onPaySecurely={handlePaySecurely}
+                      checkoutBlocked={!canCheckoutPrice(plan.prices, currencyBySlug[plan.slug], plan.defaultCurrency)}
                     />
                   </div>
                 )

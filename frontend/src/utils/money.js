@@ -57,9 +57,43 @@ export function validatePriceRows(rows, catalogue, { requireEnabled = false } = 
   return null
 }
 
-// The price option to preselect: the server's defaultCurrency if offered,
-// else the first checkout-available option, else the first option.
+// The price option to preselect — the same order as the backend's
+// pricing.preferred_currency(): (1) the default currency if it can be
+// checked out, (2) the first checkout-available option, (3) the default
+// currency even if unavailable (display only), (4) the first option, (5) null.
 export function pickDefaultPrice(prices, defaultCurrency) {
   const list = prices || []
-  return list.find((p) => p.currency === defaultCurrency) || list.find((p) => p.checkoutAvailable) || list[0] || null
+  return (
+    list.find((p) => p.currency === defaultCurrency && p.checkoutAvailable) ||
+    list.find((p) => p.checkoutAvailable) ||
+    list.find((p) => p.currency === defaultCurrency) ||
+    list[0] ||
+    null
+  )
+}
+
+export const UNAVAILABLE_CURRENCY_MESSAGE = "Online payment isn't available in this currency right now."
+
+// Currency <select> options: every price stays visible, but one that can't
+// be checked out right now is disabled (never selectable as if payable).
+export function priceSelectorOptions(prices) {
+  return (prices || []).map((p) => ({
+    value: p.currency,
+    label: p.checkoutAvailable ? `${p.currency} — ${p.formatted}` : `${p.currency} — ${p.formatted} — unavailable online`,
+    disabled: !p.checkoutAvailable,
+  }))
+}
+
+// The option a buyer has effectively selected (their choice, else the
+// payable default) and whether a checkout POST may be sent for it. Items
+// with no price options (legacy/mock data) keep the old behavior: the
+// backend decides. The backend stays authoritative either way.
+export function selectedPriceOption(prices, selectedCurrency, defaultCurrency) {
+  const list = prices || []
+  return list.find((p) => p.currency === selectedCurrency) || pickDefaultPrice(list, defaultCurrency)
+}
+
+export function canCheckoutPrice(prices, selectedCurrency, defaultCurrency) {
+  if (!prices || prices.length === 0) return true
+  return !!selectedPriceOption(prices, selectedCurrency, defaultCurrency)?.checkoutAvailable
 }

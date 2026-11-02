@@ -74,9 +74,10 @@ def _save_settings(app, settings):
         db.session.commit()
 
 
-def _settings(enabled=("USD", "KES"), default="USD", paystack=True, card=True, apple_pay=True, mobile_money=True):
+def _settings(enabled=("USD", "KES"), default="USD", paystack=True, card=True, apple_pay=True, mobile_money=True, google_pay=False):
     return {"defaultCurrency": default, "enabledCurrencies": list(enabled), "providers": {
-        "paystack": {"enabled": paystack, "methods": {"card": card, "apple_pay": apple_pay, "mobile_money": mobile_money}}}}
+        "paystack": {"enabled": paystack, "methods": {"card": card, "google_pay": google_pay, "apple_pay": apple_pay,
+                                                      "mobile_money": mobile_money}}}}
 
 
 def _plan(app, prices=(("USD", 2000), ("KES", 250000)), status="active"):
@@ -172,7 +173,8 @@ def test_default_settings_are_conservative_production_defaults(app):
         settings = get_payment_settings()
     assert settings["defaultCurrency"] == "USD"
     assert settings["enabledCurrencies"] == ["USD", "KES"]
-    assert settings["providers"]["paystack"] == {"enabled": True, "methods": {"card": True, "apple_pay": False, "mobile_money": True}}
+    assert settings["providers"]["paystack"] == {
+        "enabled": True, "methods": {"card": True, "google_pay": False, "apple_pay": False, "mobile_money": True}}
 
 
 @pytest.mark.parametrize("bad, message", [
@@ -203,7 +205,11 @@ def test_admin_settings_api_saves_and_never_leaks_secrets(client, app, admin, bu
     assert body["settings"]["enabledCurrencies"] == ["USD", "EUR"]
     assert body["providers"]["paystack"]["configured"] is True
     assert body["providers"]["paystack"]["currencies"] == ["KES", "USD"]
-    assert [m["key"] for m in body["providers"]["paystack"]["methods"]] == ["card", "apple_pay", "mobile_money"]
+    methods = body["providers"]["paystack"]["methods"]
+    assert [m["key"] for m in methods] == ["card", "google_pay", "apple_pay", "mobile_money"]
+    google = methods[1]
+    assert google["label"] == "Google Pay" and google["currencies"] == ["KES", "USD"]
+    assert google["description"] == "Google Pay on supported devices, browsers and eligible cards."
     for public in (client.get("/api/v1/payments/config").get_json(), body):
         assert "SUPERSECRET" not in json.dumps(public) and "sk_test" not in json.dumps(public)
     bad = client.put("/api/v1/admin/settings", json={"settings": {"payment_settings": _settings(enabled=("USD", "ZZZ"))}},
@@ -462,3 +468,91 @@ def test_migration_converts_legacy_prices_explicitly():
             module.downgrade()
         tables = set(sa.inspect(conn).get_table_names())
         assert "circle_plan_prices" not in tables and "resource_prices" not in tables and "circle_plans" in tables
+
+
+# --- final pre-deploy correction: Google Pay + payable default currency ----------------------------
+
+
+def test_google_pay_requires_card_and_is_recognized():
+    from app.services.payment_settings import PaymentSettingsError, validate_payment_settings
+
+    with pytest.raises(PaymentSettingsError, match="Google Pay requires Card"):
+        validate_payment_settings(_settings(card=False, google_pay=True))
+    ok = validate_payment_settings(_settings(card=True, google_pay=True))
+    assert ok["providers"]["paystack"]["methods"]["google_pay"] is True
+    legacy_blob = _settings()
+    del legacy_blob["providers"]["paystack"]["methods"]["google_pay"]  # a row saved before Google Pay existed
+    assert validate_payment_settings(legacy_blob)["providers"]["paystack"]["methods"]["google_pay"] is False
+
+
+def test_all_methods_by_currency_when_enabled(app):
+    _enable_paystack(app)
+    every = _settings(google_pay=True)
+    assert _resolve(app, "KES", every)["channels"] == ["card", "google_pay", "apple_pay", "mobile_money"]
+    assert _resolve(app, "USD")["channels"] == ["card", "google_pay", "apple_pay"]
+    assert _resolve(app, "USD", _settings(google_pay=True, apple_pay=False, mobile_money=True))["channels"] == ["card", "google_pay"]
+
+
+def test_paystack_client_google_pay_rules(app):
+    from app.services.paystack import PaystackAPIError, initialize_transaction
+
+    _enable_paystack(app)
+    base = dict(amount_subunits=2000, email="a@example.com", reference="r1", currency="USD", callback_url="https://x.org/cb")
+    with app.app_context():
+        for channels in (["google_pay"], ["google_pay", "apple_pay"], ["card", "paypal"]):
+            with patch("app.services.paystack.requests.request") as request:
+                with pytest.raises(PaystackAPIError):
+                    initialize_transaction(**base, channels=channels)
+                request.assert_not_called()
+        with patch("app.services.paystack._request", return_value={"data": {"authorization_url": "u", "access_code": "c", "reference": "r1"}}) as req:
+            initialize_transaction(**base, channels=["card", "google_pay"])
+            assert req.call_args.kwargs["json_body"]["channels"] == ["card", "google_pay"]
+
+
+def test_checkout_sends_google_pay_when_enabled(client, app, buyer):
+    _enable_paystack(app)
+    _save_settings(app, _settings(google_pay=True, apple_pay=False))
+    slug = _plan(app)[1]
+    _, mock_init = _checkout(client, buyer, "circle", slug, {"currency": "USD"})
+    assert mock_init.call_args.kwargs["channels"] == ["card", "google_pay"]
+    _, mock_init = _checkout(client, buyer, "circle", slug, {"currency": "KES"})
+    assert mock_init.call_args.kwargs["channels"] == ["card", "google_pay", "mobile_money"]
+
+
+@pytest.mark.parametrize("allowed, expected_default, available", [
+    (("KES",), "KES", {"USD": False, "KES": True}),       # USD default unpayable -> KES preselected
+    (("KES", "USD"), "USD", {"USD": True, "KES": True}),  # USD payable -> USD
+    ((), "USD", {"USD": False, "KES": False}),            # nothing payable -> configured default as display fallback
+])
+def test_public_default_currency_prefers_payable(client, app, allowed, expected_default, available):
+    _enable_paystack(app, currencies=allowed)
+    if not allowed:
+        app.config["PAYSTACK_ENABLED"] = False
+    _save_settings(app, _settings())
+    _plan(app)
+    plan = client.get("/api/v1/circle/plans").get_json()["data"][0]
+    assert plan["defaultCurrency"] == expected_default
+    assert {p["currency"]: p["checkoutAvailable"] for p in plan["prices"]} == available
+
+
+def test_preferred_currency_order():
+    from app.services.pricing import preferred_currency
+
+    assert preferred_currency([("USD", False), ("KES", True)], "USD") == "KES"
+    assert preferred_currency([("USD", True), ("KES", True)], "USD") == "USD"
+    assert preferred_currency([("KES", False), ("USD", False)], "USD") == "USD"
+    assert preferred_currency([("KES", False), ("EUR", False)], "USD") == "KES"
+    assert preferred_currency([], "USD") is None
+
+
+def test_checkout_without_currency_uses_payable_default(client, app, buyer):
+    _enable_paystack(app, currencies=("KES",))  # USD not confirmed on this deployment
+    _save_settings(app, _settings())
+    slug = _plan(app)[1]
+    resp, mock_init = _checkout(client, buyer, "circle", slug)
+    assert resp.status_code == 201, resp.get_json()
+    assert mock_init.call_args.kwargs["currency"] == "KES"
+    # An explicit unpayable currency is still refused server-side.
+    resp, mock_init = _checkout(client, buyer, "circle", slug, {"currency": "USD"})
+    assert resp.get_json()["error"]["code"] == "currency_not_supported"
+    mock_init.assert_not_called()

@@ -58,7 +58,7 @@ REFERENCE_SAFE_CHARACTERS = "-.="
 # must stay in step with app/services/payment_providers.py's
 # PAYSTACK_METHODS. Anything else (ussd, eft, capitec_pay, ...) is never
 # forwarded, even if a caller passes it.
-SUPPORTED_CHANNELS = ("card", "apple_pay", "mobile_money")
+SUPPORTED_CHANNELS = ("card", "google_pay", "apple_pay", "mobile_money")
 
 
 class PaystackError(Exception):
@@ -171,6 +171,8 @@ def initialize_transaction(*, amount_subunits, email, reference, currency, callb
             or not channels
             or any(c not in SUPPORTED_CHANNELS for c in channels)
             or len(set(channels)) != len(channels)
+            # Google Pay is card-based: never offered without the card channel.
+            or ("google_pay" in channels and "card" not in channels)
         ):
             raise PaystackAPIError("Refusing to initialize with an unsupported payment channel list.")
     if not isinstance(amount_subunits, int) or isinstance(amount_subunits, bool) or amount_subunits <= 0:

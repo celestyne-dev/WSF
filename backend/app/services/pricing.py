@@ -156,22 +156,46 @@ def public_pricing_payload(parent, transaction_type):
             "checkoutAvailable": decision is not None,
             "paymentMethods": _method_labels(decision["channels"]) if decision else [],
         })
-    currencies = [p["currency"] for p in prices]
-    default = settings["defaultCurrency"]
-    if default not in currencies:
-        payable = [p["currency"] for p in prices if p["checkoutAvailable"]]
-        default = payable[0] if payable else (currencies[0] if currencies else None)
+    default = preferred_currency(
+        [(p["currency"], p["checkoutAvailable"]) for p in prices], settings["defaultCurrency"]
+    )
     return {"prices": prices, "defaultCurrency": default}
+
+
+def preferred_currency(options, configured_default):
+    """The PUBLIC item-level checkout default (never the stored global
+    setting), from [(currency, checkout_available), ...] in display order:
+      1. the configured default, if priced AND checkout-available;
+      2. the first checkout-available price;
+      3. the configured default, if priced (nothing is payable right now);
+      4. the first price;
+      5. None.
+    Mirrored exactly by frontend utils/money.js's pickDefaultPrice()."""
+    if any(c == configured_default and ok for c, ok in options):
+        return configured_default
+    available = next((c for c, ok in options if ok), None)
+    if available:
+        return available
+    if any(c == configured_default for c, _ in options):
+        return configured_default
+    return options[0][0] if options else None
+
+
+def transaction_type_for(parent):
+    from app.models.circle import CirclePlan
+    from app.services.payment_providers import TRANSACTION_CIRCLE_MEMBERSHIP, TRANSACTION_RESOURCE_PURCHASE
+
+    return TRANSACTION_CIRCLE_MEMBERSHIP if isinstance(parent, CirclePlan) else TRANSACTION_RESOURCE_PURCHASE
 
 
 def checkout_currency_for(parent, requested):
     """The currency a checkout will use: the requested one if given, else
-    the global default if this item is priced in it, else the item's only
-    enabled price. Never an amount — only which stored row to load."""
+    the same preferred_currency() order the public payload shows (the
+    configured default only while it's actually payable). Never an amount
+    — only which stored row to load."""
     if requested:
         return requested
     options = enabled_prices(parent)
-    default = get_payment_settings()["defaultCurrency"]
-    if any(p.currency == default for p in options):
-        return default
-    return options[0].currency if options else None
+    settings = get_payment_settings()
+    available = available_checkout_currencies([p.currency for p in options], transaction_type_for(parent), settings)
+    return preferred_currency([(p.currency, p.currency in available) for p in options], settings["defaultCurrency"])

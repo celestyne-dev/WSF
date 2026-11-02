@@ -21,7 +21,7 @@ import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
-import { pickDefaultPrice } from '../utils/money'
+import { UNAVAILABLE_CURRENCY_MESSAGE, canCheckoutPrice, pickDefaultPrice } from '../utils/money'
 
 // Checkout Phase 1: a premium Resource's display price is its selected (or
 // server-default) price option's server-formatted text; legacy whole-unit
@@ -197,6 +197,20 @@ function AccessCta({
   if (resource.accessType === 'premium') {
     const priceLabel = resourcePriceText(resource, checkoutCurrency)
     const returnTo = `/resources/${resource.slug}`
+    // Checkout Phase 1: the selected price (or the only price) can't be paid
+    // online right now — show it, but never offer a working Buy button.
+    const payable = canCheckoutPrice(resource.prices, checkoutCurrency, resource.defaultCurrency)
+    const unavailableNote = (
+      <div className="mt-2 max-w-sm text-sm text-charcoal-600" role="status">
+        <p>{UNAVAILABLE_CURRENCY_MESSAGE}</p>
+        <p className="mt-1">
+          <Link to="/contact" className="font-semibold text-burgundy-600 hover:underline">
+            Contact WSF
+          </Link>{' '}
+          and we&apos;ll help you get this resource.
+        </p>
+      </div>
+    )
 
     // Shown under the Buy CTA for a purchaser candidate only — never
     // once she already holds access via purchase or Circle (see the
@@ -213,6 +227,16 @@ function AccessCta({
         </Link>
       </p>
     )
+
+    if (!accessToken && !payable) {
+      return (
+        <div className="mt-5">
+          <p className="text-lg font-semibold text-charcoal">{priceLabel}</p>
+          {unavailableNote}
+          {membershipNote}
+        </div>
+      )
+    }
 
     if (!accessToken) {
       return (
@@ -266,9 +290,16 @@ function AccessCta({
             />
           </div>
         )}
-        <button type="button" onClick={onCheckoutClick} disabled={checkingOut} aria-busy={checkingOut} className="btn-primary inline-flex disabled:opacity-60">
-          <Lock size={16} /> {checkingOut ? 'Starting secure checkout…' : `Buy securely — ${priceLabel}`}
-        </button>
+        {payable ? (
+          <button type="button" onClick={onCheckoutClick} disabled={checkingOut} aria-busy={checkingOut} className="btn-primary inline-flex disabled:opacity-60">
+            <Lock size={16} /> {checkingOut ? 'Starting secure checkout…' : `Buy securely — ${priceLabel}`}
+          </button>
+        ) : (
+          <>
+            {!(resource.prices?.length > 1) && <p className="text-lg font-semibold text-charcoal">{priceLabel}</p>}
+            {unavailableNote}
+          </>
+        )}
         {checkoutError && <p className="mt-2 text-sm text-burgundy-600">{checkoutError}</p>}
         {membershipNote}
       </div>
@@ -648,6 +679,11 @@ export default function ResourceDetailPage() {
     trackEvent('resource_checkout_click', { resourceSlug: resource.slug })
     try {
       const selected = checkoutCurrency || pickDefaultPrice(resource.prices, resource.defaultCurrency)?.currency
+      // Never POST for a price that isn't payable online (backend would refuse too).
+      if (!canCheckoutPrice(resource.prices, selected, resource.defaultCurrency)) {
+        setCheckingOut(false)
+        return
+      }
       const { authorizationUrl } = await startResourceCheckout(resource.slug, selected)
       if (!authorizationUrl) throw new Error('Checkout response was missing an authorization URL.')
       trackEvent('resource_checkout_initialized', { resourceSlug: resource.slug })

@@ -63,15 +63,23 @@ def _paystack_account_currencies():
 # for a Kenyan merchant. Nothing else is ever sent to Paystack.
 PAYSTACK_CURRENCIES = ("KES", "USD")
 
-# The only Paystack hosted-checkout `channels` WSF supports. Card covers
-# Visa/Mastercard (and supported American Express) in ONE channel;
-# mobile_money is one channel (M-PESA and other Kenyan mobile money on
-# Paystack's own page) and is KES-only. Unsupported channels (ussd, eft,
-# bank_transfer, qr, capitec_pay, ...) are deliberately absent.
+# The only Paystack hosted-checkout `channels` WSF supports, in admin
+# display order. Card covers Visa/Mastercard (and supported American
+# Express) in ONE channel; google_pay and apple_pay are wallet channels on
+# top of card (Google Pay additionally REQUIRES card to be enabled — see
+# payment_settings.validate_payment_settings); mobile_money is one channel
+# (M-PESA and other Kenyan mobile money on Paystack's own page) and is
+# KES-only. Unsupported channels (ussd, eft, bank_transfer, qr,
+# capitec_pay, ...) are deliberately absent.
 PAYSTACK_METHODS = {
     "card": {
         "label": "Card",
         "description": "Visa, Mastercard and supported American Express cards.",
+        "currencies": None,
+    },
+    "google_pay": {
+        "label": "Google Pay",
+        "description": "Google Pay on supported devices, browsers and eligible cards.",
         "currencies": None,
     },
     "apple_pay": {

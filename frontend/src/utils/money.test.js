@@ -1,7 +1,16 @@
 // Run with: node --test src/utils/money.test.js
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { minorToAmountString, pickDefaultPrice, pricesToPayload, validateAmountString, validatePriceRows } from './money.js'
+import {
+  canCheckoutPrice,
+  minorToAmountString,
+  pickDefaultPrice,
+  priceSelectorOptions,
+  pricesToPayload,
+  selectedPriceOption,
+  validateAmountString,
+  validatePriceRows,
+} from './money.js'
 
 const CATALOGUE = [
   { code: 'USD', minorUnit: 2 },
@@ -35,9 +44,35 @@ test('price rows: duplicates, unknown currency, enabled requirement', () => {
   assert.deepEqual(pricesToPayload([{ currency: 'USD', amount: ' 19.99 ', enabled: true }]), [{ currency: 'USD', amount: '19.99', enabled: true }])
 })
 
-test('default price preselection', () => {
-  const prices = [{ currency: 'KES', checkoutAvailable: true }, { currency: 'USD', checkoutAvailable: false }]
-  assert.equal(pickDefaultPrice(prices, 'USD').currency, 'USD')
-  assert.equal(pickDefaultPrice(prices, 'EUR').currency, 'KES')
+test('default price preselection prefers a payable price (same order as the backend)', () => {
+  const usdDown = [{ currency: 'USD', checkoutAvailable: false }, { currency: 'KES', checkoutAvailable: true }]
+  assert.equal(pickDefaultPrice(usdDown, 'USD').currency, 'KES')
+  const both = [{ currency: 'KES', checkoutAvailable: true }, { currency: 'USD', checkoutAvailable: true }]
+  assert.equal(pickDefaultPrice(both, 'USD').currency, 'USD')
+  const none = [{ currency: 'KES', checkoutAvailable: false }, { currency: 'USD', checkoutAvailable: false }]
+  assert.equal(pickDefaultPrice(none, 'USD').currency, 'USD')
+  assert.equal(pickDefaultPrice(none, 'EUR').currency, 'KES')
   assert.equal(pickDefaultPrice([], 'USD'), null)
+})
+
+test('unavailable currencies stay visible but disabled in the selector', () => {
+  const options = priceSelectorOptions([
+    { currency: 'USD', formatted: '$20.00', checkoutAvailable: false },
+    { currency: 'KES', formatted: 'KES 2,500.00', checkoutAvailable: true },
+  ])
+  assert.deepEqual(options, [
+    { value: 'USD', label: 'USD — $20.00 — unavailable online', disabled: true },
+    { value: 'KES', label: 'KES — KES 2,500.00', disabled: false },
+  ])
+})
+
+test('an unavailable selected or single price can never start checkout', () => {
+  const single = [{ currency: 'USD', formatted: '$20.00', checkoutAvailable: false }]
+  assert.equal(canCheckoutPrice(single, null, 'USD'), false)
+  assert.equal(selectedPriceOption(single, null, 'USD').currency, 'USD') // still displayed
+  const mixed = [{ currency: 'USD', checkoutAvailable: false }, { currency: 'KES', checkoutAvailable: true }]
+  assert.equal(canCheckoutPrice(mixed, 'USD', 'USD'), false)
+  assert.equal(canCheckoutPrice(mixed, null, 'USD'), true) // payable default = KES
+  assert.equal(canCheckoutPrice(mixed, 'KES', 'USD'), true)
+  assert.equal(canCheckoutPrice([], null, 'USD'), true) // legacy items: backend decides
 })

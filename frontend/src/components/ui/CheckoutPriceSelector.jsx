@@ -5,7 +5,10 @@
 // stored price and computes the amount itself. Payment-option copy lists
 // only the methods the server reports as actually available for the
 // selected currency (paymentMethods) — Paystack's hosted page then
-// presents them; no card/M-PESA data ever touches WSF.
+// presents them; no card/M-PESA data ever touches WSF. A currency that
+// can't be checked out right now stays listed but disabled.
+import { priceSelectorOptions } from '../../utils/money'
+
 export default function CheckoutPriceSelector({ prices, selected, onSelect, suffix, size = 'lg', idPrefix = 'price' }) {
   const options = prices || []
   if (!options.length) return null
@@ -23,12 +26,15 @@ export default function CheckoutPriceSelector({ prices, selected, onSelect, suff
           <select
             id={`${idPrefix}-currency`}
             value={current.currency}
-            onChange={(e) => onSelect(e.target.value)}
+            onChange={(e) => {
+              const option = options.find((p) => p.currency === e.target.value)
+              if (option?.checkoutAvailable) onSelect(e.target.value)
+            }}
             className="border border-taupe-300 px-2 py-1 text-xs"
           >
-            {options.map((p) => (
-              <option key={p.currency} value={p.currency}>
-                {p.currency} — {p.formatted}
+            {priceSelectorOptions(options).map((o) => (
+              <option key={o.value} value={o.value} disabled={o.disabled}>
+                {o.label}
               </option>
             ))}
           </select>
