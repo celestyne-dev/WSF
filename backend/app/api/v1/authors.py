@@ -83,7 +83,10 @@ def _apply_fields(author, data, topics, person):
     author.photo_media_id = data.get("photo_media_id")
     author.bio = sanitize_content_blocks(data.get("bio", []))
     author.short_bio = data.get("short_bio")
-    author.expertise = data.get("expertise", [])
+    if "expertise" in data:
+        author.expertise = data["expertise"]
+    elif author.expertise is None:
+        author.expertise = []
     author.topics = topics
     author.location = data.get("location")
     author.country_code = data.get("country_code")

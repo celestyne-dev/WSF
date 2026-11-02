@@ -102,6 +102,9 @@ def test_existing_and_new_articles_default_to_no_sources(client, token, author_s
     {"title": "X", "url": "https://example.org", "publisher": "P" * 251},
     {"title": "X", "url": "https://example.org", "note": "N" * 501},
     {"title": "X", "url": "https://example.org", "publishedDate": "15/01/2026"},
+    # Pre-deploy correction: a source must be on a public domain name.
+    {"title": "X", "url": "https://localhost/source"},
+    {"title": "X", "url": "https://127.0.0.1/source"},
 ])
 def test_invalid_sources_are_rejected(client, token, author_slug, bad):
     resp = _create(client, token, author_slug, sources=[bad])

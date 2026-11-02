@@ -5,11 +5,14 @@ all three validate identically; schemas/article.py re-exports the names
 it always had (ArticleSourceSchema, MAX_ARTICLE_SOURCES, _validate_sources).
 
 Plain text only — every field is rendered escaped, never as markup — and
-the URL must be http(s). Never fetched or checked for reachability: an
+the URL must be http(s) on a public domain name (validate_public_host). Never fetched or checked for reachability: an
 editor can always save even if the cited site is temporarily down. A
 source is context an editor chose to cite; nothing is ever inferred from
 it, and it is never treated as identity verification.
 """
+import ipaddress
+from urllib.parse import urlsplit
+
 from marshmallow import EXCLUDE, ValidationError, fields, post_load, pre_load, validate
 
 from app.extensions import ma
@@ -17,11 +20,52 @@ from app.extensions import ma
 MAX_SOURCES = 50
 
 
+PUBLIC_HOST_ERROR = "Source URL must use a public domain name."
+
+
+def validate_public_host(url):
+    """A cited source must live on a normal public domain name. marshmallow's
+    URL validator (require_tld=True) still lets through `localhost` and IP
+    literals, so the parsed hostname is checked here as well: no localhost
+    (or *.localhost), no single-label host ("intranet"), no IPv4/IPv6
+    literal, and a top-level label that isn't all digits. Purely syntactic —
+    never a DNS lookup or fetch, never proof the domain is registered."""
+    try:
+        host = urlsplit(url).hostname
+    except ValueError:
+        raise ValidationError(PUBLIC_HOST_ERROR)
+    if not host:
+        return  # malformed URL: validate.URL already reports it
+    host = host.rstrip(".").lower()
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise ValidationError(PUBLIC_HOST_ERROR)
+    labels = host.split(".")
+    if host == "localhost" or host.endswith(".localhost") or len(labels) < 2 or labels[-1].isdigit():
+        raise ValidationError(PUBLIC_HOST_ERROR)
+
+
+_HTTP_URL = validate.URL(schemes={"http", "https"}, require_tld=True)
+
+
+def _validate_source_url(url):
+    """The public-host check, then the normal http(s) URL check — chained
+    so a bad URL reports exactly one message. Host first so a non-public
+    host ("intranet", "localhost", an IP) always gets the clear public-
+    domain message; a URL with no parseable host (javascript:, data:,
+    garbage) falls through to the URL check's own error."""
+    validate_public_host(url)
+    _HTTP_URL(url)
+
+
 class SourceSchema(ma.Schema):
     title = fields.String(required=True, validate=validate.Length(min=1, max=300))
     url = fields.String(
         required=True,
-        validate=[validate.Length(min=1, max=2048), validate.URL(schemes={"http", "https"}, require_tld=True)],
+        validate=[validate.Length(min=1, max=2048), _validate_source_url],
     )
     publisher = fields.String(required=False, allow_none=True, validate=validate.Length(max=250))
     author = fields.String(required=False, allow_none=True, validate=validate.Length(max=250))

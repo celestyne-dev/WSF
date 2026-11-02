@@ -411,3 +411,87 @@ def test_author_json_ld_minimal_has_no_empty_fields(client, token):
     slug = _create(client, token, "authors").get_json()["data"]["slug"]
     data = _json_ld(client.get(f"/authors/{slug}").get_data(as_text=True), "data-author-structured-data")
     assert set(data) == {"@context", "@type", "name", "url"}
+
+
+# --- pre-deploy correction: public-host sources (Article/Person/Author) ---------------------------
+
+
+NON_PUBLIC_URLS = [
+    "https://localhost/source",
+    "http://localhost:8000/x",
+    "https://foo.localhost/x",
+    "https://intranet/report",
+    "https://127.0.0.1/source",
+    "https://192.168.1.20/report",
+    "https://10.0.0.5:8443/report",
+    "https://[::1]/source",
+    "https://[2001:db8::1]/x",
+]
+PUBLIC_URLS = [
+    "https://example.com/report",
+    "https://news.example.org/story",
+    "https://www.ilo.org/report",
+    "https://sub.domain.co.ke/source",
+    "http://example.com:8080/path?q=1",
+]
+
+
+def _create_any(client, token, kind, sources):
+    if kind == "articles":
+        author = _create(client, token, "authors", name="Article Host Author").get_json()["data"]["slug"]
+        return client.post("/api/v1/articles", json={"title": "Host Story", "authorSlug": author, "status": "draft",
+                                                     "content": [], "sources": sources}, headers=auth_headers(token))
+    return _create(client, token, kind, sources=sources)
+
+
+@pytest.mark.parametrize("kind", ["articles", "people", "authors"])
+@pytest.mark.parametrize("url", NON_PUBLIC_URLS)
+def test_non_public_source_hosts_rejected_everywhere(client, token, kind, url):
+    resp = _create_any(client, token, kind, [{"title": "Internal", "url": url}])
+    assert resp.status_code in (400, 422), url
+    details = resp.get_json()["error"]["details"]["sources"]
+    assert details == {"0": {"url": ["Source URL must use a public domain name."]}}
+
+
+@pytest.mark.parametrize("kind", ["articles", "people", "authors"])
+def test_public_source_domains_accepted_everywhere(client, token, kind):
+    sources = [{"title": f"S{i}", "url": url} for i, url in enumerate(PUBLIC_URLS)]
+    resp = _create_any(client, token, kind, sources)
+    assert resp.status_code == 201, resp.get_json()
+    assert [s["url"] for s in resp.get_json()["data"]["sources"]] == PUBLIC_URLS
+
+
+# --- pre-deploy correction: Author legacy expertise is preserved ---------------------------------
+
+
+def test_author_expertise_preserved_on_omission_and_cleared_explicitly(client, token):
+    slug = _create(client, token, "authors", expertise=["Leadership", "Climate finance"]).get_json()["data"]["slug"]
+    base = dict(KINDS["authors"][0], slug=slug)
+    for edit in ({"sources": [SOURCE_B]}, {"role": "Editor"}, {"bio": [{"type": "paragraph", "text": "New bio."}]}):
+        resp = client.put(f"/api/v1/authors/{slug}", json=dict(base, **edit), headers=auth_headers(token))
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()["data"]["expertise"] == ["Leadership", "Climate finance"], edit
+    resp = client.put(f"/api/v1/authors/{slug}", json=dict(base, expertise=["Mentoring"]), headers=auth_headers(token))
+    assert resp.get_json()["data"]["expertise"] == ["Mentoring"]
+    resp = client.put(f"/api/v1/authors/{slug}", json=dict(base, expertise=[]), headers=auth_headers(token))
+    assert resp.get_json()["data"]["expertise"] == []
+
+
+def test_new_author_without_expertise_gets_empty_list(client, token):
+    assert _create(client, token, "authors").get_json()["data"]["expertise"] == []
+
+
+def test_author_knows_about_keeps_preserved_expertise_after_unrelated_save(client, app, token):
+    from app.models.taxonomy import Topic
+
+    _add(app, Topic(slug="leadership", name="Leadership", status="published"),
+         Topic(slug="secret-topic", name="Secret Draft Topic", status="draft"))
+    slug = _create(client, token, "authors", topicSlugs=["leadership", "secret-topic"],
+                   expertise=["LEADERSHIP", "Climate finance"]).get_json()["data"]["slug"]
+    # An editor opens the Author only to add a source (expertise omitted).
+    client.put(f"/api/v1/authors/{slug}", json=dict(KINDS["authors"][0], slug=slug, topicSlugs=["leadership", "secret-topic"],
+                                                    sources=[SOURCE_A]), headers=auth_headers(token))
+    html = client.get(f"/authors/{slug}").get_data(as_text=True)
+    data = _json_ld(html, "data-author-structured-data")
+    assert data["knowsAbout"] == [{"@type": "Thing", "name": "Leadership", "url": f"{SITE}/topics/leadership"}, "Climate finance"]
+    assert "Secret Draft Topic" not in html

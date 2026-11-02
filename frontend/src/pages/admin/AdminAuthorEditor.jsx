@@ -11,7 +11,8 @@ import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import SourcesEditor from '../../components/cms/SourcesEditor'
-import { blankSource, describeSourceErrors, sourcesToPayload, validateSources } from '../../utils/sources'
+import { describeSourceErrors, validateSources } from '../../utils/sources'
+import { authorFormToPayload, authorToForm, blankAuthorForm } from '../../utils/authorForm'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -26,56 +27,6 @@ function slugify(text) {
 
 const STATUSES = ['draft', 'active', 'archived']
 const SUGGESTED_ROLES = ['Staff Writer', 'Contributor', 'Editor', 'Guest Contributor', 'Founder', 'Editorial Team']
-
-function blankForm() {
-  return {
-    name: '',
-    slug: '',
-    role: '',
-    shortBio: '',
-    bio: [],
-    photoMedia: null,
-    location: '',
-    countryCode: '',
-    topicSlugs: [],
-    personId: '',
-    website: '',
-    socialLinkedin: '',
-    socialTwitter: '',
-    socialInstagram: '',
-    sources: [],
-    status: 'draft',
-    seoTitle: '',
-    seoDescription: '',
-    seoCanonical: '',
-    seoOgMedia: null,
-  }
-}
-
-function toForm(author) {
-  return {
-    name: author.name || '',
-    slug: author.slug || '',
-    role: author.role || '',
-    shortBio: author.shortBio || '',
-    bio: author.bio || [],
-    photoMedia: author.photoMediaId ? { ...author.photoMedia, id: author.photoMediaId } : null,
-    location: author.location || '',
-    countryCode: author.countryCode || '',
-    topicSlugs: author.topicSlugs || [],
-    personId: author.personId || '',
-    website: author.website || '',
-    socialLinkedin: author.social?.linkedin || '',
-    socialTwitter: author.social?.twitter || '',
-    socialInstagram: author.social?.instagram || '',
-    sources: (author.sources || []).map((s) => ({ ...blankSource(), ...s })),
-    status: author.status || 'draft',
-    seoTitle: author.seo?.title || '',
-    seoDescription: author.seo?.description || '',
-    seoCanonical: author.seo?.canonical || '',
-    seoOgMedia: author.seo?.ogImageMediaId ? { id: author.seo.ogImageMediaId } : null,
-  }
-}
 
 function Section({ title, description, children }) {
   return (
@@ -127,9 +78,9 @@ export default function AdminAuthorEditor() {
         setPeople(peopleRes.items)
         setCountries([...countryList].sort((a, b) => a.name.localeCompare(b.name)))
         if (isNew) {
-          setForm(blankForm())
+          setForm(blankAuthorForm())
         } else if (existing) {
-          setForm(toForm(existing))
+          setForm(authorToForm(existing))
         } else {
           setNotFound(true)
         }
@@ -185,38 +136,13 @@ export default function AdminAuthorEditor() {
     setErrors({})
     setSaving(true)
 
-    const payload = {
-      name: form.name,
-      slug: form.slug,
-      role: form.role || null,
-      shortBio: form.shortBio || null,
-      bio: form.bio,
-      photoMediaId: form.photoMedia?.id || null,
-      location: form.location || null,
-      countryCode: form.countryCode || null,
-      topicSlugs: form.topicSlugs,
-      personId: form.personId || null,
-      website: form.website || null,
-      social: {
-        linkedin: form.socialLinkedin || null,
-        twitter: form.socialTwitter || null,
-        instagram: form.socialInstagram || null,
-      },
-      sources: sourcesToPayload(form.sources),
-      status: nextStatus,
-      seo: {
-        title: form.seoTitle || null,
-        description: form.seoDescription || null,
-        canonical: form.seoCanonical || null,
-        ogImageMediaId: form.seoOgMedia?.id || null,
-      },
-    }
+    const payload = authorFormToPayload(form, nextStatus)
 
     try {
       const saved = isNew ? await createAuthor(payload) : await updateAuthor(id, payload)
       toast.success(`Author ${nextStatus === 'active' ? 'activated' : 'saved'} as ${nextStatus}.`)
       if (isNew) navigate(`/admin/authors/${saved.slug}`)
-      else setForm(toForm(saved))
+      else setForm(authorToForm(saved))
     } catch (err) {
       const message =
         describeSourceErrors(err?.response?.data?.error?.details?.sources) ||

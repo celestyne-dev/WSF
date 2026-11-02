@@ -198,7 +198,10 @@ class AuthorInputSchema(ma.Schema):
     # sanitized through the same sanitize_content_blocks() service.
     bio = fields.List(fields.Dict(), required=False, load_default=list)
     short_bio = fields.String(required=False, allow_none=True, data_key="shortBio")
-    expertise = fields.List(fields.String(), required=False, load_default=list)
+    # Legacy freeform expertise (feeds Author knowsAbout). No load_default:
+    # omitted -> stored value untouched (the CMS editor doesn't edit it),
+    # explicit [] -> cleared. See authors.py _apply_fields.
+    expertise = fields.List(fields.String(), required=False)
     topic_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="topicSlugs")
     location = fields.String(required=False, allow_none=True)
     country_code = fields.String(required=False, allow_none=True, data_key="countryCode")

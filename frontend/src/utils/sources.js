@@ -20,6 +20,24 @@ export function sourcesToPayload(sources) {
   })
 }
 
+// Mirrors backend schemas/sources.py's validate_public_host() for the
+// obvious cases: localhost, a single-label host ("intranet"), an IPv4/IPv6
+// literal, or an all-digit top-level label. No DNS, no public-suffix list —
+// the backend stays authoritative.
+export function isPublicSourceHost(url) {
+  let host
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/\.$/, '')
+  } catch {
+    return false
+  }
+  if (!host || host.startsWith('[') || host.includes(':')) return false
+  if (host === 'localhost' || host.endsWith('.localhost')) return false
+  const labels = host.split('.')
+  if (labels.length < 2 || /^\d+$/.test(labels[labels.length - 1])) return false
+  return true
+}
+
 // Quick client-side check so an editor sees the obvious problems before a
 // round trip; returns a message or null. The backend re-validates.
 export function validateSources(sources, noun = 'An article') {
@@ -28,6 +46,7 @@ export function validateSources(sources, noun = 'An article') {
     const label = `Source ${i + 1}`
     if (!s.title) return `${label} needs a title.`
     if (!/^https?:\/\/\S+$/i.test(s.url)) return `${label} needs a full http:// or https:// URL.`
+    if (!isPublicSourceHost(s.url)) return `${label}: Source URL must use a public domain name.`
     if (seen.has(s.url)) return `${label} repeats a URL that's already listed.`
     seen.add(s.url)
   }
