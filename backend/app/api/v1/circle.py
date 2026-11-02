@@ -23,7 +23,7 @@ from flask_restful import Api, Resource
 
 from app.auth.decorators import active_user_required, permission_required
 from app.extensions import db, limiter
-from app.models.circle import CirclePlan, CIRCLE_PLAN_STATUSES, CircleSubscription
+from app.models.circle import CirclePlan, CirclePlanPrice, CIRCLE_PLAN_STATUSES, CircleSubscription
 from app.models.contact import ContactInquiry
 from app.models.user import User
 from app.schemas.circle import (
@@ -46,6 +46,15 @@ from app.services.contact import generate_contact_reference
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.notifications import notify_contact_received
+from app.services.payment_providers import TRANSACTION_CIRCLE_MEMBERSHIP
+from app.services.pricing import (
+    admin_prices_payload,
+    apply_legacy_price,
+    apply_prices,
+    enabled_prices,
+    public_pricing_payload,
+)
+from app.services.money import format_money
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -114,12 +123,19 @@ def build_public_plan_payload(plan):
     to secure checkout" vs. the safe "coming soon" state, without leaking
     the raw URL construction logic.
     """
+    pricing = public_pricing_payload(plan, TRANSACTION_CIRCLE_MEMBERSHIP)
     return {
         "slug": plan.slug,
         "name": plan.name,
         "shortDescription": plan.short_description,
         "description": plan.description or [],
         "billingInterval": plan.billing_interval,
+        # Checkout Phase 1: `prices` (enabled options, minor units +
+        # server-formatted text + per-currency checkout availability) is
+        # the source of truth; legacy whole-unit price/currency kept only
+        # for backward compatibility of older clients.
+        "prices": pricing["prices"],
+        "defaultCurrency": pricing["defaultCurrency"],
         "price": plan.price,
         "currency": plan.currency,
         "featured": plan.featured,
@@ -128,6 +144,35 @@ def build_public_plan_payload(plan):
         "checkoutUrl": plan.checkout_url,
         "seo": plan.seo or {},
     }
+
+
+def _dump_admin_plan(plan):
+    data = plan_schema.dump(plan)
+    data["prices"] = admin_prices_payload(plan)
+    return data
+
+
+def _validate_submitted_prices(plan, data):
+    """Runs BEFORE anything is mutated, so a rejected save changes nothing.
+    An active plan whose admin explicitly submitted a non-empty price list
+    needs at least one enabled price — otherwise it would look purchasable
+    with nothing to charge. An empty list is allowed (not sold online)."""
+    submitted = data.get("prices")
+    status = data.get("status", plan.status)
+    if submitted and status == "active" and not any(p["enabled"] for p in submitted):
+        raise ApiError(
+            "Enable at least one price for an active plan, or remove the prices.", 422, code="validation_error"
+        )
+
+
+def _apply_pricing(plan, data, creating):
+    """`prices` (a full list) replaces the plan's price rows. Without it, a
+    legacy `price`/`currency` write is explicitly converted and upserted
+    for that one currency (create, or a PATCH that touches price)."""
+    if "prices" in data:
+        apply_prices(plan, data["prices"], CirclePlanPrice)
+    elif creating or "price" in data or "currency" in data:
+        apply_legacy_price(plan, plan.price, plan.currency, CirclePlanPrice)
 
 
 def _apply_plan_fields(plan, data):
@@ -190,24 +235,26 @@ class CirclePlanListResource(Resource):
             query = query.filter(CirclePlan.status == "active")
         plans = query.all()
         if manager:
-            return success_response(plan_schema.dump(plans, many=True))
+            return success_response([_dump_admin_plan(p) for p in plans])
         return success_response([build_public_plan_payload(p) for p in plans])
 
     @permission_required("circle.manage")
     def post(self):
         data = CirclePlanInputSchema().load(request.get_json(silent=True) or {})
         plan = CirclePlan()
+        _validate_submitted_prices(plan, {**data, "status": data.get("status", "draft")})
         if data.get("slug"):
             plan.slug = validate_explicit_slug(CirclePlan, data["slug"])
         else:
             plan.slug = generate_unique_slug(CirclePlan, data["name"])
         _apply_plan_fields(plan, data)
         db.session.add(plan)
+        _apply_pricing(plan, data, creating=True)
         db.session.commit()
         log_action(current_user, "circle_plan.create", "CirclePlan", plan.id)
         # Plans have no public detail route — a public plan freshens /circle.
         notify_public_change({}, plan)
-        return success_response(plan_schema.dump(plan), status=201)
+        return success_response(_dump_admin_plan(plan), status=201)
 
 
 class CirclePlanDetailResource(Resource):
@@ -217,7 +264,7 @@ class CirclePlanDetailResource(Resource):
         if not plan.is_publicly_visible() and not manager:
             raise ApiError("Plan not found.", 404, code="not_found")
         if manager:
-            return success_response(plan_schema.dump(plan))
+            return success_response(_dump_admin_plan(plan))
         return success_response(build_public_plan_payload(plan))
 
     @permission_required("circle.manage")
@@ -225,6 +272,7 @@ class CirclePlanDetailResource(Resource):
         plan = _get_plan_or_404(slug)
         public_before = capture_public_urls(plan)
         data = CirclePlanUpdateSchema().load(request.get_json(silent=True) or {}, partial=True)
+        _validate_submitted_prices(plan, data)
         if "slug" in data and data["slug"] and data["slug"] != plan.slug:
             plan.slug = validate_explicit_slug(CirclePlan, data["slug"], current_id=plan.id)
 
@@ -237,11 +285,12 @@ class CirclePlanDetailResource(Resource):
                     plan.description = sanitize_content_blocks(data[field])
                 else:
                     setattr(plan, field, data[field])
+        _apply_pricing(plan, data, creating=False)
 
         db.session.commit()
         log_action(current_user, "circle_plan.update", "CirclePlan", plan.id)
         notify_public_change(public_before, plan)
-        return success_response(plan_schema.dump(plan))
+        return success_response(_dump_admin_plan(plan))
 
     @permission_required("circle.manage")
     def delete(self, slug):
@@ -332,7 +381,8 @@ class CircleMembershipRequestResource(Resource):
 
         message_lines = ["A WSF Circle membership request was submitted from a signed-in WSF account."]
         if plan:
-            message_lines.append(f"Plan of interest: {plan.name} ({plan.price} {plan.currency} / {plan.billing_interval}).")
+            price_text = ", ".join(format_money(p.amount_minor, p.currency) for p in enabled_prices(plan)) or "not priced"
+            message_lines.append(f"Plan of interest: {plan.name} ({price_text} / {plan.billing_interval}).")
         else:
             message_lines.append("No specific plan was selected.")
         note = (data.get("note") or "").strip()
@@ -374,7 +424,12 @@ class CircleCheckoutResource(Resource):
     @active_user_required
     def post(self, slug):
         plan = _get_plan_or_404(slug)
-        result = start_circle_checkout(current_user, plan)
+        # Checkout Phase 1: the body's ONLY honored field is `currency`
+        # (which stored price row to charge). amount/price/email/user/
+        # entitlement fields are never read.
+        body = request.get_json(silent=True)
+        currency = body.get("currency") if isinstance(body, dict) and isinstance(body.get("currency"), str) else None
+        result = start_circle_checkout(current_user, plan, currency)
         return success_response(
             {"reference": result["reference"], "authorizationUrl": result["authorization_url"]}, status=201
         )

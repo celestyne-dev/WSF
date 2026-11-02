@@ -3,6 +3,7 @@ import { Mail, Lock, Sparkles, ExternalLink } from 'lucide-react'
 import MediaImage from '../ui/MediaImage'
 import { resolveAltText } from '../../utils/media'
 import { formatCurrency } from '../../utils/format'
+import { pickDefaultPrice } from '../../utils/money'
 
 const ACCESS_BADGE = {
   email_gate: { icon: Mail, label: 'Email required' },
@@ -53,7 +54,9 @@ export default function ResourceCard({ resource }) {
               ? 'WSF Circle'
               : resource.isFree
                 ? 'Free'
-                : formatCurrency(resource.price, resource.currency)}
+                : resource.prices?.length
+                  ? pickDefaultPrice(resource.prices, resource.defaultCurrency)?.formatted
+                  : formatCurrency(resource.price, resource.currency)}
           </span>
         </div>
       </div>

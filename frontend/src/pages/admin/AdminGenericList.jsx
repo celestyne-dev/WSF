@@ -14,7 +14,7 @@ const CONFIGS = {
     columns: ['Name', 'Type', 'Access', 'Price'],
     load: async () => {
       const res = await fetchResources({ pageSize: 100 })
-      return res.items.map((r) => [r.name, r.type, r.isPremium ? 'Premium' : 'Free', r.isPremium ? formatCurrency(r.price, r.currency) : '—'])
+      return res.items.map((r) => [r.name, r.type, r.isPremium ? 'Premium' : 'Free', r.isPremium ? (r.prices?.length ? r.prices.map((p) => p.formatted).join(' / ') : formatCurrency(r.price, r.currency)) : '—'])
     },
   },
 }

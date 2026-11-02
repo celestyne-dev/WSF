@@ -4,11 +4,12 @@ import { toast } from 'react-toastify'
 import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import MediaPicker from '../../components/cms/MediaPicker'
+import PaymentSettingsPanel from '../../components/cms/PaymentSettingsPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { mapMediaRef } from '../../utils/media'
 
-const TABS = ['Site Identity', 'Navigation', 'Footer', 'Newsletter', 'Media Kit', 'Integrations']
+const TABS = ['Site Identity', 'Navigation', 'Footer', 'Newsletter', 'Media Kit', 'Payments', 'Integrations']
 
 const DEFAULT_IDENTITY = {
   siteName: 'Women Shaping Futures',
@@ -345,6 +346,8 @@ export default function AdminSettings() {
             )}
           </div>
         )}
+
+        {tab === 'Payments' && <PaymentSettingsPanel />}
 
         {tab === 'Integrations' && (
           <div className="space-y-4">

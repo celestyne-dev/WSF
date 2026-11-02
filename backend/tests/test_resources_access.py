@@ -108,6 +108,8 @@ def _make_resource(app, **overrides):
     defaults.update(overrides)
     with app.app_context():
         resource = Resource(**defaults)
+        from tests.pricing_helpers import seed_legacy_price
+        seed_legacy_price(resource)
         db.session.add(resource)
         db.session.commit()
         return resource.id, resource.slug
@@ -136,6 +138,8 @@ def _make_plan(app, **overrides):
     defaults.update(overrides)
     with app.app_context():
         plan = CirclePlan(**defaults)
+        from tests.pricing_helpers import seed_legacy_price
+        seed_legacy_price(plan)
         db.session.add(plan)
         db.session.commit()
         return plan.id

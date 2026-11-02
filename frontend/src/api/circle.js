@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { mapPriceOptions } from './payments'
 
 // WSF Circle — provider-neutral premium membership. See backend
 // app/models/circle.py / app/services/circle.py / app/api/v1/circle.py.
@@ -28,8 +29,12 @@ export function mapCirclePlan(p) {
     shortDescription: p.short_description ?? p.shortDescription ?? '',
     description: Array.isArray(p.description) ? p.description : [],
     billingInterval: p.billing_interval || p.billingInterval || 'monthly',
+    // Legacy whole-unit price/currency (compatibility only) — display and
+    // checkout use `prices`.
     price: p.price ?? 0,
     currency: p.currency || 'KES',
+    prices: mapPriceOptions(p.prices),
+    defaultCurrency: p.defaultCurrency || null,
     status: p.status || 'active',
     featured: !!p.featured,
     displayOrder: p.display_order ?? p.displayOrder ?? 0,
@@ -78,7 +83,10 @@ function buildPlanPayload(payload) {
     shortDescription: payload.shortDescription || undefined,
     description: payload.description,
     billingInterval: payload.billingInterval || undefined,
-    price: payload.price,
+    // Checkout Phase 1: `prices` replaces the plan's price rows; the legacy
+    // `currency` is still required by the API (the plan's primary
+    // currency), the legacy whole-unit `price` is no longer edited.
+    ...(payload.prices ? { prices: payload.prices } : { price: payload.price }),
     currency: payload.currency || undefined,
     status: payload.status || undefined,
     featured: payload.featured,
@@ -136,8 +144,13 @@ export async function requestCircleMembership({ planSlug, note } = {}) {
 // frontend to send even if it wanted to.
 // ---------------------------------------------------------------------------
 
-export async function startCircleCheckout(planSlug) {
-  const { data } = await apiClient.post(`/circle/plans/${encodeURIComponent(planSlug)}/checkout`)
+// Checkout Phase 1: the ONLY thing the browser may send is which of the
+// plan's own price currencies to pay in — never an amount/email/user.
+export async function startCircleCheckout(planSlug, currency) {
+  const { data } = await apiClient.post(
+    `/circle/plans/${encodeURIComponent(planSlug)}/checkout`,
+    currency ? { currency } : undefined,
+  )
   return { reference: data?.reference, authorizationUrl: data?.authorizationUrl }
 }
 

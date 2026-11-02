@@ -321,10 +321,18 @@ class TestResourceStructuredData:
 
     def test_premium_resource_gets_real_price_offer(self, client, app):
         _use_fixture_index(app)
-        _make_resource(app, "premium-guide", access_type="premium", price=4900, currency="USD")
+        resource_id = _make_resource(app, "premium-guide", access_type="premium", price=4900, currency="USD")
+        # Checkout Phase 1: the Offer comes from the price rows (the default
+        # currency's option, as an exact decimal string — never a float).
+        from app.models.resource import Resource
+        from tests.pricing_helpers import seed_legacy_price
+
+        with app.app_context():
+            seed_legacy_price(db.session.get(Resource, resource_id))
+            db.session.commit()
         html = client.get("/resources/premium-guide").get_data(as_text=True)
         data = _structured_data_json_by_attr(html, "data-resource-structured-data")
-        assert data["offers"]["price"] == 4900
+        assert data["offers"]["price"] == "4900.00"
         assert data["offers"]["priceCurrency"] == "USD"
 
     def test_member_only_resource_gets_no_offer(self, client, app):

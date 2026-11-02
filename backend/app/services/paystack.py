@@ -54,6 +54,12 @@ _READ_TIMEOUT = 15
 # below produces and the one later activation code must preserve.
 REFERENCE_SAFE_CHARACTERS = "-.="
 
+# The only hosted-checkout `channels` WSF ever sends (Checkout Phase 1) —
+# must stay in step with app/services/payment_providers.py's
+# PAYSTACK_METHODS. Anything else (ussd, eft, capitec_pay, ...) is never
+# forwarded, even if a caller passes it.
+SUPPORTED_CHANNELS = ("card", "apple_pay", "mobile_money")
+
 
 class PaystackError(Exception):
     """Base for every error this module raises. Never includes the
@@ -142,10 +148,14 @@ def _request(method, path, secret, json_body=None):
     return body
 
 
-def initialize_transaction(*, amount_subunits, email, reference, currency, callback_url, metadata=None):
+def initialize_transaction(*, amount_subunits, email, reference, currency, callback_url, metadata=None, channels=None):
     """Calls POST /transaction/initialize. `amount_subunits` must already
-    be the integer subunit amount (e.g. plan.price * 100) — this function
-    does no currency conversion or unit math itself. `metadata`, if given,
+    be the integer minor-unit amount (app/services/money.py's
+    to_minor_units) — this function does no currency conversion or unit
+    math itself. `channels`, if given, must be a non-empty subset of
+    SUPPORTED_CHANNELS (validated here; anything else raises before any
+    request) and limits which methods Paystack's hosted page offers.
+    `metadata`, if given,
     must already be a small, sanitized dict (e.g. {"plan_id": ..., "user_id":
     ...}) — this function does not sanitize it further.
 
@@ -155,6 +165,16 @@ def initialize_transaction(*, amount_subunits, email, reference, currency, callb
     useless to the checkout flow and must never be treated as success.
     """
     secret = _secret_key()
+    if channels is not None:
+        if (
+            not isinstance(channels, (list, tuple))
+            or not channels
+            or any(c not in SUPPORTED_CHANNELS for c in channels)
+            or len(set(channels)) != len(channels)
+        ):
+            raise PaystackAPIError("Refusing to initialize with an unsupported payment channel list.")
+    if not isinstance(amount_subunits, int) or isinstance(amount_subunits, bool) or amount_subunits <= 0:
+        raise PaystackAPIError("Refusing to initialize with a non-integer or non-positive amount.")
     payload = {
         "amount": amount_subunits,
         "email": email,
@@ -164,6 +184,8 @@ def initialize_transaction(*, amount_subunits, email, reference, currency, callb
     }
     if metadata:
         payload["metadata"] = metadata
+    if channels is not None:
+        payload["channels"] = list(channels)
 
     body = _request("POST", "/transaction/initialize", secret, json_body=payload)
     data = body.get("data")

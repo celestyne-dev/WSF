@@ -9,6 +9,8 @@ import { fetchOpportunities } from '../api/opportunities'
 import { fetchEvents } from '../api/events'
 import { getMembershipAction, getCheckoutErrorPresentation } from '../utils/circlePayment'
 import { formatProductPrice } from '../utils/format'
+import { pickDefaultPrice } from '../utils/money'
+import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
@@ -244,6 +246,11 @@ export default function CirclePage() {
   const [plans, setPlans] = useState(undefined)
   const [membership, setMembership] = useState(undefined)
   const [checkingOutSlug, setCheckingOutSlug] = useState(null)
+  // Checkout Phase 1: the buyer's chosen currency per plan (only offered
+  // when a plan has more than one enabled price); defaults to the server's
+  // default currency. Never an amount.
+  const [currencyBySlug, setCurrencyBySlug] = useState({})
+  const selectedCurrency = (plan) => currencyBySlug[plan.slug] || pickDefaultPrice(plan.prices, plan.defaultCurrency)?.currency
   const [checkoutError, setCheckoutError] = useState(null)
   // A small preview of real, already-published circle_only content across
   // the five catalogs — never a second entitlement system (every item here
@@ -358,7 +365,7 @@ export default function CirclePage() {
     setCheckingOutSlug(plan.slug)
     trackEvent('circle_checkout_initiated', { planSlug: plan.slug })
     try {
-      const { authorizationUrl } = await startCircleCheckout(plan.slug)
+      const { authorizationUrl } = await startCircleCheckout(plan.slug, selectedCurrency(plan))
       if (!authorizationUrl) throw new Error('Checkout response was missing an authorization URL.')
       // Full browser redirect to Paystack's hosted checkout — never an
       // iframe, never a WSF-collected card/M-PESA form. We never say
@@ -462,10 +469,22 @@ export default function CirclePage() {
                     </p>
                     <h3 className="font-serif text-xl font-semibold text-charcoal">{plan.name}</h3>
                     {plan.shortDescription && <p className="mt-2 text-sm text-charcoal-600">{plan.shortDescription}</p>}
-                    <p className="mt-4 text-2xl font-semibold text-charcoal">
-                      {formatProductPrice(plan.price, plan.currency)}
-                      <span className="ml-1 text-sm font-normal text-charcoal-600/70">{billingLabel(plan)}</span>
-                    </p>
+                    <div className="mt-4">
+                      {plan.prices?.length ? (
+                        <CheckoutPriceSelector
+                          prices={plan.prices}
+                          selected={selectedCurrency(plan)}
+                          onSelect={(currency) => setCurrencyBySlug((prev) => ({ ...prev, [plan.slug]: currency }))}
+                          suffix={billingLabel(plan)}
+                          idPrefix={`plan-${plan.slug}`}
+                        />
+                      ) : (
+                        <p className="text-2xl font-semibold text-charcoal">
+                          {formatProductPrice(plan.price, plan.currency)}
+                          <span className="ml-1 text-sm font-normal text-charcoal-600/70">{billingLabel(plan)}</span>
+                        </p>
+                      )}
+                    </div>
                     {plan.benefits?.length > 0 && (
                       <>
                         {isYearly && (

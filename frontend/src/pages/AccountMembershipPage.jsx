@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { fetchMyCircleMembership, startCircleCheckout } from '../api/circle'
 import { formatProductPrice } from '../utils/format'
+import { pickDefaultPrice } from '../utils/money'
 import { getCheckoutErrorPresentation } from '../utils/circlePayment'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -140,8 +141,12 @@ export default function AccountMembershipPage() {
             <p className="mt-1 font-serif text-xl font-semibold text-charcoal">{subscription.plan?.name}</p>
             <p className="mt-1 text-sm text-charcoal-600">
               {billingLabel(subscription.plan)}
-              {subscription.plan?.price != null && (
-                <> &middot; {formatProductPrice(subscription.plan.price, subscription.plan.currency)}</>
+              {subscription.plan?.prices?.length ? (
+                // Checkout Phase 1: the server's default-currency price (a
+                // renewal is charged in it unless the plan isn't priced in it).
+                <> &middot; {pickDefaultPrice(subscription.plan.prices, subscription.plan.defaultCurrency)?.formatted}</>
+              ) : (
+                subscription.plan?.price != null && <> &middot; {formatProductPrice(subscription.plan.price, subscription.plan.currency)}</>
               )}
             </p>
             <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">

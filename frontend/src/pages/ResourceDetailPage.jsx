@@ -20,6 +20,19 @@ import SaveButton from '../components/account/SaveButton'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
+import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
+import { pickDefaultPrice } from '../utils/money'
+
+// Checkout Phase 1: a premium Resource's display price is its selected (or
+// server-default) price option's server-formatted text; legacy whole-unit
+// price/currency only as a fallback when no price options were sent.
+function resourcePriceText(resource, currency) {
+  const options = resource.prices || []
+  if (options.length) {
+    return (options.find((p) => p.currency === currency) || pickDefaultPrice(options, resource.defaultCurrency))?.formatted
+  }
+  return formatCurrency(resource.price, resource.currency)
+}
 
 // Valid schema.org structured data for a downloadable resource — built
 // only from fields this record actually carries. @type checks
@@ -63,12 +76,18 @@ function useResourceStructuredData(resource, canonicalUrl) {
         availability: 'https://schema.org/InStock',
       }
     } else if (resource.accessType === 'premium') {
-      data.offers = {
-        '@type': 'Offer',
-        price: resource.price,
-        priceCurrency: resource.currency || 'KES',
-        availability: 'https://schema.org/InStock',
-        url: canonicalUrl,
+      // Checkout Phase 1 — same as spa_shell.py: the server-default price
+      // option, as its exact decimal string (no float); no Offer when the
+      // resource has no enabled price.
+      const offer = (resource.prices || []).find((p) => p.currency === resource.defaultCurrency)
+      if (offer) {
+        data.offers = {
+          '@type': 'Offer',
+          price: offer.amount,
+          priceCurrency: offer.currency,
+          availability: 'https://schema.org/InStock',
+          url: canonicalUrl,
+        }
       }
     }
     let el = document.head.querySelector('script[data-resource-structured-data]')
@@ -170,11 +189,13 @@ function AccessCta({
   checkoutError,
   onCheckoutClick,
   circleMembership,
+  checkoutCurrency,
+  onCheckoutCurrencyChange,
 }) {
   const location = useLocation()
 
   if (resource.accessType === 'premium') {
-    const priceLabel = formatCurrency(resource.price, resource.currency)
+    const priceLabel = resourcePriceText(resource, checkoutCurrency)
     const returnTo = `/resources/${resource.slug}`
 
     // Shown under the Buy CTA for a purchaser candidate only — never
@@ -234,6 +255,17 @@ function AccessCta({
 
     return (
       <div className="mt-5">
+        {resource.prices?.length > 1 && (
+          <div className="mb-3">
+            <CheckoutPriceSelector
+              prices={resource.prices}
+              selected={checkoutCurrency}
+              onSelect={onCheckoutCurrencyChange}
+              size="sm"
+              idPrefix="resource"
+            />
+          </div>
+        )}
         <button type="button" onClick={onCheckoutClick} disabled={checkingOut} aria-busy={checkingOut} className="btn-primary inline-flex disabled:opacity-60">
           <Lock size={16} /> {checkingOut ? 'Starting secure checkout…' : `Buy securely — ${priceLabel}`}
         </button>
@@ -403,7 +435,7 @@ function getResourceAccessBadge(resource) {
 }
 
 function getResourcePriceLabel(resource) {
-  return resource.accessType === 'circle_only' ? 'WSF Circle' : resource.isFree ? 'Free' : formatCurrency(resource.price, resource.currency)
+  return resource.accessType === 'circle_only' ? 'WSF Circle' : resource.isFree ? 'Free' : resourcePriceText(resource)
 }
 
 // A Resource-detail-specific recommendation card for the 2/3-up related
@@ -504,6 +536,9 @@ export default function ResourceDetailPage() {
   const [showEmailGate, setShowEmailGate] = useState(false)
   const [requesting, setRequesting] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
+  // Checkout Phase 1: the buyer's chosen price currency (only offered when
+  // more than one is enabled); otherwise the server default is used.
+  const [checkoutCurrency, setCheckoutCurrency] = useState(null)
   const [checkoutError, setCheckoutError] = useState(null)
   const [circleMembership, setCircleMembership] = useState(undefined)
 
@@ -612,7 +647,8 @@ export default function ResourceDetailPage() {
     setCheckingOut(true)
     trackEvent('resource_checkout_click', { resourceSlug: resource.slug })
     try {
-      const { authorizationUrl } = await startResourceCheckout(resource.slug)
+      const selected = checkoutCurrency || pickDefaultPrice(resource.prices, resource.defaultCurrency)?.currency
+      const { authorizationUrl } = await startResourceCheckout(resource.slug, selected)
       if (!authorizationUrl) throw new Error('Checkout response was missing an authorization URL.')
       trackEvent('resource_checkout_initialized', { resourceSlug: resource.slug })
       // Full browser redirect to Paystack's hosted checkout — never an
@@ -705,7 +741,7 @@ export default function ResourceDetailPage() {
                       : 'Included with WSF Circle'
                     : resource.isFree
                       ? 'Free'
-                      : formatCurrency(resource.price, resource.currency)}
+                      : resourcePriceText(resource, checkoutCurrency)}
                 </p>
                 {monthlyMemberOnYearlyOnly && (
                   <p className="mt-1 text-xs text-charcoal-600/70">
@@ -729,6 +765,8 @@ export default function ResourceDetailPage() {
             checkingOut={checkingOut}
             checkoutError={checkoutError}
             onCheckoutClick={handlePremiumCheckout}
+            checkoutCurrency={checkoutCurrency || pickDefaultPrice(resource.prices, resource.defaultCurrency)?.currency}
+            onCheckoutCurrencyChange={setCheckoutCurrency}
           />
 
           <div className="mt-8 flex items-center gap-3 border-t border-taupe-200 pt-5">

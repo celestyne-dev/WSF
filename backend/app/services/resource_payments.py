@@ -77,6 +77,9 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.resource import Resource, ResourcePayment, ResourcePurchase
 from app.services.audit import log_action
+from app.services.payment_providers import TRANSACTION_RESOURCE_PURCHASE
+from app.services.payment_settings import ensure_checkout_or_error
+from app.services.pricing import checkout_currency_for, enabled_prices, find_enabled_price
 from app.services.paystack import (
     PaystackAPIError,
     PaystackNotConfiguredError,
@@ -119,29 +122,31 @@ def ensure_paystack_configured():
         raise ApiError("Online resource purchases aren't configured yet.", 503, code="paystack_not_configured")
 
 
-def ensure_resource_payable(resource):
+def ensure_resource_payable(resource, requested_currency=None):
     """Resource-side eligibility only — "already purchased" is checked
     separately by the caller (start_resource_checkout), since that's a
-    user-specific fact, not a property of the Resource itself. No
-    currency conversion is ever performed: a Resource priced outside
-    PAYSTACK_ALLOWED_CURRENCIES is simply not payable online yet (see
-    config.py's own docstring on that setting).
+    user-specific fact, not a property of the Resource itself. Checkout
+    Phase 1: the charge comes from ONE stored, enabled ResourcePrice row
+    chosen by currency (never an amount from the buyer) plus a provider
+    decision from app/services/payment_settings.py. No FX conversion.
+
+    Returns (price_row, decision).
     """
     if resource.access_type != "premium":
         raise ApiError("This resource is not a premium purchase.", 422, code="not_premium")
     if not resource.is_publicly_visible():
         raise ApiError("This resource isn't currently available.", 404, code="not_found")
-    if resource.price <= 0:
+    if not enabled_prices(resource):
         raise ApiError("This resource cannot be purchased online.", 422, code="resource_not_payable")
     if not resource.protected_file_path or not protected_file_exists(resource.protected_file_path):
         raise ApiError(
             "This resource isn't ready for purchase yet. Please contact WSF.", 422, code="resource_not_payable"
         )
-    allowed_currencies = {c.strip().upper() for c in (current_app.config.get("PAYSTACK_ALLOWED_CURRENCIES") or [])}
-    if resource.currency.strip().upper() not in allowed_currencies:
-        raise ApiError(
-            "This resource's currency isn't enabled for online payment yet.", 422, code="currency_not_supported"
-        )
+    price = find_enabled_price(resource, checkout_currency_for(resource, requested_currency))
+    if price is None:
+        raise ApiError("This resource isn't available in that currency.", 422, code="currency_not_available")
+    decision = ensure_checkout_or_error(price.currency, TRANSACTION_RESOURCE_PURCHASE)
+    return price, decision
 
 
 def _already_purchased(user, resource):
@@ -162,7 +167,7 @@ def _build_callback_url():
     return f"{base}/resources/checkout/callback"
 
 
-def _find_reusable_pending_resource_payment(user, resource):
+def _find_reusable_pending_resource_payment(user, resource, price):
     """Within _PENDING_REUSE_WINDOW, for this exact user+resource: reuse
     the most recent `pending` row that actually has a usable
     authorization_url AND whose snapshotted amount/currency still match
@@ -183,8 +188,10 @@ def _find_reusable_pending_resource_payment(user, resource):
         .order_by(ResourcePayment.created_at.desc())
         .all()
     )
-    expected_amount_subunits = resource.price * 100
-    expected_currency = resource.currency.strip().upper()
+    # Checkout Phase 1: the chosen ResourcePrice row's minor-unit amount
+    # and currency, never a `price * 100` reconstruction.
+    expected_amount_subunits = price.amount_minor
+    expected_currency = price.currency
     reusable = None
     for candidate in candidates:
         if not candidate.authorization_url:
@@ -202,7 +209,7 @@ def _find_reusable_pending_resource_payment(user, resource):
     return reusable
 
 
-def start_resource_checkout(user, resource):
+def start_resource_checkout(user, resource, currency=None):
     """The one entry point for "Buy now" (not yet wired to any frontend —
     Stage 1 is backend-only). Takes only `user` (authenticated session)
     and `resource` (looked up server-side from the URL slug by the
@@ -217,7 +224,9 @@ def start_resource_checkout(user, resource):
     initialize failure) — never silently returns a broken checkout.
     """
     ensure_paystack_configured()
-    ensure_resource_payable(resource)
+    # `currency` (Checkout Phase 1) only selects which stored, enabled
+    # price row is charged — the amount is always computed server-side.
+    price, decision = ensure_resource_payable(resource, currency)
 
     if _already_purchased(user, resource):
         raise ApiError("You already own this resource.", 409, code="already_purchased")
@@ -254,7 +263,7 @@ def start_resource_checkout(user, resource):
         db.session.commit()
         raise ApiError("You already own this resource.", 409, code="already_purchased")
 
-    reused = _find_reusable_pending_resource_payment(user, resource)
+    reused = _find_reusable_pending_resource_payment(user, resource, price)
     if reused is not None:
         db.session.commit()
         log_action(
@@ -264,14 +273,15 @@ def start_resource_checkout(user, resource):
         return {"reference": reused.reference, "authorization_url": reused.authorization_url}
 
     reference = generate_reference(prefix="wsfresource")
-    amount_subunits = resource.price * 100
+    # Snapshotted from the chosen price row at this exact moment.
+    amount_subunits = price.amount_minor
     customer_email = user.email.strip().lower()
     payment = ResourcePayment(
         reference=reference,
         user_id=user.id,
         resource_id=resource.id,
         amount_subunits=amount_subunits,
-        currency=resource.currency,
+        currency=price.currency,
         customer_email=customer_email,
         status="pending",
     )
@@ -283,9 +293,10 @@ def start_resource_checkout(user, resource):
             amount_subunits=amount_subunits,
             email=customer_email,
             reference=reference,
-            currency=resource.currency,
+            currency=price.currency,
             callback_url=_build_callback_url(),
             metadata={"resource_id": resource.id, "user_id": user.id},
+            channels=decision["channels"],
         )
     except (PaystackNotConfiguredError, PaystackAPIError) as exc:
         payment.status = "failed"

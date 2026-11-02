@@ -72,6 +72,9 @@ from app.extensions import db
 from app.models.circle import CirclePayment, CircleSubscription
 from app.services.audit import log_action
 from app.services.circle import get_current_subscription, validate_subscription_status_transition
+from app.services.payment_providers import TRANSACTION_CIRCLE_MEMBERSHIP
+from app.services.payment_settings import ensure_checkout_or_error
+from app.services.pricing import checkout_currency_for, enabled_prices, find_enabled_price
 from app.services.paystack import (
     PaystackAPIError,
     PaystackNotConfiguredError,
@@ -134,20 +137,27 @@ def ensure_paystack_configured():
         raise ApiError("Online WSF Circle payments aren't configured yet.", 503, code="paystack_not_configured")
 
 
-def ensure_plan_payable(plan):
+def ensure_plan_payable(plan, requested_currency=None):
     """Plan-side eligibility only — membership-state eligibility is
-    _classify_membership_action() below. No currency conversion is ever
-    performed: a plan priced outside PAYSTACK_ALLOWED_CURRENCIES is
-    simply not payable online yet (see config.py's own docstring on that
-    setting).
+    _classify_membership_action() below. Checkout Phase 1: the charge
+    terms come from ONE stored, enabled CirclePlanPrice row chosen by
+    currency (the buyer may choose the currency, never the amount) and a
+    provider decision from app/services/payment_settings.py (provider
+    enabled + configured + supports this currency and transaction type +
+    at least one enabled method). No FX conversion is ever performed.
+
+    Returns (price_row, decision) where decision = {"provider",
+    "currency", "channels"}.
     """
     if plan.status != "active":
         raise ApiError("This plan is not currently available.", 422, code="plan_not_active")
-    if plan.price <= 0:
+    if not enabled_prices(plan):
         raise ApiError("This plan cannot be purchased online.", 422, code="plan_not_payable")
-    allowed_currencies = {c.strip().upper() for c in (current_app.config.get("PAYSTACK_ALLOWED_CURRENCIES") or [])}
-    if plan.currency.strip().upper() not in allowed_currencies:
-        raise ApiError("This plan's currency isn't enabled for online payment yet.", 422, code="currency_not_supported")
+    price = find_enabled_price(plan, checkout_currency_for(plan, requested_currency))
+    if price is None:
+        raise ApiError("This plan isn't available in that currency.", 422, code="currency_not_available")
+    decision = ensure_checkout_or_error(price.currency, TRANSACTION_CIRCLE_MEMBERSHIP)
+    return price, decision
 
 
 def _classify_membership_action(user, plan):
@@ -215,7 +225,7 @@ def _build_callback_url():
     return f"{base}/circle/checkout/callback"
 
 
-def _find_reusable_pending_payment(user, plan):
+def _find_reusable_pending_payment(user, plan, price):
     """Within _PENDING_REUSE_WINDOW, for this exact user+plan: reuse the
     most recent `pending` row that actually has a usable
     authorization_url AND whose snapshotted amount/currency/billing_interval
@@ -248,8 +258,10 @@ def _find_reusable_pending_payment(user, plan):
         .order_by(CirclePayment.created_at.desc())
         .all()
     )
-    expected_amount_subunits = plan.price * 100
-    expected_currency = plan.currency.strip().upper()
+    # Checkout Phase 1: "current terms" are the chosen CirclePlanPrice row
+    # (minor units + currency), never a `price * 100` reconstruction.
+    expected_amount_subunits = price.amount_minor
+    expected_currency = price.currency
     reusable = None
     for candidate in candidates:
         if not candidate.authorization_url:
@@ -268,7 +280,7 @@ def _find_reusable_pending_payment(user, plan):
     return reusable
 
 
-def start_circle_checkout(user, plan):
+def start_circle_checkout(user, plan, currency=None):
     """The one entry point for "Pay securely". Deliberately takes only
     `user` (from the authenticated session) and `plan` (looked up
     server-side from the URL slug by the caller) — nothing about amount,
@@ -277,13 +289,18 @@ def start_circle_checkout(user, plan):
     app/models/circle.py's CirclePayment for why those are always
     snapshotted from the database at this exact moment instead.
 
+    Checkout Phase 1: `currency` is the ONLY buyer choice accepted — it
+    selects which stored, enabled price row is charged (validated against
+    the plan's own prices and the provider capability); the amount is
+    always that row's amount_minor, computed server-side.
+
     Returns {"reference": str, "authorization_url": str}. Raises
     ApiError for every rejection path (plan/membership ineligibility,
     Paystack disabled/unconfigured, or a genuine Paystack initialize
     failure) — never silently returns a broken checkout.
     """
     ensure_paystack_configured()
-    ensure_plan_payable(plan)
+    price, decision = ensure_plan_payable(plan, currency)
 
     action, _current = _classify_membership_action(user, plan)
     if action != _MEMBERSHIP_ACTION_NEW:
@@ -296,7 +313,7 @@ def start_circle_checkout(user, plan):
     # Paystack call on purpose, not released beforehand.
     db.session.execute(text("SELECT pg_advisory_xact_lock(:user_id, :plan_id)"), {"user_id": user.id, "plan_id": plan.id})
 
-    reused = _find_reusable_pending_payment(user, plan)
+    reused = _find_reusable_pending_payment(user, plan, price)
     if reused is not None:
         db.session.commit()
         log_action(
@@ -306,14 +323,16 @@ def start_circle_checkout(user, plan):
         return {"reference": reused.reference, "authorization_url": reused.authorization_url}
 
     reference = generate_reference()
-    amount_subunits = plan.price * 100
+    # Snapshotted from the chosen price row at this exact moment (see
+    # CirclePayment's docstring) — later price edits never affect it.
+    amount_subunits = price.amount_minor
     customer_email = user.email.strip().lower()
     payment = CirclePayment(
         reference=reference,
         user_id=user.id,
         plan_id=plan.id,
         amount_subunits=amount_subunits,
-        currency=plan.currency,
+        currency=price.currency,
         billing_interval=plan.billing_interval,
         customer_email=customer_email,
         status="pending",
@@ -326,9 +345,10 @@ def start_circle_checkout(user, plan):
             amount_subunits=amount_subunits,
             email=customer_email,
             reference=reference,
-            currency=plan.currency,
+            currency=price.currency,
             callback_url=_build_callback_url(),
             metadata={"plan_id": plan.id, "user_id": user.id},
+            channels=decision["channels"],
         )
     except (PaystackNotConfiguredError, PaystackAPIError) as exc:
         payment.status = "failed"

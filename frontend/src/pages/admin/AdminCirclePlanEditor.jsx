@@ -7,6 +7,8 @@ import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import MultiCurrencyPricingEditor from '../../components/cms/MultiCurrencyPricingEditor'
+import { pricesToPayload, pricesToRows, validatePriceRows } from '../../utils/money'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -32,12 +34,9 @@ function blankForm() {
     shortDescription: '',
     description: [],
     billingInterval: 'monthly',
-    price: '',
-    // Only this NEW-plan initial state defaults to KES — backend
-    // CirclePlanInputSchema still requires an explicit currency (no
-    // implicit default there), and editing an existing plan loads its own
-    // stored currency via toForm() below, untouched.
-    currency: 'KES',
+    // Checkout Phase 1: explicit multi-currency price rows (no FX). USD is
+    // the global default, so a new plan starts with an empty USD row.
+    prices: [{ currency: 'USD', amount: '', enabled: true }],
     status: 'draft',
     featured: false,
     displayOrder: 0,
@@ -56,7 +55,8 @@ function toForm(plan) {
     shortDescription: plan.shortDescription || '',
     description: plan.description || [],
     billingInterval: plan.billingInterval || 'monthly',
-    price: plan.price ?? '',
+    prices: pricesToRows(plan.prices),
+    // Legacy primary currency (still required by the API); not edited.
     currency: plan.currency || '',
     status: plan.status || 'draft',
     featured: !!plan.featured,
@@ -163,12 +163,13 @@ export default function AdminCirclePlanEditor() {
       toast.error('Add a plan name.')
       return
     }
-    if (form.price === '' || Number(form.price) < 0) {
-      toast.error('Set a price of 0 or more.')
-      return
-    }
-    if (!/^[A-Z]{3}$/.test(form.currency)) {
-      toast.error('Currency must be exactly 3 uppercase letters (e.g. USD).')
+    // An active plan that lists prices must have at least one enabled
+    // (an active plan with NO prices is allowed: not sold online).
+    const pricesError = validatePriceRows(form.prices, null, {
+      requireEnabled: nextStatus === 'active' && form.prices.length > 0,
+    })
+    if (pricesError) {
+      toast.error(pricesError)
       return
     }
     setErrors({})
@@ -180,8 +181,10 @@ export default function AdminCirclePlanEditor() {
       shortDescription: form.shortDescription || null,
       description: form.description,
       billingInterval: form.billingInterval,
-      price: form.price,
-      currency: form.currency,
+      prices: pricesToPayload(form.prices),
+      // The API still requires the plan's legacy primary currency: keep the
+      // stored one, else use the first price's currency (or USD).
+      currency: form.currency || form.prices[0]?.currency || 'USD',
       status: nextStatus,
       featured: form.featured,
       displayOrder: form.displayOrder,
@@ -313,16 +316,12 @@ export default function AdminCirclePlanEditor() {
                   ))}
                 </select>
               </Field>
-              <Field label="Price" hint="whole currency units — enter 1000 for KES 1,000">
-                <input type="number" min="0" value={form.price} onChange={(e) => updateField('price', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-              </Field>
-              <Field label="Currency" hint="ISO currency code — KES for current WSF payments">
-                <input value={form.currency} onChange={(e) => updateField('currency', e.target.value.toUpperCase().slice(0, 3))} className="w-full border border-taupe-300 px-3 py-2.5 text-sm uppercase focus:border-burgundy-500 focus:outline-none" />
-              </Field>
             </div>
+            <MultiCurrencyPricingEditor prices={form.prices} onChange={(prices) => updateField('prices', prices)} />
             <p className="text-xs text-charcoal-600/70">
-              WSF online payments currently use KES. A plan in another currency may not be available for Paystack
-              checkout until that currency is enabled.
+              Set each currency&apos;s price explicitly — there is no automatic exchange-rate conversion. Buyers choose
+              among the enabled prices; a currency is only offered at checkout when it&apos;s also enabled in Settings →
+              Payments and supported by the payment provider.
             </p>
           </Section>
 

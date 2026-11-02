@@ -95,6 +95,8 @@ def _make_circle_resource(app, protected_root, filename, content=b"%PDF-1.4 fake
     defaults.update(overrides)
     with app.app_context():
         resource = Resource(**defaults)
+        from tests.pricing_helpers import seed_legacy_price
+        seed_legacy_price(resource)
         db.session.add(resource)
         db.session.commit()
         return resource.id, resource.slug

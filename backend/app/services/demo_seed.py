@@ -920,6 +920,12 @@ def seed_demo_content():
     resource.author = jordan
     resource.price, resource.currency = 4900, "USD"
     resource.access_type = "premium"
+    # Checkout Phase 1: premium checkout reads price rows — the same
+    # explicit legacy conversion the migration applies.
+    from app.models.resource import ResourcePrice
+    from app.services.pricing import apply_legacy_price
+
+    apply_legacy_price(resource, resource.price, resource.currency, ResourcePrice)
     resource.file_format = "ZIP"
     resource.page_count = 46
     resource.is_premium = True

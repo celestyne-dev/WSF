@@ -1455,13 +1455,23 @@ def _build_resource_json_ld(resource, canonical_url, public_site_url, site_name)
             "availability": "https://schema.org/InStock",
         }
     elif resource.access_type == "premium":
-        data["offers"] = {
-            "@type": "Offer",
-            "price": resource.price,
-            "priceCurrency": resource.currency or "KES",
-            "availability": "https://schema.org/InStock",
-            "url": canonical_url,
-        }
+        # Checkout Phase 1: the Offer is the public default-currency price
+        # option (exact decimal string from minor units — no float), the
+        # same one ResourceDetailPage.jsx preselects; no Offer when the
+        # Resource has no enabled price.
+        from app.services.payment_providers import TRANSACTION_RESOURCE_PURCHASE
+        from app.services.pricing import public_pricing_payload
+
+        pricing = public_pricing_payload(resource, TRANSACTION_RESOURCE_PURCHASE)
+        offer = next((p for p in pricing["prices"] if p["currency"] == pricing["defaultCurrency"]), None)
+        if offer:
+            data["offers"] = {
+                "@type": "Offer",
+                "price": offer["amount"],
+                "priceCurrency": offer["currency"],
+                "availability": "https://schema.org/InStock",
+                "url": canonical_url,
+            }
 
     return data
 

@@ -49,6 +49,7 @@ export function getCheckoutErrorPresentation(code) {
     case 'paystack_disabled':
     case 'paystack_not_configured':
     case 'payment_initialization_failed':
+    case 'payment_unavailable':
       return {
         message: "We couldn't start a secure checkout right now. Please try again shortly.",
         showAssistance: true,
@@ -60,6 +61,7 @@ export function getCheckoutErrorPresentation(code) {
         showAssistance: true,
       }
     case 'currency_not_supported':
+    case 'currency_not_available':
       return {
         message: "This plan's currency isn't available for online payment yet. Please request assistance below and our team will help.",
         showAssistance: true,

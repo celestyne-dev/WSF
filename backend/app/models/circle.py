@@ -72,7 +72,11 @@ class CirclePlan(db.Model):
     description = db.Column(db.JSON, nullable=False, default=list)
 
     billing_interval = db.Column(db.String(10), nullable=False, default="monthly")
-    price = db.Column(db.Integer, nullable=False, default=0)  # whole currency units, paired with `currency`
+    # LEGACY (Checkout Phase 1): whole currency units, paired with `currency`.
+    # Kept temporarily for compatibility only — checkout and public prices
+    # read `prices` (CirclePlanPrice rows, minor units). Future cleanup
+    # removes these two columns once nothing reads them.
+    price = db.Column(db.Integer, nullable=False, default=0)
     # No default: WSF is global, so every plan must state its own ISO 4217
     # currency explicitly (see CirclePlanInputSchema.currency, required=True)
     # rather than silently inheriting a US-centric assumption.
@@ -132,6 +136,39 @@ _CIRCLE_SUBSCRIPTION_SOURCE_CHECK_SQL = "source IN (" + ", ".join(
     f"'{s}'" for s in CIRCLE_SUBSCRIPTION_SOURCES
 ) + ")"
 
+
+
+class CirclePlanPrice(db.Model):
+    """One admin-set price option for a CirclePlan in one ISO 4217 currency
+    (WSF Checkout Phase 1). `amount_minor` is integer MINOR units for that
+    currency (USD 19.99 -> 1999, KES 2500 -> 250000, JPY 2500 -> 2500 —
+    see app/services/money.py); never floating point, never a live FX
+    conversion. One row per (parent, currency); only `enabled` rows are
+    offered at checkout. Checkout snapshots the chosen row's amount and
+    currency into the payment at initiation, so later edits never affect
+    an in-flight payment.
+    """
+
+    __tablename__ = "circle_plan_prices"
+    __table_args__ = (
+        db.UniqueConstraint("plan_id", "currency", name="uq_circle_plan_prices_plan_currency"),
+        db.CheckConstraint("amount_minor > 0", name="ck_circle_plan_prices_amount_positive"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    plan_id = db.Column(db.Integer, db.ForeignKey("circle_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    currency = db.Column(db.String(3), nullable=False)
+    amount_minor = db.Column(db.BigInteger, nullable=False)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
+    )
+
+    plan = db.relationship(
+        "CirclePlan",
+        backref=db.backref("prices", order_by="CirclePlanPrice.id", cascade="all, delete-orphan", passive_deletes=True),
+    )
 
 class CircleSubscription(db.Model):
     """One WSF Circle membership lifecycle row for a User. Entirely

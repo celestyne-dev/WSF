@@ -42,6 +42,12 @@ from app.services.homepage import modules_with_warnings
 from app.services.indexnow import submit_indexnow_urls
 from app.services.navigation import find_duplicate_top_level_destinations
 from app.services.site_settings import SITE_IDENTITY_KEY, get_site_identity_resolved, save_site_identity
+from app.services.payment_settings import (
+    PAYMENT_SETTINGS_KEY,
+    PaymentSettingsError,
+    admin_payment_settings_payload,
+    save_payment_settings,
+)
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -340,7 +346,7 @@ class AdminFooterResource(Resource):
         return success_response(_dump_footer())
 
 
-ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY}
+ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY}
 
 
 class AdminSettingsResource(Resource):
@@ -387,6 +393,21 @@ class AdminSettingsResource(Resource):
                 changes={"site_name": identity_data["site_name"]},
             )
 
+        if PAYMENT_SETTINGS_KEY in settings_data:
+            # Checkout Phase 1 — non-secret checkout configuration only
+            # (currencies + provider/method toggles), strictly validated.
+            try:
+                payment_settings = save_payment_settings(settings_data[PAYMENT_SETTINGS_KEY])
+            except PaymentSettingsError as exc:
+                raise ApiError(str(exc), 422, code="validation_error")
+            log_action(
+                current_user,
+                "settings.update",
+                "SiteSetting",
+                entity_id=PAYMENT_SETTINGS_KEY,
+                changes=payment_settings,
+            )
+
         if "audience_stats" in settings_data:
             audience_value = settings_data["audience_stats"]
             if not isinstance(audience_value, dict):
@@ -401,6 +422,9 @@ class AdminSettingsResource(Resource):
         return {
             "audience_stats": audience_setting.value if audience_setting else None,
             SITE_IDENTITY_KEY: site_identity_schema.dump(get_site_identity_resolved()),
+            # Settings + read-only provider capability ("configured": yes/no
+            # only) + the ISO 4217 catalogue. Never any secret value.
+            PAYMENT_SETTINGS_KEY: admin_payment_settings_payload(),
         }
 
 

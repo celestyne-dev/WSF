@@ -65,6 +65,8 @@ def _make_plan(app, **overrides):
     defaults.update(overrides)
     with app.app_context():
         plan = CirclePlan(**defaults)
+        from tests.pricing_helpers import seed_legacy_price
+        seed_legacy_price(plan)
         db.session.add(plan)
         db.session.commit()
         return plan.id, plan.slug
@@ -237,12 +239,20 @@ class TestCheckoutServerSideTerms:
             assert kwargs["amount_subunits"] == 100000
 
     def test_client_cannot_override_currency(self, client, app, user1_token):
+        # Checkout Phase 1: the buyer may CHOOSE among the plan's stored,
+        # enabled price currencies, never invent one — an unknown/unpriced
+        # currency is rejected before Paystack is ever called.
         _enable_paystack(app, currencies=("USD",))
         plan_id, slug = _make_plan(app, currency="USD")
         with patch("app.services.circle_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
-            client.post(
+            resp = client.post(
                 f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token), json={"currency": "ZZZ"},
             )
+            assert resp.status_code == 422
+            assert resp.get_json()["error"]["code"] == "currency_not_available"
+            mock_init.assert_not_called()
+            # Without a currency, the plan's stored USD price is charged.
+            client.post(f"/api/v1/circle/plans/{slug}/checkout", headers=auth_headers(user1_token))
             _, kwargs = mock_init.call_args
             assert kwargs["currency"] == "USD"
 

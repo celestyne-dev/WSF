@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { mapMediaRef } from '../utils/media'
+import { mapPriceOptions } from './payments'
 
 // The mock resources dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -43,6 +44,10 @@ export function mapResource(r) {
     authorName: r.author_name || r.authorName || r.author?.name || null,
     price: r.price,
     currency: r.currency || 'KES',
+    // Checkout Phase 1: multi-currency options (public: enabled + server-
+    // formatted + checkout availability; admin: every row).
+    prices: mapPriceOptions(r.prices),
+    defaultCurrency: r.defaultCurrency || null,
     accessType: r.access_type || r.accessType || 'direct_download',
     isPremium: r.is_premium ?? r.isPremium ?? false,
     isDownloadable: r.is_downloadable ?? r.isDownloadable ?? true,
@@ -161,11 +166,14 @@ export async function requestResourceAccess(slug, payload = {}) {
 
 // Starts a hosted Paystack checkout for a one-time premium Resource
 // purchase — see app/services/resource_payments.py's
-// start_resource_checkout. Takes only a slug; amount, currency, and
-// customer email are all decided server-side from the authenticated user
-// and the resource's own current price, never sent from here.
-export async function startResourceCheckout(slug) {
-  const { data } = await apiClient.post(`/resources/${encodeURIComponent(slug)}/checkout`)
+// start_resource_checkout. Checkout Phase 1: the only thing sent is which
+// of the resource's own price currencies to pay in — amount and customer
+// email are always decided server-side, never sent from here.
+export async function startResourceCheckout(slug, currency) {
+  const { data } = await apiClient.post(
+    `/resources/${encodeURIComponent(slug)}/checkout`,
+    currency ? { currency } : undefined,
+  )
   return { reference: data?.reference, authorizationUrl: data?.authorizationUrl }
 }
 
@@ -237,6 +245,9 @@ function toApiPayload(form) {
     authorName: form.authorName || undefined,
     price: form.price === '' || form.price == null ? 0 : Number(form.price),
     currency: form.currency || undefined,
+    // Only a premium Resource is sold; for any other access type `prices`
+    // is omitted so stored rows survive a temporary access-type change.
+    ...(form.accessType === 'premium' && form.prices ? { prices: form.prices } : {}),
     accessType: form.accessType || 'direct_download',
     // Meaningful only for circle_only — the backend's own _apply_fields
     // normalizes this to 'all_members' for every other accessType, so

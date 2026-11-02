@@ -84,6 +84,8 @@ def _make_premium_resource(app, protected_root, filename=None, **overrides):
     defaults.update(overrides)
     with app.app_context():
         resource = Resource(**defaults)
+        from tests.pricing_helpers import seed_legacy_price
+        seed_legacy_price(resource)
         db.session.add(resource)
         db.session.commit()
         return resource.id, resource.slug
@@ -159,6 +161,8 @@ def _make_plan(app, **overrides):
     defaults.update(overrides)
     with app.app_context():
         plan = CirclePlan(**defaults)
+        from tests.pricing_helpers import seed_legacy_price
+        seed_legacy_price(plan)
         db.session.add(plan)
         db.session.commit()
         return plan.id
@@ -358,9 +362,20 @@ class TestCheckoutSnapshotsAndRequestIsolation:
         _enable_paystack(app)
         _, slug = _make_premium_resource(app, protected_root)
         with patch("app.services.resource_payments.initialize_transaction", side_effect=_mock_init) as mock_init:
-            resp = client.post(
+            # Checkout Phase 1: `currency` may only pick one of the
+            # resource's stored, enabled prices — USD isn't priced here, so
+            # it's rejected outright, before Paystack is called.
+            unpriced = client.post(
                 f"/api/v1/resources/{slug}/checkout",
                 json={"email": "attacker@evil.example", "amount": 1, "currency": "USD", "userId": 999999},
+                headers=auth_headers(user1_token),
+            )
+            assert unpriced.status_code == 422
+            assert unpriced.get_json()["error"]["code"] == "currency_not_available"
+            mock_init.assert_not_called()
+            resp = client.post(
+                f"/api/v1/resources/{slug}/checkout",
+                json={"email": "attacker@evil.example", "amount": 1, "currency": "KES", "userId": 999999},
                 headers=auth_headers(user1_token),
             )
         assert resp.status_code == 201

@@ -156,7 +156,11 @@ class Resource(db.Model):
     author_id = db.Column(db.Integer, db.ForeignKey("authors.id"), nullable=True)
     author_name = db.Column(db.String(200))  # denormalized fallback when no Author is linked
 
-    price = db.Column(db.Integer, nullable=False, default=0)  # whole currency units, paired with `currency`
+    # LEGACY (Checkout Phase 1): whole currency units, paired with `currency`.
+    # Kept temporarily for compatibility only — premium checkout and public
+    # prices read `prices` (ResourcePrice rows, minor units). Future cleanup
+    # removes these two columns once nothing reads them.
+    price = db.Column(db.Integer, nullable=False, default=0)
     # Python-side ORM default only (no server_default) — reached whenever a
     # Resource is constructed without an explicit currency (e.g. a direct
     # `Resource()` call that bypasses ResourceInputSchema's own
@@ -252,6 +256,39 @@ class Resource(db.Model):
             return True
         return self.status == "scheduled" and self.published_date is not None and self.published_date <= date.today()
 
+
+
+class ResourcePrice(db.Model):
+    """One admin-set price option for a premium Resource in one ISO 4217 currency
+    (WSF Checkout Phase 1). `amount_minor` is integer MINOR units for that
+    currency (USD 19.99 -> 1999, KES 2500 -> 250000, JPY 2500 -> 2500 —
+    see app/services/money.py); never floating point, never a live FX
+    conversion. One row per (parent, currency); only `enabled` rows are
+    offered at checkout. Checkout snapshots the chosen row's amount and
+    currency into the payment at initiation, so later edits never affect
+    an in-flight payment.
+    """
+
+    __tablename__ = "resource_prices"
+    __table_args__ = (
+        db.UniqueConstraint("resource_id", "currency", name="uq_resource_prices_resource_currency"),
+        db.CheckConstraint("amount_minor > 0", name="ck_resource_prices_amount_positive"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(db.Integer, db.ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, index=True)
+    currency = db.Column(db.String(3), nullable=False)
+    amount_minor = db.Column(db.BigInteger, nullable=False)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
+    )
+
+    resource = db.relationship(
+        "Resource",
+        backref=db.backref("prices", order_by="ResourcePrice.id", cascade="all, delete-orphan", passive_deletes=True),
+    )
 
 class ResourceLead(db.Model):
     """One email-gate submission — the record a "Download Free Guide ->

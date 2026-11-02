@@ -10,6 +10,7 @@ from app.models.circle import (
     CircleSubscription,
 )
 from app.schemas.user import UserSchema
+from app.services.pricing import prices_field
 
 # ISO 4217 is exactly three uppercase letters — Length(equal=3) alone (the
 # convention elsewhere in app/schemas/commerce.py) would silently accept
@@ -49,6 +50,10 @@ class CirclePlanInputSchema(ma.Schema):
     manage_billing_url = fields.String(required=False, allow_none=True, data_key="manageBillingUrl", validate=_SAFE_URL_VALIDATE)
     benefits = fields.List(fields.String(validate=validate.Length(max=300)), required=False, load_default=list)
     seo = fields.Dict(required=False, allow_none=True)
+    # Checkout Phase 1: multi-currency price options (minor units). When
+    # present they REPLACE the plan's price rows; when absent, the legacy
+    # price/currency above is converted explicitly into one row.
+    prices = prices_field()
 
 
 class CirclePlanUpdateSchema(ma.Schema):
@@ -73,6 +78,8 @@ class CirclePlanUpdateSchema(ma.Schema):
     manage_billing_url = fields.String(required=False, allow_none=True, data_key="manageBillingUrl", validate=_SAFE_URL_VALIDATE)
     benefits = fields.List(fields.String(validate=validate.Length(max=300)), required=False)
     seo = fields.Dict(required=False, allow_none=True)
+    # Omitted -> price rows untouched; a list -> replaces them.
+    prices = prices_field()
 
 
 class CircleSubscriptionSchema(ma.SQLAlchemyAutoSchema):

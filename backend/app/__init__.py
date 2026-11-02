@@ -111,6 +111,7 @@ def create_app(config_name="development"):
     from app.api.v1.notifications import notifications_bp
     from app.api.v1.advertise import advertise_bp
     from app.api.v1.circle import circle_bp
+    from app.api.v1.payments import payments_bp
     from app.api.v1.community import community_bp
     from app.api.v1.contact import contact_bp
     from app.api.v1.directory import directory_bp
@@ -173,6 +174,7 @@ def create_app(config_name="development"):
     app.register_blueprint(notifications_bp, url_prefix="/api/v1/admin/notifications")
     app.register_blueprint(saved_bp, url_prefix="/api/v1/saved")
     app.register_blueprint(webhooks_bp, url_prefix="/api/v1/webhooks")
+    app.register_blueprint(payments_bp, url_prefix="/api/v1/payments")
 
     @app.get("/api/v1/health")
     def health():

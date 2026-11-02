@@ -31,6 +31,7 @@ from app.models.resource import (
     ResourceImage,
     ResourceLead,
     ResourcePayment,
+    ResourcePrice,
     ResourcePurchase,
 )
 from app.models.taxonomy import Tag, Topic
@@ -53,6 +54,14 @@ from app.services.resource_downloads import (
     save_protected_upload,
 )
 from app.services.resource_payments import get_resource_payment_status, start_resource_checkout
+from app.services.payment_providers import TRANSACTION_RESOURCE_PURCHASE
+from app.services.pricing import (
+    admin_prices_payload,
+    apply_legacy_price,
+    apply_prices,
+    enabled_prices,
+    public_pricing_payload,
+)
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.slugs import slugify
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -238,9 +247,11 @@ def _validate_publish(resource):
         # currency) and its own protected file — never a public file_url/
         # external_url (see this function's docstring on why those are
         # never valid for premium, same as circle_only).
-        if resource.price <= 0:
+        # Checkout Phase 1: at least one ENABLED price option (amount > 0 is
+        # enforced per row by the schema and a DB CHECK).
+        if not enabled_prices(resource):
             raise ApiError(
-                "A published premium resource needs a price greater than zero.",
+                "A published premium resource needs at least one enabled price greater than zero.",
                 422,
                 code="validation_error",
             )
@@ -289,6 +300,15 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     resource.price = data.get("price", 0)
     resource.currency = data.get("currency", "KES")
     resource.access_type = data.get("access_type", "direct_download")
+    # Checkout Phase 1: `prices` (when sent) replaces the price rows; a
+    # legacy price/currency-only payload is converted explicitly into that
+    # one currency's row. Only premium Resources are sold, but rows are
+    # kept as-is for other access types (never charged — checkout requires
+    # premium), so switching back to premium doesn't lose them.
+    if "prices" in data:
+        apply_prices(resource, data["prices"], ResourcePrice)
+    else:
+        apply_legacy_price(resource, resource.price, resource.currency, ResourcePrice)
     # Meaningful only for circle_only (see app/models/resource.py's
     # CIRCLE_ACCESS_LEVELS) — normalized back to the default for every
     # other access_type so a value saved while briefly circle_only can
@@ -328,6 +348,12 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     elif data.get("published_date"):
         resource.published_date = data["published_date"]
     _validate_publish(resource)
+
+
+def _dump_admin_resource(resource):
+    data = resource_schema.dump(resource)
+    data["prices"] = admin_prices_payload(resource)
+    return data
 
 
 def _is_referenced(resource):
@@ -455,6 +481,15 @@ def build_public_resource_payload(resource, viewer):
             else None
         ),
         "authorName": resource.author_name,
+        # Checkout Phase 1: `prices` (enabled options with server-formatted
+        # text + per-currency checkout availability) is the source of
+        # truth for premium Resources; legacy price/currency kept for
+        # backward compatibility only.
+        **(
+            public_pricing_payload(resource, TRANSACTION_RESOURCE_PURCHASE)
+            if resource.access_type == "premium"
+            else {"prices": [], "defaultCurrency": None}
+        ),
         "price": resource.price,
         "currency": resource.currency,
         "accessType": resource.access_type,
@@ -509,9 +544,9 @@ class ResourceListResource(Resource):
         user = _current_user_or_none()
         query = _build_query(user)
         can_manage = bool(user and user.has_permission("resources.manage"))
-        result = paginate(query, resource_schema if can_manage else None)
+        result = paginate(query, None)
         if can_manage:
-            return success_response(result["items"], meta=result["meta"])
+            return success_response([_dump_admin_resource(r) for r in result["items"]], meta=result["meta"])
         items = [build_public_resource_payload(r, user) for r in result["items"]]
         return success_response(items, meta=result["meta"])
 
@@ -534,7 +569,7 @@ class ResourceListResource(Resource):
         db.session.add(resource)
         db.session.commit()
         notify_public_change({}, resource)
-        return success_response(resource_schema.dump(resource), status=201)
+        return success_response(_dump_admin_resource(resource), status=201)
 
 
 class ResourceDetailResource(Resource):
@@ -546,7 +581,7 @@ class ResourceDetailResource(Resource):
         if not resource.is_publicly_visible() and not editor:
             raise ApiError("Resource not found.", 404, code="not_found")
         if editor:
-            return success_response(resource_schema.dump(resource))
+            return success_response(_dump_admin_resource(resource))
         return success_response(build_public_resource_payload(resource, _current_user_or_none()))
 
     def put(self, slug):
@@ -592,7 +627,7 @@ class ResourceDetailResource(Resource):
             _cleanup_orphaned_protected_file(old_protected_path)
 
         notify_public_change(public_before, resource)
-        return success_response(resource_schema.dump(resource))
+        return success_response(_dump_admin_resource(resource))
 
     def delete(self, slug):
         resource = ResourceModel.query.filter_by(slug=slug).first()
@@ -833,7 +868,11 @@ class ResourceCheckoutResource(Resource):
         resource = ResourceModel.query.filter_by(slug=slug).first()
         if resource is None:
             raise ApiError("Resource not found.", 404, code="not_found")
-        result = start_resource_checkout(current_user, resource)
+        # Checkout Phase 1: only `currency` is read from the body — it picks
+        # which stored price row is charged; never an amount/email/user.
+        body = request.get_json(silent=True)
+        currency = body.get("currency") if isinstance(body, dict) and isinstance(body.get("currency"), str) else None
+        result = start_resource_checkout(current_user, resource, currency)
         return success_response(
             {"reference": result["reference"], "authorizationUrl": result["authorization_url"]}, status=201
         )

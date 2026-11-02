@@ -2,6 +2,7 @@ import re
 
 from marshmallow import fields, validate, ValidationError
 
+from app.services.pricing import prices_field
 from app.extensions import ma
 from app.models.resource import (
     ACCESS_TYPES,
@@ -147,6 +148,10 @@ class ResourceInputSchema(ma.Schema):
     # currency entirely; an editor can still supply any ISO-4217 code
     # explicitly (see validate below), and this never touches existing rows.
     currency = fields.String(required=False, load_default="KES", validate=validate.Length(equal=3))
+    # Checkout Phase 1: multi-currency price options (minor units) for a
+    # premium Resource. When present they REPLACE the price rows; when
+    # absent, the legacy price/currency above is converted explicitly.
+    prices = prices_field()
 
     access_type = fields.String(required=False, load_default="direct_download", data_key="accessType", validate=validate.OneOf(ACCESS_TYPES))
     # Meaningful only when access_type == "circle_only" — the caller

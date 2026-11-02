@@ -16,6 +16,8 @@ import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import GalleryEditor from '../../components/cms/GalleryEditor'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import MultiCurrencyPricingEditor from '../../components/cms/MultiCurrencyPricingEditor'
+import { pricesToPayload, pricesToRows, validatePriceRows } from '../../utils/money'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -38,7 +40,7 @@ const ACCESS_TYPES = [
   { value: 'email_gate', label: 'Email-gated — capture details first' },
   { value: 'member_only', label: 'WSF account only' },
   { value: 'circle_only', label: 'WSF Circle members only' },
-  { value: 'premium', label: 'Premium purchase — checkout not connected yet' },
+  { value: 'premium', label: 'Premium purchase — paid checkout' },
   { value: 'external_link', label: 'External link — hosted elsewhere' },
 ]
 const FILE_FORMATS = ['PDF', 'DOCX', 'XLSX', 'PPTX', 'ZIP', 'Image', 'Video', 'Other']
@@ -116,6 +118,8 @@ function blankForm() {
     authorName: '',
     price: '',
     currency: 'KES',
+    // Checkout Phase 1: premium price rows (explicit per currency, no FX).
+    prices: [{ currency: 'USD', amount: '', enabled: true }],
     accessType: 'direct_download',
     circleAccessLevel: 'all_members',
     fileUrl: '',
@@ -152,6 +156,7 @@ function toForm(resource) {
     authorName: resource.authorName || '',
     price: resource.price ?? '',
     currency: resource.currency || 'KES',
+    prices: pricesToRows(resource.prices),
     accessType: resource.accessType || 'direct_download',
     circleAccessLevel: resource.circleAccessLevel || 'all_members',
     fileUrl: resource.fileUrl || '',
@@ -343,6 +348,17 @@ export default function AdminResourceEditor() {
       toast.error(slugError)
       return
     }
+    if (form.accessType === 'premium') {
+      // Publishing a premium resource needs at least one enabled price
+      // (the backend's _validate_publish enforces the same rule).
+      const pricesError = validatePriceRows(form.prices, null, {
+        requireEnabled: ['published', 'scheduled'].includes(nextStatus),
+      })
+      if (pricesError) {
+        toast.error(pricesError)
+        return
+      }
+    }
     if (!form.name) {
       toast.error('Add a resource name.')
       return
@@ -377,8 +393,11 @@ export default function AdminResourceEditor() {
       tagSlugs: form.tagSlugs,
       authorSlug: form.authorSlug || null,
       authorName: form.authorSlug ? null : form.authorName || null,
+      // Legacy whole-unit price/currency passed through unchanged (no longer
+      // edited); premium pricing is the `prices` rows.
       price: form.price,
       currency: form.currency,
+      prices: pricesToPayload(form.prices),
       accessType: form.accessType,
       circleAccessLevel: form.accessType === 'circle_only' ? form.circleAccessLevel : 'all_members',
       fileUrl: form.fileUrl || null,
@@ -641,19 +660,19 @@ export default function AdminResourceEditor() {
           </Section>
 
           <Section title="Pricing">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Price" hint="0 for a free resource">
-                <input type="number" min="0" value={form.price} onChange={(e) => updateField('price', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-              </Field>
-              <Field label="Currency" hint="ISO currency code — KES for current WSF pricing">
-                <input value={form.currency} onChange={(e) => updateField('currency', e.target.value.toUpperCase().slice(0, 3))} className="w-full border border-taupe-300 px-3 py-2.5 text-sm uppercase focus:border-burgundy-500 focus:outline-none" />
-              </Field>
-            </div>
-            {form.accessType === 'premium' && (
-              <p className="text-xs text-charcoal-600/70">Purchasing isn't available yet — this resource will show a "coming soon" state publicly until the Shop supports it.</p>
-            )}
-            {form.accessType === 'circle_only' && (
-              <p className="text-xs text-charcoal-600/70">Price/currency aren't used for a Circle-only resource — WSF Circle membership pricing lives in the Circle Plan, not here.</p>
+            {form.accessType === 'premium' ? (
+              <>
+                <MultiCurrencyPricingEditor prices={form.prices} onChange={(prices) => updateField('prices', prices)} />
+                <p className="text-xs text-charcoal-600/70">
+                  Set each currency&apos;s price explicitly — no automatic exchange-rate conversion. A currency is only
+                  offered at checkout when it&apos;s also enabled in Settings → Payments and supported by the payment
+                  provider.
+                </p>
+              </>
+            ) : form.accessType === 'circle_only' ? (
+              <p className="text-xs text-charcoal-600/70">Price/currency aren&apos;t used for a Circle-only resource — WSF Circle membership pricing lives in the Circle Plan, not here.</p>
+            ) : (
+              <p className="text-xs text-charcoal-600/70">Only premium resources are sold. Switch the access type to Premium purchase to set prices.</p>
             )}
           </Section>
 
