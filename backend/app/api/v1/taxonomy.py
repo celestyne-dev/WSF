@@ -5,7 +5,7 @@ from flask_restful import Api, Resource
 from app.models.article import Article
 from app.models.taxonomy import Category, Series, Topic
 from app.schemas.article import article_summary_schema
-from app.schemas.taxonomy import CategorySchema, SeriesSchema, TopicSchema
+from app.schemas.taxonomy import CategorySchema, SeriesDetailSchema, SeriesSchema, TopicDetailSchema, TopicSchema
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
 
@@ -29,6 +29,10 @@ series_api = Api(series_bp)
 topic_schema = TopicSchema()
 category_schema = CategorySchema()
 series_schema = SeriesSchema()
+# GEO Phase 4C — detail-only editorial depth (content, sources, the
+# published-only featured Article, contributors/people); lists unchanged.
+topic_detail_schema = TopicDetailSchema()
+series_detail_schema = SeriesDetailSchema()
 
 
 def _articles_for(query):
@@ -49,7 +53,7 @@ class TopicDetailResource(Resource):
             raise ApiError("Topic not found.", 404, code="not_found")
         result = _articles_for(Article.query.filter(Article.topics.any(id=topic.id)))
         articles = article_summary_schema(many=True).dump(result["items"])
-        return success_response({"topic": topic_schema.dump(topic), "articles": articles}, meta=result["meta"])
+        return success_response({"topic": topic_detail_schema.dump(topic), "articles": articles}, meta=result["meta"])
 
 
 class CategoryListResource(Resource):
@@ -83,7 +87,7 @@ class SeriesDetailResource(Resource):
             raise ApiError("Series not found.", 404, code="not_found")
         result = _articles_for(Article.query.filter_by(series_id=item.id))
         articles = article_summary_schema(many=True).dump(result["items"])
-        return success_response({"series": series_schema.dump(item), "articles": articles}, meta=result["meta"])
+        return success_response({"series": series_detail_schema.dump(item), "articles": articles}, meta=result["meta"])
 
 
 topics_api.add_resource(TopicListResource, "")

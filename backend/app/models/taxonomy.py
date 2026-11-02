@@ -62,12 +62,27 @@ class Topic(db.Model):
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots} — same shape as Article.seo
     status = db.Column(db.String(20), nullable=False, default="published")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # AI Search / GEO Phase 4C — editorial depth. `description` stays the
+    # short hero/index summary; `content` is the long-form editorial body
+    # (same block list/sanitizer as Article.content); `sources` the same
+    # Sources & references shape as Article/Person/Author (schemas/
+    # sources.py); `featured_article_id` the editor's "Start here"
+    # cornerstone story — a curation pointer only, shown publicly only
+    # while that Article is published.
+    content = db.Column(db.JSON, nullable=False, default=list)
+    sources = db.Column(db.JSON, nullable=False, default=list)
+    featured_article_id = db.Column(
+        db.Integer,
+        db.ForeignKey("articles.id", ondelete="SET NULL", name="fk_topics_featured_article_id"),
+        nullable=True,
+    )
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
     )
 
     hero_media = db.relationship("Media", foreign_keys=[hero_media_id])
+    featured_article = db.relationship("Article", foreign_keys=[featured_article_id])
 
 
 class Series(db.Model):
@@ -85,6 +100,16 @@ class Series(db.Model):
     featured = db.Column(db.Boolean, nullable=False, default=False)
     status = db.Column(db.String(20), nullable=False, default="published")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # AI Search / GEO Phase 4C — same three fields/semantics as Topic.
+    # use_alter: articles.series_id already points here, so this FK closes
+    # a series<->articles cycle that create_all/drop_all must order.
+    content = db.Column(db.JSON, nullable=False, default=list)
+    sources = db.Column(db.JSON, nullable=False, default=list)
+    featured_article_id = db.Column(
+        db.Integer,
+        db.ForeignKey("articles.id", ondelete="SET NULL", name="fk_series_featured_article_id", use_alter=True),
+        nullable=True,
+    )
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
@@ -92,3 +117,6 @@ class Series(db.Model):
 
     cover_media = db.relationship("Media", foreign_keys=[cover_media_id])
     sponsor_organization = db.relationship("Organization", foreign_keys=[sponsor_organization_id])
+    # An editorial pointer only — never the Series' own article collection
+    # (that stays Article.series_id / the `articles` backref).
+    featured_article = db.relationship("Article", foreign_keys=[featured_article_id])

@@ -7,6 +7,11 @@ import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
+import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import SourcesEditor from '../../components/cms/SourcesEditor'
+import FeaturedArticlePicker from '../../components/cms/FeaturedArticlePicker'
+import { describeSourceErrors, validateSources } from '../../utils/sources'
+import { blankEditorialForm, editorialToForm, editorialToPayload } from '../../utils/taxonomyEditorial'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -33,6 +38,7 @@ function blankForm() {
     seoDescription: '',
     seoCanonical: '',
     seoOgMedia: null,
+    ...blankEditorialForm(),
   }
 }
 
@@ -48,6 +54,7 @@ function toForm(topic) {
     seoDescription: topic.seo?.description || '',
     seoCanonical: topic.seo?.canonical || '',
     seoOgMedia: topic.seo?.ogImageMediaId ? { id: topic.seo.ogImageMediaId } : null,
+    ...editorialToForm(topic),
   }
 }
 
@@ -140,6 +147,7 @@ export default function AdminTopicEditor() {
         canonical: form.seoCanonical || null,
         ogImageMediaId: form.seoOgMedia?.id || null,
       },
+      ...editorialToPayload(form),
     }
   }
 
@@ -148,6 +156,11 @@ export default function AdminTopicEditor() {
     if (slugError) {
       setErrors({ slug: slugError })
       toast.error(slugError)
+      return
+    }
+    const sourcesError = validateSources(form.sources, 'A topic')
+    if (sourcesError) {
+      toast.error(sourcesError)
       return
     }
     setErrors({})
@@ -165,7 +178,12 @@ export default function AdminTopicEditor() {
         setForm(toForm(saved))
       }
     } catch (err) {
-      const message = err?.response?.data?.error?.message || 'Something went wrong saving this topic. Please try again.'
+      const details = err?.response?.data?.error?.details
+      const message =
+        describeSourceErrors(details?.sources) ||
+        details?.featuredArticleId?.[0] ||
+        err?.response?.data?.error?.message ||
+        'Something went wrong saving this topic. Please try again.'
       toast.error(message)
     } finally {
       setSaving(false)
@@ -237,6 +255,22 @@ export default function AdminTopicEditor() {
 
           <Section title="Hero image" description="Shown at the top of the public topic page. Rendered inside a controlled container — never cropped or stretched.">
             <MediaPicker label="Hero image" aspect={16 / 9} value={form.heroMedia} onChange={(media) => updateField('heroMedia', media)} />
+          </Section>
+
+          <Section title="Editorial content" description="The long-form editorial introduction shown on the public topic page, below the short description. Optional.">
+            <ArticleBlockEditor blocks={form.content} onChange={(content) => updateField('content', content)} />
+          </Section>
+
+          <Section title="Start here" description="Optionally pick one published cornerstone story to feature at the top of this topic. It doesn't have to be tagged with this topic.">
+            <FeaturedArticlePicker
+              value={form.featuredArticleId}
+              selection={form.featuredArticleSelection}
+              onChange={(articleId) => updateField('featuredArticleId', articleId)}
+            />
+          </Section>
+
+          <Section title="Sources & references" description="Optional reports, studies or official pages supporting this topic's editorial content. Shown publicly.">
+            <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
           </Section>
 
           <Section title="SEO">

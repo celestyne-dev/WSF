@@ -2360,13 +2360,13 @@ def _public_detail_prerender(prefix, entity):
         # Topics only when published, plus its sources. No article grid here.
         return render_author_prerender(public_author_dump(AuthorDetailSchema().dump(entity), entity))
     if prefix == "topics":
-        from app.schemas.taxonomy import TopicSchema
+        from app.schemas.taxonomy import TopicDetailSchema
 
-        return render_topic_prerender(TopicSchema().dump(entity))
+        return render_topic_prerender(TopicDetailSchema().dump(entity))
     if prefix == "series":
-        from app.schemas.taxonomy import SeriesSchema
+        from app.schemas.taxonomy import SeriesDetailSchema
 
-        return render_series_prerender(SeriesSchema().dump(entity))
+        return render_series_prerender(SeriesDetailSchema().dump(entity))
     if prefix == "directory":
         from app.schemas.directory import DirectoryListingPublicSchema
 

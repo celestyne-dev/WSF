@@ -109,7 +109,12 @@ def test_migration_single_head_after_profile_sources():
     assert module.revision == "e7a1c4d9b2f6" and module.down_revision == "d4b8e2a6f1c3"
     config = Config()
     config.set_main_option("script_location", os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["e7a1c4d9b2f6"]
+    script = ScriptDirectory.from_config(config)
+    # Still one linear head; later phases (4C: f2c6a8e4d1b9) build on top
+    # of this revision, so it must remain an ancestor of that head.
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "e7a1c4d9b2f6" in {rev.revision for rev in script.iterate_revisions(heads[0], "base")}
 
 
 def test_migration_backfills_existing_rows_and_downgrades_cleanly():

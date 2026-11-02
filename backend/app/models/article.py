@@ -170,7 +170,9 @@ class Article(db.Model):
     approved_by = db.relationship("User", foreign_keys=[approved_by_user_id])
     sponsor_record = db.relationship("Sponsor", foreign_keys=[sponsor_id])
     category = db.relationship("Category")
-    series = db.relationship("Series", backref="articles")
+    # foreign_keys is a mapping hint only (GEO Phase 4C added
+    # series.featured_article_id, a second articles<->series FK path).
+    series = db.relationship("Series", foreign_keys=[series_id], backref="articles")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
 
     topics = db.relationship("Topic", secondary=article_topics, backref="articles")

@@ -2,6 +2,7 @@ import { apiClient, USE_MOCK } from './client'
 import { delay } from './mockUtils'
 import { attachMockCountry } from './geography'
 import { mapMediaRef } from '../utils/media'
+import { mapArticle } from './articles'
 
 // Each mock dataset here is only needed when VITE_USE_MOCK=true —
 // dynamic-imported per module so a real-mode production build never
@@ -45,6 +46,62 @@ function mapTopic(t) {
   }
 }
 
+// AI Search / GEO Phase 4C — Topic/Series DETAIL editorial depth. Only the
+// detail endpoints (public detail, admin single-item) send these fields;
+// list mappers above never assume them.
+function mapEditorialDepth(x) {
+  return {
+    content: Array.isArray(x.content) ? x.content : [],
+    sources: Array.isArray(x.sources) ? x.sources : [],
+    // Only the admin payload carries `featured_article_id`; there
+    // `featured_article` is a small {id, slug, title, status} preview of the
+    // raw selection (any status). Publicly `featured_article` is the
+    // published-only Article summary (null for a draft/archived pick).
+    ...('featured_article_id' in x
+      ? {
+          featuredArticle: null,
+          featuredArticleId: x.featured_article_id ?? null,
+          featuredArticleSelection: x.featured_article
+            ? { id: x.featured_article.id, slug: x.featured_article.slug, title: x.featured_article.title, status: x.featured_article.status }
+            : null,
+        }
+      : {
+          featuredArticle: x.featured_article?.slug ? mapArticle(x.featured_article) : null,
+          featuredArticleId: null,
+          featuredArticleSelection: null,
+        }),
+  }
+}
+
+function mapProfilePreview(p, roleKey) {
+  return {
+    slug: p.slug,
+    name: p.name,
+    [roleKey]: p[roleKey] || null,
+    shortBio: p.short_bio || null,
+    photo: p.photo?.public_url || null,
+    photoMedia: mapMediaRef(p.photo),
+  }
+}
+
+export function mapTopicDetail(t) {
+  if (!t) return null
+  return {
+    ...mapTopic(t),
+    ...mapEditorialDepth(t),
+    contributors: (t.contributors || []).filter((a) => a?.slug).map((a) => mapProfilePreview(a, 'role')),
+  }
+}
+
+export function mapSeriesDetail(s) {
+  if (!s) return null
+  return {
+    ...mapSeries(s),
+    ...mapEditorialDepth(s),
+    people: (s.people || []).filter((p) => p?.slug).map((p) => mapProfilePreview(p, 'title')),
+  }
+}
+
 function mapCategory(c) {
   if (!c) return null
   return {
@@ -68,6 +125,8 @@ function mapSeries(s) {
     description: s.description,
     coverImage: s.cover_media?.public_url || null,
     coverMedia: mapMediaRef(s.cover_media),
+    // Public detail: published-only disclosure preview. Admin: the raw id.
+    sponsorOrganizationId: s.sponsor_organization_id || null,
     sponsor: s.sponsor_organization
       ? {
           name: s.sponsor_organization.name,
@@ -186,7 +245,7 @@ export async function fetchTopics() {
 export async function fetchTopicBySlug(slug) {
   if (!USE_MOCK) {
     try {
-      return mapTopic((await apiClient.get(`/topics/${slug}`)).data.topic)
+      return mapTopicDetail((await apiClient.get(`/topics/${slug}`)).data.topic)
     } catch (err) {
       if (err.response?.status === 404) return null
       throw err
@@ -204,7 +263,7 @@ export async function fetchSeries() {
 export async function fetchSeriesBySlug(slug) {
   if (!USE_MOCK) {
     try {
-      return mapSeries((await apiClient.get(`/series/${slug}`)).data.series)
+      return mapSeriesDetail((await apiClient.get(`/series/${slug}`)).data.series)
     } catch (err) {
       if (err.response?.status === 404) return null
       throw err
@@ -227,16 +286,16 @@ export async function fetchTopicsAdmin(params = {}) {
   return { ...data, items: data.items.map(mapTopic) }
 }
 export async function fetchTopicAdmin(id) {
-  return mapTopic((await apiClient.get(`/admin/taxonomy/topics/${id}`)).data)
+  return mapTopicDetail((await apiClient.get(`/admin/taxonomy/topics/${id}`)).data)
 }
 export async function createTopic(payload) {
-  return mapTopic((await apiClient.post('/admin/taxonomy/topics', payload)).data)
+  return mapTopicDetail((await apiClient.post('/admin/taxonomy/topics', payload)).data)
 }
 export async function updateTopic(id, payload) {
-  return mapTopic((await apiClient.put(`/admin/taxonomy/topics/${id}`, payload)).data)
+  return mapTopicDetail((await apiClient.put(`/admin/taxonomy/topics/${id}`, payload)).data)
 }
 export async function setTopicStatus(id, status) {
-  return mapTopic((await apiClient.put(`/admin/taxonomy/topics/${id}/status`, { status })).data)
+  return mapTopicDetail((await apiClient.put(`/admin/taxonomy/topics/${id}/status`, { status })).data)
 }
 // Hard delete — the backend rejects this with a 409 if any content still
 // references the topic. Archive (via setTopicStatus) is the safe default.
@@ -269,16 +328,16 @@ export async function fetchSeriesAdmin(params = {}) {
   return { ...data, items: data.items.map(mapSeries) }
 }
 export async function fetchSeriesAdminById(id) {
-  return mapSeries((await apiClient.get(`/admin/taxonomy/series/${id}`)).data)
+  return mapSeriesDetail((await apiClient.get(`/admin/taxonomy/series/${id}`)).data)
 }
 export async function createSeries(payload) {
-  return mapSeries((await apiClient.post('/admin/taxonomy/series', payload)).data)
+  return mapSeriesDetail((await apiClient.post('/admin/taxonomy/series', payload)).data)
 }
 export async function updateSeries(id, payload) {
-  return mapSeries((await apiClient.put(`/admin/taxonomy/series/${id}`, payload)).data)
+  return mapSeriesDetail((await apiClient.put(`/admin/taxonomy/series/${id}`, payload)).data)
 }
 export async function setSeriesStatus(id, status) {
-  return mapSeries((await apiClient.put(`/admin/taxonomy/series/${id}/status`, { status })).data)
+  return mapSeriesDetail((await apiClient.put(`/admin/taxonomy/series/${id}/status`, { status })).data)
 }
 export async function deleteSeries(id) {
   await apiClient.delete(`/admin/taxonomy/series/${id}`)

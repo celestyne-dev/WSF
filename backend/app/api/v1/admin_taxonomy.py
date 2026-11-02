@@ -4,11 +4,13 @@ from flask_restful import Api, Resource
 
 from app.auth.decorators import permission_required
 from app.extensions import db
+from app.models.article import Article
 from app.models.taxonomy import Category, Series, Tag, Topic
 from app.schemas.taxonomy import (
     CategoryInputSchema,
     CategorySchema,
     CategoryUpdateSchema,
+    SeriesAdminSchema,
     SeriesInputSchema,
     SeriesSchema,
     SeriesUpdateSchema,
@@ -17,11 +19,13 @@ from app.schemas.taxonomy import (
     TagSchema,
     TagUpdateSchema,
     TaxonomyStatusUpdateSchema,
+    TopicAdminSchema,
     TopicInputSchema,
     TopicSchema,
     TopicUpdateSchema,
 )
 from app.services.audit import log_action
+from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
@@ -48,6 +52,47 @@ topic_schema = TopicSchema()
 category_schema = CategorySchema()
 series_schema = SeriesSchema()
 tag_schema = TagSchema()
+# Single-item CMS responses (detail/create/update/status) carry the GEO
+# Phase 4C editorial fields; admin lists stay on the lightweight schemas.
+topic_admin_schema = TopicAdminSchema()
+series_admin_schema = SeriesAdminSchema()
+
+
+def _apply_editorial(instance, data):
+    """GEO Phase 4C — long-form content (re-sanitized with the same
+    sanitize_content_blocks() as Article/Person/Author/Organization),
+    sources (already validated by SourceSchema) and the featured "Start
+    here" Article. Each is only touched when present in the payload:
+    omitted -> unchanged; [] / null -> cleared. A featured Article must
+    exist (any status — the public serializer independently hides a
+    non-published one); it need not belong to this Topic/Series."""
+    if "content" in data:
+        instance.content = sanitize_content_blocks(data["content"])
+    elif instance.content is None:
+        instance.content = []
+    if "sources" in data:
+        instance.sources = data["sources"]
+    elif instance.sources is None:
+        instance.sources = []
+    if "featured_article_id" in data:
+        article_id = data["featured_article_id"]
+        if article_id is not None and db.session.get(Article, article_id) is None:
+            raise ApiError(
+                "The selected featured article doesn't exist.",
+                400,
+                code="validation_error",
+                errors={"featuredArticleId": ["Article not found."]},
+            )
+        instance.featured_article_id = article_id
+
+
+def _audit_details(data):
+    """Audit-log payload without the (potentially large) editorial bodies."""
+    details = {k: v for k, v in data.items() if k not in ("content", "sources")}
+    for key in ("content", "sources"):
+        if key in data:
+            details[f"{key}_count"] = len(data[key] or [])
+    return details
 
 
 def _with_usage(dumped_items, usage_counts):
@@ -105,11 +150,12 @@ class TopicAdminListResource(Resource):
             sort_order=data.get("sort_order", 0),
         )
         topic.slug = data.get("slug") or generate_unique_slug(Topic, data["name"])
+        _apply_editorial(topic, data)
         db.session.add(topic)
         db.session.commit()
         log_action(current_user, "topic.create", "Topic", topic.id, {"name": topic.name})
         notify_public_change({}, topic)
-        return success_response(topic_schema.dump(topic), status=201)
+        return success_response(topic_admin_schema.dump(topic), status=201)
 
 
 class TopicAdminDetailResource(Resource):
@@ -118,7 +164,7 @@ class TopicAdminDetailResource(Resource):
         topic = Topic.query.get(topic_id)
         if topic is None:
             raise ApiError("Topic not found.", 404, code="not_found")
-        dumped = topic_schema.dump(topic)
+        dumped = topic_admin_schema.dump(topic)
         dumped["usageCount"] = topic_usage_counts([topic.id]).get(topic.id, 0)
         return success_response(dumped)
 
@@ -140,6 +186,7 @@ class TopicAdminDetailResource(Resource):
         for field in ("description", "hero_media_id", "seo", "status", "sort_order"):
             if field in data:
                 setattr(topic, field, data[field])
+        _apply_editorial(topic, data)
 
         # WSF SEO Phase 2B — a redirect is only warranted when the slug
         # actually changed AND the topic was publicly visible both
@@ -150,9 +197,9 @@ class TopicAdminDetailResource(Resource):
             create_entity_redirect_for_slug_change("topic", old_slug, topic.slug)
 
         db.session.commit()
-        log_action(current_user, "topic.update", "Topic", topic.id, data)
+        log_action(current_user, "topic.update", "Topic", topic.id, _audit_details(data))
         notify_public_change(public_before, topic)
-        return success_response(topic_schema.dump(topic))
+        return success_response(topic_admin_schema.dump(topic))
 
     @permission_required("taxonomy.manage")
     def delete(self, topic_id):
@@ -189,7 +236,7 @@ class TopicAdminStatusResource(Resource):
         db.session.commit()
         log_action(current_user, "topic.status_change", "Topic", topic.id, {"status": topic.status})
         notify_public_change(public_before, topic)
-        return success_response(topic_schema.dump(topic))
+        return success_response(topic_admin_schema.dump(topic))
 
 
 class CategoryAdminListResource(Resource):
@@ -316,11 +363,12 @@ class SeriesAdminListResource(Resource):
             sort_order=data.get("sort_order", 0),
         )
         series.slug = data.get("slug") or generate_unique_slug(Series, data["name"])
+        _apply_editorial(series, data)
         db.session.add(series)
         db.session.commit()
         log_action(current_user, "series.create", "Series", series.id, {"name": series.name})
         notify_public_change({}, series)
-        return success_response(series_schema.dump(series), status=201)
+        return success_response(series_admin_schema.dump(series), status=201)
 
 
 class SeriesAdminDetailResource(Resource):
@@ -329,7 +377,7 @@ class SeriesAdminDetailResource(Resource):
         series = Series.query.get(series_id)
         if series is None:
             raise ApiError("Series not found.", 404, code="not_found")
-        dumped = series_schema.dump(series)
+        dumped = series_admin_schema.dump(series)
         dumped["usageCount"] = series_usage_counts([series.id]).get(series.id, 0)
         return success_response(dumped)
 
@@ -360,6 +408,7 @@ class SeriesAdminDetailResource(Resource):
         ):
             if field in data:
                 setattr(series, field, data[field])
+        _apply_editorial(series, data)
 
         # WSF SEO Phase 2B — see TopicAdminDetailResource.put's identical
         # comment: redirect only when the slug changed and the series
@@ -368,9 +417,9 @@ class SeriesAdminDetailResource(Resource):
             create_entity_redirect_for_slug_change("series", old_slug, series.slug)
 
         db.session.commit()
-        log_action(current_user, "series.update", "Series", series.id, data)
+        log_action(current_user, "series.update", "Series", series.id, _audit_details(data))
         notify_public_change(public_before, series)
-        return success_response(series_schema.dump(series))
+        return success_response(series_admin_schema.dump(series))
 
     @permission_required("taxonomy.manage")
     def delete(self, series_id):
@@ -407,7 +456,7 @@ class SeriesAdminStatusResource(Resource):
         db.session.commit()
         log_action(current_user, "series.status_change", "Series", series.id, {"status": series.status})
         notify_public_change(public_before, series)
-        return success_response(series_schema.dump(series))
+        return success_response(series_admin_schema.dump(series))
 
 
 class TagAdminListResource(Resource):

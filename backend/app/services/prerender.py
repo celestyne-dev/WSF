@@ -738,19 +738,48 @@ def render_author_prerender(payload):
     return _main("author", header, body)
 
 
+def _editorial_depth(payload, people_heading, people_key, people_card, sources_id):
+    """GEO Phase 4C — the shared Topic/Series editorial body, in the same
+    order React renders it: long-form content (render_content_blocks,
+    re-sanitized), "Start here" (the published-only featured Article — the
+    public detail schema already nulls a non-published pick), the bounded
+    contributors/people list, then Sources & references. Every section is
+    omitted when empty. The paginated article archive is deliberately not
+    server-rendered here (Phase 3B principle)."""
+    body = [render_content_blocks(payload.get("content") or [])]
+    featured = payload.get("featured_article")
+    if isinstance(featured, dict) and _is_nonblank(featured.get("slug")):
+        body.append(_section("Start here", _item_list([_article_card(featured)])))
+    people = [p for p in (payload.get(people_key) or []) if isinstance(p, dict) and _is_nonblank(p.get("slug"))]
+    if people:
+        body.append(_section(people_heading, _item_list(people_card(p) for p in people)))
+    body.append(render_source_references(payload.get("sources") or [], sources_id))
+    return body
+
+
 def render_topic_prerender(payload):
-    """`payload` = TopicSchema().dump(topic)."""
+    """`payload` = TopicDetailSchema().dump(topic) — the same public Topic
+    detail the API returns (published-only featured Article, active-only
+    contributors)."""
     header = [f'<p class="eyebrow">Topic</p>', _h1(payload.get("name")), _paragraph(payload.get("description"))]
-    return _main("topic", header, [])
+    body = _editorial_depth(payload, "Contributors covering this topic", "contributors", _author_card, "topic-sources")
+    return _main("topic", header, body)
 
 
 def render_series_prerender(payload):
-    """`payload` = SeriesSchema().dump(series). The public SeriesSchema
-    never serializes sponsor_organization, so no sponsor is shown here
-    either (the real page shows none from the live API)."""
+    """`payload` = SeriesDetailSchema().dump(series) — published-only
+    featured Article, published-only People, and a sponsor disclosure only
+    while the sponsoring Organization is itself published."""
     header = [f'<p class="eyebrow">Series</p>', _h1(payload.get("name")), _paragraph(payload.get("subtitle"))]
-    body = [_paragraph(payload.get("description"), _PARAGRAPH_CLASS)]
+    header.append(_paragraph(payload.get("description"), _PARAGRAPH_CLASS))
+    sponsor = payload.get("sponsor_organization") if isinstance(payload.get("sponsor_organization"), dict) else None
+    if sponsor and _is_nonblank(sponsor.get("name")):
+        header.append(f'<p class="{_SPONSOR_LINE_CLASS}">Presented in partnership with {_text(sponsor["name"])}</p>')
+    body = _editorial_depth(payload, "People in this series", "people", _person_card, "series-sources")
     return _main("series", header, body)
+
+
+_SPONSOR_LINE_CLASS = "mt-4 text-xs uppercase tracking-wide text-charcoal-600/70"
 
 
 _DIRECTORY_LISTING_TYPE_LABELS = {
