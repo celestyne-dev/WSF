@@ -1,6 +1,7 @@
 // Pure AdminAuthorEditor form helpers (API Author -> editor form -> save
 // payload), kept out of the JSX so the round trip is unit-tested by plain
 // `node --test` (authorForm.test.js).
+import { blankCredential, credentialsToPayload } from './credentials.js'
 import { blankSource, sourcesToPayload } from './sources.js'
 
 export function blankAuthorForm() {
@@ -24,6 +25,7 @@ export function blankAuthorForm() {
     socialTwitter: '',
     socialInstagram: '',
     sources: [],
+    credentials: [],
     status: 'draft',
     seoTitle: '',
     seoDescription: '',
@@ -50,6 +52,7 @@ export function authorToForm(author) {
     socialTwitter: author.social?.twitter || '',
     socialInstagram: author.social?.instagram || '',
     sources: (author.sources || []).map((s) => ({ ...blankSource(), ...s })),
+    credentials: (author.credentials || []).map((c) => ({ ...blankCredential(), ...c })),
     status: author.status || 'draft',
     seoTitle: author.seo?.title || '',
     seoDescription: author.seo?.description || '',
@@ -80,6 +83,7 @@ export function authorFormToPayload(form, nextStatus) {
       instagram: form.socialInstagram || null,
     },
     sources: sourcesToPayload(form.sources),
+    credentials: credentialsToPayload(form.credentials),
     status: nextStatus,
     seo: {
       title: form.seoTitle || null,

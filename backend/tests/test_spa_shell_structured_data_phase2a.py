@@ -427,9 +427,11 @@ class TestPersonAndAuthorStructuredData:
         _make_author(app, "wsf-editorial", name="WSF Editorial", role="Senior Editor")
         html = client.get("/authors/wsf-editorial").get_data(as_text=True)
         data = _structured_data_json_by_attr(html, "data-author-structured-data")
-        assert data["@type"] == "Person"
-        assert data["name"] == "WSF Editorial"
-        assert data["jobTitle"] == "Senior Editor"
+        # GEO Phase 4B: a ProfilePage whose mainEntity is the Author's Person.
+        assert data["@type"] == "ProfilePage"
+        assert data["mainEntity"]["@type"] == "Person"
+        assert data["mainEntity"]["name"] == "WSF Editorial"
+        assert data["mainEntity"]["jobTitle"] == "Senior Editor"
 
     def test_people_list_page_has_no_person_schema(self, client, app):
         _use_fixture_index(app)

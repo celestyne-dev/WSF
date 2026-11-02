@@ -12,19 +12,21 @@ import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
 import SourceReferences from '../components/article/SourceReferences'
-import { buildAuthorStructuredData } from '../utils/profileStructuredData'
+import CredentialsList from '../components/article/CredentialsList'
+import { buildAuthorProfilePageStructuredData } from '../utils/profileStructuredData'
 import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
 import NotFoundPage from './NotFoundPage'
 
-// schema.org Person structured data for the byline — the data shape is
-// the pure buildAuthorStructuredData() (utils/profileStructuredData.js,
-// mirroring spa_shell.py's _build_author_json_ld); this hook only owns the
-// <script>.
+// schema.org ProfilePage (mainEntity: the Author's Person identity) — the
+// data shape is the pure buildAuthorProfilePageStructuredData() (utils/
+// profileStructuredData.js, mirroring spa_shell.py's _build_author_json_ld);
+// this hook only owns the <script>, reusing the server's
+// data-author-structured-data tag rather than adding a second one.
 function useAuthorStructuredData(author, canonicalUrl) {
   useEffect(() => {
     if (!author) return
-    const data = buildAuthorStructuredData(author, canonicalUrl, {
+    const data = buildAuthorProfilePageStructuredData(author, canonicalUrl, {
       imageUrl: author.photo ? resolveImage(author.photo, { width: 400, height: 400 }) : undefined,
     })
     let el = document.head.querySelector('script[data-author-structured-data]')
@@ -81,21 +83,26 @@ export default function AuthorProfilePage() {
   }, [author, slug, page])
 
   const canonicalUrl = `https://womenshapingfutures.org/authors/${slug}`
+  // One effective canonical for useSeo, the ProfilePage JSON-LD and the
+  // breadcrumb — the same resolved value spa_shell.py's _author_meta gives
+  // all three server-side (an editor's seo.canonical override, else the
+  // default /authors/{slug}).
+  const effectiveCanonicalUrl = author?.seo?.canonical || canonicalUrl
 
   useSeo(
     author
       ? {
           title: author.seo?.title || `${author.name} | Women Shaping Futures`,
           description: author.seo?.description || author.shortBio,
-          canonical: author.seo?.canonical || canonicalUrl,
+          canonical: effectiveCanonicalUrl,
           image: author.photo ? resolveImage(author.photo, { width: 1200, height: 630 }) : undefined,
           robots: author.seo?.robots,
         }
       : {},
   )
 
-  useAuthorStructuredData(author, canonicalUrl)
-  useBreadcrumbStructuredData(author ? [{ label: 'Authors', to: '/authors' }, { label: author.name }] : null, canonicalUrl)
+  useAuthorStructuredData(author, effectiveCanonicalUrl)
+  useBreadcrumbStructuredData(author ? [{ label: 'Authors', to: '/authors' }, { label: author.name }] : null, effectiveCanonicalUrl)
 
   if (error) return <div className="container-editorial py-20"><EmptyState title="Couldn't load this profile" description={error} /></div>
   if (author === undefined) return <PageLoader />
@@ -158,6 +165,12 @@ export default function AuthorProfilePage() {
           {author.bio?.length > 0 && (
             <div className="mt-6 max-w-2xl">
               <ArticleContent blocks={author.bio} />
+            </div>
+          )}
+
+          {author.credentials?.length > 0 && (
+            <div className="max-w-2xl">
+              <CredentialsList credentials={author.credentials} id="author-credentials" />
             </div>
           )}
 

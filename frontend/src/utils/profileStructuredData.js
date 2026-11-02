@@ -1,5 +1,7 @@
-// AI Search / GEO Phase 4A — pure, DOM-free builders for the schema.org
-// Person JSON-LD on a Person profile and an Author profile. Split out of
+// AI Search / GEO Phase 4A/4B — pure, DOM-free builders for the schema.org
+// JSON-LD on a Person profile (plain Person: an editorial subject, not
+// necessarily affiliated with WSF) and an Author profile (a ProfilePage
+// whose mainEntity is the Author's Person identity). Split out of
 // the page hooks (which own only the <script> mechanics) so the data shape
 // is exercised by plain `node --test` (profileStructuredData.test.js).
 //
@@ -41,6 +43,22 @@ export function profileSameAs(profile) {
   return [...new Set(urls)]
 }
 
+// GEO Phase 4B — credentials as schema.org EducationalOccupationalCredential
+// (`hasCredential`) — spa_shell.py's _profile_credentials(). `note` stays
+// out; a credential URL is never identity (sameAs) or a work about the
+// person (subjectOf).
+export function profileCredentials(credentials) {
+  return (credentials || [])
+    .filter((c) => c?.name)
+    .map((c) => ({
+      '@type': 'EducationalOccupationalCredential',
+      name: c.name,
+      ...(c.category ? { credentialCategory: c.category } : {}),
+      ...(c.issuer ? { recognizedBy: { '@type': 'Organization', name: c.issuer } } : {}),
+      ...(c.url ? { url: c.url } : {}),
+    }))
+}
+
 function base(siteUrl) {
   return (siteUrl || DEFAULT_SITE_URL).replace(/\/$/, '')
 }
@@ -54,6 +72,7 @@ export function buildPersonStructuredData(person, canonicalUrl, { imageUrl, site
   const sameAs = profileSameAs(person)
   const knowsAbout = cleanStrings(person.expertise)
   const award = cleanStrings(person.awards)
+  const hasCredential = profileCredentials(person.credentials)
   const subjectOf = sourceCreativeWorks(person.sources)
   return {
     '@context': 'https://schema.org',
@@ -68,14 +87,19 @@ export function buildPersonStructuredData(person, canonicalUrl, { imageUrl, site
     ...(sameAs.length ? { sameAs } : {}),
     ...(knowsAbout.length ? { knowsAbout } : {}),
     ...(award.length ? { award } : {}),
+    ...(hasCredential.length ? { hasCredential } : {}),
     ...(subjectOf.length ? { subjectOf } : {}),
   }
 }
 
-// `author` is the mapped public Author (api/taxonomies.js mapAuthor): its
-// `topics` are already published-only (public_author_dump). No worksFor
-// (a byline role is not employment) and no award.
-export function buildAuthorStructuredData(author, canonicalUrl, { imageUrl, siteUrl } = {}) {
+// GEO Phase 4B — an Author page is a schema.org ProfilePage whose
+// mainEntity is the Author's Person identity — spa_shell.py's
+// _build_author_json_ld(). `author` is the mapped public Author
+// (api/taxonomies.js mapAuthor): `topics` already published-only,
+// createdAt/updatedAt the record's own timestamps passed through verbatim.
+// No worksFor (a byline role is not employment), award, alumniOf or
+// affiliation; never any account/user data.
+export function buildAuthorProfilePageStructuredData(author, canonicalUrl, { imageUrl, siteUrl } = {}) {
   if (!author) return null
   const sameAs = profileSameAs(author)
   const seen = new Set()
@@ -90,16 +114,26 @@ export function buildAuthorStructuredData(author, canonicalUrl, { imageUrl, site
     seen.add(key)
     knowsAbout.push(entry)
   }
+  const description = typeof author.shortBio === 'string' ? author.shortBio.trim() : ''
+  const hasCredential = profileCredentials(author.credentials)
   const subjectOf = sourceCreativeWorks(author.sources)
   return {
     '@context': 'https://schema.org',
-    '@type': 'Person',
-    name: author.name,
-    url: canonicalUrl,
-    ...(author.role ? { jobTitle: author.role } : {}),
-    ...(imageUrl ? { image: imageUrl } : {}),
-    ...(sameAs.length ? { sameAs } : {}),
-    ...(knowsAbout.length ? { knowsAbout } : {}),
-    ...(subjectOf.length ? { subjectOf } : {}),
+    '@type': 'ProfilePage',
+    ...(author.createdAt ? { dateCreated: author.createdAt } : {}),
+    ...(author.updatedAt ? { dateModified: author.updatedAt } : {}),
+    mainEntity: {
+      '@id': `${canonicalUrl}#author`,
+      '@type': 'Person',
+      name: author.name,
+      url: canonicalUrl,
+      ...(description ? { description } : {}),
+      ...(author.role ? { jobTitle: author.role } : {}),
+      ...(imageUrl ? { image: imageUrl } : {}),
+      ...(sameAs.length ? { sameAs } : {}),
+      ...(knowsAbout.length ? { knowsAbout } : {}),
+      ...(hasCredential.length ? { hasCredential } : {}),
+      ...(subjectOf.length ? { subjectOf } : {}),
+    },
   }
 }

@@ -123,6 +123,12 @@ function mapAuthor(a) {
     // GEO Phase 4A — editorial sources & references (AuthorDetailSchema);
     // only the single-Author payload carries them, list items get [].
     sources: Array.isArray(a.sources) ? a.sources : [],
+    // GEO Phase 4B — credentials & qualifications (AuthorDetailSchema only).
+    credentials: Array.isArray(a.credentials) ? a.credentials : [],
+    // The Author record's own real timestamps (ProfilePage dateCreated/
+    // dateModified) — passed through verbatim, never re-formatted.
+    createdAt: a.created_at || null,
+    updatedAt: a.updated_at || null,
     personId: a.person_id || null,
     person: a.person ? { slug: a.person.slug, name: a.person.name, title: a.person.title, photoMedia: mapMediaRef(a.person.photo) } : null,
     status: a.status || 'active',

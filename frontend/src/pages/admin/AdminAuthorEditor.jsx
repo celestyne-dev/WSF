@@ -11,6 +11,8 @@ import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import SourcesEditor from '../../components/cms/SourcesEditor'
+import CredentialsEditor from '../../components/cms/CredentialsEditor'
+import { describeCredentialErrors, validateCredentials } from '../../utils/credentials'
 import { describeSourceErrors, validateSources } from '../../utils/sources'
 import { authorFormToPayload, authorToForm, blankAuthorForm } from '../../utils/authorForm'
 import PageLoader from '../../components/ui/PageLoader'
@@ -133,6 +135,11 @@ export default function AdminAuthorEditor() {
       toast.error(sourcesError)
       return
     }
+    const credentialsError = validateCredentials(form.credentials, 'An author profile')
+    if (credentialsError) {
+      toast.error(credentialsError)
+      return
+    }
     setErrors({})
     setSaving(true)
 
@@ -146,6 +153,7 @@ export default function AdminAuthorEditor() {
     } catch (err) {
       const message =
         describeSourceErrors(err?.response?.data?.error?.details?.sources) ||
+        describeCredentialErrors(err?.response?.data?.error?.details?.credentials) ||
         err?.response?.data?.error?.message ||
         err?.apiError?.message ||
         'Something went wrong saving this author. Please try again.'
@@ -227,6 +235,14 @@ export default function AdminAuthorEditor() {
 
           <Section title="Biography" description="The full profile biography shown on the public author page.">
             <ArticleBlockEditor blocks={form.bio} onChange={(bio) => updateField('bio', bio)} />
+          </Section>
+
+          <Section
+            title="Credentials & qualifications"
+            description="Optional degrees, certifications, licences, fellowships or other qualifications this author holds. Shown publicly as stated — never presented as verified."
+          >
+            <p className="text-xs text-charcoal-600/70">Add only credentials that the profile or reliable public references support.</p>
+            <CredentialsEditor credentials={form.credentials} onChange={(credentials) => updateField('credentials', credentials)} />
           </Section>
 
           <Section

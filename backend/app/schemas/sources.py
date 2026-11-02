@@ -51,14 +51,18 @@ def validate_public_host(url):
 _HTTP_URL = validate.URL(schemes={"http", "https"}, require_tld=True)
 
 
-def _validate_source_url(url):
-    """The public-host check, then the normal http(s) URL check — chained
-    so a bad URL reports exactly one message. Host first so a non-public
-    host ("intranet", "localhost", an IP) always gets the clear public-
-    domain message; a URL with no parseable host (javascript:, data:,
-    garbage) falls through to the URL check's own error."""
+def validate_public_http_url(url):
+    """Neutral public-link rule shared by sources and credentials (GEO
+    Phase 4B): the public-host check, then the normal http(s) URL check —
+    chained so a bad URL reports exactly one message. Host first so a
+    non-public host ("intranet", "localhost", an IP) always gets the clear
+    public-domain message; a URL with no parseable host (javascript:,
+    data:, garbage) falls through to the URL check's own error."""
     validate_public_host(url)
     _HTTP_URL(url)
+
+
+_validate_source_url = validate_public_http_url
 
 
 class SourceSchema(ma.Schema):

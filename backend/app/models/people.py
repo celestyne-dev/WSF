@@ -123,6 +123,10 @@ class Person(db.Model):
     # (never in list/card payloads); context an editor chose to cite, never
     # an identity-verification claim.
     sources = db.Column(db.JSON, nullable=False, default=list)
+    # AI Search / GEO Phase 4B — ordered credentials & qualifications the
+    # profile states (schemas/credentials.py). Detail-only, like sources;
+    # an editorial record, never a verification claim.
+    credentials = db.Column(db.JSON, nullable=False, default=list)
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     featured = db.Column(db.Boolean, nullable=False, default=False)
@@ -168,6 +172,8 @@ class Author(db.Model):
     website = db.Column(db.String(300))
     # AI Search / GEO Phase 4A — same shape/rules as Person.sources.
     sources = db.Column(db.JSON, nullable=False, default=list)
+    # AI Search / GEO Phase 4B — same shape/rules as Person.credentials.
+    credentials = db.Column(db.JSON, nullable=False, default=list)
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     person_id = db.Column(db.Integer, db.ForeignKey("people.id"), nullable=True)

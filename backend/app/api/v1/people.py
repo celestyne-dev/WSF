@@ -93,6 +93,11 @@ def _apply_fields(person, data, series):
         person.sources = data["sources"]
     elif person.sources is None:
         person.sources = []
+    # Same omission semantics for credentials (GEO Phase 4B).
+    if "credentials" in data:
+        person.credentials = data["credentials"]
+    elif person.credentials is None:
+        person.credentials = []
     person.series = series
     person.status = data.get("status", "draft")
     person.seo = data.get("seo")

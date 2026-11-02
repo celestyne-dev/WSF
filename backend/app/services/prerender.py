@@ -269,6 +269,44 @@ def render_source_references(sources, section_id):
     )
 
 
+_CREDENTIALS_LIST_CLASS = "mt-4 space-y-4"
+_CREDENTIAL_NAME_CLASS = "text-base font-semibold text-charcoal"
+_CREDENTIAL_NOTE_CLASS = "mt-1 text-sm text-charcoal-600/80"
+
+
+def render_credentials(credentials, section_id):
+    """AI Search / GEO Phase 4B — a profile's editor-entered credentials &
+    qualifications, the same markup React's CredentialsList renders (same
+    order, same section id). Escaped plain text; a credential link only
+    for an http(s) URL, as an ordinary crawlable anchor (no nofollow/
+    sponsored/ugc). Never any verification wording: an entry records what
+    the profile states, nothing more."""
+    items = []
+    for credential in credentials or []:
+        if not isinstance(credential, dict) or not _is_nonblank(credential.get("name")):
+            continue
+        parts = [f'<p class="{_CREDENTIAL_NAME_CLASS}">{_text(credential["name"])}</p>']
+        meta = [_text(credential[k]) for k in ("category", "issuer") if _is_nonblank(credential.get(k))]
+        if meta:
+            parts.append(f'<p class="{_META_CLASS}">{" · ".join(meta)}</p>')
+        url = _safe_source_url(credential.get("url"))
+        if url:
+            parts.append(
+                f'<p class="mt-1 text-sm"><a href="{_attr(url)}" target="_blank" rel="noopener noreferrer" '
+                f'class="{_LINK_CLASS}">Credential details</a></p>'
+            )
+        if _is_nonblank(credential.get("note")):
+            parts.append(f'<p class="{_CREDENTIAL_NOTE_CLASS}">{_text(credential["note"])}</p>')
+        items.append(f"<li>{''.join(parts)}</li>")
+    if not items:
+        return ""
+    return (
+        f'<section aria-labelledby="{_attr(section_id)}">'
+        f'<h2 id="{_attr(section_id)}" class="{_SECTION_H2_CLASS}">Credentials &amp; qualifications</h2>'
+        f'<ul class="{_CREDENTIALS_LIST_CLASS}">{"".join(items)}</ul></section>'
+    )
+
+
 def render_article_prerender(payload):
     """`payload` is the same public_article_schema() dump the Article
     bootstrap embeds — so the prerender can only ever show what the
@@ -339,6 +377,8 @@ def render_person_prerender(person):
             for t in timeline
         )
         sections.append(f'<section><h2 class="{_SECTION_H2_CLASS}">Career Timeline</h2><ol class="{_TIMELINE_CLASS}">{rows}</ol></section>')
+    # GEO Phase 4B — after the Career Timeline, before Achievements/Awards.
+    sections.append(render_credentials(person.credentials or [], "person-credentials"))
     for heading, values in (("Achievements", person.achievements), ("Awards", person.awards)):
         items = [v for v in (values or []) if _is_nonblank(v)]
         if items:
@@ -690,7 +730,11 @@ def render_author_prerender(payload):
     person = payload.get("person") if isinstance(payload.get("person"), dict) else None
     if person and _is_nonblank(person.get("slug")):
         header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View profile</a></p>')
-    body = [render_content_blocks(payload.get("bio") or []), render_source_references(payload.get("sources") or [], "author-sources")]
+    body = [
+        render_content_blocks(payload.get("bio") or []),
+        render_credentials(payload.get("credentials") or [], "author-credentials"),
+        render_source_references(payload.get("sources") or [], "author-sources"),
+    ]
     return _main("author", header, body)
 
 

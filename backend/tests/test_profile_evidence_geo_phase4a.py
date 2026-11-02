@@ -112,7 +112,12 @@ def test_migration_is_single_head_after_article_sources():
     assert module.revision == "d4b8e2a6f1c3" and module.down_revision == "c3a9e5f1d2b7"
     config = Config()
     config.set_main_option("script_location", os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["d4b8e2a6f1c3"]
+    script = ScriptDirectory.from_config(config)
+    # Still one linear head; later phases (4B: e7a1c4d9b2f6) build on top
+    # of this revision, so it must remain an ancestor of that head.
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "d4b8e2a6f1c3" in {rev.revision for rev in script.iterate_revisions(heads[0], "base")}
 
 
 def test_migration_backfills_existing_rows_and_downgrades_cleanly():
@@ -396,7 +401,8 @@ def test_author_json_ld_identity_topics_and_evidence(client, app, token):
                    social={"linkedin": "writer", "instagram": "writer_ig"}, topicSlugs=["leadership", "secret-topic"],
                    expertise=["leadership", "Climate finance"], sources=[SOURCE_A]).get_json()["data"]["slug"]
     html = client.get(f"/authors/{slug}").get_data(as_text=True)
-    data = _json_ld(html, "data-author-structured-data")
+    # GEO Phase 4B: the Author page is a ProfilePage; the identity is mainEntity.
+    data = _json_ld(html, "data-author-structured-data")["mainEntity"]
     assert data["jobTitle"] == "Contributor"
     assert data["sameAs"] == ["https://writer.example.com", "https://linkedin.com/in/writer", "https://instagram.com/writer_ig"]
     assert data["knowsAbout"] == [{"@type": "Thing", "name": "Leadership", "url": f"{SITE}/topics/leadership"}, "Climate finance"]
@@ -410,7 +416,10 @@ def test_author_json_ld_identity_topics_and_evidence(client, app, token):
 def test_author_json_ld_minimal_has_no_empty_fields(client, token):
     slug = _create(client, token, "authors").get_json()["data"]["slug"]
     data = _json_ld(client.get(f"/authors/{slug}").get_data(as_text=True), "data-author-structured-data")
-    assert set(data) == {"@context", "@type", "name", "url"}
+    # GEO Phase 4B: ProfilePage wrapper (real record dates) around the Person
+    # identity; the only optional field present is the shortBio description.
+    assert set(data) == {"@context", "@type", "dateCreated", "dateModified", "mainEntity"}
+    assert set(data["mainEntity"]) == {"@id", "@type", "name", "url", "description"}
 
 
 # --- pre-deploy correction: public-host sources (Article/Person/Author) ---------------------------
@@ -492,6 +501,7 @@ def test_author_knows_about_keeps_preserved_expertise_after_unrelated_save(clien
     client.put(f"/api/v1/authors/{slug}", json=dict(KINDS["authors"][0], slug=slug, topicSlugs=["leadership", "secret-topic"],
                                                     sources=[SOURCE_A]), headers=auth_headers(token))
     html = client.get(f"/authors/{slug}").get_data(as_text=True)
-    data = _json_ld(html, "data-author-structured-data")
+    # GEO Phase 4B: the Author page is a ProfilePage; the identity is mainEntity.
+    data = _json_ld(html, "data-author-structured-data")["mainEntity"]
     assert data["knowsAbout"] == [{"@type": "Thing", "name": "Leadership", "url": f"{SITE}/topics/leadership"}, "Climate finance"]
     assert "Secret Draft Topic" not in html

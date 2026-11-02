@@ -14,6 +14,7 @@ from app.models.people import (
 )
 from app.schemas.geography import CountrySchema
 from app.schemas.media import MediaSchema
+from app.schemas.credentials import credentials_field
 from app.schemas.sources import sources_field
 from app.schemas.taxonomy import SeriesSchema, TopicSchema
 
@@ -51,10 +52,11 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Person
         load_instance = False
-        # AI Search / GEO Phase 4A — `sources` is profile-DETAIL evidence
-        # only: never in list/card/hub/search/nested previews (every one of
-        # which uses this schema). PersonDetailSchema below adds it back.
-        exclude = ("sources",)
+        # AI Search / GEO Phase 4A/4B — `sources` and `credentials` are
+        # profile-DETAIL content only: never in list/card/hub/search/nested
+        # previews (every one of which uses this schema).
+        # PersonDetailSchema below adds them back.
+        exclude = ("sources", "credentials")
 
     def get_seo(self, obj):
         if obj.seo is None:
@@ -82,9 +84,11 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
 
 class PersonDetailSchema(PersonSchema):
     """The single-profile payload (public detail, staff detail/editor
-    responses, the Person hard-load bootstrap): PersonSchema + sources."""
+    responses, the Person hard-load bootstrap): PersonSchema + sources +
+    credentials."""
 
     sources = fields.Function(lambda obj: list(obj.sources or []), dump_only=True)
+    credentials = fields.Function(lambda obj: list(obj.credentials or []), dump_only=True)
 
     class Meta(PersonSchema.Meta):
         exclude = ()
@@ -111,8 +115,9 @@ class AuthorSchema(ma.SQLAlchemyAutoSchema):
         load_instance = False
         # user_id is the internal staff-login link — never part of any
         # Author payload, public or CMS (this task doesn't manage it).
-        # `sources` (GEO Phase 4A) is detail-only — see AuthorDetailSchema.
-        exclude = ("user_id", "sources")
+        # `sources`/`credentials` (GEO Phase 4A/4B) are detail-only — see
+        # AuthorDetailSchema.
+        exclude = ("user_id", "sources", "credentials")
 
     def get_article_count(self, obj):
         return Article.query.filter_by(author_id=obj.id, status="published").count()
@@ -134,6 +139,7 @@ class AuthorDetailSchema(AuthorSchema):
     user_id stays excluded."""
 
     sources = fields.Function(lambda obj: list(obj.sources or []), dump_only=True)
+    credentials = fields.Function(lambda obj: list(obj.credentials or []), dump_only=True)
 
     class Meta(AuthorSchema.Meta):
         exclude = ("user_id",)
@@ -184,6 +190,8 @@ class PersonInputSchema(ma.Schema):
     series_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="seriesSlugs")
     # Omitted -> stored sources untouched; explicit [] -> cleared.
     sources = sources_field("A profile")
+    # Omitted -> stored credentials untouched; explicit [] -> cleared.
+    credentials = credentials_field("A profile")
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(PERSON_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)
     featured = fields.Boolean(required=False, load_default=False)
@@ -210,5 +218,7 @@ class AuthorInputSchema(ma.Schema):
     person_id = fields.Integer(required=False, allow_none=True, data_key="personId")
     # Omitted -> stored sources untouched; explicit [] -> cleared.
     sources = sources_field("An author profile")
+    # Omitted -> stored credentials untouched; explicit [] -> cleared.
+    credentials = credentials_field("An author profile")
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(AUTHOR_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)

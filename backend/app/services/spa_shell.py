@@ -1508,6 +1508,28 @@ def _profile_subject_of(sources):
     return [w for w in works if w]
 
 
+def _profile_credentials(credentials):
+    """GEO Phase 4B — editor-entered credentials as schema.org
+    EducationalOccupationalCredential (`hasCredential`). category ->
+    credentialCategory, issuer -> recognizedBy Organization, url -> url;
+    `note` is reader context only and stays out. Mirrors
+    profileStructuredData.js's profileCredentials(). Never a verification
+    claim, and never sameAs/subjectOf/alumniOf."""
+    out = []
+    for credential in credentials or []:
+        if not isinstance(credential, dict) or not credential.get("name"):
+            continue
+        item = {"@type": "EducationalOccupationalCredential", "name": credential["name"]}
+        if credential.get("category"):
+            item["credentialCategory"] = credential["category"]
+        if credential.get("issuer"):
+            item["recognizedBy"] = {"@type": "Organization", "name": credential["issuer"]}
+        if credential.get("url"):
+            item["url"] = credential["url"]
+        out.append(item)
+    return out
+
+
 def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
     """Mirrors frontend/src/utils/profileStructuredData.js's
     buildPersonStructuredData() key-for-key. Built only from stored,
@@ -1537,6 +1559,9 @@ def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
     awards = _clean_strings(person.awards)
     if awards:
         data["award"] = awards
+    credentials = _profile_credentials(person.credentials)
+    if credentials:
+        data["hasCredential"] = credentials
     subject_of = _profile_subject_of(person.sources)
     if subject_of:
         data["subjectOf"] = subject_of
@@ -1544,22 +1569,28 @@ def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
 
 
 def _build_author_json_ld(author, canonical_url, public_site_url, site_name):
-    """Mirrors frontend/src/utils/profileStructuredData.js's
-    buildAuthorStructuredData() key-for-key. No employer (a byline role
-    like "Contributor" is not employment), no award, no credential; never
-    email or any internal account/role ID.
+    """GEO Phase 4B — an Author page is a schema.org ProfilePage whose
+    mainEntity is that Author's Person identity (WSF's own contributor
+    profile; editorial Person subjects stay plain Person). Mirrors
+    frontend/src/utils/profileStructuredData.js's
+    buildAuthorProfilePageStructuredData() key-for-key. dateCreated/
+    dateModified are the Author record's own real timestamps. No employer,
+    award, alumniOf or affiliation is inferred; never email, user_id or
+    any internal account/role data.
     """
     base = public_site_url.rstrip("/")
-    data = {"@context": "https://schema.org", "@type": "Person", "name": author.name, "url": canonical_url}
+    person = {"@id": f"{canonical_url}#author", "@type": "Person", "name": author.name, "url": canonical_url}
+    if author.short_bio and author.short_bio.strip():
+        person["description"] = author.short_bio.strip()
     if author.role:
-        data["jobTitle"] = author.role
+        person["jobTitle"] = author.role
     if author.photo is not None:
         image_url = _absolute_url(author.photo.public_url, public_site_url)
         if image_url:
-            data["image"] = image_url
+            person["image"] = image_url
     same_as = _social_same_as(author)
     if same_as:
-        data["sameAs"] = same_as
+        person["sameAs"] = same_as
     # Published Topics (linked Things) first, then legacy freeform
     # expertise as Text — one entry per name, case-insensitively.
     topics = [t for t in (author.topics or []) if t.status == "published" and t.name]
@@ -1567,10 +1598,22 @@ def _build_author_json_ld(author, canonical_url, public_site_url, site_name):
     knows_about += _clean_strings(author.expertise)
     knows_about = _dedupe(knows_about, key=lambda v: (v["name"] if isinstance(v, dict) else v).strip().lower())
     if knows_about:
-        data["knowsAbout"] = knows_about
+        person["knowsAbout"] = knows_about
+    credentials = _profile_credentials(author.credentials)
+    if credentials:
+        person["hasCredential"] = credentials
     subject_of = _profile_subject_of(author.sources)
     if subject_of:
-        data["subjectOf"] = subject_of
+        person["subjectOf"] = subject_of
+
+    data = {"@context": "https://schema.org", "@type": "ProfilePage"}
+    # Same serialization the Author API uses (marshmallow DateTime ->
+    # isoformat()), so the client builder emits the identical string.
+    if author.created_at is not None:
+        data["dateCreated"] = author.created_at.isoformat()
+    if author.updated_at is not None:
+        data["dateModified"] = author.updated_at.isoformat()
+    data["mainEntity"] = person
     return data
 
 

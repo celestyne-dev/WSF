@@ -14,6 +14,7 @@ import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
 import ArticleCard from '../components/cards/ArticleCard'
 import SourceReferences from '../components/article/SourceReferences'
+import CredentialsList from '../components/article/CredentialsList'
 import { buildPersonStructuredData } from '../utils/profileStructuredData'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
@@ -252,6 +253,8 @@ export default function PersonProfilePage() {
               </ol>
             </div>
           )}
+
+          <CredentialsList credentials={person.credentials} id="person-credentials" />
 
           {person.achievements?.length > 0 && (
             <div className="mt-10">

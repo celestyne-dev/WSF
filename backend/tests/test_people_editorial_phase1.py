@@ -352,4 +352,5 @@ def test_author_same_as_unchanged(client, app):
     match = re.search(r"<script\b[^>]*data-author-structured-data[^>]*>(.*?)</script>", html, re.IGNORECASE | re.DOTALL)
     assert match is not None
     # GEO Phase 4A: an Author's visible Instagram is now an identity URL too.
-    assert json.loads(match.group(1))["sameAs"] == ["https://twitter.com/wsf", "https://instagram.com/wsf_ig"]
+    # GEO Phase 4B: the Author identity is the ProfilePage's mainEntity.
+    assert json.loads(match.group(1))["mainEntity"]["sameAs"] == ["https://twitter.com/wsf", "https://instagram.com/wsf_ig"]

@@ -11,6 +11,8 @@ import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import SourcesEditor from '../../components/cms/SourcesEditor'
+import CredentialsEditor from '../../components/cms/CredentialsEditor'
+import { blankCredential, credentialsToPayload, describeCredentialErrors, validateCredentials } from '../../utils/credentials'
 import { blankSource, describeSourceErrors, sourcesToPayload, validateSources } from '../../utils/sources'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
@@ -51,6 +53,7 @@ function blankForm() {
     socialInstagram: '',
     seriesSlugs: [],
     sources: [],
+    credentials: [],
     featured: false,
     status: 'draft',
     seoTitle: '',
@@ -85,6 +88,7 @@ function toForm(person) {
     socialInstagram: person.social?.instagram || '',
     seriesSlugs: person.seriesSlugs || [],
     sources: (person.sources || []).map((s) => ({ ...blankSource(), ...s })),
+    credentials: (person.credentials || []).map((c) => ({ ...blankCredential(), ...c })),
     featured: !!person.featured,
     status: person.status || 'draft',
     seoTitle: person.seo?.title || '',
@@ -270,6 +274,11 @@ export default function AdminPersonEditor() {
       toast.error(sourcesError)
       return
     }
+    const credentialsError = validateCredentials(form.credentials, 'A profile')
+    if (credentialsError) {
+      toast.error(credentialsError)
+      return
+    }
     setErrors({})
     setSaving(true)
 
@@ -299,6 +308,7 @@ export default function AdminPersonEditor() {
       },
       seriesSlugs: form.seriesSlugs,
       sources: sourcesToPayload(form.sources),
+      credentials: credentialsToPayload(form.credentials),
       featured: form.featured,
       status: nextStatus,
       seo: {
@@ -317,6 +327,7 @@ export default function AdminPersonEditor() {
     } catch (err) {
       const message =
         describeSourceErrors(err?.response?.data?.error?.details?.sources) ||
+        describeCredentialErrors(err?.response?.data?.error?.details?.credentials) ||
         err?.response?.data?.error?.message ||
         err?.apiError?.message ||
         'Something went wrong saving this profile. Please try again.'
@@ -431,6 +442,14 @@ export default function AdminPersonEditor() {
             <Field label="Career timeline">
               <TimelineEditor value={form.careerTimeline} onChange={(v) => updateField('careerTimeline', v)} />
             </Field>
+          </Section>
+
+          <Section
+            title="Credentials & qualifications"
+            description="Optional degrees, certifications, licences, fellowships or other qualifications this person holds. Shown publicly as stated — never presented as verified."
+          >
+            <p className="text-xs text-charcoal-600/70">Add only credentials that the profile or reliable public references support.</p>
+            <CredentialsEditor credentials={form.credentials} onChange={(credentials) => updateField('credentials', credentials)} />
           </Section>
 
           <Section
