@@ -2,7 +2,7 @@ from marshmallow import ValidationError, fields, validate
 
 from app.extensions import ma
 from app.models.article import Article
-from app.models.taxonomy import TAXONOMY_STATUSES, Category, Series, Tag, Topic
+from app.models.taxonomy import CAREER_GOALS, TAXONOMY_STATUSES, Category, Series, Tag, Topic
 from app.schemas.media import MediaSchema
 from app.schemas.sources import sources_field
 
@@ -238,6 +238,8 @@ class TopicInputSchema(ma.Schema.from_dict(_editorial_input_fields())):
     seo = fields.Dict(required=False, allow_none=True)
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(TAXONOMY_STATUSES))
     sort_order = fields.Integer(required=False, load_default=0, data_key="sortOrder")
+    # WSF Career Hub goal this Topic maps to (see CAREER_GOALS); null = none.
+    career_goal = fields.String(required=False, allow_none=True, data_key="careerGoal", validate=validate.OneOf(CAREER_GOALS))
 
 
 class TopicUpdateSchema(ma.Schema.from_dict(_editorial_input_fields())):
@@ -248,6 +250,8 @@ class TopicUpdateSchema(ma.Schema.from_dict(_editorial_input_fields())):
     seo = fields.Dict(required=False, allow_none=True)
     status = fields.String(required=False, validate=validate.OneOf(TAXONOMY_STATUSES))
     sort_order = fields.Integer(required=False, data_key="sortOrder")
+    # WSF Career Hub goal this Topic maps to (see CAREER_GOALS); null = none.
+    career_goal = fields.String(required=False, allow_none=True, data_key="careerGoal", validate=validate.OneOf(CAREER_GOALS))
 
 
 class SeriesInputSchema(ma.Schema.from_dict(_editorial_input_fields())):

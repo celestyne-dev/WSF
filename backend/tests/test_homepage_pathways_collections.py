@@ -560,8 +560,12 @@ class TestMigration:
         assert module.down_revision == "a8d3f1c7e2b5"
         config = Config()
         config.set_main_option("script_location", os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations"))
-        heads = ScriptDirectory.from_config(config).get_heads()
-        assert heads == ["c5e2a9d4f1b8"]
+        script = ScriptDirectory.from_config(config)
+        # Still one linear head; later work (Career Hub / Lifetime Circle)
+        # builds on this revision, so it must remain an ancestor.
+        heads = script.get_heads()
+        assert len(heads) == 1
+        assert "c5e2a9d4f1b8" in {rev.revision for rev in script.iterate_revisions(heads[0], "base")}
 
     def test_upgrade_widens_check_and_downgrade_restores_it(self):
         from alembic.migration import MigrationContext

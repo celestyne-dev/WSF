@@ -100,8 +100,13 @@ def validate_route_url(url, field_name="url"):
         raise ValidationError('Internal paths must start with "/".', field_name=field_name)
     if len(url) > 1 and url[1] == "/":
         raise ValidationError('Internal paths must be a real path, not "//".', field_name=field_name)
-    lowered = url.lower()
-    if any(lowered == p or lowered.startswith(p + "/") for p in _UNSAFE_INTERNAL_PREFIXES):
+    if "\\" in url or any(ch.isspace() or ord(ch) < 32 for ch in url):
+        raise ValidationError("Internal paths can't contain spaces, backslashes or control characters.", field_name=field_name)
+    # Query strings and fragments are allowed (e.g. /career-hub?goal=get-promoted),
+    # but the admin/API check runs on the PATH alone so "/admin?x" or
+    # "/api#y" can never slip past it.
+    path = url.split("#", 1)[0].split("?", 1)[0].lower().rstrip("/") or "/"
+    if any(path == p or path.startswith(p + "/") for p in _UNSAFE_INTERNAL_PREFIXES):
         raise ValidationError("Navigation cannot link into admin or API routes.", field_name=field_name)
     return url
 

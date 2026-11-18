@@ -31,6 +31,7 @@ const PROGRAM_TYPE_LABEL = {
   masterclass: 'Masterclass',
   program: 'Program',
   learning_series: 'Learning Series',
+  challenge: 'Challenge',
 }
 
 const LESSON_ICON = {
@@ -396,6 +397,9 @@ export default function LearningProgramDetailPage() {
             <span>{program.deliveryMode?.replace('_', ' ')}</span>
             {program.providerOrganization && <span>Provided by {program.providerOrganization.name}</span>}
           </div>
+          {program.circleInclusion?.included && program.circleInclusion.label && (
+            <p className="mt-2 text-sm font-medium text-plum-600">{program.circleInclusion.label}</p>
+          )}
 
           {upcomingEvent && (
             <div className="mt-5 border border-taupe-200 bg-blush-50 px-4 py-3 text-sm text-charcoal-700">

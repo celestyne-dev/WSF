@@ -44,7 +44,13 @@ from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
 from app.services.public_visibility import is_public_author, is_public_taxonomy, public_author_dump, public_organization_preview
-from app.services.resource_access import check_resource_access, get_viewer_access_source, viewer_can_access
+from app.services.career_hub import CIRCLE_INCLUSION_LABELS, resource_estimated_time, resource_format
+from app.services.resource_access import (
+    check_resource_access,
+    get_viewer_access_source,
+    resource_circle_inclusion,
+    viewer_can_access,
+)
 from app.services.resource_downloads import (
     is_safe_protected_path,
     issue_download_token,
@@ -338,6 +344,9 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     resource.file_format = data.get("file_format")
     resource.file_size = data.get("file_size")
     resource.page_count = data.get("page_count")
+    resource.estimated_time_value = data.get("estimated_time_value")
+    resource.estimated_time_max_value = data.get("estimated_time_max_value")
+    resource.estimated_time_unit = data.get("estimated_time_unit")
     resource.sponsor = sponsor
     resource.sponsored = data.get("sponsored", False)
     resource.featured = data.get("featured", False)
@@ -519,6 +528,15 @@ def build_public_resource_payload(resource, viewer, *, linked_products=None):
         # payment id or date, ever).
         "viewerAccessSource": get_viewer_access_source(resource, viewer),
         "fileFormat": resource.file_format,
+        # WSF Career Hub metadata (display only): user-facing format and the
+        # optional "how long to use/complete" estimate.
+        "format": resource_format(resource),
+        "estimatedTime": resource_estimated_time(resource),
+        # Whether an active WSF Circle membership includes this Resource —
+        # display only, derived from the same rules check_resource_access
+        # enforces (premium: purchase OR Circle; circle_only: Circle, yearly-
+        # level when circleAccessLevel == "yearly_members").
+        "circleInclusion": _circle_inclusion_payload(resource),
         "fileSize": resource.file_size,
         "pageCount": resource.page_count,
         "sponsor": public_organization_preview(resource.sponsor, OrganizationSchema(only=("id", "slug", "name", "logo")).dump),
@@ -530,6 +548,11 @@ def build_public_resource_payload(resource, viewer, *, linked_products=None):
         "seo": resource.seo or {},
         "linkedProduct": _linked_product_payload(resource, linked_products),
     }
+
+
+def _circle_inclusion_payload(resource):
+    inclusion = resource_circle_inclusion(resource)
+    return {**inclusion, "label": CIRCLE_INCLUSION_LABELS.get(inclusion["scope"])}
 
 
 def prefetch_linked_products(resources):

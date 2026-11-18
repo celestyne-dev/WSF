@@ -148,6 +148,7 @@ class TopicAdminListResource(Resource):
             seo=data.get("seo"),
             status=data.get("status", "draft"),
             sort_order=data.get("sort_order", 0),
+            career_goal=data.get("career_goal"),
         )
         topic.slug = data.get("slug") or generate_unique_slug(Topic, data["name"])
         _apply_editorial(topic, data)
@@ -183,7 +184,7 @@ class TopicAdminDetailResource(Resource):
             _reject_duplicate_name(Topic, data["name"], exclude_id=topic.id)
             topic.name = data["name"]
         _apply_slug(Topic, topic, data, topic.name)
-        for field in ("description", "hero_media_id", "seo", "status", "sort_order"):
+        for field in ("description", "hero_media_id", "seo", "status", "sort_order", "career_goal"):
             if field in data:
                 setattr(topic, field, data[field])
         _apply_editorial(topic, data)

@@ -7,6 +7,7 @@ const PROGRAM_TYPE_LABEL = {
   masterclass: 'Masterclass',
   program: 'Program',
   learning_series: 'Learning Series',
+  challenge: 'Challenge',
 }
 
 function accessLabel(program) {

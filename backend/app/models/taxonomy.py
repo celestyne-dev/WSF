@@ -10,6 +10,28 @@ from app.extensions import db
 TAXONOMY_STATUSES = ("draft", "published", "archived")
 _TAXONOMY_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in TAXONOMY_STATUSES) + ")"
 
+# WSF Career Hub — the career problem a Topic is about. Resources and
+# Learning programs are never tagged with goals directly: they inherit
+# them from the published Topics they already carry, so the existing
+# Topic taxonomy stays the one place content is classified (no second
+# taxonomy). Nullable: most editorial Topics have no career goal.
+CAREER_GOALS = (
+    "find_a_job",
+    "get_promoted",
+    "earn_more",
+    "build_visibility",
+    "leadership",
+    "career_change",
+    "return_to_work",
+    "networking",
+    "workplace_challenges",
+    "productivity",
+    "confidence",
+    "ai_at_work",
+    "entrepreneurship",
+)
+_CAREER_GOAL_CHECK_SQL = "career_goal IS NULL OR career_goal IN (" + ", ".join(f"'{g}'" for g in CAREER_GOALS) + ")"
+
 
 class Category(db.Model):
     __tablename__ = "categories"
@@ -52,7 +74,10 @@ class Topic(db.Model):
     """
 
     __tablename__ = "topics"
-    __table_args__ = (db.CheckConstraint(_TAXONOMY_STATUS_CHECK_SQL, name="ck_topics_status"),)
+    __table_args__ = (
+        db.CheckConstraint(_TAXONOMY_STATUS_CHECK_SQL, name="ck_topics_status"),
+        db.CheckConstraint(_CAREER_GOAL_CHECK_SQL, name="ck_topics_career_goal"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(140), unique=True, nullable=False, index=True)
@@ -62,6 +87,8 @@ class Topic(db.Model):
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots} — same shape as Article.seo
     status = db.Column(db.String(20), nullable=False, default="published")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # See CAREER_GOALS — the WSF Career Hub goal this Topic maps to, if any.
+    career_goal = db.Column(db.String(30), nullable=True, index=True)
     # AI Search / GEO Phase 4C — editorial depth. `description` stays the
     # short hero/index summary; `content` is the long-form editorial body
     # (same block list/sanitizer as Article.content); `sources` the same

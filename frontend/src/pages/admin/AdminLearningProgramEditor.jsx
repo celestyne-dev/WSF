@@ -36,6 +36,7 @@ const PROGRAM_TYPES = [
   { value: 'masterclass', label: 'Masterclass' },
   { value: 'program', label: 'Program' },
   { value: 'learning_series', label: 'Learning Series' },
+  { value: 'challenge', label: 'Challenge' },
 ]
 const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'advanced', 'all_levels']
 const AUDIENCE_TYPES = ['aspiring_leaders', 'professionals', 'entrepreneurs', 'founders', 'career_changers', 'students', 'general']

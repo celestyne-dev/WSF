@@ -8,6 +8,7 @@ import { fetchJobs } from '../api/jobs'
 import { fetchOpportunities } from '../api/opportunities'
 import { fetchEvents } from '../api/events'
 import { getMembershipAction, getCheckoutErrorPresentation } from '../utils/circlePayment'
+import { LIFETIME_SCOPE_NOTE, planExtrasHeading, planGuidance, planPriceSuffix, planTagline } from '../utils/circlePlans'
 import { formatProductPrice } from '../utils/format'
 import { UNAVAILABLE_CURRENCY_MESSAGE, canCheckoutPrice, pickDefaultPrice } from '../utils/money'
 import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
@@ -30,7 +31,7 @@ const BENEFITS = [
 ]
 
 function billingLabel(plan) {
-  return plan.billingInterval === 'yearly' ? '/ year' : '/ month'
+  return planPriceSuffix(plan)
 }
 
 // Module 4's secondary/fallback path (Phase 1 staff-assisted enrollment is
@@ -140,7 +141,29 @@ function PlanCta({ plan, accessToken, membership, hasAccess, checkingOutSlug, ch
     )
   }
 
-  if (hasAccess) return null
+  if (hasAccess) {
+    // An active member never sees a second "Pay securely" here. Lifetime
+    // members get an explicit note; a monthly/yearly member looking at the
+    // Lifetime plan is told how upgrading works (staff-assisted for now).
+    if (membership?.subscription?.isLifetime) {
+      return (
+        <p className="mt-4 text-sm font-medium text-plum-600" role="status">
+          You already have Lifetime WSF Circle access.
+        </p>
+      )
+    }
+    if (plan.isLifetime) {
+      return (
+        <div className="mt-4 text-sm">
+          <p className="text-charcoal-600">
+            Moving from your current plan to Lifetime isn&apos;t automatic yet — your remaining paid time wouldn&apos;t be refunded.
+          </p>
+          <RequestAssistanceToggle plan={plan} label="Ask about upgrading to Lifetime" />
+        </div>
+      )
+    }
+    return null
+  }
 
   // Still loading GET /circle/me — deliberately shows nothing rather than
   // a CTA that might be wrong for a moment (e.g. briefly offering "Pay
@@ -155,6 +178,23 @@ function PlanCta({ plan, accessToken, membership, hasAccess, checkingOutSlug, ch
       <p className="mt-4 text-sm text-charcoal-600">
         Your WSF Circle membership request is awaiting review. We&apos;ll be in touch soon.
       </p>
+    )
+  }
+
+  if (action === 'blocked_lifetime_active') {
+    return (
+      <p className="mt-4 text-sm font-medium text-plum-600" role="status">
+        You already have Lifetime WSF Circle access.
+      </p>
+    )
+  }
+
+  if (action === 'blocked_lifetime_upgrade') {
+    return (
+      <div className="mt-4 text-sm">
+        <p className="text-charcoal-600">Moving your current membership to Lifetime isn&apos;t automatic yet.</p>
+        <RequestAssistanceToggle plan={plan} label="Ask about upgrading to Lifetime" />
+      </div>
     )
   }
 
@@ -437,11 +477,7 @@ export default function CirclePage() {
 
         <div className="py-14">
           <h2 className="font-serif text-3xl font-semibold text-charcoal">Membership</h2>
-          {plans.length > 0 && (
-            <p className="mt-3 max-w-2xl text-sm text-charcoal-600">
-              Choose Monthly for flexibility. Choose Yearly for the best value and exclusive annual-member bonuses.
-            </p>
-          )}
+          {plans.length > 0 && <p className="mt-3 max-w-2xl text-sm text-charcoal-600">{planGuidance(plans)}</p>}
           {plans.length === 0 ? (
             <div className="mt-4 text-sm text-charcoal-600">
               <p>
@@ -458,6 +494,7 @@ export default function CirclePage() {
               {plans.map((plan) => {
                 const isSelected = !!selectedPlanSlug && plan.slug === selectedPlanSlug
                 const isYearly = plan.billingInterval === 'yearly'
+                const extrasHeading = planExtrasHeading(plan)
                 return (
                   <div
                     key={plan.slug}
@@ -467,7 +504,7 @@ export default function CirclePage() {
                     className={`border p-6 ${
                       isSelected
                         ? 'border-burgundy-500 bg-blush-50'
-                        : plan.featured || isYearly
+                        : plan.featured || isYearly || plan.isLifetime
                           ? 'border-burgundy-400 bg-blush-50'
                           : 'border-taupe-200 bg-white'
                     }`}
@@ -481,7 +518,7 @@ export default function CirclePage() {
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">Featured</p>
                     )}
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">
-                      {isYearly ? 'Best value' : 'Flexible access'}
+                      {planTagline(plan)}
                     </p>
                     <h3 className="font-serif text-xl font-semibold text-charcoal">{plan.name}</h3>
                     {plan.shortDescription && <p className="mt-2 text-sm text-charcoal-600">{plan.shortDescription}</p>}
@@ -503,18 +540,17 @@ export default function CirclePage() {
                     </div>
                     {plan.benefits?.length > 0 && (
                       <>
-                        {isYearly && (
-                          <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-burgundy-600">
-                            Yearly member extras
-                          </p>
+                        {extrasHeading && (
+                          <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-burgundy-600">{extrasHeading}</p>
                         )}
-                        <ul className={`${isYearly ? 'mt-2' : 'mt-4'} space-y-1 text-sm text-charcoal-600`}>
+                        <ul className={`${extrasHeading ? 'mt-2' : 'mt-4'} space-y-1 text-sm text-charcoal-600`}>
                           {plan.benefits.map((b, i) => (
                             <li key={i}>&bull; {b}</li>
                           ))}
                         </ul>
                       </>
                     )}
+                    {plan.isLifetime && <p className="mt-4 text-xs text-charcoal-600/80">{LIFETIME_SCOPE_NOTE}</p>}
                     {plan.description?.length > 0 && (
                       <div className="mt-4 text-sm text-charcoal-600">
                         <ArticleContent blocks={plan.description} />

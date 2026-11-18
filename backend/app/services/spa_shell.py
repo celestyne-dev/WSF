@@ -1912,6 +1912,11 @@ _STATIC_ROUTES = {
         "Business & Professional Directory | Women Shaping Futures",
         "Discover women-owned, women-led, and women-founded businesses and professional organizations in the Women Shaping Futures network.",
     ),
+    "career-hub": (
+        "list",
+        "WSF Career Hub — Practical Tools for Your Next Career Move | Women Shaping Futures",
+        "Playbooks, workbooks, templates, courses and challenges for finding a job, getting promoted, earning more and leading better — free, WSF Circle and premium.",
+    ),
     "learning": (
         "list",
         "Learning | Women Shaping Futures",
@@ -2126,6 +2131,8 @@ def _hub_prerender(subpath):
         return render_hub_prerender(marker, eyebrow, title, description, list_heading, kind, items, empty)
     if subpath == "circle":
         return _circle_prerender(public_hubs.circle_plans_hub())
+    if subpath == "career-hub":
+        return _career_hub_prerender()
     if subpath == "mentorship":
         return _mentorship_prerender(public_hubs.mentorship_programs_hub())
     return None
@@ -2140,10 +2147,18 @@ def _circle_prerender(plans):
     if plans:
         cards = []
         for plan in plans:
-            interval = "/ year" if plan.get("billingInterval") == "yearly" else "/ month"
-            price = f"{plan.get('currency') or ''} {plan['price']:,} {interval}".strip() if isinstance(plan.get("price"), int) else ""
+            interval = {"yearly": "/ year", "lifetime": "one-time"}.get(plan.get("billingInterval"), "/ month")
+            # Server-formatted multi-currency price (same default the page
+            # preselects); legacy whole-unit price only as a fallback.
+            default = next((p for p in plan.get("prices") or [] if p.get("currency") == plan.get("defaultCurrency")), None)
+            if default:
+                price = f"{default['formatted']} {interval}"
+            elif isinstance(plan.get("price"), int):
+                price = f"{plan.get('currency') or ''} {plan['price']:,} {interval}".strip()
+            else:
+                price = ""
             cards.append(f"<li><h3>{_text(plan.get('name'))}</h3>{_paragraph(price)}{_paragraph(plan.get('shortDescription'))}{_string_list(plan.get('benefits'))}</li>")
-        membership = _paragraph("Choose Monthly for flexibility. Choose Yearly for the best value and exclusive annual-member bonuses.") + f"<ul>{''.join(cards)}</ul>"
+        membership = _paragraph(_circle_plan_guidance(plans)) + f"<ul>{''.join(cards)}</ul>"
     else:
         membership = _paragraph("WSF Circle membership plans are being finalized. Please check back soon, or contact WSF with questions.")
     extra = [_section("Why WSF Circle", f"<ul>{benefits}</ul>"), _section("Membership", membership)]
@@ -2152,6 +2167,54 @@ def _circle_prerender(plans):
         "WSF Circle is the premium membership experience for women who want deeper access to learning, career resources, curated opportunities, events and community experiences.",
         None, None, [], None, extra_sections=extra,
     )
+
+
+CAREER_HUB_EYEBROW = "Career Hub"
+CAREER_HUB_TITLE = "Practical tools for your next career move."
+CAREER_HUB_DESCRIPTION = (
+    "Playbooks, workbooks, templates, courses and challenges from WSF — organised by the career "
+    "problem you're solving, with free, WSF Circle and premium options."
+)
+
+
+def _career_hub_prerender():
+    """CareerHubPage.jsx's signed-out header, goal shortcuts, New This Month
+    and the first page of the default (newest) results. Goal links point at
+    filtered views; every variant canonicalizes to /career-hub."""
+    from app.services.career_hub import (
+        DEFAULT_PAGE_SIZE, DEFAULT_SORT, FEATURED_GOALS, GOAL_LABELS, career_hub_meta, search_career_hub, url_value,
+    )
+    from app.services.prerender import _hub_link, _item_list, _section, HUB_CARD_RENDERERS
+
+    meta = career_hub_meta()
+    first_page = search_career_hub(
+        {"q": "", "goal": None, "topic": None, "format": None, "access": None, "sort": DEFAULT_SORT, "page": 1,
+         "page_size": DEFAULT_PAGE_SIZE}
+    )["items"]
+    goals = "".join(f"<li>{_hub_link('/career-hub?goal=' + url_value(g), GOAL_LABELS[g])}</li>" for g in FEATURED_GOALS)
+    extra = [_section("Browse by goal", f"<ul>{goals}</ul>")]
+    if meta["newThisMonth"]:
+        render = HUB_CARD_RENDERERS["career_hub"]
+        extra.append(_section("New this month", _item_list(render(c) for c in meta["newThisMonth"])))
+    return render_hub_prerender(
+        "career-hub", CAREER_HUB_EYEBROW, CAREER_HUB_TITLE, CAREER_HUB_DESCRIPTION,
+        "All tools", "career_hub", first_page, "No tools are listed right now — check back soon.", extra_sections=extra,
+    )
+
+
+def _circle_plan_guidance(plans):
+    """CirclePage.jsx's planGuidance(): one sentence per configured
+    interval, in Monthly / Yearly / Lifetime order — never a plan type
+    that isn't actually offered."""
+    intervals = {p.get("billingInterval") for p in plans}
+    parts = []
+    if "monthly" in intervals:
+        parts.append("Choose Monthly for flexibility.")
+    if "yearly" in intervals:
+        parts.append("Choose Yearly for the best annual value and exclusive annual-member bonuses.")
+    if "lifetime" in intervals:
+        parts.append("Choose Lifetime for one payment and permanent access to WSF Circle membership benefits — no renewal.")
+    return " ".join(parts)
 
 
 def _mentorship_prerender(programs):

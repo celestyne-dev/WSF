@@ -351,7 +351,7 @@ function AccessCta({
     // for a Resource purchase. WSF Circle's own plan page is the only
     // legitimate next step, same discovery path a non-member already sees
     // just above.
-    if (resource.circleAccessLevel === 'yearly_members' && circleMembership.subscription?.plan?.billingInterval !== 'yearly') {
+    if (resource.circleAccessLevel === 'yearly_members' && !circleMembership.yearlyLevelAccess) {
       return (
         <Link to="/circle" className="btn-secondary mt-5 inline-flex">
           Explore WSF Circle Yearly
@@ -499,7 +499,7 @@ function RelatedResourceCard({ resource }) {
         )}
       </div>
       <div className="mt-3">
-        <span className="eyebrow">{resource.type}</span>
+        <span className="eyebrow">{resource.format?.label || resource.type}</span>
         <h3 className="mt-1 font-serif text-lg font-semibold leading-snug text-charcoal transition-colors group-hover:text-burgundy-600">
           {resource.name}
         </h3>
@@ -539,7 +539,7 @@ function RelatedResourceWideCard({ resource }) {
       </div>
       <div className="flex flex-1 flex-col justify-center p-6">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="eyebrow">{resource.type}</span>
+          <span className="eyebrow">{resource.format?.label || resource.type}</span>
           {badge && (
             <span className="inline-flex items-center gap-1 bg-charcoal/85 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-ivory">
               <badge.Icon size={11} /> {badge.label}
@@ -733,7 +733,7 @@ export default function ResourceDetailPage() {
         <div>
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="eyebrow">{resource.type}</span>
+              <span className="eyebrow">{resource.format?.label || resource.type}</span>
               {resource.featured && <span className="bg-burgundy-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ivory">Featured</span>}
             </div>
             <SaveButton contentType="resource" contentId={resource.id} />
@@ -752,9 +752,18 @@ export default function ResourceDetailPage() {
           )}
 
           <div className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-charcoal-600/70">
-            {resource.fileFormat && <span>{resource.fileFormat}</span>}
-            {resource.fileFormat && resource.pageCount && <span aria-hidden="true">&middot;</span>}
-            {resource.pageCount && <span>{resource.pageCount} pages</span>}
+            {[
+              resource.estimatedTime?.label && `Estimated time: ${resource.estimatedTime.label}`,
+              resource.fileFormat,
+              resource.pageCount && `${resource.pageCount} pages`,
+            ]
+              .filter(Boolean)
+              .map((part, i) => (
+                <span key={part} className="inline-flex items-center gap-2">
+                  {i > 0 && <span aria-hidden="true">&middot;</span>}
+                  {part}
+                </span>
+              ))}
           </div>
 
           {(() => {
@@ -764,16 +773,15 @@ export default function ResourceDetailPage() {
             // "available", not "included", even though she does pass the
             // ordinary circle_only check (see AccessCta's own circle_only
             // branch for the matching CTA treatment).
-            const monthlyMemberOnYearlyOnly =
-              isYearlyOnly && circleMembership?.hasAccess && circleMembership?.subscription?.plan?.billingInterval !== 'yearly'
+            const monthlyMemberOnYearlyOnly = isYearlyOnly && circleMembership?.hasAccess && !circleMembership?.yearlyLevelAccess
             return (
               <>
                 <p className="mt-5 font-serif text-3xl font-semibold text-charcoal">
                   {resource.accessType === 'circle_only'
                     ? isYearlyOnly
                       ? monthlyMemberOnYearlyOnly
-                        ? 'Available with WSF Circle Yearly'
-                        : 'Included with WSF Circle Yearly'
+                        ? 'Available with Yearly & Lifetime WSF Circle'
+                        : 'Included with Yearly & Lifetime WSF Circle'
                       : 'Included with WSF Circle'
                     : resource.isFree
                       ? 'Free'
@@ -781,7 +789,7 @@ export default function ResourceDetailPage() {
                 </p>
                 {monthlyMemberOnYearlyOnly && (
                   <p className="mt-1 text-xs text-charcoal-600/70">
-                    This annual-member bonus is included with WSF Circle Yearly.
+                    This annual-member bonus is included with Yearly and Lifetime WSF Circle memberships.
                   </p>
                 )}
               </>

@@ -15,6 +15,7 @@ const PROGRAM_TYPES = [
   { value: 'masterclass', label: 'Masterclass' },
   { value: 'program', label: 'Program' },
   { value: 'learning_series', label: 'Learning Series' },
+  { value: 'challenge', label: 'Challenge' },
 ]
 
 const DIFFICULTY_LEVELS = [

@@ -156,3 +156,19 @@ def get_viewer_access_source(resource, user):
     if has_circle_access(user):
         return "circle"
     return None
+
+
+def resource_circle_inclusion(resource):
+    """Display-only: whether an active WSF Circle membership grants this
+    Resource, derived from the SAME rules check_resource_access enforces —
+    premium (purchase OR any active Circle) and circle_only (any active
+    Circle, narrowed to yearly-level for circle_access_level ==
+    "yearly_members"). Never an authorization decision itself.
+    Returns {"included": bool, "scope": "all"|"yearly_level"|None}.
+    """
+    if resource.access_type == "premium":
+        return {"included": True, "scope": "all"}
+    if resource.access_type == "circle_only":
+        scope = "yearly_level" if resource.circle_access_level == "yearly_members" else "all"
+        return {"included": True, "scope": scope}
+    return {"included": False, "scope": None}

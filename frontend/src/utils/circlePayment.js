@@ -31,6 +31,11 @@ export function getMembershipAction(membership, plan) {
     return 'new'
   }
   if (subscription.status === 'pending') return 'blocked_pending'
+  // Mirrors the server's lifetime rules (app/services/circle_payments.py):
+  // an active lifetime member never buys another Circle period, and a
+  // monthly/yearly member's switch to Lifetime is staff-assisted for now.
+  if (subscription.isLifetime) return 'blocked_lifetime_active'
+  if (plan.isLifetime) return 'blocked_lifetime_upgrade'
   if (subscription.plan?.slug !== plan.slug) return 'blocked_different_plan'
   if (!subscription.currentPeriodEnd) return 'blocked_non_expiring'
   return 'renew'
@@ -74,6 +79,14 @@ export function getCheckoutErrorPresentation(code) {
     case 'different_plan_active':
       return {
         message: "You're currently on another WSF Circle plan. Automated plan switching isn't available yet — request assistance and our team will help.",
+        showAssistance: true,
+      }
+    case 'lifetime_membership_active':
+      return { message: 'You already have Lifetime WSF Circle access.', showAssistance: false }
+    case 'lifetime_upgrade_unavailable':
+      return {
+        message:
+          "Switching an active monthly or yearly membership to Lifetime isn't automatic yet — your remaining paid time wouldn't be refunded. Request assistance and we'll help you upgrade.",
         showAssistance: true,
       }
     case 'non_expiring_membership':

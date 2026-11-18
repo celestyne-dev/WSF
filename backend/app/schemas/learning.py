@@ -109,10 +109,33 @@ class LearningProgramSchema(ma.SQLAlchemyAutoSchema):
     related_articles = fields.Method("get_related_articles")
     related_resources = fields.Method("get_related_resources")
     events = fields.Method("get_events")
+    # WSF Career Hub display metadata (never an access decision): format
+    # label, the estimate derived from duration/delivery mode, and whether
+    # WSF Circle includes this program (mirrors can_access_program_content).
+    career_format = fields.Method("get_career_format", data_key="format")
+    estimated_time = fields.Method("get_estimated_time", data_key="estimatedTime")
+    circle_inclusion = fields.Method("get_circle_inclusion", data_key="circleInclusion")
 
     class Meta:
         model = LearningProgram
         load_instance = False
+
+    def get_career_format(self, obj):
+        from app.services.career_hub import program_format
+
+        return program_format(obj)
+
+    def get_estimated_time(self, obj):
+        from app.services.career_hub import program_estimated_time
+
+        return program_estimated_time(obj)
+
+    def get_circle_inclusion(self, obj):
+        from app.services.career_hub import CIRCLE_INCLUSION_LABELS
+        from app.services.learning_access import program_circle_inclusion
+
+        inclusion = program_circle_inclusion(obj)
+        return {**inclusion, "label": CIRCLE_INCLUSION_LABELS.get(inclusion["scope"])}
 
     def get_topics(self, obj):
         return [{"slug": t.slug, "name": t.name} for t in obj.topics]

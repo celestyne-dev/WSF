@@ -7,11 +7,8 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
+import { ALL_RESOURCE_TYPE_OPTIONS } from '../../constants/careerMetadata'
 
-const RESOURCE_TYPES = [
-  'Guide', 'Workbook', 'Template', 'Checklist', 'Planner', 'Toolkit',
-  'Ebook', 'Worksheet', 'Report', 'Download', 'Video Resource', 'External Resource',
-]
 const STATUSES = ['draft', 'review', 'scheduled', 'published', 'archived']
 const ACCESS_LABELS = {
   direct_download: 'Direct download',
@@ -66,9 +63,9 @@ export default function AdminResources() {
         </select>
         <select value={type} onChange={(e) => setType(e.target.value)} className="border border-taupe-300 bg-white px-3 py-2 text-sm">
           <option value="">All types</option>
-          {RESOURCE_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
+          {ALL_RESOURCE_TYPE_OPTIONS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
             </option>
           ))}
         </select>

@@ -32,7 +32,18 @@ the one has_circle_access() rule, does that.
 """
 from app.extensions import db
 
-CIRCLE_PLAN_BILLING_INTERVALS = ("monthly", "yearly")
+# lifetime: ONE payment, no renewal, no period end (current_period_end
+# stays NULL — never a fabricated far-future date). It is the same
+# CirclePlan/CircleSubscription/CirclePayment architecture, not a second
+# membership system, and it grants WSF Circle membership benefits only
+# (see app/services/circle.py) — never every separately sold WSF offering.
+CIRCLE_PLAN_BILLING_INTERVALS = ("monthly", "yearly", "lifetime")
+CIRCLE_RECURRING_BILLING_INTERVALS = ("monthly", "yearly")
+# Plans whose members get yearly-level benefits (e.g. Resources with
+# circle_access_level == "yearly_members"). Lifetime is the longest Circle
+# commitment, so it never gets fewer benefits than Yearly. Read ONLY by
+# app/services/circle.py's has_yearly_circle_access — never re-listed.
+CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS = ("yearly", "lifetime")
 _CIRCLE_PLAN_BILLING_INTERVAL_CHECK_SQL = "billing_interval IN (" + ", ".join(
     f"'{b}'" for b in CIRCLE_PLAN_BILLING_INTERVALS
 ) + ")"

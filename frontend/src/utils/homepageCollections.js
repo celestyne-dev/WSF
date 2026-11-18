@@ -136,7 +136,7 @@ export const RESOURCE_ACCESS_TYPES = [
 
 export const RESOURCE_TYPES = [
   'Guide', 'Workbook', 'Template', 'Checklist', 'Planner', 'Toolkit', 'Ebook', 'Worksheet', 'Report',
-  'Download', 'Video Resource', 'External Resource',
+  'Download', 'Video Resource', 'External Resource', 'Playbook', 'Scripts', 'Challenge', 'Assessment', 'Research', 'Other',
 ].map((t) => ({ value: t, label: t }))
 
 export const LEARNING_PROGRAM_TYPES = [
@@ -144,6 +144,7 @@ export const LEARNING_PROGRAM_TYPES = [
   { value: 'masterclass', label: 'Masterclass' },
   { value: 'program', label: 'Program' },
   { value: 'learning_series', label: 'Learning series' },
+  { value: 'challenge', label: 'Challenge' },
 ]
 
 // "Most read" is intentionally absent: the only popularity signal is a

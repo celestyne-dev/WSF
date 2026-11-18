@@ -23,7 +23,14 @@ from flask_restful import Api, Resource
 
 from app.auth.decorators import active_user_required, permission_required
 from app.extensions import db, limiter
-from app.models.circle import CirclePlan, CirclePlanPrice, CIRCLE_PLAN_STATUSES, CircleSubscription
+from app.models.circle import (
+    CIRCLE_PLAN_STATUSES,
+    CIRCLE_RECURRING_BILLING_INTERVALS,
+    CirclePayment,
+    CirclePlan,
+    CirclePlanPrice,
+    CircleSubscription,
+)
 from app.models.contact import ContactInquiry
 from app.models.user import User
 from app.schemas.circle import (
@@ -39,6 +46,7 @@ from app.services.audit import log_action
 from app.services.circle import (
     create_subscription_for_user,
     get_circle_entitlement,
+    is_lifetime_subscription,
     validate_subscription_status_transition,
 )
 from app.services.circle_payments import get_payment_status, start_circle_checkout
@@ -130,6 +138,9 @@ def build_public_plan_payload(plan):
         "shortDescription": plan.short_description,
         "description": plan.description or [],
         "billingInterval": plan.billing_interval,
+        # Lifetime is a one-time purchase: no renewal, no period end.
+        "isLifetime": plan.billing_interval == "lifetime",
+        "recurring": plan.billing_interval in CIRCLE_RECURRING_BILLING_INTERVALS,
         # Checkout Phase 1: `prices` (enabled options, minor units +
         # server-formatted text + per-currency checkout availability) is
         # the source of truth; legacy whole-unit price/currency kept only
@@ -173,6 +184,29 @@ def _apply_pricing(plan, data, creating):
         apply_prices(plan, data["prices"], CirclePlanPrice)
     elif creating or "price" in data or "currency" in data:
         apply_legacy_price(plan, plan.price, plan.currency, CirclePlanPrice)
+
+
+def _validate_lifetime_plan(plan, data):
+    """Lifetime plans are one-time purchases: reject contradictory
+    recurring-billing configuration, and never let an existing plan move
+    into or out of "lifetime" once members or payments reference it (their
+    stored period dates were computed for the old interval). Runs before
+    any field is mutated."""
+    interval = data.get("billing_interval", plan.billing_interval)
+    manage_url = data["manage_billing_url"] if "manage_billing_url" in data else plan.manage_billing_url
+    if interval == "lifetime" and manage_url:
+        raise ApiError(
+            "A Lifetime plan has no recurring billing to manage — remove the manage-billing URL.",
+            422, code="validation_error",
+        )
+    if plan.id is not None and "billing_interval" in data and data["billing_interval"] != plan.billing_interval:
+        crosses_lifetime = "lifetime" in (data["billing_interval"], plan.billing_interval)
+        if crosses_lifetime and (_plan_is_referenced(plan) or CirclePayment.query.filter_by(plan_id=plan.id).first()):
+            raise ApiError(
+                "This plan already has members or payments, so it can't be switched to or from Lifetime. "
+                "Create a separate Lifetime plan instead.",
+                409, code="billing_interval_locked",
+            )
 
 
 def _apply_plan_fields(plan, data):
@@ -221,6 +255,8 @@ def build_owner_subscription_payload(subscription):
         "cancelAtPeriodEnd": subscription.cancel_at_period_end,
         "cancelledAt": subscription.cancelled_at.isoformat() if subscription.cancelled_at else None,
         "endedAt": subscription.ended_at.isoformat() if subscription.ended_at else None,
+        # Lifetime: no renewal and no expiry (currentPeriodEnd stays null).
+        "isLifetime": is_lifetime_subscription(subscription),
         "plan": build_public_plan_payload(subscription.plan) if subscription.plan else None,
     }
 
@@ -243,6 +279,7 @@ class CirclePlanListResource(Resource):
         data = CirclePlanInputSchema().load(request.get_json(silent=True) or {})
         plan = CirclePlan()
         _validate_submitted_prices(plan, {**data, "status": data.get("status", "draft")})
+        _validate_lifetime_plan(plan, data)
         if data.get("slug"):
             plan.slug = validate_explicit_slug(CirclePlan, data["slug"])
         else:
@@ -273,6 +310,7 @@ class CirclePlanDetailResource(Resource):
         public_before = capture_public_urls(plan)
         data = CirclePlanUpdateSchema().load(request.get_json(silent=True) or {}, partial=True)
         _validate_submitted_prices(plan, data)
+        _validate_lifetime_plan(plan, data)
         if "slug" in data and data["slug"] and data["slug"] != plan.slug:
             plan.slug = validate_explicit_slug(CirclePlan, data["slug"], current_id=plan.id)
 
@@ -324,6 +362,10 @@ class CircleMeResource(Resource):
         return success_response(
             {
                 "hasAccess": entitlement["has_access"],
+                # Server-computed yearly-level entitlement (yearly OR
+                # lifetime) — clients must use this rather than compare the
+                # plan's billing interval themselves.
+                "yearlyLevelAccess": entitlement["yearly_level_access"],
                 "subscription": build_owner_subscription_payload(subscription),
             }
         )
@@ -483,6 +525,11 @@ class CircleSubscriptionListResource(Resource):
             raise ApiError("No WSF account currently uses this email.", 404, code="no_matching_account")
 
         plan = _get_plan_by_id_or_404(data.pop("plan_id"))
+        if plan.billing_interval == "lifetime" and (data.get("current_period_end") or data.get("cancel_at_period_end")):
+            raise ApiError(
+                "A Lifetime membership has no period end — leave the period end and cancel-at-period-end empty.",
+                422, code="invalid_period",
+            )
         status = data.pop("status", "pending")
         source = data.pop("source")
 
@@ -504,6 +551,11 @@ class CircleSubscriptionDetailResource(Resource):
         subscription = _get_subscription_or_404(subscription_id)
         data = CircleSubscriptionAdminUpdateSchema().load(request.get_json(silent=True) or {}, partial=True)
         _validate_effective_period(subscription, data)
+        if is_lifetime_subscription(subscription) and (data.get("current_period_end") or data.get("cancel_at_period_end")):
+            raise ApiError(
+                "A Lifetime membership has no period end. To end it, change its status (revoked, cancelled or expired).",
+                422, code="invalid_period",
+            )
 
         if "status" in data:
             new_status = data.pop("status")

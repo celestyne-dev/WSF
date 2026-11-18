@@ -8,6 +8,7 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import { CAREER_GOAL_OPTIONS } from '../../constants/careerMetadata'
 import SourcesEditor from '../../components/cms/SourcesEditor'
 import FeaturedArticlePicker from '../../components/cms/FeaturedArticlePicker'
 import { describeSourceErrors, validateSources } from '../../utils/sources'
@@ -33,6 +34,7 @@ function blankForm() {
     description: '',
     heroMedia: null,
     sortOrder: 0,
+    careerGoal: '',
     status: 'draft',
     seoTitle: '',
     seoDescription: '',
@@ -49,6 +51,7 @@ function toForm(topic) {
     description: topic.description || '',
     heroMedia: topic.heroMediaId ? { ...topic.heroMedia, id: topic.heroMediaId } : null,
     sortOrder: topic.sortOrder || 0,
+    careerGoal: topic.careerGoal || '',
     status: topic.status || 'draft',
     seoTitle: topic.seo?.title || '',
     seoDescription: topic.seo?.description || '',
@@ -141,6 +144,7 @@ export default function AdminTopicEditor() {
       description: form.description || null,
       heroMediaId: form.heroMedia?.id || null,
       sortOrder: Number(form.sortOrder) || 0,
+      careerGoal: form.careerGoal || null,
       seo: {
         title: form.seoTitle || null,
         description: form.seoDescription || null,
@@ -250,6 +254,16 @@ export default function AdminTopicEditor() {
                 onChange={(e) => updateField('sortOrder', e.target.value)}
                 className="w-32 border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
               />
+            </Field>
+            <Field label="Career Hub goal" hint="optional — Resources and Learning programs tagged with this topic appear under this goal in the WSF Career Hub">
+              <select value={form.careerGoal} onChange={(e) => updateField('careerGoal', e.target.value)} className="w-full max-w-xs border border-taupe-300 px-3 py-2 text-sm">
+                <option value="">No career goal</option>
+                {CAREER_GOAL_OPTIONS.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
             </Field>
           </Section>
 

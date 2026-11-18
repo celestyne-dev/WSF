@@ -92,3 +92,14 @@ test('public links: internal router links, external anchors, groups never link t
   assert.deepEqual(publicNavLink({ itemType: 'group', url: null, children: [{}] }), { kind: 'group' })
   assert.equal(publicNavLink({ url: null }), null) // never a "/" fallback
 })
+
+test('internal routes may carry a query string (Career Hub deep links) but never reach admin/API', () => {
+  const item = (url) => ({ label: 'Link', itemType: 'route', url })
+  for (const ok of ['/career-hub?goal=get-promoted', '/career-hub?goal=leadership&format=course', '/career-hub#new']) {
+    assert.equal(validateNavItem(item(ok)), null, ok)
+    assert.deepEqual(publicNavLink({ url: ok, linkType: 'internal' }), { kind: 'internal', to: ok })
+  }
+  for (const bad of ['/admin?x=1', '/ADMIN#top', '/api?z', '/api/v1/career-hub?x', '/career hub', '/a\\b', '//evil.example?x']) {
+    assert.notEqual(validateNavItem(item(bad)), null, bad)
+  }
+})

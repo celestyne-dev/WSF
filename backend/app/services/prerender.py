@@ -1030,11 +1030,27 @@ def _article_card(p):
     return _hub_item(f"/{p['slug']}", p.get("title"), (_text(author.get("name")), _date_html(p.get("publish_date"))), p.get("excerpt"))
 
 
+def _career_hub_card(c):
+    """A normalized WSF Career Hub card (app/services/career_hub.py)."""
+    price = ""
+    pricing = c.get("pricing") or {}
+    default = next((p for p in pricing.get("prices") or [] if p.get("currency") == pricing.get("defaultCurrency")), None)
+    if default and _is_nonblank(default.get("formatted")):
+        price = _text(f"{default['formatted']} one-time")
+    circle = (c.get("circle") or {}).get("label")
+    return _hub_item(c["url"], c.get("title"), (
+        _text((c.get("category") or {}).get("name") or ""), _text((c.get("format") or {}).get("label") or ""),
+        _text((c.get("estimatedTime") or {}).get("label") or ""), _text((c.get("access") or {}).get("label") or ""),
+        price, _text(circle or ""),
+    ), c.get("summary"))
+
+
 HUB_CARD_RENDERERS = {
     "jobs": _job_card, "opportunities": _opportunity_card, "events": _event_card, "resources": _resource_card,
     "learning": _learning_card, "people": _person_card, "organizations": _organization_card, "authors": _author_card,
     "topics": _topic_card, "series": _series_card, "directory": _directory_card, "shop": _product_card,
     "newsletter": _newsletter_card,
+    "career_hub": _career_hub_card,
 }
 
 

@@ -4,6 +4,7 @@ import { Plus, Search } from 'lucide-react'
 import { fetchCircleSubscriptions } from '../../api/circle'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
+import { intervalLabel } from '../../utils/circlePlans'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { formatDate } from '../../utils/format'
@@ -95,7 +96,15 @@ export default function AdminCircleMemberships() {
                       {row.user?.fullName || '—'}
                       <p className="text-xs text-charcoal-600/70">{row.user?.email}</p>
                     </td>
-                    <td className="px-4 py-3 text-charcoal-600">{row.plan?.name || '—'}</td>
+                    <td className="px-4 py-3 text-charcoal-600">
+                      {row.plan?.name || '—'}
+                      {row.plan && (
+                        <span className="block text-xs text-charcoal-600/70">
+                          {intervalLabel(row.plan.billingInterval)}
+                          {row.isLifetime ? ' · No expiry' : ''}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} />
                     </td>

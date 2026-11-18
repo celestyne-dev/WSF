@@ -103,6 +103,10 @@ export function mapLearningProgram(p) {
     learningOutcomes: Array.isArray(p.learning_outcomes ?? p.learningOutcomes) ? (p.learning_outcomes ?? p.learningOutcomes) : [],
     prerequisites: Array.isArray(p.prerequisites) ? p.prerequisites : [],
     durationValue: p.duration_value ?? p.durationValue ?? null,
+    // WSF Career Hub display metadata (server-computed; display only).
+    format: p.format || null,
+    estimatedTime: p.estimatedTime || null,
+    circleInclusion: p.circleInclusion || null,
     durationUnit: p.duration_unit ?? p.durationUnit ?? null,
     heroMedia: mapMediaRef(p.hero_media ?? p.heroMedia),
     primaryInstructor: mapInstructor(p.primary_instructor ?? p.primaryInstructor),

@@ -41,6 +41,8 @@ function mapTopic(t) {
     seo: t.seo || null,
     status: t.status || 'published',
     sortOrder: t.sort_order || 0,
+    // WSF Career Hub goal this Topic maps to (null = none).
+    careerGoal: t.career_goal ?? t.careerGoal ?? null,
     articleCount: t.article_count,
     usageCount: t.usageCount,
   }

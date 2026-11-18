@@ -1,12 +1,13 @@
 import re
 
-from marshmallow import fields, validate, ValidationError
+from marshmallow import fields, validate, validates_schema, ValidationError
 
 from app.services.pricing import prices_field
 from app.extensions import ma
 from app.models.resource import (
     ACCESS_TYPES,
     CIRCLE_ACCESS_LEVELS,
+    ESTIMATED_TIME_UNITS,
     FILE_FORMATS,
     Resource,
     ResourceImage,
@@ -184,6 +185,12 @@ class ResourceInputSchema(ma.Schema):
         validate=[validate.Length(max=255), _validate_protected_original_filename],
     )
     file_format = fields.String(required=False, allow_none=True, data_key="fileFormat", validate=validate.OneOf(FILE_FORMATS))
+    # Optional "how long to use/complete" (NOT media duration) — see
+    # app/models/resource.py's ESTIMATED_TIME_UNITS; checked together in
+    # validate_estimated_time below.
+    estimated_time_value = fields.Integer(required=False, allow_none=True, load_default=None, data_key="estimatedTimeValue", validate=validate.Range(min=1, max=10000))
+    estimated_time_max_value = fields.Integer(required=False, allow_none=True, load_default=None, data_key="estimatedTimeMaxValue", validate=validate.Range(min=1, max=10000))
+    estimated_time_unit = fields.String(required=False, allow_none=True, load_default=None, data_key="estimatedTimeUnit", validate=validate.OneOf(ESTIMATED_TIME_UNITS))
     file_size = fields.Integer(required=False, allow_none=True, data_key="fileSize", validate=validate.Range(min=0))
     page_count = fields.Integer(required=False, allow_none=True, data_key="pageCount", validate=validate.Range(min=0))
 
@@ -198,6 +205,30 @@ class ResourceInputSchema(ma.Schema):
     # File/external-URL requirements are enforced only at publish time (see
     # _validate_publish in app/api/v1/resources.py) — a draft is allowed to
     # be saved incomplete, same as every other content type's draft state.
+
+    @validates_schema
+    def validate_estimated_time(self, data, **kwargs):
+        validate_estimated_time_fields(
+            data.get("estimated_time_value"), data.get("estimated_time_max_value"), data.get("estimated_time_unit")
+        )
+
+
+def validate_estimated_time_fields(value, max_value, unit):
+    """Mirrors ck_resources_estimated_time with editor-friendly messages:
+    nothing set = no estimate; "self_paced" takes no number; every other
+    unit needs a value, and an optional upper bound above it (a range)."""
+    if unit is None:
+        if value is not None or max_value is not None:
+            raise ValidationError("Choose a unit for the estimated time.", field_name="estimatedTimeUnit")
+        return
+    if unit == "self_paced":
+        if value is not None or max_value is not None:
+            raise ValidationError("Self-paced doesn't take a number — leave the time empty.", field_name="estimatedTimeValue")
+        return
+    if value is None:
+        raise ValidationError("Enter how long it takes, or clear the unit.", field_name="estimatedTimeValue")
+    if max_value is not None and max_value <= value:
+        raise ValidationError("The upper end of a range must be larger than its start.", field_name="estimatedTimeMaxValue")
 
 
 class ResourceLeadSchema(ma.SQLAlchemyAutoSchema):

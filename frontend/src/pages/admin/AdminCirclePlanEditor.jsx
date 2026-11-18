@@ -25,6 +25,7 @@ const STATUSES = ['draft', 'active', 'archived']
 const BILLING_INTERVALS = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'yearly', label: 'Yearly' },
+  { value: 'lifetime', label: 'Lifetime' },
 ]
 
 function blankForm() {
@@ -189,7 +190,8 @@ export default function AdminCirclePlanEditor() {
       featured: form.featured,
       displayOrder: form.displayOrder,
       checkoutUrl: form.checkoutUrl || null,
-      manageBillingUrl: form.manageBillingUrl || null,
+      // Lifetime has no recurring billing to manage (the API rejects one).
+      manageBillingUrl: form.billingInterval === 'lifetime' ? null : form.manageBillingUrl || null,
       benefits: form.benefits,
       seo: {
         title: form.seoTitle || null,
@@ -276,6 +278,13 @@ export default function AdminCirclePlanEditor() {
                 quarterly reset packs and planning tools.
               </p>
             )}
+            {form.billingInterval === 'lifetime' && (
+              <p className="text-xs text-charcoal-600/70">
+                Lifetime members get every Yearly benefit. Describe it as lifetime access to WSF Circle membership
+                benefits — never as everything WSF offers (separately sold programmes, coaching, events and products
+                are not included).
+              </p>
+            )}
             <div className="space-y-2">
               {form.benefits.map((b, i) => (
                 <div key={i} className="flex items-center justify-between border border-taupe-200 px-3 py-2 text-sm">
@@ -317,6 +326,12 @@ export default function AdminCirclePlanEditor() {
                 </select>
               </Field>
             </div>
+            {form.billingInterval === 'lifetime' && (
+              <p className="border-l-2 border-plum-600 pl-3 text-xs text-charcoal-600">
+                Lifetime uses a one-time secure checkout: members pay once, with no renewal date and no recurring
+                billing. Set the one-time price for each currency below.
+              </p>
+            )}
             <MultiCurrencyPricingEditor prices={form.prices} onChange={(prices) => updateField('prices', prices)} />
             <p className="text-xs text-charcoal-600/70">
               Set each currency&apos;s price explicitly — there is no automatic exchange-rate conversion. Buyers choose
@@ -332,9 +347,11 @@ export default function AdminCirclePlanEditor() {
             <Field label="Alternate checkout URL" hint="optional — external secure checkout — https:// only">
               <input value={form.checkoutUrl} onChange={(e) => updateField('checkoutUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
-            <Field label="Manage billing URL" hint="optional — a future payment provider's customer portal">
-              <input value={form.manageBillingUrl} onChange={(e) => updateField('manageBillingUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-            </Field>
+            {form.billingInterval !== 'lifetime' && (
+              <Field label="Manage billing URL" hint="optional — a future payment provider's customer portal">
+                <input value={form.manageBillingUrl} onChange={(e) => updateField('manageBillingUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              </Field>
+            )}
           </Section>
 
           <Section title="SEO">

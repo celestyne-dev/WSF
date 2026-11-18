@@ -15,6 +15,16 @@ RESOURCE_TYPES = (
     "Download",
     "Video Resource",
     "External Resource",
+    # WSF Career Hub formats (user-facing "format" metadata on the SAME
+    # field — no per-format table, no second Resource system). Existing
+    # values above stay valid; "Video Resource" is legacy and never offered
+    # as a Career Hub format.
+    "Playbook",
+    "Scripts",
+    "Challenge",
+    "Assessment",
+    "Research",
+    "Other",
 )
 _RESOURCE_TYPE_CHECK_SQL = "type IS NULL OR type IN (" + ", ".join(f"'{t}'" for t in RESOURCE_TYPES) + ")"
 
@@ -73,10 +83,12 @@ PROTECTED_FILE_ELIGIBLE_ACCESS_TYPES = ("direct_download", "email_gate", "member
 # app/api/v1/resources.py normalizes it back to this whenever access_type
 # isn't circle_only, so a value saved while a Resource was briefly
 # circle_only can never survive a later edit that moves it off that type.
-#   all_members: any active WSF Circle member (monthly or yearly) — the
-#     existing circle_only behavior, unchanged.
-#   yearly_members: only a Circle member whose CURRENT subscription's plan
-#     has billing_interval == "yearly" — the Yearly Member Bonus Vault.
+#   all_members: any active WSF Circle member (monthly, yearly or
+#     lifetime) — the existing circle_only behavior, unchanged.
+#   yearly_members: only a Circle member with yearly-level access — a
+#     current yearly OR lifetime plan (see has_yearly_circle_access in
+#     app/services/circle.py, the one place that rule lives) — the Yearly
+#     Member Bonus Vault.
 # This is a second, independent axis from Premium Resource purchase
 # entitlement (access_type == "premium") — a yearly-only Resource is never
 # access_type == "premium", and a premium Resource's purchase-or-any-
@@ -85,6 +97,20 @@ CIRCLE_ACCESS_LEVELS = ("all_members", "yearly_members")
 _CIRCLE_ACCESS_LEVEL_CHECK_SQL = "circle_access_level IN (" + ", ".join(
     f"'{l}'" for l in CIRCLE_ACCESS_LEVELS
 ) + ")"
+
+# Optional "how long will this take a reader to use/complete" metadata —
+# NOT media duration. Structured (value, optional upper bound, unit) so the
+# public label ("10 min", "30–45 min", "2 hours", "7 days", "Self-paced")
+# is formatted in one place (app/services/career_hub.py's
+# format_estimated_time) rather than free text that can't be filtered.
+# self_paced carries no number at all.
+ESTIMATED_TIME_UNITS = ("minutes", "hours", "days", "weeks", "self_paced")
+_ESTIMATED_TIME_CHECK_SQL = (
+    "(estimated_time_unit IS NULL AND estimated_time_value IS NULL AND estimated_time_max_value IS NULL)"
+    " OR (estimated_time_unit = 'self_paced' AND estimated_time_value IS NULL AND estimated_time_max_value IS NULL)"
+    " OR (estimated_time_unit IN ('minutes', 'hours', 'days', 'weeks') AND estimated_time_value > 0"
+    " AND (estimated_time_max_value IS NULL OR estimated_time_max_value > estimated_time_value))"
+)
 
 FILE_FORMATS = ("PDF", "DOCX", "XLSX", "PPTX", "ZIP", "Image", "Video", "Other")
 _FILE_FORMAT_CHECK_SQL = "file_format IS NULL OR file_format IN (" + ", ".join(f"'{f}'" for f in FILE_FORMATS) + ")"
@@ -137,6 +163,7 @@ class Resource(db.Model):
         db.CheckConstraint("download_count >= 0", name="ck_resources_download_count_nonnegative"),
         db.CheckConstraint("page_count IS NULL OR page_count >= 0", name="ck_resources_page_count_nonnegative"),
         db.CheckConstraint("file_size IS NULL OR file_size >= 0", name="ck_resources_file_size_nonnegative"),
+        db.CheckConstraint(_ESTIMATED_TIME_CHECK_SQL, name="ck_resources_estimated_time"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -216,6 +243,10 @@ class Resource(db.Model):
     # app/services/resource_downloads.py.
     protected_original_filename = db.Column(db.String(255))
     file_format = db.Column(db.String(20))  # see FILE_FORMATS
+    # See ESTIMATED_TIME_UNITS — all three null means "no estimate".
+    estimated_time_value = db.Column(db.Integer, nullable=True)
+    estimated_time_max_value = db.Column(db.Integer, nullable=True)
+    estimated_time_unit = db.Column(db.String(12), nullable=True)
     file_size = db.Column(db.Integer)  # bytes
     page_count = db.Column(db.Integer)
 

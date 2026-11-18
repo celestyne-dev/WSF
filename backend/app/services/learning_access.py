@@ -69,3 +69,13 @@ def curriculum_access_state(enrollment, user):
     # enrollment row, which should normally never exist (see enroll()'s
     # own rejection of both) — must never grant protected content.
     return False, "access_denied"
+
+
+def program_circle_inclusion(program):
+    """Display-only mirror of can_access_program_content(): circle_only
+    content is granted by any active WSF Circle membership; free needs no
+    membership; external/product are never unlocked by Circle.
+    Returns {"included": bool, "scope": "all"|None}."""
+    if program.access_type == "circle_only":
+        return {"included": True, "scope": "all"}
+    return {"included": False, "scope": None}

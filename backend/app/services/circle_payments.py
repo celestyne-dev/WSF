@@ -110,6 +110,8 @@ _MEMBERSHIP_ACTION_RENEW = "renew"
 _MEMBERSHIP_BLOCKED_PENDING = "blocked_pending"
 _MEMBERSHIP_BLOCKED_DIFFERENT_PLAN = "blocked_different_plan"
 _MEMBERSHIP_BLOCKED_NON_EXPIRING = "blocked_non_expiring"
+_MEMBERSHIP_BLOCKED_LIFETIME_ACTIVE = "blocked_lifetime_active"
+_MEMBERSHIP_BLOCKED_LIFETIME_UPGRADE = "blocked_lifetime_upgrade"
 
 
 def _add_billing_interval(dt, billing_interval):
@@ -119,6 +121,11 @@ def _add_billing_interval(dt, billing_interval):
     Feb 29 in a leap year; Mar 31 + 1 month -> Apr 30), which is exactly
     the behavior Module 2's calendar-period requirement calls for.
     """
+    if billing_interval == "lifetime":
+        # One payment, no renewal, no end: NULL period end (never a
+        # fabricated far-future date). has_circle_access already treats a
+        # NULL current_period_end as non-expiring.
+        return None
     if billing_interval == "yearly":
         return dt + relativedelta(years=1)
     return dt + relativedelta(months=1)
@@ -192,6 +199,15 @@ def _classify_membership_action(user, plan):
         return _MEMBERSHIP_ACTION_NEW, None
     if current.status == "pending":
         return _MEMBERSHIP_BLOCKED_PENDING, current
+    # Lifetime (see app/models/circle.py): an active/past_due lifetime
+    # member never buys another Circle period of any plan. A monthly/
+    # yearly member buying Lifetime is NOT automated: there is no
+    # proration/refund or provider-side cancellation of remaining paid
+    # time, so it stays a staff-assisted change (deliberately deferred).
+    if current.plan and current.plan.billing_interval == "lifetime":
+        return _MEMBERSHIP_BLOCKED_LIFETIME_ACTIVE, current
+    if plan.billing_interval == "lifetime":
+        return _MEMBERSHIP_BLOCKED_LIFETIME_UPGRADE, current
     if current.plan_id != plan.id:
         return _MEMBERSHIP_BLOCKED_DIFFERENT_PLAN, current
     if current.current_period_end is None:
@@ -211,6 +227,14 @@ def _raise_for_blocked_action(action):
             "You're currently on another Circle plan. Contact us if you'd like to "
             "change plans before your current period ends.",
             409, code="different_plan_active",
+        )
+    if action == _MEMBERSHIP_BLOCKED_LIFETIME_ACTIVE:
+        raise ApiError("You already have Lifetime WSF Circle access.", 409, code="lifetime_membership_active")
+    if action == _MEMBERSHIP_BLOCKED_LIFETIME_UPGRADE:
+        raise ApiError(
+            "Switching an active monthly or yearly WSF Circle membership to Lifetime isn't automatic yet — "
+            "your remaining paid time wouldn't be refunded. Contact us and we'll help you upgrade.",
+            409, code="lifetime_upgrade_unavailable",
         )
     if action == _MEMBERSHIP_BLOCKED_NON_EXPIRING:
         raise ApiError(
@@ -777,6 +801,10 @@ def _extend_subscription_for_payment(current, plan):
     # _classify_membership_action's own get_current_subscription() call.
     locked = CircleSubscription.query.with_for_update().populate_existing().filter_by(id=current.id).one()
     if locked.plan_id != plan.id or locked.status not in ("active", "past_due"):
+        return None, True
+    if plan.billing_interval == "lifetime":
+        # Defensive: a lifetime period is never "extended" — classification
+        # already blocks this, but a lifetime row must never gain an end date.
         return None, True
 
     now = datetime.now(timezone.utc)

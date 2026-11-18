@@ -7,6 +7,7 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
+import { intervalLabel } from '../../utils/circlePlans'
 
 const STATUSES = ['draft', 'active', 'archived']
 
@@ -78,7 +79,7 @@ export default function AdminCirclePlans() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-charcoal-600">{row.billingInterval}</td>
+                    <td className="px-4 py-3 text-charcoal-600">{intervalLabel(row.billingInterval)}</td>
                     <td className="px-4 py-3 text-charcoal-600">{formatProductPrice(row.price, row.currency)}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} />

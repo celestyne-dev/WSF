@@ -247,6 +247,9 @@ def collect_public_sitemap_entries():
     entries += _event_entries()
     entries += _resource_entries()
     entries += _learning_program_entries()
+    # WSF Career Hub: the one canonical URL only — never a filter/query
+    # variant (those canonicalize to /career-hub).
+    entries += [_entry("/career-hub")]
     entries += _directory_entries()
     entries += _newsletter_entries()
     entries += _product_entries()

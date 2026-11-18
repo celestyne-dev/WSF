@@ -87,6 +87,13 @@ export function mapResource(r) {
     fileFormat: r.file_format || r.fileFormat || null,
     fileSize: r.file_size ?? r.fileSize ?? null,
     pageCount: r.page_count ?? r.pageCount ?? null,
+    // WSF Career Hub display metadata (public payload) + raw editor fields.
+    format: r.format || null,
+    estimatedTime: r.estimatedTime || null,
+    circleInclusion: r.circleInclusion || null,
+    estimatedTimeValue: r.estimated_time_value ?? r.estimatedTimeValue ?? null,
+    estimatedTimeMaxValue: r.estimated_time_max_value ?? r.estimatedTimeMaxValue ?? null,
+    estimatedTimeUnit: r.estimated_time_unit ?? r.estimatedTimeUnit ?? null,
     sponsor: r.sponsor ? { id: r.sponsor.id, slug: r.sponsor.slug, name: r.sponsor.name } : null,
     sponsorSlug: r.sponsor?.slug || null,
     sponsored: !!r.sponsored,
@@ -260,6 +267,7 @@ function toApiPayload(form) {
     fileFormat: form.fileFormat || undefined,
     fileSize: form.fileSize === '' || form.fileSize == null ? undefined : Number(form.fileSize),
     pageCount: form.pageCount === '' || form.pageCount == null ? undefined : Number(form.pageCount),
+    ...estimatedTimePayload(form),
     sponsorSlug: form.sponsorSlug || undefined,
     sponsored: !!form.sponsored,
     featured: !!form.featured,
@@ -267,6 +275,16 @@ function toApiPayload(form) {
     publishedDate: form.publishedDate || undefined,
     seo: form.seo || undefined,
   }
+}
+
+// Optional estimated time: nothing set -> all null (no estimate);
+// "self_paced" never carries numbers; a range only when an upper bound is set.
+export function estimatedTimePayload(form) {
+  const unit = form.estimatedTimeUnit || null
+  const number = (v) => (v === '' || v == null ? null : Number(v))
+  if (!unit) return { estimatedTimeValue: null, estimatedTimeMaxValue: null, estimatedTimeUnit: null }
+  if (unit === 'self_paced') return { estimatedTimeValue: null, estimatedTimeMaxValue: null, estimatedTimeUnit: unit }
+  return { estimatedTimeValue: number(form.estimatedTimeValue), estimatedTimeMaxValue: number(form.estimatedTimeMaxValue), estimatedTimeUnit: unit }
 }
 
 export async function createResource(form) {

@@ -29,6 +29,8 @@ export function mapCirclePlan(p) {
     shortDescription: p.short_description ?? p.shortDescription ?? '',
     description: Array.isArray(p.description) ? p.description : [],
     billingInterval: p.billing_interval || p.billingInterval || 'monthly',
+    // Lifetime: one-time purchase, no renewal (server-computed when present).
+    isLifetime: p.isLifetime ?? (p.billing_interval || p.billingInterval) === 'lifetime',
     // Legacy whole-unit price/currency (compatibility only) — display and
     // checkout use `prices`.
     price: p.price ?? 0,
@@ -72,6 +74,8 @@ export function mapCircleSubscription(s) {
     createdAt: s.created_at || null,
     updatedAt: s.updated_at || null,
     plan: s.plan ? mapCirclePlan(s.plan) : null,
+    // No renewal and no expiry date for a lifetime membership.
+    isLifetime: s.isLifetime ?? (s.plan?.billing_interval || s.plan?.billingInterval) === 'lifetime',
     user: s.user ? { id: s.user.id, fullName: s.user.full_name || s.user.fullName, email: s.user.email } : null,
   }
 }
@@ -119,7 +123,13 @@ export async function fetchCirclePlan(slug) {
 
 export async function fetchMyCircleMembership() {
   const { data } = await apiClient.get('/circle/me')
-  return { hasAccess: !!data?.hasAccess, subscription: mapCircleSubscription(data?.subscription) }
+  return {
+    hasAccess: !!data?.hasAccess,
+    // Server-computed (yearly OR lifetime) — never re-derive from the plan's
+    // billing interval on the client.
+    yearlyLevelAccess: !!data?.yearlyLevelAccess,
+    subscription: mapCircleSubscription(data?.subscription),
+  }
 }
 
 // Phase 1 staff-assisted enrollment — creates a staff-reviewable lead

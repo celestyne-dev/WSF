@@ -10,6 +10,7 @@ import {
 } from '../../api/circle'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
+import { adminPeriodText, intervalLabel } from '../../utils/circlePlans'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { formatDate } from '../../utils/format'
@@ -98,6 +99,7 @@ export default function AdminCircleMembershipDetail() {
   const [notFound, setNotFound] = useState(false)
   const [loadError, setLoadError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const selectedPlanIsLifetime = plans.find((p) => String(p.id) === String(form?.planId))?.billingInterval === 'lifetime'
 
   useEffect(() => {
     let active = true
@@ -146,8 +148,8 @@ export default function AdminCircleMembershipDetail() {
         paymentReference: form.paymentReference || undefined,
         startsAt: fromDateTimeLocal(form.startsAt) || undefined,
         currentPeriodStart: fromDateTimeLocal(form.currentPeriodStart) || undefined,
-        currentPeriodEnd: fromDateTimeLocal(form.currentPeriodEnd) || undefined,
-        cancelAtPeriodEnd: form.cancelAtPeriodEnd,
+        currentPeriodEnd: selectedPlanIsLifetime ? undefined : fromDateTimeLocal(form.currentPeriodEnd) || undefined,
+        cancelAtPeriodEnd: selectedPlanIsLifetime ? false : form.cancelAtPeriodEnd,
       }
       const created = await createCircleSubscription(payload)
       toast.success('Membership recorded.')
@@ -171,8 +173,11 @@ export default function AdminCircleMembershipDetail() {
         paymentReference: form.paymentReference || null,
         startsAt: fromDateTimeLocal(form.startsAt),
         currentPeriodStart: fromDateTimeLocal(form.currentPeriodStart),
-        currentPeriodEnd: fromDateTimeLocal(form.currentPeriodEnd),
-        cancelAtPeriodEnd: form.cancelAtPeriodEnd,
+        // Lifetime: no period end and nothing to cancel "at period end" —
+        // it is ended by changing its status instead.
+        ...(subscription?.isLifetime
+          ? {}
+          : { currentPeriodEnd: fromDateTimeLocal(form.currentPeriodEnd), cancelAtPeriodEnd: form.cancelAtPeriodEnd }),
       }
       const updated = await updateCircleSubscription(id, payload)
       setSubscription(updated)
@@ -240,9 +245,13 @@ export default function AdminCircleMembershipDetail() {
               <Field label="Starts at">
                 <input type="datetime-local" value={form.startsAt} onChange={(e) => update('startsAt', e.target.value)} className={inputClass} />
               </Field>
-              <Field label="Current period end">
-                <input type="datetime-local" value={form.currentPeriodEnd} onChange={(e) => update('currentPeriodEnd', e.target.value)} className={inputClass} />
-              </Field>
+              {selectedPlanIsLifetime ? (
+                <p className="self-end pb-2 text-sm text-charcoal-600">Lifetime · No expiry — no period end is recorded.</p>
+              ) : (
+                <Field label="Current period end">
+                  <input type="datetime-local" value={form.currentPeriodEnd} onChange={(e) => update('currentPeriodEnd', e.target.value)} className={inputClass} />
+                </Field>
+              )}
             </div>
             <Field label="Provider" hint="e.g. a future payment provider name — optional reference only">
               <input value={form.provider} onChange={(e) => update('provider', e.target.value)} className={inputClass} />
@@ -276,8 +285,14 @@ export default function AdminCircleMembershipDetail() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Plan</p>
             <p className="text-sm text-charcoal">{subscription.plan?.name || '—'}</p>
             <p className="text-xs text-charcoal-600/70">
-              {subscription.plan?.billingInterval} &middot; {subscription.source}
+              {intervalLabel(subscription.plan?.billingInterval)} &middot; {subscription.source}
             </p>
+            {subscription.isLifetime && (
+              <p className="mt-2 text-sm font-medium text-plum-600">
+                {subscription.status === 'active' ? 'Active · ' : ''}
+                {adminPeriodText(subscription)}
+              </p>
+            )}
           </div>
 
           <div className="border border-taupe-200 bg-white p-6 space-y-4">
@@ -289,10 +304,16 @@ export default function AdminCircleMembershipDetail() {
                 </option>
               ))}
             </select>
-            <label className="flex items-center gap-2 text-sm text-charcoal-600">
-              <input type="checkbox" checked={form.cancelAtPeriodEnd} onChange={(e) => update('cancelAtPeriodEnd', e.target.checked)} />
-              Cancel at period end
-            </label>
+            {subscription.isLifetime ? (
+              <p className="text-xs text-charcoal-600/80">
+                Lifetime memberships never renew or expire on their own. To end one (for example after a refund), change its status to revoked, cancelled or expired.
+              </p>
+            ) : (
+              <label className="flex items-center gap-2 text-sm text-charcoal-600">
+                <input type="checkbox" checked={form.cancelAtPeriodEnd} onChange={(e) => update('cancelAtPeriodEnd', e.target.checked)} />
+                Cancel at period end
+              </label>
+            )}
           </div>
 
           <div className="border border-taupe-200 bg-white p-6 space-y-4">
@@ -304,9 +325,15 @@ export default function AdminCircleMembershipDetail() {
               <Field label="Current period start">
                 <input type="datetime-local" value={form.currentPeriodStart} onChange={(e) => update('currentPeriodStart', e.target.value)} className={inputClass} />
               </Field>
-              <Field label="Current period end">
-                <input type="datetime-local" value={form.currentPeriodEnd} onChange={(e) => update('currentPeriodEnd', e.target.value)} className={inputClass} />
-              </Field>
+              {subscription.isLifetime ? (
+                <Field label="Current period end">
+                  <p className="py-2 text-sm text-charcoal-600">Lifetime · No expiry</p>
+                </Field>
+              ) : (
+                <Field label="Current period end">
+                  <input type="datetime-local" value={form.currentPeriodEnd} onChange={(e) => update('currentPeriodEnd', e.target.value)} className={inputClass} />
+                </Field>
+              )}
             </div>
           </div>
 

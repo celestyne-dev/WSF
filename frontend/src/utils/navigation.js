@@ -90,8 +90,12 @@ export function validateNavItem(item) {
     const url = (item.url || '').trim()
     if (!url) return `${name} needs an internal path (for example /community).`
     if (!url.startsWith('/') || url.startsWith('//')) return `${name}: internal paths must start with a single "/".`
-    const lowered = url.toLowerCase()
-    if (RESERVED_PREFIXES.some((p) => lowered === p || lowered.startsWith(`${p}/`))) {
+    // eslint-disable-next-line no-control-regex
+    if (/[\s\\\u0000-\u001f]/.test(url)) return `${name}: internal paths can't contain spaces, backslashes or control characters.`
+    // Query strings/fragments are fine (/career-hub?goal=get-promoted); the
+    // admin/API check runs on the path alone so "/admin?x" can't slip past.
+    const path = url.split('#')[0].split('?')[0].toLowerCase().replace(/\/+$/, '') || '/'
+    if (RESERVED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) {
       return `${name}: navigation can't link into admin or API routes.`
     }
   }

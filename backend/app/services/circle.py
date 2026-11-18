@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.models.circle import (
     CIRCLE_SUBSCRIPTION_CURRENT_STATUSES,
+    CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS,
     CircleSubscription,
 )
 from app.utils.responses import ApiError
@@ -99,10 +100,13 @@ def has_circle_access(user):
 
 
 def has_yearly_circle_access(user):
-    """A narrower entitlement than has_circle_access(user): TRUE only when
-    the user has active Circle access AND her CURRENT subscription's plan
-    has billing_interval == "yearly" (see app/models/circle.py's
-    CirclePlan.billing_interval). Never re-derives any status/date rule —
+    """The ONE yearly-level entitlement rule (a.k.a. "yearly-level Circle
+    access"): TRUE only when the user has active Circle access AND her
+    CURRENT subscription's plan is a yearly-level plan — billing_interval
+    in CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS ("yearly" or "lifetime"; a
+    lifetime member never gets fewer benefits than a yearly one). Every
+    yearly-only gate must call this rather than compare billing_interval
+    itself (see app/models/circle.py's CirclePlan.billing_interval). Never re-derives any status/date rule —
     has_circle_access(user) above remains the one authority for whether
     the subscription is currently valid at all; this only adds "and it's
     the yearly plan" on top, reusing get_current_subscription() rather
@@ -115,7 +119,21 @@ def has_yearly_circle_access(user):
     if not has_circle_access(user):
         return False
     subscription = get_current_subscription(user)
-    return bool(subscription and subscription.plan and subscription.plan.billing_interval == "yearly")
+    return bool(
+        subscription and subscription.plan and subscription.plan.billing_interval in CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS
+    )
+
+
+# Readable alias for call sites that prefer the explicit name.
+has_yearly_level_circle_access = has_yearly_circle_access
+
+
+def is_lifetime_subscription(subscription):
+    """True for a subscription on a lifetime plan — display/eligibility
+    metadata only. Access itself is always has_circle_access(): a lifetime
+    row still stops granting access the moment it is revoked, cancelled or
+    expired by staff (no irreversible access)."""
+    return bool(subscription and subscription.plan and subscription.plan.billing_interval == "lifetime")
 
 
 def get_circle_entitlement(user):
@@ -125,6 +143,7 @@ def get_circle_entitlement(user):
     """
     return {
         "has_access": has_circle_access(user),
+        "yearly_level_access": has_yearly_circle_access(user),
         "subscription": get_latest_subscription_for_user(user),
     }
 

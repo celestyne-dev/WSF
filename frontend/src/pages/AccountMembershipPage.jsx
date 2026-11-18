@@ -8,9 +8,10 @@ import { getCheckoutErrorPresentation } from '../utils/circlePayment'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
 import { formatDate } from '../utils/format'
+import { LIFETIME_SCOPE_NOTE, intervalLabel, membershipTermLines } from '../utils/circlePlans'
 
 function billingLabel(plan) {
-  return plan?.billingInterval === 'yearly' ? 'Yearly' : 'Monthly'
+  return intervalLabel(plan?.billingInterval)
 }
 
 // Routed only as a child of AccountLayout, which already guards on
@@ -165,7 +166,17 @@ export default function AccountMembershipPage() {
                 </div>
               )}
             </dl>
-            {subscription.cancelAtPeriodEnd && (
+            {subscription.isLifetime && (
+              <div className="mt-4 border-l-2 border-plum-600 pl-4 text-sm">
+                {membershipTermLines(subscription, formatDate).map((line) => (
+                  <p key={line} className="font-medium text-charcoal">
+                    {line}
+                  </p>
+                ))}
+                <p className="mt-1 text-xs text-charcoal-600/80">{LIFETIME_SCOPE_NOTE}</p>
+              </div>
+            )}
+            {subscription.cancelAtPeriodEnd && !subscription.isLifetime && (
               <p className="mt-4 text-sm text-charcoal-600">
                 Your membership is set to end{subscription.currentPeriodEnd ? ` on ${formatDate(subscription.currentPeriodEnd)}` : ''}.
                 You'll keep full access until then.
@@ -198,12 +209,14 @@ export default function AccountMembershipPage() {
                 the module docstring). A monthly member sees only an
                 informational link to /circle, never a CTA implying an
                 immediate self-service switch. */}
-            {subscription.plan?.billingInterval === 'yearly' ? (
+            {membership.yearlyLevelAccess ? (
               <div className="mt-6 border-t border-taupe-200 pt-5">
-                <p className="font-serif text-lg font-semibold text-charcoal">Your Yearly Member Benefits</p>
+                <p className="font-serif text-lg font-semibold text-charcoal">
+                  {subscription.isLifetime ? 'Your Lifetime Member Benefits' : 'Your Yearly Member Benefits'}
+                </p>
                 <p className="mt-1 text-sm text-charcoal-600">
-                  Your Circle Yearly membership includes the full Yearly Member Resource Vault on top of everything
-                  in Monthly.
+                  Your {subscription.isLifetime ? 'Lifetime' : 'Circle Yearly'} membership includes the full Yearly Member Resource Vault on top of
+                  everything in Monthly.
                 </p>
                 <Link to="/resources?access=circle_yearly" className="btn-secondary mt-3 inline-block">
                   Explore the Yearly Member Bonus Vault

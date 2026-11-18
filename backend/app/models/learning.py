@@ -13,7 +13,11 @@ already own — see each relationship's own comment below.
 """
 from app.extensions import db
 
-LEARNING_PROGRAM_TYPES = ("course", "masterclass", "program", "learning_series")
+# "challenge": a structured, multi-day, text-based challenge with lessons
+# (WSF Career Hub) — the same LearningProgram model, never a separate
+# Challenge system. Short downloadable challenges are Resources instead
+# (Resource.type == "Challenge").
+LEARNING_PROGRAM_TYPES = ("course", "masterclass", "program", "learning_series", "challenge")
 _PROGRAM_TYPE_CHECK_SQL = "program_type IN (" + ", ".join(f"'{t}'" for t in LEARNING_PROGRAM_TYPES) + ")"
 
 DIFFICULTY_LEVELS = ("beginner", "intermediate", "advanced", "all_levels")

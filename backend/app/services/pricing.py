@@ -137,12 +137,14 @@ def _method_labels(channels):
     return [{"key": c, "label": PAYSTACK_METHODS[c]["label"]} for c in channels if c in PAYSTACK_METHODS]
 
 
-def public_pricing_payload(parent, transaction_type):
+def public_pricing_payload(parent, transaction_type, settings=None):
     """Public: enabled prices only, each with server-formatted text and
     whether it can be checked out right now (and with which payment
     options), plus the default currency to preselect. No secrets, no
-    provider internals beyond the method labels a buyer needs."""
-    settings = get_payment_settings()
+    provider internals beyond the method labels a buyer needs. A caller
+    building many payloads may pass `settings` (get_payment_settings())
+    once instead of re-reading it per item."""
+    settings = settings or get_payment_settings()
     options = enabled_prices(parent)
     checkout = available_checkout_currencies([p.currency for p in options], transaction_type, settings)
     prices = []

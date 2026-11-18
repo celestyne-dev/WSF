@@ -17,6 +17,8 @@ import MediaPicker from '../../components/cms/MediaPicker'
 import GalleryEditor from '../../components/cms/GalleryEditor'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import MultiCurrencyPricingEditor from '../../components/cms/MultiCurrencyPricingEditor'
+import EstimatedTimeFields from '../../components/cms/EstimatedTimeFields'
+import { LEGACY_RESOURCE_TYPE_OPTIONS, RESOURCE_FORMAT_OPTIONS } from '../../constants/careerMetadata'
 import { pricesToPayload, pricesToRows, validatePriceRows } from '../../utils/money'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
@@ -31,10 +33,6 @@ function slugify(text) {
 }
 
 const STATUSES = ['draft', 'review', 'scheduled', 'published', 'archived']
-const RESOURCE_TYPES = [
-  'Guide', 'Workbook', 'Template', 'Checklist', 'Planner', 'Toolkit',
-  'Ebook', 'Worksheet', 'Report', 'Download', 'Video Resource', 'External Resource',
-]
 const ACCESS_TYPES = [
   { value: 'direct_download', label: 'Direct download — open access' },
   { value: 'email_gate', label: 'Email-gated — capture details first' },
@@ -129,6 +127,9 @@ function blankForm() {
     fileFormat: '',
     fileSize: '',
     pageCount: '',
+    estimatedTimeValue: '',
+    estimatedTimeMaxValue: '',
+    estimatedTimeUnit: '',
     sponsorSlug: '',
     sponsored: false,
     featured: false,
@@ -166,6 +167,9 @@ function toForm(resource) {
     fileFormat: resource.fileFormat || '',
     fileSize: resource.fileSize ?? '',
     pageCount: resource.pageCount ?? '',
+    estimatedTimeValue: resource.estimatedTimeValue ?? '',
+    estimatedTimeMaxValue: resource.estimatedTimeMaxValue ?? '',
+    estimatedTimeUnit: resource.estimatedTimeUnit || '',
     sponsorSlug: resource.sponsorSlug || '',
     sponsored: !!resource.sponsored,
     featured: !!resource.featured,
@@ -407,6 +411,9 @@ export default function AdminResourceEditor() {
       fileFormat: form.fileFormat || null,
       fileSize: form.fileSize,
       pageCount: form.pageCount,
+      estimatedTimeValue: form.estimatedTimeValue,
+      estimatedTimeMaxValue: form.estimatedTimeMaxValue,
+      estimatedTimeUnit: form.estimatedTimeUnit,
       sponsorSlug: form.sponsorSlug || null,
       sponsored: form.sponsored,
       featured: form.featured,
@@ -488,15 +495,25 @@ export default function AdminResourceEditor() {
             <Field label="Short description" hint="shown on resource cards and search results">
               <textarea rows={2} value={form.shortDescription} onChange={(e) => updateField('shortDescription', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
-            <Field label="Resource type">
+            <Field label="Format" hint="what kind of tool this is — shown on cards and used by the WSF Career Hub format filter">
               <select value={form.type} onChange={(e) => updateField('type', e.target.value)} className="w-full max-w-xs border border-taupe-300 px-3 py-2 text-sm">
-                {RESOURCE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+                <optgroup label="Career Hub formats">
+                  {RESOURCE_FORMAT_OPTIONS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Older types">
+                  {LEGACY_RESOURCE_TYPE_OPTIONS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </Field>
+            <EstimatedTimeFields form={form} updateField={updateField} />
           </Section>
 
           <Section title="Main content" description="Structure this however makes sense — What's included, Who it's for, Key benefits, How to use it — you decide the headings.">
