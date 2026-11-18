@@ -264,7 +264,10 @@ function AccessCta({
       // get_viewer_access_source) — the durable entitlement is the one
       // worth naming. Circle-included access is never labeled
       // "Purchased": nothing was bought, so nothing should say so.
-      const label = resource.viewerAccessSource === 'circle' ? 'Included with WSF Circle' : 'Purchased'
+      // Server-computed for the viewer's own tier (e.g. "Included with your
+      // Lifetime membership"); purchase keeps precedence when she holds both.
+      const label =
+        resource.viewerAccessSource === 'circle' ? resource.viewerMembershipLabel || 'Included with WSF Circle' : 'Purchased'
       return (
         <div className="mt-5">
           <p className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-burgundy-600">
@@ -366,6 +369,15 @@ function AccessCta({
   }
 
   if (resource.accessType === 'email_gate') {
+    // An active Lifetime member skips the lead form (server-confirmed via
+    // viewerCanAccess; POST /access records the lead from her account).
+    if (resource.viewerCanAccess === true) {
+      return (
+        <button type="button" onClick={onAccessClick} disabled={requesting} aria-busy={requesting} className="btn-primary mt-5 inline-flex disabled:opacity-60">
+          <Download size={16} /> {requesting ? 'Preparing…' : 'Download resource'}
+        </button>
+      )
+    }
     return (
       <button type="button" onClick={onEmailGateClick} className="btn-primary mt-5 inline-flex">
         <Mail size={16} /> Get the free download
@@ -643,6 +655,9 @@ export default function ResourceDetailPage() {
     try {
       const { url } = await requestResourceAccess(resource.slug)
       trackEvent('resource_download_success', { resourceSlug: resource.slug, accessType: resource.accessType })
+      if (resource.viewerMembershipLabel === 'Included with your Lifetime membership') {
+        trackEvent('lifetime_content_access', { contentType: 'resource', slug: resource.slug })
+      }
       openUrl(url)
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || 'Something went wrong. Please try again.')
@@ -777,7 +792,9 @@ export default function ResourceDetailPage() {
             return (
               <>
                 <p className="mt-5 font-serif text-3xl font-semibold text-charcoal">
-                  {resource.accessType === 'circle_only'
+                  {resource.viewerMembershipLabel && resource.viewerCanAccess === true
+                    ? resource.viewerMembershipLabel
+                    : resource.accessType === 'circle_only'
                     ? isYearlyOnly
                       ? monthlyMemberOnYearlyOnly
                         ? 'Available with Yearly & Lifetime WSF Circle'

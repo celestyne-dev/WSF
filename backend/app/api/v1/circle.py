@@ -26,6 +26,7 @@ from app.extensions import db, limiter
 from app.models.circle import (
     CIRCLE_PLAN_STATUSES,
     CIRCLE_RECURRING_BILLING_INTERVALS,
+    CIRCLE_SUBSCRIPTION_CURRENT_STATUSES,
     CirclePayment,
     CirclePlan,
     CirclePlanPrice,
@@ -47,9 +48,16 @@ from app.services.circle import (
     create_subscription_for_user,
     get_circle_entitlement,
     is_lifetime_subscription,
+    membership_badge,
     validate_subscription_status_transition,
 )
-from app.services.circle_payments import get_payment_status, start_circle_checkout
+from app.services.circle_payments import (
+    get_payment_status,
+    is_founding_lifetime_plan,
+    plan_availability,
+    plan_seats_used,
+    start_circle_checkout,
+)
 from app.services.contact import generate_contact_reference
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
@@ -141,6 +149,9 @@ def build_public_plan_payload(plan):
         # Lifetime is a one-time purchase: no renewal, no period end.
         "isLifetime": plan.billing_interval == "lifetime",
         "recurring": plan.billing_interval in CIRCLE_RECURRING_BILLING_INTERVALS,
+        "isFounding": is_founding_lifetime_plan(plan),
+        # Real seat availability for a capacity-limited plan (never padded).
+        "availability": plan_availability(plan),
         # Checkout Phase 1: `prices` (enabled options, minor units +
         # server-formatted text + per-currency checkout availability) is
         # the source of truth; legacy whole-unit price/currency kept only
@@ -160,6 +171,13 @@ def build_public_plan_payload(plan):
 def _dump_admin_plan(plan):
     data = plan_schema.dump(plan)
     data["prices"] = admin_prices_payload(plan)
+    data["availability"] = plan_availability(plan)
+    return data
+
+
+def _dump_admin_subscription(subscription):
+    data = subscription_schema.dump(subscription)
+    data["memberBadge"] = membership_badge(subscription)
     return data
 
 
@@ -194,6 +212,9 @@ def _validate_lifetime_plan(plan, data):
     any field is mutated."""
     interval = data.get("billing_interval", plan.billing_interval)
     manage_url = data["manage_billing_url"] if "manage_billing_url" in data else plan.manage_billing_url
+    founding = data["is_founding"] if "is_founding" in data else plan.is_founding
+    if founding and interval != "lifetime":
+        raise ApiError("Only a Lifetime plan can be the Founding Lifetime offer.", 422, code="validation_error")
     if interval == "lifetime" and manage_url:
         raise ApiError(
             "A Lifetime plan has no recurring billing to manage — remove the manage-billing URL.",
@@ -219,6 +240,8 @@ def _apply_plan_fields(plan, data):
     plan.status = data.get("status", "draft")
     plan.featured = data.get("featured", False)
     plan.display_order = data.get("display_order", 0)
+    plan.max_members = data.get("max_members")
+    plan.is_founding = data.get("is_founding", False)
     plan.checkout_url = data.get("checkout_url")
     plan.manage_billing_url = data.get("manage_billing_url")
     plan.benefits = data.get("benefits", [])
@@ -257,6 +280,9 @@ def build_owner_subscription_payload(subscription):
         "endedAt": subscription.ended_at.isoformat() if subscription.ended_at else None,
         # Lifetime: no renewal and no expiry (currentPeriodEnd stays null).
         "isLifetime": is_lifetime_subscription(subscription),
+        "foundingLifetime": bool(subscription.founding_lifetime),
+        # "Lifetime Member" / "Founding Lifetime Member" while it grants access.
+        "memberBadge": membership_badge(subscription),
         "plan": build_public_plan_payload(subscription.plan) if subscription.plan else None,
     }
 
@@ -317,6 +343,7 @@ class CirclePlanDetailResource(Resource):
         for field in (
             "name", "short_description", "description", "billing_interval", "price", "currency",
             "status", "featured", "display_order", "checkout_url", "manage_billing_url", "benefits", "seo",
+            "max_members", "is_founding",
         ):
             if field in data:
                 if field == "description":
@@ -366,6 +393,8 @@ class CircleMeResource(Resource):
                 # lifetime) — clients must use this rather than compare the
                 # plan's billing interval themselves.
                 "yearlyLevelAccess": entitlement["yearly_level_access"],
+                "lifetimeAccess": entitlement["lifetime_access"],
+                "tier": entitlement["tier"],
                 "subscription": build_owner_subscription_payload(subscription),
             }
         )
@@ -513,8 +542,8 @@ def _build_subscription_query():
 class CircleSubscriptionListResource(Resource):
     @permission_required("circle.manage")
     def get(self):
-        result = paginate(_build_subscription_query(), subscription_schema)
-        return success_response(result["items"], meta=result["meta"])
+        result = paginate(_build_subscription_query(), None)
+        return success_response([_dump_admin_subscription(sub) for sub in result["items"]], meta=result["meta"])
 
     @permission_required("circle.manage")
     def post(self):
@@ -532,19 +561,26 @@ class CircleSubscriptionListResource(Resource):
             )
         status = data.pop("status", "pending")
         source = data.pop("source")
+        if plan.max_members and status in CIRCLE_SUBSCRIPTION_CURRENT_STATUSES and plan_seats_used(plan) >= plan.max_members:
+            raise ApiError(
+                "This plan has no places left. Raise its member limit first if you mean to add another member.",
+                409, code="plan_full",
+            )
+        # Founding status is a snapshot of the plan at creation time.
+        data["founding_lifetime"] = is_founding_lifetime_plan(plan)
 
         subscription = create_subscription_for_user(user, plan, status, source, **data)
         log_action(
             current_user, "circle_subscription.create", "CircleSubscription", subscription.id,
             changes={"userId": user.id, "planId": plan.id, "status": status, "source": source},
         )
-        return success_response(subscription_schema.dump(subscription), status=201)
+        return success_response(_dump_admin_subscription(subscription), status=201)
 
 
 class CircleSubscriptionDetailResource(Resource):
     @permission_required("circle.manage")
     def get(self, subscription_id):
-        return success_response(subscription_schema.dump(_get_subscription_or_404(subscription_id)))
+        return success_response(_dump_admin_subscription(_get_subscription_or_404(subscription_id)))
 
     @permission_required("circle.manage")
     def patch(self, subscription_id):
@@ -595,7 +631,7 @@ class CircleSubscriptionDetailResource(Resource):
             )
 
         db.session.commit()
-        return success_response(subscription_schema.dump(subscription))
+        return success_response(_dump_admin_subscription(subscription))
 
 
 api.add_resource(CirclePlanListResource, "/plans")

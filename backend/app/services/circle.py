@@ -77,6 +77,28 @@ def get_latest_subscription_for_user(user):
     )
 
 
+def _subscription_grants_access(subscription):
+    """status == active, starts_at (if set) has arrived, and
+    current_period_end (if set) hasn't passed."""
+    if subscription is None or subscription.status != "active":
+        return False
+    now = datetime.now(timezone.utc)
+    if subscription.starts_at and subscription.starts_at > now:
+        return False
+    if subscription.current_period_end and subscription.current_period_end <= now:
+        return False
+    return True
+
+
+def get_access_granting_subscription(user):
+    """The user's current subscription IF it grants Circle access right
+    now, else None — one query, shared by every tier helper below."""
+    if not user or not user.is_active:
+        return None
+    subscription = get_current_subscription(user)
+    return subscription if _subscription_grants_access(subscription) else None
+
+
 def has_circle_access(user):
     """The single rule (spec section D): TRUE only when status == active,
     starts_at (if set) has arrived, current_period_end (if set) hasn't
@@ -85,18 +107,49 @@ def has_circle_access(user):
     changes this calculation on its own; an active subscription with
     cancel_at_period_end=true keeps access until current_period_end.
     """
-    if not user or not user.is_active:
-        return False
-    subscription = get_current_subscription(user)
-    if subscription is None or subscription.status != "active":
-        return False
+    return get_access_granting_subscription(user) is not None
 
-    now = datetime.now(timezone.utc)
-    if subscription.starts_at and subscription.starts_at > now:
+
+# Membership hierarchy, lowest to highest. Every higher tier receives
+# everything the tiers below it receive.
+CIRCLE_TIERS = ("monthly", "yearly", "lifetime")
+
+
+def circle_tier(user):
+    """The ONE place a user's current Circle tier is resolved:
+    "lifetime" | "yearly" | "monthly" | None (no access-granting
+    membership). Derived from the plan's billing interval of the
+    subscription that grants access right now — so a revoked, cancelled,
+    expired, pending or past-due Lifetime row is None, never "lifetime"
+    (Lifetime stays revocable by staff)."""
+    subscription = get_access_granting_subscription(user)
+    if subscription is None or subscription.plan is None:
+        return None
+    interval = subscription.plan.billing_interval
+    return interval if interval in CIRCLE_TIERS else "monthly"
+
+
+def has_lifetime_circle_access(user):
+    """Single source of truth for "is this user an active Lifetime
+    member right now" — never compare billing_interval == "lifetime"
+    anywhere else."""
+    return circle_tier(user) == "lifetime"
+
+
+def tier_includes_scope(tier, scope):
+    """Whether a membership tier satisfies a Circle inclusion scope
+    ("all" | "yearly_level" | "lifetime"). Pure — lets list endpoints
+    resolve the viewer's tier ONCE and evaluate many items without one
+    membership query per item."""
+    if tier is None or scope is None:
         return False
-    if subscription.current_period_end and subscription.current_period_end <= now:
-        return False
-    return True
+    if scope == "all":
+        return True
+    if scope == "yearly_level":
+        return tier in CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS
+    if scope == "lifetime":
+        return tier == "lifetime"
+    return False
 
 
 def has_yearly_circle_access(user):
@@ -116,12 +169,7 @@ def has_yearly_circle_access(user):
     inactive account) — a Community Member record without Circle access
     is likewise never consulted here, same as has_circle_access itself.
     """
-    if not has_circle_access(user):
-        return False
-    subscription = get_current_subscription(user)
-    return bool(
-        subscription and subscription.plan and subscription.plan.billing_interval in CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS
-    )
+    return circle_tier(user) in CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS
 
 
 # Readable alias for call sites that prefer the explicit name.
@@ -141,11 +189,24 @@ def get_circle_entitlement(user):
     — the one shape both the owner API and account pages build their
     response from.
     """
+    tier = circle_tier(user)
     return {
-        "has_access": has_circle_access(user),
-        "yearly_level_access": has_yearly_circle_access(user),
+        "has_access": tier is not None,
+        "tier": tier,
+        "yearly_level_access": tier in CIRCLE_YEARLY_LEVEL_BILLING_INTERVALS,
+        "lifetime_access": tier == "lifetime",
         "subscription": get_latest_subscription_for_user(user),
     }
+
+
+def membership_badge(subscription):
+    """"Founding Lifetime Member" | "Lifetime Member" | None — only for a
+    Lifetime subscription that grants access right now (a revoked or
+    otherwise ended Lifetime row shows no active badge). Founding comes
+    from the subscription's own snapshot, never the plan's current name."""
+    if not _subscription_grants_access(subscription) or not is_lifetime_subscription(subscription):
+        return None
+    return "Founding Lifetime Member" if getattr(subscription, "founding_lifetime", False) else "Lifetime Member"
 
 
 def create_subscription_for_user(user, plan, status, source, **fields):

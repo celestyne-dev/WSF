@@ -98,6 +98,13 @@ export function cardCircleLine(card) {
   return card?.circle?.included && card.circle.label ? card.circle.label : null
 }
 
+// Signed-in viewer whose own membership covers this item (server-computed,
+// e.g. "Included with your Lifetime membership") — shown as the primary
+// state instead of a buy price. Null for anonymous / not covered.
+export function cardViewerLine(card) {
+  return card?.viewer?.included && card.viewer.label ? card.viewer.label : null
+}
+
 // Short access phrase for items with no price line (free / Circle-only).
 export function cardAccessLine(card) {
   if (cardPriceLine(card)) return null

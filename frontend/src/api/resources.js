@@ -91,6 +91,7 @@ export function mapResource(r) {
     format: r.format || null,
     estimatedTime: r.estimatedTime || null,
     circleInclusion: r.circleInclusion || null,
+    viewerMembershipLabel: r.viewerMembershipLabel || null,
     estimatedTimeValue: r.estimated_time_value ?? r.estimatedTimeValue ?? null,
     estimatedTimeMaxValue: r.estimated_time_max_value ?? r.estimatedTimeMaxValue ?? null,
     estimatedTimeUnit: r.estimated_time_unit ?? r.estimatedTimeUnit ?? null,

@@ -70,7 +70,10 @@ def enroll(program, user):
             422,
             code="external_enrollment",
         )
-    if program.access_type == "product":
+    if program.access_type == "product" and not can_access_program_content(program, user):
+        # Only an active Lifetime member enrolls in an eligible product
+        # program without buying it — a normal enrollment, never an Order
+        # or payment. Everyone else keeps the Shop path.
         raise ApiError(
             "This program's access is handled through the Shop — purchase or access is managed separately.",
             422,
@@ -119,6 +122,7 @@ def fetch_protected_curriculum(enrollment):
             raise ApiError(
                 "Active WSF Circle membership is required to access this curriculum.", 403, code="circle_required"
             )
+
         raise ApiError("You do not have access to this curriculum.", 403, code="access_denied")
     return enrollment.learning_program
 

@@ -71,6 +71,7 @@ class CirclePlan(db.Model):
         db.CheckConstraint(_CIRCLE_PLAN_BILLING_INTERVAL_CHECK_SQL, name="ck_circle_plans_billing_interval"),
         db.CheckConstraint(_CIRCLE_PLAN_STATUS_CHECK_SQL, name="ck_circle_plans_status"),
         db.CheckConstraint("price >= 0", name="ck_circle_plans_price_nonnegative"),
+        db.CheckConstraint("max_members IS NULL OR max_members > 0", name="ck_circle_plans_max_members_positive"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -96,6 +97,15 @@ class CirclePlan(db.Model):
     status = db.Column(db.String(20), nullable=False, default="draft")
     featured = db.Column(db.Boolean, nullable=False, default=False)
     display_order = db.Column(db.Integer, nullable=False, default=0)
+    # Optional seat limit (e.g. a Founding Lifetime offer). NULL = unlimited.
+    # Seats are CURRENT subscriptions on this plan (pending/active/past_due);
+    # a revoked/cancelled/expired membership frees its seat. Enforced in
+    # app/services/circle_payments.py under a row lock on this plan.
+    max_members = db.Column(db.Integer, nullable=True)
+    # Marks a Lifetime plan as the Founding Lifetime offer. Subscriptions
+    # created on it snapshot CircleSubscription.founding_lifetime, so the
+    # status survives later renames or edits of this plan.
+    is_founding = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     # Admin-configured external secure checkout — this app never collects
     # payment itself (see module docstring). Nullable: a plan with none
@@ -242,6 +252,9 @@ class CircleSubscription(db.Model):
     current_period_end = db.Column(db.DateTime(timezone=True), nullable=True)
 
     cancel_at_period_end = db.Column(db.Boolean, nullable=False, default=False)
+    # Snapshot taken when the subscription is created on a Founding
+    # Lifetime plan — never derived later from the plan's name/flags.
+    founding_lifetime = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     cancelled_at = db.Column(db.DateTime(timezone=True), nullable=True)
     ended_at = db.Column(db.DateTime(timezone=True), nullable=True)
 

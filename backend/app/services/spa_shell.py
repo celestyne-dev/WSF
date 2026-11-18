@@ -2157,7 +2157,13 @@ def _circle_prerender(plans):
                 price = f"{plan.get('currency') or ''} {plan['price']:,} {interval}".strip()
             else:
                 price = ""
-            cards.append(f"<li><h3>{_text(plan.get('name'))}</h3>{_paragraph(price)}{_paragraph(plan.get('shortDescription'))}{_string_list(plan.get('benefits'))}</li>")
+            availability = plan.get("availability") or {}
+            offer = ""
+            if plan.get("isFounding"):
+                offer = "Founding Lifetime Membership · " + ("Founding offer full" if availability.get("full") else "Limited availability")
+            elif availability.get("limited"):
+                offer = "Plan full" if availability.get("full") else "Limited availability"
+            cards.append(f"<li><h3>{_text(plan.get('name'))}</h3>{_paragraph(offer)}{_paragraph(price)}{_paragraph(plan.get('shortDescription'))}{_string_list(plan.get('benefits'))}</li>")
         membership = _paragraph(_circle_plan_guidance(plans)) + f"<ul>{''.join(cards)}</ul>"
     else:
         membership = _paragraph("WSF Circle membership plans are being finalized. Please check back soon, or contact WSF with questions.")
@@ -2213,7 +2219,10 @@ def _circle_plan_guidance(plans):
     if "yearly" in intervals:
         parts.append("Choose Yearly for the best annual value and exclusive annual-member bonuses.")
     if "lifetime" in intervals:
-        parts.append("Choose Lifetime for one payment and permanent access to WSF Circle membership benefits — no renewal.")
+        parts.append(
+            "Choose Lifetime to pay once and keep growing with WSF for life — lifetime access to eligible WSF Circle "
+            "digital membership benefits, with no renewal."
+        )
     return " ".join(parts)
 
 

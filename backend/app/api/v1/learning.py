@@ -37,7 +37,9 @@ from app.services.content_blocks import sanitize_content_blocks
 from app.services.homepage import validate_cta_url
 from app.services.audit import log_action
 from app.services.indexnow import capture_public_urls, notify_public_change
-from app.services.learning_access import can_access_program_content
+from app.services.career_hub import viewer_membership_label
+from app.services.circle import circle_tier
+from app.services.learning_access import can_access_program_content, program_circle_inclusion
 from app.services.learning_enrollments import progress_summary
 from app.services.public_visibility import public_learning_dump
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
@@ -278,6 +280,13 @@ def build_public_program_payload(program, viewer):
     payload = public_learning_dump(public_learning_program_schema(program).dump(program), program)
     payload["requiresCircle"] = program.access_type == "circle_only"
     payload["viewerCanAccess"] = can_access_program_content(program, viewer)
+    # Viewer-specific (null for anonymous / not covered): e.g. "Included
+    # with your Lifetime membership" for an eligible product program —
+    # UI guidance only; enrollment/curriculum endpoints stay authoritative.
+    payload["viewerMembershipLabel"] = viewer_membership_label(
+        program_circle_inclusion(program)["scope"], circle_tier(viewer) if viewer else None,
+        free=program.access_type == "free",
+    )
     return payload
 
 

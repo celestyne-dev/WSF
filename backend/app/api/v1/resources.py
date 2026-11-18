@@ -44,7 +44,8 @@ from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
 from app.services.public_visibility import is_public_author, is_public_taxonomy, public_author_dump, public_organization_preview
-from app.services.career_hub import CIRCLE_INCLUSION_LABELS, resource_estimated_time, resource_format
+from app.services.career_hub import CIRCLE_INCLUSION_LABELS, resource_estimated_time, resource_format, viewer_membership_label
+from app.services.circle import circle_tier, has_lifetime_circle_access
 from app.services.resource_access import (
     check_resource_access,
     get_viewer_access_source,
@@ -457,7 +458,10 @@ def _build_query(user):
     return query
 
 
-def build_public_resource_payload(resource, viewer, *, linked_products=None):
+_TIER_UNSET = object()
+
+
+def build_public_resource_payload(resource, viewer, *, linked_products=None, viewer_tier=_TIER_UNSET):
     """The one public-safe Resource representation — never includes
     file_url/external_url (see module docstring). `viewerCanAccess` is a
     serialization-only hint (app/services/resource_access.py never
@@ -537,6 +541,14 @@ def build_public_resource_payload(resource, viewer, *, linked_products=None):
         # enforces (premium: purchase OR Circle; circle_only: Circle, yearly-
         # level when circleAccessLevel == "yearly_members").
         "circleInclusion": _circle_inclusion_payload(resource),
+        # Viewer-specific (null for anonymous / non-members): "Included with
+        # your Lifetime membership" etc. when the viewer's own tier covers
+        # this Resource. Display only; POST /access stays authoritative.
+        "viewerMembershipLabel": viewer_membership_label(
+            resource_circle_inclusion(resource)["scope"],
+            (circle_tier(viewer) if viewer else None) if viewer_tier is _TIER_UNSET else viewer_tier,
+            free=resource.access_type in ("direct_download", "member_only", "external_link"),
+        ),
         "fileSize": resource.file_size,
         "pageCount": resource.page_count,
         "sponsor": public_organization_preview(resource.sponsor, OrganizationSchema(only=("id", "slug", "name", "logo")).dump),
@@ -588,7 +600,9 @@ class ResourceListResource(Resource):
         result = paginate(query, None)
         if can_manage:
             return success_response([_dump_admin_resource(r) for r in result["items"]], meta=result["meta"])
-        items = [build_public_resource_payload(r, user) for r in result["items"]]
+        # The viewer's Circle tier is resolved once for the whole page.
+        tier = circle_tier(user) if user else None
+        items = [build_public_resource_payload(r, user, viewer_tier=tier) for r in result["items"]]
         return success_response(items, meta=result["meta"])
 
     def post(self):
@@ -781,7 +795,13 @@ class ResourceAccessResource(Resource):
         # error to discard an already-minted one.
         lead_data = None
         if resource.access_type == "email_gate":
-            lead_data = ResourceLeadInputSchema().load(request.get_json(silent=True) or {})
+            body = request.get_json(silent=True) or {}
+            if not body.get("email") and viewer is not None and has_lifetime_circle_access(viewer):
+                # An active Lifetime member skips the lead form: the lead is
+                # recorded from her own account (no marketing consent
+                # assumed). Download security below is unchanged.
+                body = {"email": viewer.email, "firstName": viewer.first_name, "newsletterConsent": False}
+            lead_data = ResourceLeadInputSchema().load(body)
 
         target_url = _resolve_target_url(resource, viewer)
 

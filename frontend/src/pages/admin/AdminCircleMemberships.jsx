@@ -104,6 +104,11 @@ export default function AdminCircleMemberships() {
                           {row.isLifetime ? ' · No expiry' : ''}
                         </span>
                       )}
+                      {row.memberBadge && (
+                        <span className="mt-1 inline-block border border-plum-600/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-plum-600">
+                          {row.memberBadge}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} />

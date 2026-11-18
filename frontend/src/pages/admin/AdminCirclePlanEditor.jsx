@@ -41,6 +41,8 @@ function blankForm() {
     status: 'draft',
     featured: false,
     displayOrder: 0,
+    maxMembers: '',
+    isFounding: false,
     checkoutUrl: '',
     manageBillingUrl: '',
     benefits: [],
@@ -62,6 +64,9 @@ function toForm(plan) {
     status: plan.status || 'draft',
     featured: !!plan.featured,
     displayOrder: plan.displayOrder ?? 0,
+    maxMembers: plan.maxMembers ?? '',
+    isFounding: !!plan.isFounding,
+    availability: plan.availability || null,
     checkoutUrl: plan.checkoutUrl || '',
     manageBillingUrl: plan.manageBillingUrl || '',
     benefits: plan.benefits || [],
@@ -189,6 +194,9 @@ export default function AdminCirclePlanEditor() {
       status: nextStatus,
       featured: form.featured,
       displayOrder: form.displayOrder,
+      // Optional seat limit: blank = unlimited. Founding only on Lifetime.
+      maxMembers: form.maxMembers === '' || form.maxMembers == null ? null : Number(form.maxMembers),
+      isFounding: form.billingInterval === 'lifetime' ? !!form.isFounding : false,
       checkoutUrl: form.checkoutUrl || null,
       // Lifetime has no recurring billing to manage (the API rejects one).
       manageBillingUrl: form.billingInterval === 'lifetime' ? null : form.manageBillingUrl || null,
@@ -412,6 +420,38 @@ export default function AdminCirclePlanEditor() {
               onChange={(e) => updateField('displayOrder', Number(e.target.value))}
               className="mt-2 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
             />
+          </div>
+
+          <div className="border border-taupe-200 bg-white p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Member limit</p>
+            <p className="mt-1 text-xs text-charcoal-600/70">
+              Optional. Leave blank for unlimited. A place is used by every current membership on this plan; revoked,
+              cancelled or expired memberships free their place. Checkout and activation both enforce the limit.
+            </p>
+            <input
+              type="number"
+              min="1"
+              value={form.maxMembers}
+              onChange={(e) => updateField('maxMembers', e.target.value)}
+              placeholder="Unlimited"
+              className="mt-2 w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
+            />
+            {form.availability?.limited && (
+              <p className="mt-2 text-xs text-charcoal-600">
+                {form.availability.remaining} of {form.availability.maxMembers} places remaining
+              </p>
+            )}
+            {form.billingInterval === 'lifetime' && (
+              <label className="mt-3 flex items-center gap-2 text-sm text-charcoal-600">
+                <input type="checkbox" checked={form.isFounding} onChange={(e) => updateField('isFounding', e.target.checked)} />
+                Founding Lifetime offer
+              </label>
+            )}
+            {form.billingInterval === 'lifetime' && (
+              <p className="mt-1 text-xs text-charcoal-600/70">
+                Members who join this plan keep “Founding Lifetime Member” status even if the plan is renamed later.
+              </p>
+            )}
           </div>
 
           <Link to="/admin/circle/plans" className="block text-center text-xs font-semibold text-charcoal-600 hover:text-burgundy-600">

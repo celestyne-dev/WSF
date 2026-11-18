@@ -102,7 +102,25 @@ NEW_THIS_MONTH_LIMIT = 6
 CIRCLE_INCLUSION_LABELS = {
     "all": "Included with WSF Circle",
     "yearly_level": "Included with Yearly & Lifetime WSF Circle",
+    "lifetime": "Included with Lifetime WSF Circle",
 }
+
+LIFETIME_VIEWER_LABEL = "Included with your Lifetime membership"
+CIRCLE_VIEWER_LABEL = "Included with your WSF Circle membership"
+
+
+def viewer_membership_label(scope, tier, free=False):
+    """Viewer-specific label for a signed-in member whose own tier covers
+    an item: Lifetime members see "Included with your Lifetime membership"
+    for every gated digital item their tier includes; other members see
+    the Circle wording for items their tier includes. Free/open items get
+    no membership label. Pure: the caller resolves `tier` once (see
+    app/services/circle.py's circle_tier) — never a query per item."""
+    from app.services.circle import tier_includes_scope
+
+    if free or not tier_includes_scope(tier, scope):
+        return None
+    return LIFETIME_VIEWER_LABEL if tier == "lifetime" else CIRCLE_VIEWER_LABEL
 
 
 def url_value(key):
@@ -437,7 +455,17 @@ def _order(union, sort):
     return newest
 
 
-def _load_cards(keys):
+def _with_viewer(card, tier):
+    """Adds viewer-specific membership state to a card — only when the
+    request is authenticated (tier resolved once per request by the
+    caller); anonymous payloads never carry a `viewer` key."""
+    scope = card["circle"]["scope"] if card["circle"]["included"] else None
+    label = viewer_membership_label(scope, tier, free=card["access"]["level"] == "free")
+    card["viewer"] = {"included": label is not None, "label": label}
+    return card
+
+
+def _load_cards(keys, viewer=None):
     """(source, id) pairs -> cards in the same order: one batched query per
     source with eager loads, and payment settings read once."""
     from app.models.learning import LearningProgram
@@ -468,10 +496,23 @@ def _load_cards(keys):
             cards.append(build_resource_card(resources[item_id], settings))
         elif source == "learning" and item_id in programs:
             cards.append(build_program_card(programs[item_id]))
+    if viewer is not None:
+        cards = [_with_viewer(card, viewer["tier"]) for card in cards]
     return cards
 
 
-def search_career_hub(filters, today=None):
+def resolve_viewer(user):
+    """Per-request viewer context for the authenticated Career Hub:
+    the Circle tier is resolved ONCE here (one membership query) and then
+    applied to every card in memory. None for anonymous requests."""
+    if user is None:
+        return None
+    from app.services.circle import circle_tier
+
+    return {"tier": circle_tier(user)}
+
+
+def search_career_hub(filters, today=None, viewer=None):
     today = today or date.today()
     union = union_all(_resource_select(filters, today), _program_select(filters)).subquery("career_hub")
     total = db.session.execute(select(func.count()).select_from(union)).scalar() or 0
@@ -481,14 +522,14 @@ def search_career_hub(filters, today=None):
     ).all()
     total_pages = (total + filters["page_size"] - 1) // filters["page_size"] if total else 0
     return {
-        "items": _load_cards([(r.source, r.id) for r in rows]),
+        "items": _load_cards([(r.source, r.id) for r in rows], viewer),
         # Same pagination keys as every other list endpoint (frontend
         # api/client.js unwraps them into {items, pagination}).
         "meta": {"page": filters["page"], "per_page": filters["page_size"], "total": total, "total_pages": total_pages},
     }
 
 
-def new_this_month(today=None, limit=NEW_THIS_MONTH_LIMIT):
+def new_this_month(today=None, limit=NEW_THIS_MONTH_LIMIT, viewer=None):
     """Public items first published during the current calendar month
     (Resource.published_date / LearningProgram.published_at), newest
     first, bounded. Items with no publication date never qualify."""
@@ -508,10 +549,10 @@ def new_this_month(today=None, limit=NEW_THIS_MONTH_LIMIT):
     )
     union = union_all(resources, programs).subquery("career_hub_new")
     rows = db.session.execute(select(union.c.source, union.c.id).order_by(*_order(union, DEFAULT_SORT)).limit(limit)).all()
-    return _load_cards([(r.source, r.id) for r in rows])
+    return _load_cards([(r.source, r.id) for r in rows], viewer)
 
 
-def career_hub_meta(today=None):
+def career_hub_meta(today=None, viewer=None):
     """Filter vocabulary for the page (stable URL values + labels) and the
     New This Month strip. Formats are the full Career Hub set; goals are
     the canonical list (shortcut pills first)."""
@@ -522,5 +563,5 @@ def career_hub_meta(today=None):
         "formats": formats,
         "access": [{"key": k, "slug": k, "label": v} for k, v in ACCESS_FILTERS.items()],
         "sorts": [{"key": k, "slug": url_value(k), "label": v} for k, v in SORTS.items()],
-        "newThisMonth": new_this_month(today),
+        "newThisMonth": new_this_month(today, viewer=viewer),
     }

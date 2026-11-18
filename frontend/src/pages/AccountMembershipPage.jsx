@@ -138,7 +138,14 @@ export default function AccountMembershipPage() {
           </div>
         ) : status === "active" ? (
           <div className="border border-taupe-200 p-6">
-            <p className="text-xs font-semibold uppercase tracking-wide text-burgundy-600">Active</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-burgundy-600">Active</p>
+              {subscription.memberBadge && (
+                <span className="border border-plum-600/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-plum-600">
+                  {subscription.memberBadge}
+                </span>
+              )}
+            </div>
             <p className="mt-1 font-serif text-xl font-semibold text-charcoal">{subscription.plan?.name}</p>
             <p className="mt-1 text-sm text-charcoal-600">
               {billingLabel(subscription.plan)}

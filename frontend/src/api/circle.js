@@ -31,6 +31,10 @@ export function mapCirclePlan(p) {
     billingInterval: p.billing_interval || p.billingInterval || 'monthly',
     // Lifetime: one-time purchase, no renewal (server-computed when present).
     isLifetime: p.isLifetime ?? (p.billing_interval || p.billingInterval) === 'lifetime',
+    // Founding Lifetime offer + real seat availability (server-computed).
+    isFounding: p.isFounding ?? !!p.is_founding,
+    maxMembers: p.max_members ?? p.maxMembers ?? null,
+    availability: p.availability || { limited: false, maxMembers: null, remaining: null, full: false },
     // Legacy whole-unit price/currency (compatibility only) — display and
     // checkout use `prices`.
     price: p.price ?? 0,
@@ -76,6 +80,10 @@ export function mapCircleSubscription(s) {
     plan: s.plan ? mapCirclePlan(s.plan) : null,
     // No renewal and no expiry date for a lifetime membership.
     isLifetime: s.isLifetime ?? (s.plan?.billing_interval || s.plan?.billingInterval) === 'lifetime',
+    foundingLifetime: !!(s.foundingLifetime ?? s.founding_lifetime),
+    // Server-computed: "Lifetime Member" / "Founding Lifetime Member" while
+    // the membership grants access, else null.
+    memberBadge: s.memberBadge || null,
     user: s.user ? { id: s.user.id, fullName: s.user.full_name || s.user.fullName, email: s.user.email } : null,
   }
 }
@@ -96,9 +104,12 @@ function buildPlanPayload(payload) {
     featured: payload.featured,
     displayOrder: payload.displayOrder,
     checkoutUrl: payload.checkoutUrl || undefined,
-    manageBillingUrl: payload.manageBillingUrl || undefined,
+    manageBillingUrl: payload.manageBillingUrl || (payload.manageBillingUrl === null ? null : undefined),
     benefits: payload.benefits,
     seo: payload.seo || undefined,
+    // Optional seat limit (null = unlimited) and Founding Lifetime flag.
+    ...('maxMembers' in payload ? { maxMembers: payload.maxMembers } : {}),
+    ...('isFounding' in payload ? { isFounding: !!payload.isFounding } : {}),
   }
 }
 
@@ -128,6 +139,8 @@ export async function fetchMyCircleMembership() {
     // Server-computed (yearly OR lifetime) — never re-derive from the plan's
     // billing interval on the client.
     yearlyLevelAccess: !!data?.yearlyLevelAccess,
+    lifetimeAccess: !!data?.lifetimeAccess,
+    tier: data?.tier || null,
     subscription: mapCircleSubscription(data?.subscription),
   }
 }

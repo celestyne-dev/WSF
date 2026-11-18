@@ -131,6 +131,11 @@ def _add_billing_interval(dt, billing_interval):
     return dt + relativedelta(months=1)
 
 
+def is_founding_lifetime_plan(plan):
+    """A plan whose new subscriptions are snapshotted as Founding Lifetime."""
+    return bool(plan.is_founding and plan.billing_interval == "lifetime")
+
+
 def ensure_paystack_configured():
     """Checked at checkout-initiation time, independent of the identical
     check app/services/paystack.py's own _secret_key() performs right
@@ -213,6 +218,68 @@ def _classify_membership_action(user, plan):
     if current.current_period_end is None:
         return _MEMBERSHIP_BLOCKED_NON_EXPIRING, current
     return _MEMBERSHIP_ACTION_RENEW, current
+
+
+# --- plan capacity (e.g. Founding Lifetime) -------------------------------------
+#
+# SEAT SEMANTICS: a seat is a CURRENT CircleSubscription on the plan
+# (pending/active/past_due — the same statuses the one-current-membership
+# index uses). A revoked/cancelled/expired membership frees its seat, so a
+# staff revocation after a refund returns the place to the offer.
+#
+# CONCURRENCY: the authoritative check happens at ACTIVATION, under a
+# `SELECT ... FOR UPDATE` lock on the CirclePlan row (lock order: payment
+# -> plan -> subscription, consistent everywhere), so two verified
+# payments racing for the final seat are serialized and only one becomes a
+# membership. Checkout initiation also refuses when every seat is either
+# taken or held by another buyer's recent in-flight checkout, so
+# overselling is prevented up front in all but true simultaneous races;
+# a payment that still loses the race stays `verified` for staff
+# reconciliation/refund (outcome "membership_conflict", reason
+# "plan_full") — never a silent extra membership.
+
+
+def plan_seats_used(plan):
+    from app.models.circle import CIRCLE_SUBSCRIPTION_CURRENT_STATUSES
+
+    return CircleSubscription.query.filter(
+        CircleSubscription.plan_id == plan.id,
+        CircleSubscription.status.in_(CIRCLE_SUBSCRIPTION_CURRENT_STATUSES),
+    ).count()
+
+
+def _plan_seats_held(plan, exclude_user_id):
+    window_start = datetime.now(timezone.utc) - _PENDING_REUSE_WINDOW
+    return (
+        CirclePayment.query.filter(
+            CirclePayment.plan_id == plan.id,
+            CirclePayment.status.in_(("pending", "verified")),
+            CirclePayment.subscription_id.is_(None),
+            CirclePayment.user_id != exclude_user_id,
+            CirclePayment.created_at >= window_start,
+        ).count()
+    )
+
+
+def plan_availability(plan):
+    """Public availability for a capacity-limited plan:
+    {"limited": False} for an unlimited plan, else
+    {"limited": True, "maxMembers": n, "remaining": r, "full": bool}.
+    `remaining` is real seats left (never padded or invented)."""
+    if not plan.max_members:
+        return {"limited": False, "maxMembers": None, "remaining": None, "full": False}
+    remaining = max(plan.max_members - plan_seats_used(plan), 0)
+    return {"limited": True, "maxMembers": plan.max_members, "remaining": remaining, "full": remaining == 0}
+
+
+def ensure_plan_has_capacity(plan, user):
+    if not plan.max_members:
+        return
+    if plan_seats_used(plan) + _plan_seats_held(plan, user.id) >= plan.max_members:
+        raise ApiError(
+            "This founding offer is full." if plan.is_founding else "This plan is currently full.",
+            409, code="plan_full",
+        )
 
 
 def _raise_for_blocked_action(action):
@@ -329,6 +396,8 @@ def start_circle_checkout(user, plan, currency=None):
     action, _current = _classify_membership_action(user, plan)
     if action != _MEMBERSHIP_ACTION_NEW:
         _raise_for_blocked_action(action)
+    if action == _MEMBERSHIP_ACTION_NEW:
+        ensure_plan_has_capacity(plan, user)
     # action is now always "new" or "renew" — both may check out; a
     # "renew" payment extends the existing subscription once verified
     # (see consume_verified_circle_payment), it is never blocked here.
@@ -768,6 +837,15 @@ def _create_new_subscription_for_payment(payment, user, plan):
     IntegrityError handling, just without its own intermediate commit,
     so the caller can fold both mutations into one final commit.
     """
+    if plan.max_members:
+        # Authoritative seat check, serialized on the plan row (see the
+        # capacity section above) — the final seat can't be sold twice.
+        from app.models.circle import CirclePlan
+
+        CirclePlan.query.with_for_update().filter_by(id=plan.id).one()
+        if plan_seats_used(plan) >= plan.max_members:
+            return None, "plan_full"
+
     now = datetime.now(timezone.utc)
     subscription = CircleSubscription(
         user_id=user.id,
@@ -779,6 +857,7 @@ def _create_new_subscription_for_payment(payment, user, plan):
         starts_at=now,
         current_period_start=now,
         current_period_end=_add_billing_interval(now, plan.billing_interval),
+        founding_lifetime=is_founding_lifetime_plan(plan),
     )
     db.session.add(subscription)
     try:
@@ -879,7 +958,7 @@ def consume_verified_circle_payment(reference, actor_user=None):
     if conflict:
         log_action(
             actor_user, "circle_payment.consumption_conflict", "CirclePayment", payment.id,
-            changes={"reason": action},
+            changes={"reason": conflict if isinstance(conflict, str) else action},
         )
         return {"payment": payment, "outcome": "membership_conflict"}
 

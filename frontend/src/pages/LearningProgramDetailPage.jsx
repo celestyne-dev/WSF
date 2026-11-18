@@ -268,7 +268,11 @@ export default function LearningProgramDetailPage() {
   }, [slug])
 
   useEffect(() => {
-    const eligible = program && (program.accessType === 'free' || program.accessType === 'circle_only')
+    // A product program is enrollable only when the server says this viewer
+    // may access it (an eligible program for an active Lifetime member).
+    const eligible =
+      program &&
+      (program.accessType === 'free' || program.accessType === 'circle_only' || (program.accessType === 'product' && program.viewerCanAccess === true))
     if (!eligible || !accessToken) return undefined
     let active = true
     checkLearningEnrollment(program.id).then((result) => {
@@ -289,14 +293,15 @@ export default function LearningProgramDetailPage() {
     async function run() {
       setProtectedModules(null)
       setCircleAccessDenied(false)
-      if (!program || program.accessType !== 'circle_only' || !accessToken) return
+      const protectedAccess = program && (program.accessType === 'circle_only' || (program.accessType === 'product' && program.viewerCanAccess === true))
+      if (!protectedAccess || !accessToken) return
       if (!enrollment || enrollment.status !== 'active') return
       try {
         const modules = await fetchProtectedCurriculum(enrollment.id)
         if (active) setProtectedModules(modules)
       } catch (err) {
         if (!active) return
-        if (err?.response?.data?.error?.code === 'circle_required') setCircleAccessDenied(true)
+        if (['circle_required', 'access_denied'].includes(err?.response?.data?.error?.code)) setCircleAccessDenied(true)
       }
     }
     run()
@@ -332,6 +337,7 @@ export default function LearningProgramDetailPage() {
       setEnrollment(result.enrollment)
       toast.success(`You're enrolled in ${program.title}.`)
       trackEvent('learning_enrollment_started', { programSlug: program.slug })
+      if (program.accessType === 'product') trackEvent('lifetime_course_enrollment', { programSlug: program.slug })
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || 'Something went wrong. Please try again.')
     } finally {
@@ -397,7 +403,7 @@ export default function LearningProgramDetailPage() {
             <span>{program.deliveryMode?.replace('_', ' ')}</span>
             {program.providerOrganization && <span>Provided by {program.providerOrganization.name}</span>}
           </div>
-          {program.circleInclusion?.included && program.circleInclusion.label && (
+          {program.circleInclusion?.included && program.circleInclusion.label && !program.viewerMembershipLabel && (
             <p className="mt-2 text-sm font-medium text-plum-600">{program.circleInclusion.label}</p>
           )}
 
@@ -428,6 +434,13 @@ export default function LearningProgramDetailPage() {
                 onEnroll={handleEnroll}
                 onSignIn={() => navigate('/login', { state: { from: location.pathname } })}
               />
+            ) : program.accessType === 'product' && program.viewerCanAccess === true ? (
+              // Eligible WSF Learning for an active Lifetime member: a normal
+              // enrollment — never the Shop/Product checkout.
+              <div>
+                <p className="mb-3 text-sm font-semibold text-plum-600">{program.viewerMembershipLabel || 'Included with your Lifetime membership'}</p>
+                <EnrollmentStateCta enrollment={enrollment} pending={enrolling} onEnroll={handleEnroll} />
+              </div>
             ) : (
               <CtaButton program={program} />
             )}
@@ -473,7 +486,8 @@ export default function LearningProgramDetailPage() {
         // curriculum fetched above. Everything else (circle_only without full
         // access yet, external, product) renders the safe public outline the
         // backend returned instead — never lesson content/links/toggles.
-        const circleFullAccess = program.accessType === 'circle_only' && protectedModules !== null
+        const circleFullAccess =
+          (program.accessType === 'circle_only' || (program.accessType === 'product' && program.viewerCanAccess === true)) && protectedModules !== null
         const curriculumModules = circleFullAccess ? protectedModules : program.modules
         const curriculumEnrollment = program.accessType === 'free' || circleFullAccess ? enrollment : null
         if (!curriculumModules?.length) return null

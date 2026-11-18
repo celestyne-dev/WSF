@@ -46,6 +46,9 @@ class CirclePlanInputSchema(ma.Schema):
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(CIRCLE_PLAN_STATUSES))
     featured = fields.Boolean(required=False, load_default=False)
     display_order = fields.Integer(required=False, load_default=0, data_key="displayOrder")
+    # Optional seat limit (NULL = unlimited) and Founding designation.
+    max_members = fields.Integer(required=False, allow_none=True, load_default=None, data_key="maxMembers", validate=validate.Range(min=1))
+    is_founding = fields.Boolean(required=False, load_default=False, data_key="isFounding")
     checkout_url = fields.String(required=False, allow_none=True, data_key="checkoutUrl", validate=_SAFE_URL_VALIDATE)
     manage_billing_url = fields.String(required=False, allow_none=True, data_key="manageBillingUrl", validate=_SAFE_URL_VALIDATE)
     benefits = fields.List(fields.String(validate=validate.Length(max=300)), required=False, load_default=list)
@@ -74,6 +77,8 @@ class CirclePlanUpdateSchema(ma.Schema):
     status = fields.String(required=False, validate=validate.OneOf(CIRCLE_PLAN_STATUSES))
     featured = fields.Boolean(required=False)
     display_order = fields.Integer(required=False, data_key="displayOrder")
+    max_members = fields.Integer(required=False, allow_none=True, data_key="maxMembers", validate=validate.Range(min=1))
+    is_founding = fields.Boolean(required=False, data_key="isFounding")
     checkout_url = fields.String(required=False, allow_none=True, data_key="checkoutUrl", validate=_SAFE_URL_VALIDATE)
     manage_billing_url = fields.String(required=False, allow_none=True, data_key="manageBillingUrl", validate=_SAFE_URL_VALIDATE)
     benefits = fields.List(fields.String(validate=validate.Length(max=300)), required=False)

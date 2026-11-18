@@ -287,6 +287,11 @@ export default function AdminCircleMembershipDetail() {
             <p className="text-xs text-charcoal-600/70">
               {intervalLabel(subscription.plan?.billingInterval)} &middot; {subscription.source}
             </p>
+            {subscription.memberBadge && (
+              <p className="mt-2 inline-block border border-plum-600/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-plum-600">
+                {subscription.memberBadge}
+              </p>
+            )}
             {subscription.isLifetime && (
               <p className="mt-2 text-sm font-medium text-plum-600">
                 {subscription.status === 'active' ? 'Active · ' : ''}

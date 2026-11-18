@@ -107,6 +107,7 @@ export function mapLearningProgram(p) {
     format: p.format || null,
     estimatedTime: p.estimatedTime || null,
     circleInclusion: p.circleInclusion || null,
+    viewerMembershipLabel: p.viewerMembershipLabel || null,
     durationUnit: p.duration_unit ?? p.durationUnit ?? null,
     heroMedia: mapMediaRef(p.hero_media ?? p.heroMedia),
     primaryInstructor: mapInstructor(p.primary_instructor ?? p.primaryInstructor),

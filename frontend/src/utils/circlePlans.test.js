@@ -4,7 +4,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  LIFETIME_EXCLUSIONS,
+  LIFETIME_INCLUDED,
+  LIFETIME_PLAN_HIGHLIGHTS,
   LIFETIME_SCOPE_NOTE,
+  memberBadge,
+  planOfferState,
   adminPeriodText,
   intervalLabel,
   membershipTermLines,
@@ -21,7 +26,7 @@ const lifetime = { slug: 'l', billingInterval: 'lifetime', isLifetime: true }
 
 test('plan labels and suffixes for all three intervals', () => {
   assert.deepEqual([monthly, yearly, lifetime].map(planPriceSuffix), ['/ month', '/ year', 'one-time'])
-  assert.deepEqual([monthly, yearly, lifetime].map(planTagline), ['Flexible access', 'Best annual value', 'One payment · no renewal'])
+  assert.deepEqual([monthly, yearly, lifetime].map(planTagline), ['Flexible access', 'Best for ongoing career growth', 'Pay once. Keep growing with WSF for life.'])
   assert.deepEqual(['monthly', 'yearly', 'lifetime', undefined].map(intervalLabel), ['Monthly', 'Yearly', 'Lifetime', 'Monthly'])
   assert.equal(planExtrasHeading(monthly), null)
   assert.equal(planExtrasHeading(lifetime), 'Lifetime member benefits')
@@ -35,8 +40,35 @@ test('guidance only mentions configured plan types', () => {
 })
 
 test('lifetime scope never promises everything WSF offers', () => {
-  assert.match(LIFETIME_SCOPE_NOTE, /WSF Circle membership benefits/)
+  assert.equal(LIFETIME_SCOPE_NOTE, 'Lifetime access to eligible WSF Circle digital membership benefits.')
   assert.doesNotMatch(LIFETIME_SCOPE_NOTE, /everything/i)
+  assert.match(LIFETIME_EXCLUSIONS, /coaching/)
+  assert.match(LIFETIME_EXCLUSIONS, /physical products/)
+  assert.ok(LIFETIME_INCLUDED.some((line) => /Learning/.test(line)))
+  assert.deepEqual(LIFETIME_PLAN_HIGHLIGHTS, ['One-time payment', 'No renewal', 'Lifetime access to eligible WSF digital membership benefits'])
+})
+
+test('founding offer state only reports real availability', () => {
+  const founding = (availability) => ({ ...lifetime, isFounding: true, availability })
+  assert.deepEqual(planOfferState({ ...lifetime, availability: { limited: false } }), { heading: null, status: null, remaining: null, full: false })
+  const open = planOfferState(founding({ limited: true, maxMembers: 100, remaining: 37, full: false }))
+  assert.equal(open.heading, 'Founding Lifetime Membership')
+  assert.equal(open.status, 'Limited availability')
+  assert.equal(open.remainingText, '37 places remaining')
+  assert.equal(planOfferState(founding({ limited: true, maxMembers: 100, remaining: 1, full: false })).remainingText, '1 place remaining')
+  const full = planOfferState(founding({ limited: true, maxMembers: 100, remaining: 0, full: true }))
+  assert.equal(full.status, 'Founding offer full')
+  assert.equal(full.full, true)
+  assert.equal(planOfferState({ ...monthly, availability: { limited: true, remaining: 0, full: true } }).status, 'Plan full')
+  // No count from the server -> no invented number.
+  assert.equal(planOfferState(founding({ limited: true, full: false })).remainingText, null)
+})
+
+test('member badge comes from the server only', () => {
+  assert.equal(memberBadge({ memberBadge: 'Lifetime Member' }), 'Lifetime Member')
+  assert.equal(memberBadge({ memberBadge: 'Founding Lifetime Member' }), 'Founding Lifetime Member')
+  assert.equal(memberBadge({ isLifetime: true, memberBadge: null }), null)
+  assert.equal(memberBadge(null), null)
 })
 
 test('lifetime membership shows no renewal or expiry date', () => {

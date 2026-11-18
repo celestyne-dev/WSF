@@ -8,7 +8,17 @@ import { fetchJobs } from '../api/jobs'
 import { fetchOpportunities } from '../api/opportunities'
 import { fetchEvents } from '../api/events'
 import { getMembershipAction, getCheckoutErrorPresentation } from '../utils/circlePayment'
-import { LIFETIME_SCOPE_NOTE, planExtrasHeading, planGuidance, planPriceSuffix, planTagline } from '../utils/circlePlans'
+import {
+  LIFETIME_EXCLUSIONS,
+  LIFETIME_INCLUDED,
+  LIFETIME_PLAN_HIGHLIGHTS,
+  LIFETIME_SCOPE_NOTE,
+  planExtrasHeading,
+  planGuidance,
+  planOfferState,
+  planPriceSuffix,
+  planTagline,
+} from '../utils/circlePlans'
 import { formatProductPrice } from '../utils/format'
 import { UNAVAILABLE_CURRENCY_MESSAGE, canCheckoutPrice, pickDefaultPrice } from '../utils/money'
 import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
@@ -118,7 +128,17 @@ function RequestAssistanceToggle({ plan, label = 'Request assistance' }) {
   )
 }
 
-function PlanCta({ plan, accessToken, membership, hasAccess, checkingOutSlug, checkoutError, onPaySecurely, checkoutBlocked }) {
+function PlanCta({ plan, planFull, accessToken, membership, hasAccess, checkingOutSlug, checkoutError, onPaySecurely, checkoutBlocked }) {
+  // A full capacity-limited offer never shows a working purchase action —
+  // the server enforces this at checkout and activation as well. An active
+  // Lifetime member still sees her own state below.
+  if (planFull && !membership?.subscription?.isLifetime) {
+    return (
+      <p className="mt-4 text-sm font-semibold text-burgundy-600" role="status">
+        {plan.isFounding ? 'Founding offer full' : 'This plan is currently full'}
+      </p>
+    )
+  }
   if (!accessToken) {
     // The plan itself is already fully public — only enrollment requires
     // an account. The chosen plan's slug (never price/payment/user data)
@@ -495,6 +515,7 @@ export default function CirclePage() {
                 const isSelected = !!selectedPlanSlug && plan.slug === selectedPlanSlug
                 const isYearly = plan.billingInterval === 'yearly'
                 const extrasHeading = planExtrasHeading(plan)
+                const offer = planOfferState(plan)
                 return (
                   <div
                     key={plan.slug}
@@ -517,10 +538,19 @@ export default function CirclePage() {
                     {plan.featured && !isSelected && (
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">Featured</p>
                     )}
+                    {offer.heading && (
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-plum-600">{offer.heading}</p>
+                    )}
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-charcoal-600/70">
                       {planTagline(plan)}
                     </p>
                     <h3 className="font-serif text-xl font-semibold text-charcoal">{plan.name}</h3>
+                    {offer.status && (
+                      <p className={`mt-1 text-xs font-semibold ${offer.full ? 'text-burgundy-600' : 'text-charcoal-600'}`} role="status">
+                        {offer.status}
+                        {offer.remainingText ? ` · ${offer.remainingText}` : ''}
+                      </p>
+                    )}
                     {plan.shortDescription && <p className="mt-2 text-sm text-charcoal-600">{plan.shortDescription}</p>}
                     <div className="mt-4">
                       {plan.prices?.length ? (
@@ -550,7 +580,13 @@ export default function CirclePage() {
                         </ul>
                       </>
                     )}
-                    {plan.isLifetime && <p className="mt-4 text-xs text-charcoal-600/80">{LIFETIME_SCOPE_NOTE}</p>}
+                    {plan.isLifetime && (
+                      <ul className="mt-4 space-y-1 border-l-2 border-plum-600 pl-3 text-xs font-medium text-charcoal">
+                        {LIFETIME_PLAN_HIGHLIGHTS.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    )}
                     {plan.description?.length > 0 && (
                       <div className="mt-4 text-sm text-charcoal-600">
                         <ArticleContent blocks={plan.description} />
@@ -558,6 +594,7 @@ export default function CirclePage() {
                     )}
                     <PlanCta
                       plan={plan}
+                      planFull={offer.full}
                       accessToken={accessToken}
                       membership={membership}
                       hasAccess={hasAccess}
@@ -572,6 +609,21 @@ export default function CirclePage() {
             </div>
           )}
         </div>
+
+        {plans.some((p) => p.isLifetime) && (
+          <div className="border-t border-taupe-200 py-14">
+            <h2 className="font-serif text-3xl font-semibold text-charcoal">What Lifetime includes</h2>
+            <p className="mt-3 max-w-2xl text-sm text-charcoal-600">{LIFETIME_SCOPE_NOTE}</p>
+            <ul className="mt-5 grid max-w-3xl grid-cols-1 gap-2 text-sm text-charcoal sm:grid-cols-2">
+              {LIFETIME_INCLUDED.map((line) => (
+                <li key={line} className="border border-taupe-200 bg-white px-4 py-3">
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-5 max-w-3xl text-xs leading-relaxed text-charcoal-600/80">{LIFETIME_EXCLUSIONS}</p>
+          </div>
+        )}
 
         <div className="border-t border-taupe-200 py-14">
           <h2 className="font-serif text-3xl font-semibold text-charcoal">Explore what&apos;s inside WSF Circle</h2>

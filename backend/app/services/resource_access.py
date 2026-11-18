@@ -33,7 +33,7 @@ app/models/resource.py) — Community membership, Product/Order records,
 and frontend flags are likewise never consulted for either path.
 """
 from app.models.resource import ResourcePurchase
-from app.services.circle import has_circle_access, has_yearly_circle_access
+from app.services.circle import has_circle_access, has_lifetime_circle_access, has_yearly_circle_access
 from app.utils.responses import ApiError
 
 
@@ -128,7 +128,10 @@ def viewer_can_access(resource, user):
     since access only becomes true once the gate is actually submitted.
     """
     if resource.access_type == "email_gate":
-        return False
+        # Only an active Lifetime member skips the lead form (POST /access
+        # then records the lead from her account); everyone else must
+        # submit it first.
+        return has_lifetime_circle_access(user)
     try:
         check_resource_access(resource, user)
         return True

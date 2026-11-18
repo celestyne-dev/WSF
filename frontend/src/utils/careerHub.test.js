@@ -10,6 +10,7 @@ import {
   cardEyebrow,
   cardMetaLine,
   cardPriceLine,
+  cardViewerLine,
   describeResults,
   hubRequestParams,
   isFiltering,
@@ -107,4 +108,11 @@ test('yearly-level and non-included items are worded accurately', () => {
 test('results announcement names the active filters', () => {
   assert.equal(describeResults(1, resetHubState(), META), '1 tool')
   assert.equal(describeResults(4, { ...resetHubState(), goal: 'get-promoted', format: 'workbook' }, META), '4 tools for Get promoted, Workbook')
+})
+
+test('viewer membership line replaces nothing for anonymous and leads for covered members', () => {
+  assert.equal(cardViewerLine(premiumCard), null)
+  const lifetime = { ...premiumCard, viewer: { included: true, label: 'Included with your Lifetime membership' } }
+  assert.equal(cardViewerLine(lifetime), 'Included with your Lifetime membership')
+  assert.equal(cardViewerLine({ ...premiumCard, viewer: { included: false, label: null } }), null)
 })

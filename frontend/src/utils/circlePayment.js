@@ -81,6 +81,8 @@ export function getCheckoutErrorPresentation(code) {
         message: "You're currently on another WSF Circle plan. Automated plan switching isn't available yet — request assistance and our team will help.",
         showAssistance: true,
       }
+    case 'plan_full':
+      return { message: 'This founding offer is full.', showAssistance: false }
     case 'lifetime_membership_active':
       return { message: 'You already have Lifetime WSF Circle access.', showAssistance: false }
     case 'lifetime_upgrade_unavailable':
