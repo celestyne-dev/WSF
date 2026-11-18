@@ -7,6 +7,7 @@ import HomepageModuleFields from '../../components/cms/HomepageModuleFields'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { HOMEPAGE_MODULE_REGISTRY, newModuleDefaults } from '../../constants/homepageModules'
+import { validateHomepageExtras } from '../../utils/homepageCollections'
 
 let tempIdCounter = 0
 function tempId() {
@@ -63,6 +64,13 @@ export default function AdminHomepageBuilder() {
   const hasHero = modules?.some((m) => m.type === 'hero')
 
   async function handleSave() {
+    // Career Pathways / Content Collection: catch a missing destination or
+    // empty selection before the round-trip (the backend re-validates).
+    const problem = validateHomepageExtras(modules)
+    if (problem) {
+      toast.error(problem)
+      return
+    }
     setSaving(true)
     try {
       const saved = await saveAdminHomepage(modules)

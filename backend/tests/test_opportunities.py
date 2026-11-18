@@ -1,6 +1,14 @@
+import datetime
+
 import pytest
 
 from tests.conftest import auth_headers
+
+
+def _days_from_today(days):
+    # The public events list shows upcoming events by default, so a fixed
+    # calendar date silently turns into a past event once that day passes.
+    return (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
 
 ADMIN_PAYLOAD = {
     "email": "opsadmin@example.com",
@@ -300,7 +308,7 @@ def test_featured_filter_on_jobs_opportunities_events_resources(client, admin_to
         "/api/v1/events",
         json={
             "title": "Featured Summit",
-            "date": "2026-11-01",
+            "date": _days_from_today(30),
             "countryCode": "US",
             "featured": True,
             "description": [{"type": "paragraph", "text": "A summit."}],
@@ -312,7 +320,7 @@ def test_featured_filter_on_jobs_opportunities_events_resources(client, admin_to
         "/api/v1/events",
         json={
             "title": "Regular Meetup",
-            "date": "2026-11-02",
+            "date": _days_from_today(31),
             "countryCode": "US",
             "featured": False,
             "description": [{"type": "paragraph", "text": "A meetup."}],

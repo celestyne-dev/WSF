@@ -2,6 +2,7 @@ import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { ROLE_DEFINITIONS } from '../constants/roles'
 import { mapMediaRef } from '../utils/media'
+import { moduleConfigToInput } from '../utils/homepageCollections'
 
 // The mock admin dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -252,7 +253,7 @@ export async function saveAdminHomepage(modules) {
         heading: m.heading,
         subheading: m.subheading,
         selectionMode: m.selectionMode,
-        config: m.config || {},
+        config: moduleConfigToInput(m),
         mediaId: m.mediaId ?? null,
         ctaLabel: m.ctaLabel ?? null,
         ctaUrl: m.ctaUrl ?? null,

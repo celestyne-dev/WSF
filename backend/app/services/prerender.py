@@ -1095,6 +1095,10 @@ _HOME_DEFAULT_HEADINGS = {
     "featured_stories": "Editors' picks", "latest_stories": "Latest stories", "featured_woman": "Featured woman",
     "jobs": "Jobs", "opportunities": "Opportunities", "events": "Events", "resources": "Resources",
 }
+_COLLECTION_DEFAULT_HEADINGS = {
+    "articles": "Stories", "people": "People", "opportunities": "Opportunities", "jobs": "Jobs",
+    "events": "Events", "resources": "Resources", "learning": "Learning",
+}
 _HOME_ITEM_KIND = {"jobs": "jobs", "opportunities": "opportunities", "events": "events", "resources": "resources"}
 
 
@@ -1138,6 +1142,29 @@ def render_homepage_prerender(sections, site_name):
             path = f"/{'series' if term['kind'] == 'series' else 'topics'}/{term['slug']}"
             inner = sub + f'<p>{_hub_link(path, term["name"])}</p>' + _paragraph(term.get("description"), _META_CLASS)
             body.append(_section(heading or term["name"], inner + _item_list(_article_card(a) for a in section.get("articles") or [])))
+        elif section["type"] == "career_pathways":
+            cards = []
+            for card in section["cards"]:
+                href = _safe_cta_href(card.get("href"))
+                if not href:
+                    continue
+                cards.append(
+                    "<li><article>"
+                    + (f'<p class="{_META_CLASS}">{_text(card["eyebrow"])}</p>' if _is_nonblank(card.get("eyebrow")) else "")
+                    + f'<h3 class="{_HUB_ITEM_TITLE_CLASS}"><a href="{_attr(href)}" class="{_LINK_CLASS}">{_text(card["title"])}</a></h3>'
+                    + _paragraph(card.get("description"), _META_CLASS)
+                    + "</article></li>"
+                )
+            body.append(_section(heading or "Start here", sub + _item_list(cards) + _cta_links(section.get("ctas"))))
+        elif section["type"] == "content_collection":
+            render = HUB_CARD_RENDERERS.get(section["entityType"])
+            if section["entityType"] == "articles":
+                render = _article_card
+            if render is not None:
+                body.append(_section(
+                    heading or _COLLECTION_DEFAULT_HEADINGS.get(section["entityType"], ""),
+                    sub + _item_list(render(i) for i in section["items"]) + _cta_links(section.get("ctas")),
+                ))
         elif section["type"] in _HOME_ITEM_KIND:
             render = HUB_CARD_RENDERERS[_HOME_ITEM_KIND[section["type"]]]
             body.append(_section(heading, sub + _item_list(render(i) for i in section["items"])))

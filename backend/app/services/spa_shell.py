@@ -377,12 +377,16 @@ def _safe_article_summary_payload(article):
     return _redact_internal_media_fields(article_summary_schema().dump(article))
 
 
-def _safe_homepage_modules_payload(modules):
+def _safe_homepage_modules_payload(modules, resolved=None):
     """The SAME dump `GET /api/v1/public/homepage` already returns —
     see `get_enabled_homepage_modules()`'s own docstring — with the same
-    Media redaction as `_safe_public_article_payload`.
+    Media redaction as `_safe_public_article_payload`. `resolved` is the
+    career_pathways/content_collection resolution, shared with the
+    prerender so it is computed once per request.
     """
-    return _redact_internal_media_fields(HomepageModuleSchema(many=True).dump(modules))
+    from app.services.homepage import public_homepage_modules_payload
+
+    return _redact_internal_media_fields(public_homepage_modules_payload(modules, resolved))
 
 
 def _safe_public_person_payload(person):
@@ -861,8 +865,11 @@ def render_homepage_shell():
 
     modules = get_enabled_homepage_modules()
     lead_article = resolve_hero_lead_article(modules)
+    from app.services.homepage_collections import resolve_homepage_extras
+
+    extras = resolve_homepage_extras(modules)
     bootstrap_payload = {
-        "modules": _safe_homepage_modules_payload(modules),
+        "modules": _safe_homepage_modules_payload(modules, extras),
         "leadArticle": _safe_article_summary_payload(lead_article) if lead_article is not None else None,
     }
     html_doc = _set_bootstrap_data(html_doc, "homepage", bootstrap_payload)
@@ -876,7 +883,7 @@ def render_homepage_shell():
     # visible, crawlable HTML inside #root (same modules as the bootstrap).
     from app.services.public_hubs import homepage_sections
 
-    html_doc = _set_root_prerender(html_doc, render_homepage_prerender(homepage_sections(modules, lead_article), site_name))
+    html_doc = _set_root_prerender(html_doc, render_homepage_prerender(homepage_sections(modules, lead_article, extras), site_name))
     return _html_response(html_doc)
 
 

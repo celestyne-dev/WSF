@@ -23,6 +23,10 @@ HOMEPAGE_MODULE_TYPES = (
     "mentorship_cta",
     "editorial_callout",
     "sponsor_placement",
+    # Configurable sections (app/services/homepage_collections.py). Their
+    # item/card limits are validated there, not via itemCount bounds below.
+    "career_pathways",
+    "content_collection",
 )
 _HOMEPAGE_MODULE_TYPE_CHECK_SQL = "type IN (" + ", ".join(f"'{t}'" for t in HOMEPAGE_MODULE_TYPES) + ")"
 

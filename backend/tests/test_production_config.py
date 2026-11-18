@@ -281,6 +281,8 @@ def test_create_app_production_boots_when_config_is_valid(monkeypatch):
     # "boots when valid" test must patch them to real values too.
     monkeypatch.setattr(ProductionConfig, "FRONTEND_URL", "https://womenshapingfutures.org")
     monkeypatch.setattr(ProductionConfig, "MEDIA_ROOT", "/var/lib/womenshapingfutures/media")
+    # A valid production config also keeps protected Resource files outside the checkout.
+    monkeypatch.setattr(ProductionConfig, "PROTECTED_MEDIA_ROOT", "/var/lib/womenshapingfutures/protected_media")
 
     from app import create_app
 
@@ -374,6 +376,8 @@ def test_production_check_cli_passes_with_valid_production_config(monkeypatch):
     monkeypatch.setattr(ProductionConfig, "SMTP_FROM_EMAIL", "noreply@womenshapingfutures.org")
     monkeypatch.setattr(ProductionConfig, "FRONTEND_URL", "https://womenshapingfutures.org")
     monkeypatch.setattr(ProductionConfig, "MEDIA_ROOT", "/var/lib/womenshapingfutures/media")
+    # A valid production config also keeps protected Resource files outside the checkout.
+    monkeypatch.setattr(ProductionConfig, "PROTECTED_MEDIA_ROOT", "/var/lib/womenshapingfutures/protected_media")
 
     from app import create_app
 

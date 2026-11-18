@@ -6,7 +6,7 @@ from app.models.geography import Country
 from app.schemas.cms import HomepageModuleSchema, SocialLinkSchema
 from app.schemas.geography import CountrySchema
 from app.services.footer import build_public_footer
-from app.services.homepage import get_enabled_homepage_modules
+from app.services.homepage import get_enabled_homepage_modules, public_homepage_modules_payload
 from app.services.navigation import serialize_public_menu
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 from app.utils.responses import success_response
@@ -60,7 +60,7 @@ class HomepageResource(Resource):
         # just a deterministic timestamp a cache layer could key on.
         updated_at = max((m.updated_at for m in modules), default=None)
         meta = {"updatedAt": updated_at.isoformat() if updated_at else None}
-        return success_response(homepage_module_schema.dump(modules, many=True), meta=meta)
+        return success_response(public_homepage_modules_payload(modules), meta=meta)
 
 
 class NavigationResource(Resource):

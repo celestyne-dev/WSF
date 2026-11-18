@@ -1,4 +1,4 @@
-from marshmallow import RAISE, fields, pre_load, validate, validates_schema, ValidationError
+from marshmallow import RAISE, fields, post_load, pre_load, validate, validates_schema, ValidationError
 
 from app.extensions import db, ma
 from app.models.cms import (
@@ -216,6 +216,14 @@ class HomepageModuleInputSchema(ma.Schema):
             key = (data.get("config") or {}).get("placementKey")
             if key and key not in HOMEPAGE_SPONSOR_PLACEMENT_KEYS:
                 raise ValidationError("Unknown sponsor placement key.", field_name="config")
+
+    @post_load
+    def normalize_config(self, data, **kwargs):
+        # career_pathways / content_collection: strict validation plus
+        # stale-key clearing; every other type passes through untouched.
+        from app.services.homepage_collections import normalize_module_config
+
+        return normalize_module_config(data)
 
 
 class HomepageInputSchema(ma.Schema):

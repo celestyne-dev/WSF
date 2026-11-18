@@ -448,7 +448,7 @@ def _build_query(user):
     return query
 
 
-def build_public_resource_payload(resource, viewer):
+def build_public_resource_payload(resource, viewer, *, linked_products=None):
     """The one public-safe Resource representation — never includes
     file_url/external_url (see module docstring). `viewerCanAccess` is a
     serialization-only hint (app/services/resource_access.py never
@@ -528,12 +528,30 @@ def build_public_resource_payload(resource, viewer):
         "status": resource.status,
         "publishedDate": resource.published_date.isoformat() if resource.published_date else None,
         "seo": resource.seo or {},
-        "linkedProduct": _linked_product_payload(resource),
+        "linkedProduct": _linked_product_payload(resource, linked_products),
     }
 
 
-def _linked_product_payload(resource):
-    product = Product.query.filter_by(resource_id=resource.id).first()
+def prefetch_linked_products(resources):
+    """{resource_id: Product} for many resources in one query (lowest
+    product id per resource, matching a single-row lookup's natural order)."""
+    ids = [r.id for r in resources]
+    if not ids:
+        return {}
+    found = {}
+    for product in Product.query.filter(Product.resource_id.in_(ids)).order_by(Product.id).all():
+        found.setdefault(product.resource_id, product)
+    return found
+
+
+def _linked_product_payload(resource, linked_products=None):
+    """`linked_products` is an optional {resource_id: Product} map a caller
+    building many payloads can prefetch in one query (see
+    prefetch_linked_products); without it, one lookup as before."""
+    if linked_products is not None:
+        product = linked_products.get(resource.id)
+    else:
+        product = Product.query.filter_by(resource_id=resource.id).first()
     if product is None:
         return None
     return {"id": product.id, "slug": product.slug, "name": product.name, "status": product.status}

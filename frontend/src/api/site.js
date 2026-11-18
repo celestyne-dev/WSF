@@ -72,6 +72,9 @@ export function mapHomepageModule(m) {
     secondaryCtaLabel: m.secondary_cta_label,
     secondaryCtaUrl: m.secondary_cta_url,
     ...(m.config || {}),
+    // career_pathways / content_collection: resolved server-side (public
+    // anonymous visibility) so these sections need no request of their own.
+    resolved: m.resolved || null,
   }
 }
 

@@ -19,6 +19,8 @@ import CommunityCtaModule from '../components/home/CommunityCtaModule'
 import MentorshipCtaModule from '../components/home/MentorshipCtaModule'
 import EditorialCalloutModule from '../components/home/EditorialCalloutModule'
 import SponsorPlacementModule from '../components/home/SponsorPlacementModule'
+import CareerPathwaysModule from '../components/home/CareerPathwaysModule'
+import ContentCollectionModule from '../components/home/ContentCollectionModule'
 
 // Maps each CMS module `type` to its renderer. Adding a new homepage block
 // type in the CMS only requires registering it here (and in the shared
@@ -42,6 +44,8 @@ const MODULE_COMPONENTS = {
   mentorship_cta: MentorshipCtaModule,
   editorial_callout: EditorialCalloutModule,
   sponsor_placement: SponsorPlacementModule,
+  career_pathways: CareerPathwaysModule,
+  content_collection: ContentCollectionModule,
 }
 
 export default function HomePage() {

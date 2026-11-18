@@ -156,7 +156,27 @@ def compute_module_warnings(module):
         if not module.cta_url:
             warnings.append("No call-to-action link set yet.")
 
+    elif mtype in ("career_pathways", "content_collection"):
+        from app.services.homepage_collections import extra_module_warnings
+
+        warnings.extend(extra_module_warnings(module))
+
     return warnings
+
+
+def public_homepage_modules_payload(modules, resolved=None):
+    """The public homepage modules dump (GET /public/homepage and the SPA
+    bootstrap share it): HomepageModuleSchema for every module, plus the
+    server-resolved `resolved` block for career_pathways/content_collection
+    (resolved ONCE here so the browser makes no extra request per section).
+    Pass `resolved` when the caller already has it (the SPA shell reuses it
+    for the prerender)."""
+    from app.schemas.cms import HomepageModuleSchema
+    from app.services.homepage_collections import attach_public_extras, resolve_homepage_extras
+
+    if resolved is None:
+        resolved = resolve_homepage_extras(modules)
+    return attach_public_extras(HomepageModuleSchema(many=True).dump(modules), modules, resolved)
 
 
 def modules_with_warnings(modules):

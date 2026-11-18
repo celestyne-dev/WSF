@@ -272,7 +272,7 @@ def _item_count(module, default):
     return value if isinstance(value, int) and 0 < value <= 12 else default
 
 
-def homepage_sections(modules, lead_article):
+def homepage_sections(modules, lead_article, extras=None):
     """One entry per ENABLED, configured homepage module, in builder order,
     resolved the same way that module's own React component does (see
     frontend/src/components/home/*Module.jsx). A module that resolves to
@@ -332,6 +332,19 @@ def homepage_sections(modules, lead_article):
         elif module.type in ("newsletter", "community_cta", "mentorship_cta", "editorial_callout") and module.heading:
             ctas = [(module.cta_label, module.cta_url), (module.secondary_cta_label, module.secondary_cta_url)]
             sections.append({**base, "ctas": [(label, url) for label, url in ctas if label and url]})
+        elif module.type in ("career_pathways", "content_collection"):
+            if extras is None:
+                from app.services.homepage_collections import resolve_homepage_extras
+
+                extras = resolve_homepage_extras(modules)
+            resolved = extras.get(module.id) or {}
+            eyebrow = (config.get("eyebrow") or None)
+            cta = [(module.cta_label, module.cta_url)] if module.cta_label and module.cta_url else []
+            if module.type == "career_pathways" and resolved.get("cards"):
+                sections.append({**base, "eyebrow": eyebrow, "cards": resolved["cards"], "ctas": cta})
+            elif module.type == "content_collection" and resolved.get("items"):
+                sections.append({**base, "eyebrow": eyebrow, "entityType": resolved["entityType"],
+                                 "items": resolved["items"], "ctas": cta})
         # partners / sponsor_placement: dynamic commercial modules resolved
         # client-side from their own eligibility rules — not prerendered.
     return sections

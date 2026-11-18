@@ -1,4 +1,6 @@
 import EntitySelect from './EntitySelect'
+import CareerPathwaysFields from './CareerPathwaysFields'
+import ContentCollectionFields from './ContentCollectionFields'
 import MediaPicker from './MediaPicker'
 import { fetchArticles } from '../../api/articles'
 import { fetchPeople } from '../../api/people'
@@ -107,7 +109,7 @@ export default function HomepageModuleFields({ module, onChange }) {
         <TextField label="Heading" value={module.heading} onChange={(v) => patch({ heading: v })} placeholder="Section heading" />
       )}
       {showSubheading && (
-        <TextField label="Subheading" value={module.subheading} onChange={(v) => patch({ subheading: v })} placeholder="Section subheading" />
+        <TextField label={spec.subheadingLabel || 'Subheading'} value={module.subheading} onChange={(v) => patch({ subheading: v })} placeholder="Section subheading" />
       )}
 
       {spec.contentSource === 'manual-hero' && (
@@ -159,6 +161,10 @@ export default function HomepageModuleFields({ module, onChange }) {
         </div>
       )}
 
+      {spec.contentSource === 'pathways' && <CareerPathwaysFields module={module} onChange={onChange} />}
+
+      {spec.contentSource === 'collection' && <ContentCollectionFields module={module} onChange={onChange} />}
+
       {spec.contentSource === 'sponsor' &&
         field(
           'Placement',
@@ -193,8 +199,8 @@ export default function HomepageModuleFields({ module, onChange }) {
 
       {spec.hasCta && (
         <>
-          <TextField label="CTA label" value={module.ctaLabel} onChange={(v) => patch({ ctaLabel: v })} placeholder="e.g. Read more" />
-          <TextField label="CTA link" value={module.ctaUrl} onChange={(v) => patch({ ctaUrl: v })} placeholder="/jobs or https://…" />
+          <TextField label={spec.ctaOptional ? 'Section link label (optional)' : 'CTA label'} value={module.ctaLabel} onChange={(v) => patch({ ctaLabel: v })} placeholder="e.g. Read more" />
+          <TextField label={spec.ctaOptional ? 'Section link destination' : 'CTA link'} value={module.ctaUrl} onChange={(v) => patch({ ctaUrl: v })} placeholder="/jobs or https://…" />
         </>
       )}
 

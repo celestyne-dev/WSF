@@ -440,7 +440,12 @@ def test_migration_single_head():
     assert module.down_revision == "f2c6a8e4d1b9"
     config = Config()
     config.set_main_option("script_location", os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["a8d3f1c7e2b5"]
+    script = ScriptDirectory.from_config(config)
+    # Still one linear head; later work (Homepage pathways/collections:
+    # c5e2a9d4f1b8) builds on this revision, so it must remain an ancestor.
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "a8d3f1c7e2b5" in {rev.revision for rev in script.iterate_revisions(heads[0], "base")}
 
 
 def test_migration_converts_legacy_prices_explicitly():

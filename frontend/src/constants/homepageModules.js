@@ -1,3 +1,5 @@
+import { newCollectionConfig, newPathwayCard } from '../utils/homepageCollections'
+
 // Mirrors backend/app/models/cms.py's HOMEPAGE_MODULE_TYPES /
 // HOMEPAGE_MODULE_ITEM_COUNT_BOUNDS / HOMEPAGE_SPONSOR_PLACEMENT_KEYS —
 // the controlled registry both AdminHomepageBuilder's "Add section" menu
@@ -17,6 +19,9 @@
 //  - 'cta'              heading/subheading/media/CTA only, no content query
 //  - 'sponsor'          a single controlled placement key
 //  - 'none'             heading/subheading only (newsletter)
+//  - 'pathways'         eyebrow + 2–8 editor-written destination cards
+//  - 'collection'       one entity type, manual picks or automatic query
+//    (both: see utils/homepageCollections.js)
 export const HOMEPAGE_MODULE_REGISTRY = {
   hero: { label: 'Hero', singleton: true, contentSource: 'manual-hero', hasCta: true, hasSecondaryCta: true, hasMedia: true },
   featured_stories: { label: 'Featured Stories', contentSource: 'manual-articles', hasItemCount: true, itemCountBounds: [1, 8] },
@@ -34,10 +39,15 @@ export const HOMEPAGE_MODULE_REGISTRY = {
   mentorship_cta: { label: 'Mentorship CTA', contentSource: 'cta', hasCta: true, hasMedia: true },
   editorial_callout: { label: 'Editorial Callout', contentSource: 'cta', hasCta: true, hasMedia: true },
   sponsor_placement: { label: 'Sponsor Placement', contentSource: 'sponsor' },
+  career_pathways: { label: 'Career Pathways / Start Here', contentSource: 'pathways', hasCta: true, ctaOptional: true, subheadingLabel: 'Intro text' },
+  content_collection: { label: 'Content Collection', contentSource: 'collection', hasCta: true, ctaOptional: true, subheadingLabel: 'Description' },
 }
 
 export const HOMEPAGE_SPONSOR_PLACEMENT_KEYS = ['homepage_featured']
 
 export function newModuleDefaults(type) {
-  return { type, enabled: true, heading: null, subheading: null, config: {} }
+  const base = { type, enabled: true, heading: null, subheading: null, selectionMode: null, config: {} }
+  if (type === 'career_pathways') return { ...base, config: { eyebrow: null, cards: [newPathwayCard(), newPathwayCard()] } }
+  if (type === 'content_collection') return { ...base, selectionMode: 'automatic', config: newCollectionConfig('articles', 'automatic') }
+  return base
 }
