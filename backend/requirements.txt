@@ -13,6 +13,9 @@ bcrypt==4.2.0
 psycopg2-binary==2.9.9
 python-dotenv==1.0.1
 Pillow==10.4.0
+# Server-side certificate PDFs (app/services/learning_certificates.py).
+reportlab==4.2.5
+qrcode==7.4.2
 gunicorn==22.0.0
 bleach==6.4.0
 Flask-Limiter==3.8.0

@@ -40,6 +40,7 @@ from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.career_hub import viewer_membership_label
 from app.services.circle import circle_tier
 from app.services.learning_access import can_access_program_content, program_circle_inclusion
+from app.services.learning_certificates import program_issues_certificates
 from app.services.learning_enrollments import progress_summary
 from app.services.public_visibility import public_learning_dump
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
@@ -150,6 +151,10 @@ def _apply_program_fields(program, data, relations):
     program.related_resources = relations["related_resources"]
     program.featured = data.get("featured", False)
     program.seo = data.get("seo")
+    for field in ("certificate_enabled", "certificate_title", "certificate_signatory_name", "certificate_signatory_title"):
+        if field in data:
+            value = data[field]
+            setattr(program, field, value.strip() or None if isinstance(value, str) else value)
 
     program.related_article_links = [
         LearningProgramRelatedArticle(article_id=article.id, position=i)
@@ -279,6 +284,8 @@ def build_public_program_payload(program, viewer):
     """
     payload = public_learning_dump(public_learning_program_schema(program).dump(program), program)
     payload["requiresCircle"] = program.access_type == "circle_only"
+    # Only advertised when this program actually issues WSF certificates.
+    payload["certificateAvailable"] = program_issues_certificates(program)
     payload["viewerCanAccess"] = can_access_program_content(program, viewer)
     # Viewer-specific (null for anonymous / not covered): e.g. "Included
     # with your Lifetime membership" for an eligible product program —

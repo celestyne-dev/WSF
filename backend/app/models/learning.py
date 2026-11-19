@@ -201,6 +201,13 @@ class LearningProgram(db.Model):
     # the same validator every other CMS CTA field already uses).
     external_url = db.Column(db.String(500))
 
+    # CERTIFICATE — explicit per-program opt-in (default off). Only WSF-owned
+    # programs ever issue (see app/services/learning_certificates.py).
+    certificate_enabled = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    certificate_title = db.Column(db.String(120))  # null -> "Certificate of Completion"
+    certificate_signatory_name = db.Column(db.String(120))
+    certificate_signatory_title = db.Column(db.String(120))
+
     # WORKFLOW
     status = db.Column(db.String(20), nullable=False, default="draft", index=True)
     featured = db.Column(db.Boolean, nullable=False, default=False, index=True)

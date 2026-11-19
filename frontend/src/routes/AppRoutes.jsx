@@ -69,6 +69,7 @@ const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
 const CommunityPage = lazy(() => import('../pages/CommunityPage'))
 const LearningPage = lazy(() => import('../pages/LearningPage'))
 const LearningProgramDetailPage = lazy(() => import('../pages/LearningProgramDetailPage'))
+const CertificateVerifyPage = lazy(() => import('../pages/CertificateVerifyPage'))
 const ShopPage = lazy(() => import('../pages/ShopPage'))
 const ProductDetailPage = lazy(() => import('../pages/ProductDetailPage'))
 const ContactPage = lazy(() => import('../pages/ContactPage'))
@@ -95,6 +96,7 @@ const AdminEventRegistrations = lazy(() => import('../pages/admin/AdminEventRegi
 const AdminLearningPrograms = lazy(() => import('../pages/admin/AdminLearningPrograms'))
 const AdminLearningProgramEditor = lazy(() => import('../pages/admin/AdminLearningProgramEditor'))
 const AdminLearningEnrollments = lazy(() => import('../pages/admin/AdminLearningEnrollments'))
+const AdminLearningCertificates = lazy(() => import('../pages/admin/AdminLearningCertificates'))
 const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
 const AdminOrders = lazy(() => import('../pages/admin/AdminOrders'))
@@ -244,6 +246,7 @@ export default function AppRoutes() {
           <Route path="/circle/checkout/callback" element={<CircleCheckoutCallbackPage />} />
           <Route path="/learning" element={<LearningPage />} />
           <Route path="/learning/:slug" element={<LearningProgramDetailPage />} />
+          <Route path="/certificates/verify/:publicId" element={<CertificateVerifyPage />} />
           <Route path="/shop" element={<ShopPage />} />
           <Route path="/shop/:slug" element={<ProductDetailPage />} />
 
@@ -291,6 +294,7 @@ export default function AppRoutes() {
           <Route path="events/:id/registrations" element={<AdminEventRegistrations />} />
           <Route path="learning" element={<AdminLearningPrograms />} />
           <Route path="learning/new" element={<AdminLearningProgramEditor />} />
+          <Route path="learning/certificates" element={<AdminLearningCertificates />} />
           <Route path="learning/:id" element={<AdminLearningProgramEditor />} />
           <Route path="learning/:id/enrollments" element={<AdminLearningEnrollments />} />
           <Route path="products" element={<AdminProducts />} />

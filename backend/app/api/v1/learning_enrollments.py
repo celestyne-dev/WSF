@@ -20,6 +20,7 @@ from app.services.learning_enrollments import (
     fetch_protected_curriculum,
     mark_lesson_complete,
     mark_lesson_incomplete,
+    prefetch_active_certificates,
     serialize_enrollment_for_owner,
     withdraw,
 )
@@ -113,7 +114,8 @@ class LearningEnrollmentMeResource(Resource):
 
         query = query.order_by(LearningEnrollment.enrolled_at.desc())
         result = paginate(query, schema=None)
-        items = [_dump_enrollment(e) for e in result["items"]]
+        certificates = prefetch_active_certificates(result["items"])
+        items = [serialize_enrollment_for_owner(e, _program_summary_schema, certificates) for e in result["items"]]
         return success_response(items, meta=result["meta"])
 
 

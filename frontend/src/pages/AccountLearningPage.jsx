@@ -7,17 +7,112 @@ import useSeo from '../hooks/useSeo'
 import EmptyState from '../components/ui/EmptyState'
 import LearningProgramCard from '../components/cards/LearningProgramCard'
 import { formatDate } from '../utils/format'
+import { trackEvent } from '../utils/analytics'
+import { downloadCertificatePdf, fetchMyCertificates } from '../api/certificates'
+import { CERTIFICATE_TERM, enrollmentCertificateState } from '../utils/certificates'
 
 const TABS = [
   { key: 'current', label: 'In Progress' },
   { key: 'completed', label: 'Completed' },
   { key: 'withdrawn', label: 'Withdrawn' },
+  { key: 'certificates', label: 'My Certificates' },
 ]
 
 const EMPTY_COPY = {
   current: "You don't have any programs in progress.",
   completed: "You haven't completed any programs yet.",
   withdrawn: 'No withdrawn enrollments.',
+}
+
+// Download (authenticated blob), Verify (public link) and Add to LinkedIn
+// (LinkedIn's documented add-to-profile URL pattern; no API integration).
+function CertificateActions({ certificate }) {
+  const [busy, setBusy] = useState(false)
+
+  async function handleDownload() {
+    setBusy(true)
+    try {
+      await downloadCertificatePdf(certificate)
+      trackEvent('certificate_downloaded', { certificateNumber: certificate.certificateNumber })
+    } catch {
+      toast.error('We couldn’t download your certificate. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button type="button" disabled={busy} onClick={handleDownload} className="font-semibold text-burgundy-600 hover:underline disabled:opacity-60">
+        Download PDF
+      </button>
+      <Link to={`/certificates/verify/${certificate.publicId}`} className="font-semibold text-burgundy-600 hover:underline">
+        Verify
+      </Link>
+      {certificate.linkedinUrl && (
+        <a
+          href={certificate.linkedinUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackEvent('certificate_linkedin_clicked', { certificateNumber: certificate.certificateNumber })}
+          className="font-semibold text-burgundy-600 hover:underline"
+        >
+          Add to LinkedIn
+        </a>
+      )}
+    </div>
+  )
+}
+
+function CertificatesList() {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchMyCertificates()
+      .then((rows) => !cancelled && setItems(rows))
+      .catch(() => !cancelled && setError('We couldn’t load your certificates. Please try again.'))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (error) return <EmptyState title="Something went wrong" description={error} />
+  if (items === null) return <div className="h-28 animate-pulse bg-taupe-100" />
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="No certificates yet"
+        description={`Complete a WSF program that offers a ${CERTIFICATE_TERM} and it will appear here.`}
+        action={
+          <Link to="/learning" className="mt-4 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+            Browse Learning
+          </Link>
+        }
+      />
+    )
+  }
+  return (
+    <ul className="space-y-4">
+      {items.map((c) => (
+        <li key={c.publicId} className="border border-taupe-200 bg-white p-4">
+          <p className="eyebrow">{c.certificateTitle}</p>
+          <p className="mt-1 font-serif text-lg font-semibold text-charcoal">{c.programTitle}</p>
+          <p className="mt-1 text-xs text-charcoal-600">
+            {c.certificateNumber}
+            {c.completedAt && <> · Completed {formatDate(c.completedAt)}</>}
+            {c.status === 'revoked' && <span className="font-semibold text-rose-600"> · Revoked</span>}
+          </p>
+          {c.status === 'active' && (
+            <div className="mt-3 text-xs">
+              <CertificateActions certificate={c} />
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 // An enrollment's own card is rendered as a sibling of this status/
@@ -35,6 +130,7 @@ function EnrollmentRow({ item, onWithdraw, onResume, busy }) {
   // is replaced, and only while the program is otherwise available. The
   // learner's own Withdraw action is unaffected and never automatic.
   const circleAccessLapsed = !unavailable && item.status === 'active' && item.canAccessCurriculum === false && item.accessReason === 'circle_required'
+  const certificateState = enrollmentCertificateState(item)
 
   return (
     <div>
@@ -60,6 +156,7 @@ function EnrollmentRow({ item, onWithdraw, onResume, busy }) {
               {item.status === 'active' && item.completedAt && (
                 <span className="font-semibold text-emerald-700">Completed {formatDate(item.completedAt)}</span>
               )}
+              {certificateState === 'available' && <span className="font-semibold text-plum-600">Certificate available</span>}
               {item.status === 'active' && !item.completedAt && item.totalLessons > 0 && (
                 <span>
                   {item.completedLessons} of {item.totalLessons} lessons complete · {item.progressPercent}%
@@ -103,6 +200,11 @@ function EnrollmentRow({ item, onWithdraw, onResume, busy }) {
           )}
         </div>
       </div>
+      {certificateState === 'available' && (
+        <div className="border border-t-0 border-taupe-200 bg-white px-4 py-3 text-xs">
+          <CertificateActions certificate={item.certificate} />
+        </div>
+      )}
     </div>
   )
 }
@@ -123,7 +225,7 @@ export default function AccountLearningPage() {
   useSeo({ title: 'My Learning | Women Shaping Futures', robots: 'noindex, nofollow' })
 
   useEffect(() => {
-    if (!accessToken) return undefined
+    if (!accessToken || activeTab === 'certificates') return undefined
     let cancelled = false
     fetchMyLearningEnrollments({ state: activeTab, page, perPage: 10 })
       .then((result) => {
@@ -203,7 +305,9 @@ export default function AccountLearningPage() {
       </div>
 
       <div className="mt-8">
-        {error ? (
+        {activeTab === 'certificates' ? (
+          <CertificatesList />
+        ) : error ? (
           <EmptyState
             title="Something went wrong"
             description={error}

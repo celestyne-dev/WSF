@@ -169,7 +169,7 @@ function EnrollmentStateCta({ enrollment, pending, onEnroll }) {
           <CheckCircle2 size={16} /> Completed
         </span>
         <Link to="/account/learning" className="text-sm font-semibold text-burgundy-600 hover:underline">
-          View in My Learning
+          {enrollment.certificate?.status === 'active' ? 'Certificate available in My Learning' : 'View in My Learning'}
         </Link>
       </div>
     )
@@ -356,6 +356,10 @@ export default function LearningProgramDetailPage() {
         trackEvent('learning_lesson_completed', { programSlug: program.slug, lessonId: lesson.id })
         if (updated.completedAt) {
           trackEvent('learning_program_completed', { programSlug: program.slug })
+          if (updated.certificate?.status === 'active' && !enrollment.certificate) {
+            trackEvent('certificate_issued', { programSlug: program.slug })
+            toast.success('Your Certificate of Completion is ready in My Learning.')
+          }
         }
       }
     } catch {
@@ -413,6 +417,7 @@ export default function LearningProgramDetailPage() {
             {durationLabel(program) && <span>{durationLabel(program)}</span>}
             <span>{program.deliveryMode?.replace('_', ' ')}</span>
             {program.providerOrganization && <span>Provided by {program.providerOrganization.name}</span>}
+            {program.certificateAvailable && <span className="font-semibold text-plum-600">Certificate of Completion</span>}
           </div>
           {program.circleInclusion?.included && program.circleInclusion.label && !program.viewerMembershipLabel && (
             <p className="mt-2 text-sm font-medium text-plum-600">{program.circleInclusion.label}</p>

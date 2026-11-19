@@ -251,6 +251,13 @@ class LearningProgramInputSchema(ma.Schema):
     product_slug = fields.String(required=False, allow_none=True, data_key="productSlug")
     external_url = fields.String(required=False, allow_none=True, data_key="externalUrl")
 
+    # Certificate of completion (explicit opt-in). No load_default: omitted
+    # -> stored settings untouched, so older clients never switch it off.
+    certificate_enabled = fields.Boolean(required=False, data_key="certificateEnabled")
+    certificate_title = fields.String(required=False, allow_none=True, data_key="certificateTitle", validate=validate.Length(max=120))
+    certificate_signatory_name = fields.String(required=False, allow_none=True, data_key="certificateSignatoryName", validate=validate.Length(max=120))
+    certificate_signatory_title = fields.String(required=False, allow_none=True, data_key="certificateSignatoryTitle", validate=validate.Length(max=120))
+
     related_article_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="relatedArticleSlugs")
     related_resource_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="relatedResourceSlugs")
 

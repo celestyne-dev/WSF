@@ -1,5 +1,6 @@
 import { apiClient } from './client'
 import { mapLearningProgram, mapModule } from './learning'
+import { mapCertificate } from './certificates'
 
 // First-party WSF Learning enrollment + lesson-progress tracking — free
 // or circle_only published programs only (external/product programs are
@@ -27,6 +28,10 @@ function mapEnrollment(e) {
     // programAvailable, which stays purely about program status).
     canAccessCurriculum: e.can_access_curriculum ?? e.canAccessCurriculum ?? true,
     accessReason: e.access_reason ?? e.accessReason ?? null,
+    // WSF Certificate of Completion (backend-issued only): whether this
+    // program issues one, and the learner's active certificate if issued.
+    certificateEnabled: !!(e.certificate_enabled ?? e.certificateEnabled),
+    certificate: mapCertificate(e.certificate),
     program: mapLearningProgram(e.program),
   }
 }

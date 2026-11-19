@@ -29,6 +29,7 @@ from app.extensions import db
 from app.models.learning import LearningProgram
 from app.models.learning_enrollment import LearningEnrollment, LearningLessonProgress
 from app.services.learning_access import can_access_program_content, curriculum_access_state
+from app.services.learning_certificates import issue_certificate_if_eligible, program_issues_certificates
 from app.utils.responses import ApiError
 
 
@@ -184,6 +185,9 @@ def mark_lesson_complete(enrollment, lesson):
     if summary["total_lessons"] > 0 and summary["completed_lessons"] >= summary["total_lessons"]:
         if enrollment.completed_at is None:
             enrollment.completed_at = datetime.now(timezone.utc)
+        # Backend-authoritative, idempotent certificate issuance in the same
+        # transaction as completion (no-op unless the program opted in).
+        issue_certificate_if_eligible(enrollment)
 
     db.session.commit()
     return summary
@@ -206,7 +210,10 @@ def mark_lesson_incomplete(enrollment, lesson):
     return summary
 
 
-def serialize_enrollment_for_owner(enrollment, program_summary_schema):
+_NO_PREFETCH = object()
+
+
+def serialize_enrollment_for_owner(enrollment, program_summary_schema, certificates=_NO_PREFETCH):
     """Dump shared by /check, /me, and the enroll/withdraw/progress
     responses — always the learner's own data, and the linked Program is
     dumped with the PUBLIC SUMMARY shape (no modules/curriculum) so an
@@ -247,4 +254,28 @@ def serialize_enrollment_for_owner(enrollment, program_summary_schema):
         "can_access_curriculum": can_access_curriculum,
         "access_reason": access_reason,
         "program": program_summary_schema.dump(program),
+        # Certificate-enabled program (eligible for WSF certificates) and the
+        # learner's active certificate, if issued. `certificates` is an
+        # optional {enrollment_id: certificate} prefetch for list pages.
+        "certificate_enabled": program_issues_certificates(program),
+        "certificate": _owner_certificate(enrollment, certificates),
     }
+
+
+def _owner_certificate(enrollment, certificates):
+    from app.services.learning_certificates import active_certificate_for, owner_certificate_payload
+
+    certificate = active_certificate_for(enrollment) if certificates is _NO_PREFETCH else certificates.get(enrollment.id)
+    return owner_certificate_payload(certificate) if certificate is not None else None
+
+
+def prefetch_active_certificates(enrollments):
+    from app.models.learning_certificate import LearningCertificate
+
+    ids = [e.id for e in enrollments]
+    if not ids:
+        return {}
+    rows = LearningCertificate.query.filter(
+        LearningCertificate.enrollment_id.in_(ids), LearningCertificate.status == "active"
+    ).all()
+    return {c.enrollment_id: c for c in rows}

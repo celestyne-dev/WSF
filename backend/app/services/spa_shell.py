@@ -2509,6 +2509,30 @@ def _render_unsubscribe_shell():
     return _html_response(html_doc)
 
 
+def _render_certificate_verification_shell():
+    """/certificates/verify/<public_id> — a real React route
+    (CertificateVerifyPage.jsx). Deliberately noindex and never in the
+    sitemap: a certificate is a personal record that is shareable by
+    link, not public content to be discovered by search. The public id is
+    not looked up here, so this shell never reveals whether a certificate
+    exists and never writes a recipient name into the head.
+    """
+    site_identity = get_site_identity_resolved()
+    site_name = site_identity.get("site_name") or "Women Shaping Futures"
+    html_doc = _apply_base_seo(
+        _read_index_html(),
+        title="Verify a Certificate | Women Shaping Futures",
+        description="Verify a Women Shaping Futures Certificate of Completion.",
+        canonical=None,
+        robots="noindex, nofollow",
+        og_type="website",
+        image_url=None,
+        image_alt=None,
+        site_name=site_name,
+    )
+    return _html_response(html_doc)
+
+
 def is_reserved_path(subpath):
     return subpath in _RESERVED_EXACT or any(subpath.startswith(p) for p in _RESERVED_PREFIXES)
 
@@ -2576,6 +2600,9 @@ def resolve_spa_response(subpath):
 
     if len(segments) == 3 and segments[0] == "newsletter" and segments[1] == "unsubscribe" and segments[2]:
         return _render_unsubscribe_shell()
+
+    if len(segments) == 3 and segments[0] == "certificates" and segments[1] == "verify" and segments[2]:
+        return _render_certificate_verification_shell()
 
     if len(segments) == 2 and segments[0] in _ENTITY_DETAIL_PREFIXES and segments[1]:
         return _render_entity_detail(segments[0], segments[1])

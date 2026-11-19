@@ -118,7 +118,10 @@ export const NAV_GROUPS = [
   },
   {
     heading: 'Learning',
-    items: [{ to: '/admin/learning', icon: Library, label: 'Programs', permission: ['learning.manage'] }],
+    items: [
+      { to: '/admin/learning', icon: Library, label: 'Programs', permission: ['learning.manage'] },
+      { to: '/admin/learning/certificates', icon: Award, label: 'Certificates', permission: ['learning.manage'] },
+    ],
   },
   {
     heading: 'WSF Circle',

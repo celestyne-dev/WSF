@@ -116,6 +116,10 @@ function blankForm() {
     accessType: 'free',
     productSlug: null,
     externalUrl: '',
+    certificateEnabled: false,
+    certificateTitle: '',
+    certificateSignatoryName: '',
+    certificateSignatoryTitle: '',
     relatedArticleSlugs: [],
     relatedResourceSlugs: [],
     featured: false,
@@ -151,6 +155,10 @@ function toForm(p) {
     accessType: p.accessType || 'free',
     productSlug: p.product?.slug || null,
     externalUrl: p.externalUrl || '',
+    certificateEnabled: !!p.certificateEnabled,
+    certificateTitle: p.certificateTitle || '',
+    certificateSignatoryName: p.certificateSignatoryName || '',
+    certificateSignatoryTitle: p.certificateSignatoryTitle || '',
     relatedArticleSlugs: (p.relatedArticles || []).map((a) => a.slug),
     relatedResourceSlugs: (p.relatedResources || []).map((r) => r.slug),
     featured: !!p.featured,
@@ -496,6 +504,10 @@ export default function AdminLearningProgramEditor() {
       accessType: form.accessType,
       productSlug: form.accessType === 'product' ? form.productSlug || undefined : undefined,
       externalUrl: form.accessType === 'external' ? form.externalUrl || undefined : undefined,
+      certificateEnabled: form.certificateEnabled,
+      certificateTitle: form.certificateTitle.trim() || null,
+      certificateSignatoryName: form.certificateSignatoryName.trim() || null,
+      certificateSignatoryTitle: form.certificateSignatoryTitle.trim() || null,
       relatedArticleSlugs: form.relatedArticleSlugs,
       relatedResourceSlugs: form.relatedResourceSlugs,
       featured: form.featured,
@@ -700,6 +712,36 @@ export default function AdminLearningProgramEditor() {
                 No Product or external URL needed — access is granted by an active WSF Circle membership
                 (checked automatically). Circle membership pricing lives in the Circle Plan, not here.
               </p>
+            )}
+          </Section>
+
+          <Section
+            title="Certificate"
+            description="Optional Certificate of Completion, issued automatically when a learner completes every lesson. WSF-owned programs only: never issued for external or partner-provided programs."
+          >
+            <label className="flex items-center gap-2 text-sm text-charcoal">
+              <input type="checkbox" checked={form.certificateEnabled} onChange={(e) => updateField('certificateEnabled', e.target.checked)} />
+              Issue a Certificate of Completion
+            </label>
+            {form.certificateEnabled && (form.accessType === 'external' || form.providerOrganizationSlug) && (
+              <p className="text-xs text-amber-700">Certificates are not issued for external or partner-provided programs, so none will be issued for this program.</p>
+            )}
+            {form.certificateEnabled && (
+              <>
+                <Field label="Certificate title" hint="defaults to “Certificate of Completion”">
+                  <input value={form.certificateTitle} onChange={(e) => updateField('certificateTitle', e.target.value)} maxLength={120} placeholder="Certificate of Completion" className={inputClass} />
+                </Field>
+                <Field label="Signatory name" hint="optional">
+                  <input value={form.certificateSignatoryName} onChange={(e) => updateField('certificateSignatoryName', e.target.value)} maxLength={120} className={inputClass} />
+                </Field>
+                <Field label="Signatory title" hint="optional">
+                  <input value={form.certificateSignatoryTitle} onChange={(e) => updateField('certificateSignatoryTitle', e.target.value)} maxLength={120} className={inputClass} />
+                </Field>
+                <p className="text-xs text-charcoal-600/70">
+                  Changes apply to certificates issued from now on. Issued certificates keep their original details.{' '}
+                  <Link to="/admin/learning/certificates" className="font-semibold text-burgundy-600 hover:underline">Manage certificates</Link>
+                </p>
+              </>
             )}
           </Section>
 

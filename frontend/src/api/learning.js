@@ -4,10 +4,11 @@ import { mapMediaRef } from '../utils/media'
 
 // Learning / Courses & Programs CMS — structured educational offerings
 // (short courses, masterclasses, programs, learning series). Deliberately
-// NOT a full LMS: no learner accounts, progress tracking, quizzes, grades,
-// or certificates (see backend app/models/learning.py). Public read
-// functions support VITE_USE_MOCK=true; the admin surface is real-backend
-// only, same convention as Directory/Editorial-Workflow CMS.
+// NOT a full LMS: no quizzes or grades (see backend app/models/learning.py).
+// Enrollment, progress and Certificates of Completion live in their own
+// API modules. Public read functions support VITE_USE_MOCK=true; the admin
+// surface is real-backend only, same convention as Directory/Editorial-
+// Workflow CMS.
 
 let _mockLearning
 async function loadMockLearning() {
@@ -126,6 +127,13 @@ export function mapLearningProgram(p) {
     modules: Array.isArray(p.modules) ? p.modules.map(mapModule) : [],
     relatedArticles: Array.isArray(p.related_articles ?? p.relatedArticles) ? (p.related_articles ?? p.relatedArticles) : [],
     relatedResources: Array.isArray(p.related_resources ?? p.relatedResources) ? (p.related_resources ?? p.relatedResources) : [],
+    // WSF Certificate of Completion: public flag (WSF-owned, opted-in
+    // programs only) plus the Studio settings on admin payloads.
+    certificateAvailable: !!p.certificateAvailable,
+    certificateEnabled: !!(p.certificate_enabled ?? p.certificateEnabled),
+    certificateTitle: p.certificate_title ?? p.certificateTitle ?? '',
+    certificateSignatoryName: p.certificate_signatory_name ?? p.certificateSignatoryName ?? '',
+    certificateSignatoryTitle: p.certificate_signatory_title ?? p.certificateSignatoryTitle ?? '',
     featured: !!p.featured,
     status: p.status || 'published',
     publishedAt: p.published_at ?? p.publishedAt ?? null,
