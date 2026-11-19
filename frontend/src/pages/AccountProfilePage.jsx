@@ -1,5 +1,6 @@
 import { useSelector } from 'react-redux'
 import ProfileForm from '../components/account/ProfileForm'
+import CareerGoalsSettings from '../components/account/CareerGoalsSettings'
 import useSeo from '../hooks/useSeo'
 
 // Routed only as a child of AccountLayout, which already guards on
@@ -17,6 +18,7 @@ export default function AccountProfilePage() {
         Update the name and bio associated with your WSF account.
       </p>
       <ProfileForm user={user} />
+      <CareerGoalsSettings />
     </div>
   )
 }

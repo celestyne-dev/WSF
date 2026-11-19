@@ -30,3 +30,26 @@ export async function fetchCareerHubMeta() {
   }
   return delay({ goals: [], formats: [], access: [], sorts: [], newThisMonth: [] })
 }
+
+// --- Private career goals (signed-in user only) ---------------------------
+
+export async function fetchMyCareerGoals() {
+  const { data } = await apiClient.get('/career-hub/me/goals')
+  return { goals: data?.goals || [], prompted: !!data?.prompted }
+}
+
+// goals: Career Hub goal keys (max 3); [] clears them.
+export async function saveMyCareerGoals(goals) {
+  const { data } = await apiClient.put('/career-hub/me/goals', { goals })
+  return { goals: data?.goals || [], prompted: !!data?.prompted }
+}
+
+export async function skipCareerGoalsPrompt() {
+  const { data } = await apiClient.post('/career-hub/me/goals/skip')
+  return { goals: data?.goals || [], prompted: !!data?.prompted }
+}
+
+export async function fetchRecommendedForMyGoals() {
+  const { data } = await apiClient.get('/career-hub/me/recommended')
+  return (data?.items || []).map(mapCareerHubCard)
+}

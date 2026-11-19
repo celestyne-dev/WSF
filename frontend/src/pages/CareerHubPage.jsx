@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowRight, Search, Sparkles } from 'lucide-react'
-import { fetchCareerHub, fetchCareerHubMeta } from '../api/careerHub'
+import { useSelector } from 'react-redux'
+import { toast } from 'react-toastify'
+import {
+  fetchCareerHub,
+  fetchCareerHubMeta,
+  fetchMyCareerGoals,
+  fetchRecommendedForMyGoals,
+  saveMyCareerGoals,
+  skipCareerGoalsPrompt,
+} from '../api/careerHub'
+import CareerGoalsPicker from '../components/account/CareerGoalsPicker'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import FilterSelect from '../components/ui/FilterSelect'
@@ -36,6 +46,96 @@ function CardGrid({ cards, onOpen }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+// Signed-in personalization: a skippable one-time goal prompt, then a
+// deterministic "Recommended for your goals" strip (backend picks by the
+// goals' Topics; no AI). Renders nothing for anonymous visitors, while
+// loading, or when there is nothing to recommend.
+function ForYourGoals({ goalOptions, onOpen }) {
+  const accessToken = useSelector((s) => s.auth.accessToken)
+  const [mine, setMine] = useState(null)
+  const [draft, setDraft] = useState([])
+  const [recommended, setRecommended] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!accessToken) return undefined
+    let active = true
+    fetchMyCareerGoals()
+      .then((data) => {
+        if (!active) return
+        setMine(data)
+        if (data.goals.length) {
+          fetchRecommendedForMyGoals()
+            .then((items) => active && setRecommended(items))
+            .catch(() => {})
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [accessToken])
+
+  if (!accessToken || !mine || goalOptions.length === 0) return null
+
+  async function save() {
+    setSaving(true)
+    try {
+      const data = await saveMyCareerGoals(draft)
+      setMine(data)
+      trackEvent('career_goals_saved', { goals: draft, source: 'career_hub_prompt' })
+      setRecommended(await fetchRecommendedForMyGoals())
+    } catch {
+      toast.error('We couldn’t save your goals. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function skip() {
+    setMine({ ...mine, prompted: true })
+    trackEvent('career_goals_skipped', { source: 'career_hub_prompt' })
+    skipCareerGoalsPrompt().catch(() => {})
+  }
+
+  if (mine.goals.length === 0) {
+    if (mine.prompted) return null
+    return (
+      <section aria-labelledby="career-hub-goals-prompt" className="mt-12 border border-taupe-200 bg-white p-6">
+        <h2 id="career-hub-goals-prompt" className="font-serif text-xl font-semibold text-charcoal">What are you working towards?</h2>
+        <p className="mt-1 text-sm text-charcoal-600">Pick your goals and we’ll suggest tools for them. You can change this any time in your account.</p>
+        <div className="mt-4">
+          <CareerGoalsPicker goals={goalOptions} value={draft} onChange={setDraft} disabled={saving} />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <button type="button" onClick={save} disabled={saving || draft.length === 0} className="btn-primary disabled:opacity-60">
+            Save my goals
+          </button>
+          <button type="button" onClick={skip} className="text-sm font-semibold text-charcoal-600 hover:text-burgundy-600">
+            Skip for now
+          </button>
+        </div>
+      </section>
+    )
+  }
+
+  if (recommended.length === 0) return null
+  return (
+    <section aria-labelledby="career-hub-for-you" className="mt-12">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 id="career-hub-for-you" className="font-serif text-2xl font-semibold text-charcoal">Recommended for your goals</h2>
+        <Link to="/account/profile#career-goals" className="text-sm font-semibold text-burgundy-600 hover:underline">
+          Edit goals
+        </Link>
+      </div>
+      <p className="mt-1 text-sm text-charcoal-600">Based on: {mine.goals.map((g) => g.label).join(', ')}</p>
+      <div className="mt-6">
+        <CardGrid cards={recommended} onOpen={onOpen} />
+      </div>
+    </section>
   )
 }
 
@@ -198,6 +298,8 @@ export default function CareerHubPage() {
             </button>
           )}
         </form>
+
+        {!filtering && state.page === 1 && <ForYourGoals goalOptions={goals} onOpen={openCard} />}
 
         {newThisMonth.length > 0 && (
           <section aria-labelledby="career-hub-new" className="mt-12">

@@ -3,11 +3,24 @@ app/services/career_hub.py — this module only parses the request and
 returns the service's normalized cards. No entitlement is ever decided
 here; every card links to the original Resource/Learning page, whose own
 endpoints enforce access."""
+from datetime import datetime, timezone
+
 from flask import Blueprint, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 
-from app.services.career_hub import career_hub_meta, parse_filters, resolve_viewer, search_career_hub
+from app.auth.decorators import active_user_required
+from app.extensions import db
+from app.services.career_hub import (
+    GOAL_LABELS,
+    career_hub_meta,
+    normalize_user_goals,
+    parse_filters,
+    recommended_for_goals,
+    resolve_viewer,
+    search_career_hub,
+    url_value,
+)
 from app.utils.responses import success_response
 
 career_hub_bp = Blueprint("career_hub", __name__)
@@ -44,5 +57,54 @@ class CareerHubMetaResource(Resource):
         return success_response(career_hub_meta(viewer=_viewer()))
 
 
+def _goals_payload(user):
+    goals = [g for g in (user.career_goals or []) if g in GOAL_LABELS]
+    return {
+        "goals": [{"key": g, "slug": url_value(g), "label": GOAL_LABELS[g]} for g in goals],
+        # True once the optional prompt was answered or skipped.
+        "prompted": user.career_goals_prompted_at is not None,
+    }
+
+
+class CareerHubMyGoalsResource(Resource):
+    """The signed-in user's own private career goals.
+
+    GET -> {goals, prompted}. PUT {goals: [...]} saves (up to 3; [] clears).
+    POST /skip records that the optional prompt was dismissed."""
+
+    @active_user_required
+    def get(self):
+        return success_response(_goals_payload(current_user))
+
+    @active_user_required
+    def put(self):
+        data = request.get_json(silent=True) or {}
+        current_user.career_goals = normalize_user_goals(data.get("goals"))
+        current_user.career_goals_prompted_at = current_user.career_goals_prompted_at or datetime.now(timezone.utc)
+        db.session.commit()
+        return success_response(_goals_payload(current_user))
+
+
+class CareerHubSkipGoalsResource(Resource):
+    @active_user_required
+    def post(self):
+        current_user.career_goals_prompted_at = current_user.career_goals_prompted_at or datetime.now(timezone.utc)
+        db.session.commit()
+        return success_response(_goals_payload(current_user))
+
+
+class CareerHubRecommendedResource(Resource):
+    """GET /career-hub/me/recommended — deterministic picks for the
+    signed-in user's goals (never AI). Empty list without goals."""
+
+    @active_user_required
+    def get(self):
+        goals = [g for g in (current_user.career_goals or []) if g in GOAL_LABELS]
+        return success_response({"goals": goals, "items": recommended_for_goals(goals, viewer=resolve_viewer(current_user))})
+
+
 api.add_resource(CareerHubListResource, "")
+api.add_resource(CareerHubMyGoalsResource, "/me/goals")
+api.add_resource(CareerHubSkipGoalsResource, "/me/goals/skip")
+api.add_resource(CareerHubRecommendedResource, "/me/recommended")
 api.add_resource(CareerHubMetaResource, "/meta")

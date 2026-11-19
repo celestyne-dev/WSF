@@ -65,7 +65,9 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = User
         load_instance = False
-        exclude = ("password_hash",)
+        # career_goals are private personalization data served only by
+        # GET /career-hub/me/goals, never in any user dump.
+        exclude = ("password_hash", "career_goals", "career_goals_prompted_at")
 
 
 class RegisterSchema(ma.Schema):

@@ -380,6 +380,8 @@ def _topic_clause(relationship, filters):
     clauses = []
     if filters.get("goal"):
         clauses.append(relationship.any(and_(Topic.career_goal == filters["goal"], Topic.status == "published")))
+    if filters.get("goals"):
+        clauses.append(relationship.any(and_(Topic.career_goal.in_(filters["goals"]), Topic.status == "published")))
     if filters.get("topic"):
         clauses.append(relationship.any(and_(Topic.slug == filters["topic"], Topic.status == "published")))
     return clauses
@@ -527,6 +529,44 @@ def search_career_hub(filters, today=None, viewer=None):
         # api/client.js unwraps them into {items, pagination}).
         "meta": {"page": filters["page"], "per_page": filters["page_size"], "total": total, "total_pages": total_pages},
     }
+
+
+MAX_USER_GOALS = 3
+RECOMMENDED_LIMIT = 6
+
+
+def normalize_user_goals(values):
+    """Validated, de-duplicated Career Hub goal keys (URL slugs accepted),
+    at most MAX_USER_GOALS. Unknown values are a 422."""
+    if values is None:
+        return []
+    if not isinstance(values, list):
+        raise ApiError("goals must be a list.", 422, code="validation_error")
+    goals = []
+    for raw in values:
+        key = from_url_value(raw if isinstance(raw, str) else "")
+        if key not in GOAL_LABELS:
+            raise ApiError("Unknown career goal.", 422, code="validation_error")
+        if key not in goals:
+            goals.append(key)
+    if len(goals) > MAX_USER_GOALS:
+        raise ApiError(f"Choose up to {MAX_USER_GOALS} career goals.", 422, code="validation_error")
+    return goals
+
+
+def recommended_for_goals(goals, today=None, limit=RECOMMENDED_LIMIT, viewer=None):
+    """"Recommended for your goals": deterministic, not AI. Public
+    Resources and Learning programs whose published Topics carry any of the
+    user's goals, featured first then newest (the same ordering as the
+    Career Hub's featured sort). Bounded; empty when there are no goals."""
+    goals = [g for g in (goals or []) if g in GOAL_LABELS]
+    if not goals:
+        return []
+    today = today or date.today()
+    filters = {"goals": goals, "sort": "featured"}
+    union = union_all(_resource_select(filters, today), _program_select(filters)).subquery("career_hub_goals")
+    rows = db.session.execute(select(union.c.source, union.c.id).order_by(*_order(union, "featured")).limit(limit)).all()
+    return _load_cards([(r.source, r.id) for r in rows], viewer)
 
 
 def new_this_month(today=None, limit=NEW_THIS_MONTH_LIMIT, viewer=None):

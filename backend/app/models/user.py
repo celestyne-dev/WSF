@@ -1,5 +1,7 @@
 import uuid as uuid_lib
 
+from sqlalchemy.dialects.postgresql import JSONB
+
 from app.extensions import db
 
 user_roles = db.Table(
@@ -70,6 +72,14 @@ class User(db.Model):
     # password through the normal /auth/change-password flow.
     auth_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     last_login_at = db.Column(db.DateTime(timezone=True))
+    # Private career-goal preferences (Career Hub CAREER_GOALS keys, at
+    # most 3), used only to personalize this user's own Career Hub. Never
+    # exposed publicly. `career_goals_prompted_at` records that the
+    # optional goal prompt was answered or skipped, so it is never nagging.
+    # JSONB on Postgres (not plain JSON): existing queries run SELECT
+    # DISTINCT over users, and Postgres `json` has no equality operator.
+    career_goals = db.Column(db.JSON().with_variant(JSONB(), "postgresql"))
+    career_goals_prompted_at = db.Column(db.DateTime(timezone=True))
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
