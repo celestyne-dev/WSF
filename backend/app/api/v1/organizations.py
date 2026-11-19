@@ -70,6 +70,25 @@ def _apply_fields(organization, data):
     organization.status = data.get("status", "draft")
     organization.seo = data.get("seo")
     organization.featured = data.get("featured", False)
+    if "workplace_practices" in data:
+        organization.workplace_practices = _normalize_practices(data["workplace_practices"])
+
+
+def _normalize_practices(entries):
+    """One entry per practice (a duplicate is a 422), stored with
+    snake_case keys and trimmed optional text; [] / None clears."""
+    seen, out = set(), []
+    for entry in entries or []:
+        if entry["practice"] in seen:
+            raise ApiError("Each workplace practice can only be listed once.", 422, code="validation_error")
+        seen.add(entry["practice"])
+        out.append({
+            "practice": entry["practice"],
+            "claim_source": entry["claim_source"],
+            "source_url": (entry.get("source_url") or "").strip() or None,
+            "note": (entry.get("note") or "").strip() or None,
+        })
+    return out or None
 
 
 def _validate_for_publish(organization):

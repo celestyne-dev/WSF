@@ -49,6 +49,27 @@ author_topics = db.Table(
 )
 
 
+# Employer workplace practices (WSF workplace profiles). A controlled
+# vocabulary of practices, each carrying WHERE the claim comes from. WSF
+# never certifies an employer: "wsf_reviewed" means WSF editors reviewed
+# the supporting source, not that WSF endorses or audits the employer.
+WORKPLACE_PRACTICES = (
+    "flexible_work",
+    "remote_work",
+    "paid_parental_leave",
+    "pay_transparency",
+    "pay_equity_review",
+    "women_leadership_program",
+    "mentorship_program",
+    "return_to_work_program",
+    "childcare_support",
+    "anti_harassment_policy",
+    "menopause_support",
+)
+WORKPLACE_CLAIM_SOURCES = ("self_reported", "publicly_documented", "wsf_reviewed")
+MAX_WORKPLACE_PRACTICES = len(WORKPLACE_PRACTICES)
+
+
 class Organization(db.Model):
     __tablename__ = "organizations"
     __table_args__ = (
@@ -74,6 +95,10 @@ class Organization(db.Model):
     status = db.Column(db.String(20), nullable=False, default="draft")
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     featured = db.Column(db.Boolean, nullable=False, default=False)
+    # Workplace profile: list[{practice, claimSource, sourceUrl?, note?}] —
+    # see WORKPLACE_PRACTICES / WORKPLACE_CLAIM_SOURCES. Null/empty = none,
+    # and the public page then shows no workplace section at all.
+    workplace_practices = db.Column(db.JSON)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False

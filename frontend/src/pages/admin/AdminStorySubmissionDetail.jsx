@@ -20,6 +20,7 @@ import { formatDate } from '../../utils/format'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import MediaImage from '../../components/ui/MediaImage'
+import CareerOutcomeReview from '../../components/cms/CareerOutcomeReview'
 
 const inputClass = 'w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none'
 
@@ -397,6 +398,8 @@ export default function AdminStorySubmissionDetail() {
               )}
             </div>
           </div>
+
+          <CareerOutcomeReview key={`${submission.id}-${submission.outcomeStatus}`} submission={submission} onUpdated={setSubmission} />
 
           <div className="border border-taupe-200 bg-white p-6">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Editorial review</p>

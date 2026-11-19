@@ -226,6 +226,8 @@ function mapOrganization(o) {
     status: o.status || 'published',
     seo: o.seo || null,
     peopleCount: o.people_count,
+    // Employer workplace profile: [{practice, claimSource, sourceUrl, note}].
+    workplacePractices: Array.isArray(o.workplacePractices) ? o.workplacePractices : [],
     featured: o.featured,
   }
 }

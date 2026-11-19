@@ -11,6 +11,7 @@ import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
+import WorkplacePracticesEditor from '../../components/cms/WorkplacePracticesEditor'
 
 function slugify(text) {
   return text
@@ -52,6 +53,7 @@ function blankForm() {
     socialLinkedin: '',
     socialTwitter: '',
     socialInstagram: '',
+    workplacePractices: [],
     featured: false,
     status: 'draft',
     seoTitle: '',
@@ -77,6 +79,7 @@ function toForm(org) {
     socialLinkedin: org.social?.linkedin || '',
     socialTwitter: org.social?.twitter || '',
     socialInstagram: org.social?.instagram || '',
+    workplacePractices: org.workplacePractices || [],
     featured: !!org.featured,
     status: org.status || 'draft',
     seoTitle: org.seo?.title || '',
@@ -190,6 +193,12 @@ export default function AdminOrganizationEditor() {
         twitter: form.socialTwitter || null,
         instagram: form.socialInstagram || null,
       },
+      workplacePractices: form.workplacePractices.map((p) => ({
+        practice: p.practice,
+        claimSource: p.claimSource,
+        sourceUrl: (p.sourceUrl || '').trim() || null,
+        note: (p.note || '').trim() || null,
+      })),
       featured: form.featured,
       status: nextStatus,
       seo: {
@@ -334,6 +343,13 @@ export default function AdminOrganizationEditor() {
                 <input value={form.socialInstagram} onChange={(e) => updateField('socialInstagram', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
             </div>
+          </Section>
+
+          <Section
+            title="Workplace practices"
+            description="Optional employer workplace profile. Say where each claim comes from. WSF does not certify employers, and nothing here is shown as a certification."
+          >
+            <WorkplacePracticesEditor value={form.workplacePractices} onChange={(v) => updateField('workplacePractices', v)} />
           </Section>
 
           <Section title="SEO">

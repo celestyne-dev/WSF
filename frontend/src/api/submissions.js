@@ -104,6 +104,13 @@ export function mapSubmission(s) {
       ? s.notes.map((n) => ({ id: n.id, body: n.body, user: n.user?.full_name || null, createdAt: n.created_at }))
       : [],
 
+    // Optional career outcome (consent + editor approval gated).
+    outcomeType: s.outcome_type || '',
+    outcomePublishConsent: !!s.outcome_publish_consent,
+    outcomeAttribution: s.outcome_attribution || 'anonymous',
+    outcomeStatus: s.outcome_status || 'none',
+    outcomeSummary: s.outcome_summary || '',
+
     submittedAt: s.submitted_at || null,
     updatedAt: s.updated_at || null,
   }
@@ -154,6 +161,9 @@ function buildSubmissionPayload(payload) {
     consentAccuracyConfirmed: payload.consentAccuracyConfirmed,
     consentMediaRightsConfirmed: payload.media?.length ? payload.consentMediaRightsConfirmed : undefined,
     newsletterOptIn: payload.newsletterOptIn,
+    outcomeType: payload.outcomeType || undefined,
+    outcomePublishConsent: payload.outcomeType ? !!payload.outcomePublishConsent : undefined,
+    outcomeAttribution: payload.outcomeType ? payload.outcomeAttribution || 'anonymous' : undefined,
 
     acquisition: payload.acquisition,
   }
@@ -233,6 +243,25 @@ export async function updateSubmission(id, payload) {
   }
   const { data } = await apiClient.patch(`/submissions/${id}`, body)
   return mapSubmission(data)
+}
+
+// Career outcome review only (PATCH sends just these keys, so nothing
+// else on the submission changes). Attribution can only be made anonymous.
+export async function reviewSubmissionOutcome(id, review) {
+  const body = {
+    outcomeType: review.outcomeType || null,
+    outcomeStatus: review.outcomeStatus,
+    outcomeSummary: review.outcomeSummary?.trim() || null,
+    ...(review.outcomeAttribution === 'anonymous' ? { outcomeAttribution: 'anonymous' } : {}),
+  }
+  const { data } = await apiClient.patch(`/submissions/${id}`, body)
+  return mapSubmission(data)
+}
+
+export async function fetchCareerOutcomes() {
+  if (USE_MOCK) return []
+  const { data } = await apiClient.get('/career-outcomes')
+  return Array.isArray(data) ? data : []
 }
 
 export async function updateSubmissionStatus(id, status) {

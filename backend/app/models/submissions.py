@@ -63,6 +63,31 @@ _CONTENT_ORIGIN_CHECK_SQL = "content_origin IS NULL OR content_origin IN (" + ",
 
 _AI_INVOLVEMENT_CHECK_SQL = "ai_involvement IN (" + ", ".join(f"'{v}'" for v in AI_INVOLVEMENT_VALUES) + ")"
 
+# WSF Career Outcomes — a controlled set of career moves a member may
+# choose to share alongside her story. Published only with the
+# submitter's explicit consent AND editor approval; attribution is the
+# submitter's choice (first name + initial, or anonymous); WSF never
+# claims or implies it caused the outcome.
+CAREER_OUTCOME_TYPES = (
+    "new_job",
+    "promotion",
+    "pay_increase",
+    "career_change",
+    "returned_to_work",
+    "started_business",
+    "leadership_role",
+    "new_qualification",
+)
+CAREER_OUTCOME_STATUSES = ("none", "pending", "approved", "rejected")
+CAREER_OUTCOME_ATTRIBUTIONS = ("anonymous", "first_name")
+_OUTCOME_TYPE_CHECK_SQL = "outcome_type IS NULL OR outcome_type IN (" + ", ".join(
+    f"'{t}'" for t in CAREER_OUTCOME_TYPES
+) + ")"
+_OUTCOME_STATUS_CHECK_SQL = "outcome_status IN (" + ", ".join(f"'{s}'" for s in CAREER_OUTCOME_STATUSES) + ")"
+_OUTCOME_ATTRIBUTION_CHECK_SQL = "outcome_attribution IN (" + ", ".join(
+    f"'{a}'" for a in CAREER_OUTCOME_ATTRIBUTIONS
+) + ")"
+
 # Simple internal indicators, not a fact-checking platform.
 VERIFICATION_STATUSES = ("unverified", "verification_needed", "verified")
 _VERIFICATION_STATUS_CHECK_SQL = "verification_status IN (" + ", ".join(
@@ -102,6 +127,9 @@ class StorySubmission(db.Model):
         db.CheckConstraint(_AI_INVOLVEMENT_CHECK_SQL, name="ck_story_submissions_ai_involvement"),
         db.CheckConstraint(_VERIFICATION_STATUS_CHECK_SQL, name="ck_story_submissions_verification_status"),
         db.CheckConstraint(_SUBJECT_PERMISSION_CHECK_SQL, name="ck_story_submissions_subject_permission"),
+        db.CheckConstraint(_OUTCOME_TYPE_CHECK_SQL, name="ck_story_submissions_outcome_type"),
+        db.CheckConstraint(_OUTCOME_STATUS_CHECK_SQL, name="ck_story_submissions_outcome_status"),
+        db.CheckConstraint(_OUTCOME_ATTRIBUTION_CHECK_SQL, name="ck_story_submissions_outcome_attribution"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -166,6 +194,14 @@ class StorySubmission(db.Model):
     editorial_assessment = db.Column(db.Text)
     assigned_editor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     reviewed_at = db.Column(db.DateTime(timezone=True))
+
+    # --- Career outcome (optional; see CAREER_OUTCOME_TYPES) ---
+    outcome_type = db.Column(db.String(30))
+    outcome_publish_consent = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
+    outcome_attribution = db.Column(db.String(20), nullable=False, default="anonymous", server_default="anonymous")
+    outcome_status = db.Column(db.String(20), nullable=False, default="none", server_default="none", index=True)
+    outcome_summary = db.Column(db.String(280))  # editor-written public line; never the raw story
+    outcome_approved_at = db.Column(db.DateTime(timezone=True))
 
     # --- Linked records (all optional, all editor-controlled — never auto-created) ---
     person_id = db.Column(db.Integer, db.ForeignKey("people.id"), nullable=True)

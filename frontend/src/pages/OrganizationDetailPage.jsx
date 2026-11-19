@@ -20,6 +20,7 @@ import ArticleCard from '../components/cards/ArticleCard'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
+import { WORKPLACE_CLAIM_SOURCES, WORKPLACE_PRACTICES, labelFor } from '../constants/workplace'
 
 const TYPE_LABELS = {
   company: 'Company',
@@ -183,6 +184,33 @@ export default function OrganizationDetailPage() {
       </div>
 
       <div className="container-editorial space-y-14 py-14">
+        {org.workplacePractices?.length > 0 && (
+          <section aria-labelledby="workplace-practices">
+            <p id="workplace-practices" className="eyebrow mb-2">Workplace practices</p>
+            <p className="mb-5 max-w-2xl text-xs text-charcoal-600">
+              What we know about working at {org.name}, with where each item comes from. This is not a WSF certification or endorsement.
+            </p>
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {org.workplacePractices.map((p) => (
+                <li key={p.practice} className="border border-taupe-200 bg-white p-4">
+                  <p className="font-semibold text-charcoal">{labelFor(WORKPLACE_PRACTICES, p.practice)}</p>
+                  {p.note && <p className="mt-1 text-sm text-charcoal-600">{p.note}</p>}
+                  <p className="mt-2 text-xs text-charcoal-600/80">
+                    {labelFor(WORKPLACE_CLAIM_SOURCES, p.claimSource)}
+                    {p.sourceUrl && (
+                      <>
+                        {' · '}
+                        <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer nofollow" className="font-semibold text-burgundy-600 hover:underline">
+                          Source
+                        </a>
+                      </>
+                    )}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {orgPeople.length > 0 && (
           <div>
             <p className="eyebrow mb-5">People at {org.name}</p>

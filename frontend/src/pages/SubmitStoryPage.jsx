@@ -7,6 +7,7 @@ import { STORY_TYPES, STORY_TYPE_LABELS, CONTENT_ORIGINS, CONTENT_ORIGIN_LABELS,
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import CountrySelect from '../components/ui/CountrySelect'
+import { CAREER_OUTCOME_TYPES } from '../constants/workplace'
 
 const MAX_IMAGES = 3
 
@@ -20,6 +21,7 @@ function initialForm() {
     media: [],
     consentReviewGiven: false, consentContactGiven: false, consentAccuracyConfirmed: false,
     consentMediaRightsConfirmed: false, newsletterOptIn: false,
+    outcomeType: '', outcomePublishConsent: false, outcomeAttribution: 'anonymous',
   }
 }
 
@@ -244,6 +246,38 @@ export default function SubmitStoryPage() {
                 <input type="checkbox" checked={form.consentMediaRightsConfirmed} onChange={(e) => setField('consentMediaRightsConfirmed', e.target.checked)} className="mt-1" />
                 I have permission to submit the image(s) above, including from anyone shown in them.
               </label>
+            )}
+          </div>
+
+          <div className="space-y-3 border border-taupe-200 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Career outcome (optional)</p>
+            <p className="text-xs text-charcoal-600/80">
+              Did your story include a career move? With your permission, we may share it anonymously or with your first name and initial among career moves from our community. We never say WSF caused it.
+            </p>
+            <select value={form.outcomeType} onChange={(e) => setField('outcomeType', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" aria-label="Career outcome">
+              <option value="">No outcome to share</option>
+              {CAREER_OUTCOME_TYPES.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {form.outcomeType && (
+              <>
+                <label className="flex items-start gap-2 text-sm text-charcoal-600">
+                  <input type="checkbox" checked={form.outcomePublishConsent} onChange={(e) => setField('outcomePublishConsent', e.target.checked)} className="mt-1" />
+                  Women Shaping Futures may publish this career outcome (after editorial review).
+                </label>
+                <fieldset className="space-y-1 text-sm text-charcoal-600">
+                  <legend className="text-xs font-semibold text-charcoal-600">If published, show it as</legend>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name="outcomeAttribution" checked={form.outcomeAttribution === 'anonymous'} onChange={() => setField('outcomeAttribution', 'anonymous')} />
+                    Anonymous (“A WSF community member”)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name="outcomeAttribution" checked={form.outcomeAttribution === 'first_name'} onChange={() => setField('outcomeAttribution', 'first_name')} />
+                    My first name and last initial
+                  </label>
+                </fieldset>
+              </>
             )}
           </div>
 

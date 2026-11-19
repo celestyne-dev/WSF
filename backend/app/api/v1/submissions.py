@@ -31,6 +31,7 @@ from app.schemas.submissions import (
 )
 from app.schemas.media import MediaSchema
 from app.services.audit import log_action
+from app.services.career_outcomes import apply_outcome_review
 from app.services.newsletter import upsert_subscriber
 from app.services.media import MediaService
 from app.services.notifications import notify_story_submission_received
@@ -130,7 +131,12 @@ class SubmissionListResource(Resource):
         data["country_code"] = data["country_code"].upper()
         data["email"] = email
 
+        if not data.get("outcome_type"):
+            # Consent/attribution mean nothing without an outcome to share.
+            data["outcome_publish_consent"] = False
+            data["outcome_attribution"] = "anonymous"
         submission = StorySubmission(**data, consent_recorded_at=datetime.now(timezone.utc))
+        submission.outcome_status = "pending" if submission.outcome_type else "none"
         submission.topics = _resolve_topics(topic_slugs)
         db.session.add(submission)
         db.session.flush()
@@ -220,6 +226,8 @@ class SubmissionDetailResource(Resource):
             submission.organization_id = organization_id
         if topic_slugs is not None:
             submission.topics = _resolve_topics(topic_slugs)
+
+        apply_outcome_review(submission, data)
 
         for key, value in data.items():
             setattr(submission, key, value)

@@ -12,6 +12,7 @@ import {
   skipCareerGoalsPrompt,
 } from '../api/careerHub'
 import CareerGoalsPicker from '../components/account/CareerGoalsPicker'
+import { fetchCareerOutcomes } from '../api/submissions'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import FilterSelect from '../components/ui/FilterSelect'
@@ -135,6 +136,41 @@ function ForYourGoals({ goalOptions, onOpen }) {
       <div className="mt-6">
         <CardGrid cards={recommended} onOpen={onOpen} />
       </div>
+    </section>
+  )
+}
+
+// Approved, consented Career Outcomes shared by members (via Story
+// Submissions). Hidden entirely until at least one exists. Copy never
+// implies WSF caused an outcome.
+function CommunityOutcomes() {
+  const [items, setItems] = useState([])
+  useEffect(() => {
+    let active = true
+    fetchCareerOutcomes()
+      .then((rows) => active && setItems(rows.slice(0, 6)))
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+  if (items.length === 0) return null
+  return (
+    <section aria-labelledby="career-hub-outcomes" className="mt-16">
+      <h2 id="career-hub-outcomes" className="font-serif text-2xl font-semibold text-charcoal">Career moves from our community</h2>
+      <p className="mt-1 text-sm text-charcoal-600">Shared by members, with their permission.</p>
+      <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((o, i) => (
+          <li key={i} className="border border-taupe-200 bg-white p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-plum-600">{o.label}</p>
+            <p className="mt-2 text-sm text-charcoal">{o.summary}</p>
+            <p className="mt-3 text-xs text-charcoal-600/80">{o.attribution}</p>
+          </li>
+        ))}
+      </ul>
+      <Link to="/submit" className="mt-4 inline-block text-sm font-semibold text-burgundy-600 hover:underline">
+        Share your story
+      </Link>
     </section>
   )
 }
@@ -352,6 +388,8 @@ export default function CareerHubPage() {
               ))}
           </div>
         </section>
+
+        {!filtering && state.page === 1 && <CommunityOutcomes />}
 
         <section className="mt-16 border border-plum-600/20 bg-plum-700 px-6 py-10 text-ivory sm:px-10">
           <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ivory/80">

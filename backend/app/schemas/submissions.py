@@ -3,6 +3,9 @@ from marshmallow import fields, validate, validates_schema, ValidationError
 from app.extensions import ma
 from app.models.article import AI_INVOLVEMENT_VALUES
 from app.models.submissions import (
+    CAREER_OUTCOME_ATTRIBUTIONS,
+    CAREER_OUTCOME_STATUSES,
+    CAREER_OUTCOME_TYPES,
     CONTENT_ORIGINS,
     STORY_TYPES,
     SUBJECT_PERMISSION_STATUSES,
@@ -157,6 +160,13 @@ class StorySubmissionInputSchema(ma.Schema):
 
     acquisition = fields.Dict(required=False, allow_none=True)
 
+    # Optional career outcome the submitter chooses to share.
+    outcome_type = fields.String(required=False, allow_none=True, validate=validate.OneOf(CAREER_OUTCOME_TYPES), data_key="outcomeType")
+    outcome_publish_consent = fields.Boolean(required=False, load_default=False, data_key="outcomePublishConsent")
+    outcome_attribution = fields.String(
+        required=False, load_default="anonymous", validate=validate.OneOf(CAREER_OUTCOME_ATTRIBUTIONS), data_key="outcomeAttribution"
+    )
+
     @validates_schema
     def validate_consent(self, data, **kwargs):
         for field in ("consent_review_given", "consent_contact_given", "consent_accuracy_confirmed"):
@@ -196,6 +206,12 @@ class SubmissionUpdateSchema(ma.Schema):
     )
     person_id = fields.Integer(required=False, allow_none=True, data_key="personId")
     organization_id = fields.Integer(required=False, allow_none=True, data_key="organizationId")
+    # Career outcome review. Attribution may only ever be made MORE private
+    # by staff (see app/api/v1/submissions.py); consent is never editable.
+    outcome_type = fields.String(required=False, allow_none=True, validate=validate.OneOf(CAREER_OUTCOME_TYPES), data_key="outcomeType")
+    outcome_status = fields.String(required=False, validate=validate.OneOf(CAREER_OUTCOME_STATUSES), data_key="outcomeStatus")
+    outcome_summary = fields.String(required=False, allow_none=True, validate=validate.Length(max=280), data_key="outcomeSummary")
+    outcome_attribution = fields.String(required=False, validate=validate.OneOf(CAREER_OUTCOME_ATTRIBUTIONS), data_key="outcomeAttribution")
 
 
 class SubmissionStatusInputSchema(ma.Schema):

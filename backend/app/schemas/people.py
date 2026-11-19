@@ -1,4 +1,4 @@
-from marshmallow import fields, validate
+from marshmallow import ValidationError, fields, validate, validates_schema
 
 from app.extensions import db, ma
 from app.models.article import Article
@@ -8,6 +8,9 @@ from app.models.people import (
     ORGANIZATION_STATUSES,
     ORGANIZATION_TYPES,
     PERSON_STATUSES,
+    MAX_WORKPLACE_PRACTICES,
+    WORKPLACE_CLAIM_SOURCES,
+    WORKPLACE_PRACTICES,
     Author,
     Organization,
     Person,
@@ -28,8 +31,18 @@ class OrganizationSchema(ma.SQLAlchemyAutoSchema):
         model = Organization
         load_instance = False
 
+    workplace_practices = fields.Method("get_workplace_practices", data_key="workplacePractices")
+
     def get_people_count(self, obj):
         return Person.query.filter_by(organization_id=obj.id, status="published").count()
+
+    def get_workplace_practices(self, obj):
+        return [
+            {"practice": p.get("practice"), "claimSource": p.get("claim_source"),
+             "sourceUrl": p.get("source_url"), "note": p.get("note")}
+            for p in (obj.workplace_practices or [])
+            if p.get("practice") in WORKPLACE_PRACTICES and p.get("claim_source") in WORKPLACE_CLAIM_SOURCES
+        ]
 
 
 class PersonSchema(ma.SQLAlchemyAutoSchema):
@@ -145,6 +158,20 @@ class AuthorDetailSchema(AuthorSchema):
         exclude = ("user_id",)
 
 
+class WorkplacePracticeInputSchema(ma.Schema):
+    practice = fields.String(required=True, validate=validate.OneOf(WORKPLACE_PRACTICES))
+    claim_source = fields.String(required=True, data_key="claimSource", validate=validate.OneOf(WORKPLACE_CLAIM_SOURCES))
+    source_url = fields.String(required=False, allow_none=True, data_key="sourceUrl", validate=validate.URL(require_tld=True, schemes={"http", "https"}))
+    note = fields.String(required=False, allow_none=True, validate=validate.Length(max=280))
+
+    @validates_schema
+    def validate_source(self, data, **kwargs):
+        # A "publicly documented" or "WSF reviewed" claim must point at the
+        # public evidence; a self-reported claim may stand alone.
+        if data.get("claim_source") in ("publicly_documented", "wsf_reviewed") and not data.get("source_url"):
+            raise ValidationError("A source link is required for documented or reviewed practices.", field_name="sourceUrl")
+
+
 class OrganizationInputSchema(ma.Schema):
     name = fields.String(required=True, validate=validate.Length(min=1, max=200))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=160))
@@ -163,6 +190,11 @@ class OrganizationInputSchema(ma.Schema):
     status = fields.String(required=False, load_default="draft", validate=validate.OneOf(ORGANIZATION_STATUSES))
     seo = fields.Dict(required=False, allow_none=True)
     featured = fields.Boolean(required=False, load_default=False)
+    # No load_default: omitted -> saved practices untouched.
+    workplace_practices = fields.List(
+        fields.Nested(WorkplacePracticeInputSchema), required=False, allow_none=True, data_key="workplacePractices",
+        validate=validate.Length(max=MAX_WORKPLACE_PRACTICES),
+    )
 
 
 class PersonInputSchema(ma.Schema):
