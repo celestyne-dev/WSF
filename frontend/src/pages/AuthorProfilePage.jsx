@@ -126,14 +126,12 @@ export default function AuthorProfilePage() {
     <div>
       {/* Hero: identity and authority signals. */}
       <header className="border-b border-taupe-200 bg-cream">
-        <div className="container-editorial max-w-[1240px] pb-12 pt-6 sm:pb-14">
+        <div className="container-editorial max-w-[1240px] pb-8 pt-5">
           <div className="opacity-80">
             <Breadcrumb items={[{ label: 'Authors', to: '/authors' }, { label: author.name }]} />
           </div>
           <div
-            className={`mt-8 grid grid-cols-1 gap-6 sm:grid-cols-[136px_minmax(0,1fr)] sm:gap-8 md:grid-cols-[184px_minmax(0,1fr)] md:gap-12 ${
-              model.topics.length || model.stats.length || model.links.length || model.person ? '' : 'sm:items-center'
-            }`}
+            className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center sm:gap-8 md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14"
           >
             {model.hasPortrait ? (
               <MediaImage
@@ -141,29 +139,29 @@ export default function AuthorProfilePage() {
                 variant="card"
                 mediaPath={author.photo}
                 alt={resolveAltText(author.photoMedia, `Portrait of ${author.name}`)}
-                width={368}
-                height={460}
+                width={520}
+                height={650}
                 aspect={4 / 5}
-                sizes="(min-width: 768px) 184px, 136px"
+                sizes="(min-width: 1024px) 260px, (min-width: 768px) 200px, (min-width: 640px) 180px, 130px"
                 priority
-                className="aspect-[4/5] w-[120px] rounded-lg border border-taupe-200 object-cover sm:w-full"
+                className="aspect-[4/5] w-[130px] rounded-lg border border-taupe-200 object-cover sm:w-full"
               />
             ) : (
               <div
                 aria-hidden="true"
-                className="flex aspect-[4/5] w-[120px] items-center justify-center rounded-lg border border-taupe-200 bg-ivory-200 font-serif text-4xl text-burgundy-600 sm:w-full md:text-5xl"
+                className="flex aspect-[4/5] w-[130px] items-center justify-center rounded-lg border border-taupe-200 bg-ivory-200 font-serif text-4xl text-burgundy-600 sm:w-full md:text-5xl lg:text-6xl"
               >
                 {model.initials}
               </div>
             )}
 
             <div className="min-w-0">
-              <h1 className="font-serif text-[32px] font-semibold leading-tight text-charcoal sm:text-4xl lg:text-[44px]">{author.name}</h1>
-              {model.headline && <p className="mt-3 font-serif text-lg leading-snug text-burgundy-700 sm:text-xl">{model.headline}</p>}
-              {model.roleLine && <p className="mt-3 text-sm text-charcoal-600 sm:text-base">{model.roleLine}</p>}
+              <h1 className="font-serif text-[32px] font-semibold leading-[1.1] text-charcoal sm:text-4xl lg:text-[46px]">{author.name}</h1>
+              {model.headline && <p className="mt-2 font-serif text-lg leading-snug text-burgundy-700 sm:text-xl">{model.headline}</p>}
+              {model.roleLine && <p className="mt-2 text-sm text-charcoal-600 sm:text-base">{model.roleLine}</p>}
 
               {model.topics.length > 0 && (
-                <div className="mt-6">
+                <div className="mt-5">
                   <p className="text-[11px] font-semibold uppercase tracking-widest2 text-charcoal-600/80">Areas of expertise</p>
                   <ul aria-label="Areas of expertise" className="mt-2 flex flex-wrap gap-2">
                     {model.topics.map((t) => (
@@ -181,9 +179,9 @@ export default function AuthorProfilePage() {
               )}
 
               {model.stats.length > 0 && (
-                <dl className="mt-6 inline-flex max-w-full flex-wrap border-y border-taupe-200">
+                <dl className="mt-5 inline-flex max-w-full flex-wrap border-y border-taupe-200">
                   {model.stats.map((stat, i) => (
-                    <div key={stat.label} className={`flex flex-col-reverse py-3 pr-6 sm:pr-8 ${i > 0 ? 'border-l border-taupe-200 pl-6 sm:pl-8' : ''}`}>
+                    <div key={stat.label} className={`flex flex-col-reverse py-2.5 pr-6 sm:pr-8 ${i > 0 ? 'border-l border-taupe-200 pl-6 sm:pl-8' : ''}`}>
                       <dt className="text-[11px] font-semibold uppercase tracking-wider text-charcoal-600">{stat.label}</dt>
                       <dd className="font-serif text-3xl font-semibold leading-none text-charcoal">{stat.value}</dd>
                     </div>
@@ -192,7 +190,7 @@ export default function AuthorProfilePage() {
               )}
 
               {(model.links.length > 0 || model.person) && (
-                <ul className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+                <ul className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
                   {model.links.map((link) => (
                     <li key={link.kind}>
                       <a
@@ -227,8 +225,8 @@ export default function AuthorProfilePage() {
           <div
             className={
               model.sidebar
-                ? 'grid grid-cols-1 gap-12 py-14 lg:grid-cols-12 lg:gap-16 lg:py-16'
-                : 'py-14 md:grid md:grid-cols-[184px_minmax(0,1fr)] md:gap-12 lg:py-16'
+                ? 'grid grid-cols-1 gap-12 pb-14 pt-10 lg:grid-cols-12 lg:gap-16 lg:pb-16 lg:pt-12'
+                : 'pb-14 pt-10 md:grid md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14 lg:pb-16 lg:pt-12'
             }
           >
             {model.about && (
