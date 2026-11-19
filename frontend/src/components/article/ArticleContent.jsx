@@ -23,6 +23,20 @@ const ARTICLE_LINK_CLASSES =
   '[&_a]:text-burgundy-600 [&_a]:underline [&_a]:decoration-burgundy-300 [&_a]:underline-offset-2 hover:[&_a]:decoration-burgundy-600'
 
 function Heading({ block, headingId, variant }) {
+  // variant="profile" (AuthorProfilePage "About"): the biography already
+  // sits under the page's own H2, so its headings render one level down
+  // (h2 -> h3, h3/h4 -> h4) to keep a single, logical outline.
+  if (variant === 'profile') {
+    const Demoted = block.level === 3 || block.level === 4 ? 'h4' : 'h3'
+    return (
+      <Demoted
+        id={headingId || undefined}
+        className={`mt-10 font-serif font-semibold text-charcoal ${Demoted === 'h3' ? 'text-xl leading-snug sm:text-[1.375rem]' : 'text-lg leading-snug'} ${headingId ? 'scroll-mt-28' : ''}`}
+      >
+        {block.text}
+      </Demoted>
+    )
+  }
   const Tag = block.level === 4 ? 'h4' : block.level === 3 ? 'h3' : 'h2'
   const sizes = { 2: 'text-2xl sm:text-3xl', 3: 'text-xl sm:text-2xl', 4: 'text-lg sm:text-xl' }
   // variant="article" (ArticlePage only): stronger serif scale and
