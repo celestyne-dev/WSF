@@ -176,7 +176,8 @@ class TestAuthorPrerender:
         html = client.get("/authors/celestine").get_data(as_text=True)
         root = html.split('data-wsf-prerender="author"', 1)[1]
         assert "Career, Leadership &amp; Future of Work" in root
-        assert "9 Articles" in root and "1 Career Tool" in root and "1 Course" in root
+        for label, value in (("Articles", 9), ("Career Tool", 1), ("Course", 1)):
+            assert re.search(rf"<dt[^>]*>{label}</dt><dd[^>]*>{value}</dd>", root), label
         assert "Learn with Celestine" in root and "/learning/pre-course" in root
         assert "Career tools by Celestine" in root and "/resources/pre-tool" in root
         assert "Latest articles" in root
@@ -199,6 +200,112 @@ class TestAuthorPrerender:
         html = client.get("/authors/celestine").get_data(as_text=True)
         root = html.split('data-wsf-prerender="author"', 1)[1]
         positions = [root.index(s) for s in ("Celestine Nyamoita", "Future of Work", "Founder &amp; Editor", "Nairobi",
-                                              'href="/topics/leadership"', "1 Article")]
+                                              'href="/topics/leadership"', ">Article</dt>")]
         assert positions == sorted(positions), positions
         assert root.count('href="/topics/leadership"') == 1
+
+
+def _bootstrap(html):
+    import json
+
+    match = re.search(r'<script type="application/json" data-wsf-bootstrap="author">(.*?)</script>', html, re.S)
+    return json.loads(match.group(1)) if match else None
+
+
+def _portrait_media(app):
+    from app.models.media import Media, MediaVariant
+
+    with app.app_context():
+        media = Media(original_filename="p.jpg", stored_filename="secret-stored-name.jpg", file_path="uploads/secret/p.jpg",
+                      public_url="/media/p.jpg", mime_type="image/jpeg", width=1200, height=1500, alt_text="Celestine portrait")
+        db.session.add(media)
+        db.session.flush()
+        for name, width in (("thumbnail", 240), ("card", 640), ("large", 1200)):
+            db.session.add(MediaVariant(media_id=media.id, variant=name, file_path=f"uploads/secret/{name}.webp",
+                                        public_url=f"/media/p-{name}.webp", width=width, height=int(width * 1.25)))
+        db.session.commit()
+        return media.id
+
+
+class TestAuthorBootstrap:
+    def test_bootstrap_matches_public_api_and_first_article_page(self, client, app):
+        app.config["SPA_INDEX_PATH"] = FIXTURE_INDEX_PATH
+        aid = _author(app, headline="Career, Leadership & Future of Work")
+        for i in range(12):
+            _article(app, aid, f"boot{i}", days_ago=i)
+        _article(app, aid, "boot-draft", status="draft")
+        _resource(app, aid, "boot-tool")
+        html = client.get("/authors/celestine").get_data(as_text=True)
+        boot = _bootstrap(html)
+        assert boot["key"] == "celestine"
+        data = boot["data"]
+        api = _detail(client).get_json()["data"]
+        assert data["author"] == api["author"]
+        assert data["authority"]["counts"] == api["authority"]["counts"]
+        assert [r["slug"] for r in data["authority"]["resources"]] == [r["slug"] for r in api["authority"]["resources"]]
+        # Nested bylines are slimmed to what the cards read; nothing else differs.
+        assert set(data["articles"][0]["author"]) <= {"id", "slug", "name", "role", "photo"}
+        assert data["articles"][0]["author"]["name"] == "Celestine Nyamoita"
+        assert set(data["authority"]["resources"][0]["author"]) <= {"id", "slug", "name", "role", "photo"}
+        page1 = client.get("/api/v1/articles", query_string={"author": "celestine", "page": 1, "per_page": 9}).get_json()
+        assert [a["slug"] for a in data["articles"]] == [a["slug"] for a in page1["data"]]
+        assert data["meta"]["total"] == 12 and data["meta"]["total_pages"] == 2 and data["meta"]["per_page"] == 9
+        assert "boot-draft" not in html
+
+    def test_bootstrap_is_public_only(self, client, app):
+        from app.models.people import Person
+        from app.models.taxonomy import Topic
+
+        app.config["SPA_INDEX_PATH"] = FIXTURE_INDEX_PATH
+        pid = _add(app, Person(slug="hidden-person", name="Hidden Person Name", status="draft"))
+        tid = _add(app, Topic(slug="secret-topic", name="Secret Topic Name", status="archived"))
+        media_id = _portrait_media(app)
+        aid = _author(app, person_id=pid, photo_media_id=media_id)
+        with app.app_context():
+            from app.models.people import Author
+
+            author = db.session.get(Author, aid)
+            author.topics.append(db.session.get(Topic, tid))
+            db.session.commit()
+        _resource(app, aid, "pub-tool")
+        html = client.get("/authors/celestine").get_data(as_text=True)
+        data = _bootstrap(html)["data"]
+        assert data["author"]["person"] is None and data["author"]["topics"] == []
+        for secret in ("Hidden Person Name", "hidden-person", "Secret Topic Name", "secret-stored-name", "uploads/secret",
+                       "vault/secret.pdf", '"user_id"', '"uploaded_by_id"'):
+            assert secret not in html, secret
+
+    def test_inactive_or_unknown_author_has_no_bootstrap_and_404s(self, client, app):
+        app.config["SPA_INDEX_PATH"] = FIXTURE_INDEX_PATH
+        _author(app, slug="draft-only", status="draft")
+        for path in ("/authors/draft-only", "/authors/nobody"):
+            resp = client.get(path)
+            assert resp.status_code == 404
+            assert 'data-wsf-bootstrap="author"' not in resp.get_data(as_text=True)
+
+
+class TestAuthorPrerenderParity:
+    def test_portrait_uses_public_card_variant_and_is_preloaded(self, client, app):
+        app.config["SPA_INDEX_PATH"] = FIXTURE_INDEX_PATH
+        media_id = _portrait_media(app)
+        _author(app, photo_media_id=media_id, headline="Career, Leadership & Future of Work")
+        html = client.get("/authors/celestine").get_data(as_text=True)
+        root = html.split('data-wsf-prerender="author"', 1)[1]
+        img = re.search(r"<img [^>]*>", root).group(0)
+        assert 'src="/media/p-card.webp"' in img and "640w" in img and "1200w" in img
+        assert 'alt="Celestine portrait"' in img and "aspect-[4/5]" in img
+        assert 'rel="preload"' in html and "p-card.webp" in html.split("</head>")[0]
+        assert "uploads/secret" not in html
+
+    def test_hero_parity_and_no_empty_headings(self, client, app):
+        app.config["SPA_INDEX_PATH"] = FIXTURE_INDEX_PATH
+        _author(app, slug="sparse", status="active")  # no photo, headline, topics, links, bio, content
+        html = client.get("/authors/sparse").get_data(as_text=True)
+        root = html.split('data-wsf-prerender="author"', 1)[1].split("</main>")[0]
+        assert 'role="img"' in root and ">CN<" in root  # initials placeholder, not an <img>
+        assert "<img" not in root
+        assert 'class="border-b border-taupe-200 bg-cream"' in root
+        assert 'aria-label="Breadcrumb"' in root and 'href="/authors"' in root
+        for heading in ("About ", "Credentials", "Learn with", "Career tools", "Latest articles", "Sources", "Areas of expertise"):
+            assert heading not in root, heading
+        assert "<dl" not in root

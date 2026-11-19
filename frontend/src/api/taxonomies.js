@@ -156,7 +156,9 @@ function mapTag(t) {
   }
 }
 
-function mapAuthor(a) {
+// Exported so AuthorProfilePage can map the server's Author bootstrap with
+// the same mapper the API path uses (one shape, one source of truth).
+export function mapAuthor(a) {
   if (!a) return null
   return {
     id: a.id,

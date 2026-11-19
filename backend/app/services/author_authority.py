@@ -124,3 +124,31 @@ def author_authority(author):
         "resources": author_resources(author),
         "learningPrograms": author_learning(author),
     }
+
+
+# AuthorProfilePage requests its article archive 9 per page
+# (fetchArticles({author, page, pageSize: 9})); the hard-load bootstrap
+# embeds exactly that first page so the page never refetches it.
+AUTHOR_ARTICLE_PAGE_SIZE = 9
+
+
+def author_article_first_page(author, per_page=AUTHOR_ARTICLE_PAGE_SIZE):
+    """Page 1 of GET /api/v1/articles?author=<slug>: the same filter
+    (published, this author), order (newest publish_date first) and
+    summary schema, eager-loaded, with non-public taxonomy removed.
+    Returns (items, meta) in the API's own pagination-meta shape."""
+    from app.models.article import Article
+    from app.schemas.article import article_summary_schema
+    from app.services.public_visibility import public_article_dump
+
+    query = (
+        Article.query.filter_by(author_id=author.id, status="published")
+        .options(selectinload(Article.author), selectinload(Article.topics), selectinload(Article.tags),
+                 selectinload(Article.series), selectinload(Article.category), selectinload(Article.hero_media))
+        .order_by(Article.publish_date.desc())
+    )
+    result = query.paginate(page=1, per_page=per_page, error_out=False)
+    items = [public_article_dump(d, a) for d, a in zip(article_summary_schema(many=True).dump(result.items), result.items)]
+    meta = {"page": result.page, "per_page": result.per_page, "total": result.total, "total_pages": result.pages,
+            "has_next": result.has_next, "has_prev": result.has_prev}
+    return items, meta

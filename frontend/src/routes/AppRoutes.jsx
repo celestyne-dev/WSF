@@ -17,13 +17,19 @@ import PageLoader from '../components/ui/PageLoader'
 // "stop code-splitting" change.
 import HomePage from '../pages/HomePage'
 import ArticlePage from '../pages/ArticlePage'
+// Author profiles are also eager: a hard load of /authors/{slug} arrives
+// with a server prerender and a one-shot data bootstrap, so the page can
+// render its final UI on React's FIRST commit. As a lazy() route it would
+// first suspend (Suspense swaps the prerender for <PageLoader /> while the
+// chunk downloads), adding a visible blank-spinner frame. The page module
+// itself is small (~4 kB gzip); see the commit message for measurements.
+import AuthorProfilePage from '../pages/AuthorProfilePage'
 
 const TopicsIndexPage = lazy(() => import('../pages/TopicsIndexPage'))
 const TopicDetailPage = lazy(() => import('../pages/TopicDetailPage'))
 const PeopleDirectoryPage = lazy(() => import('../pages/PeopleDirectoryPage'))
 const PersonProfilePage = lazy(() => import('../pages/PersonProfilePage'))
 const AuthorsIndexPage = lazy(() => import('../pages/AuthorsIndexPage'))
-const AuthorProfilePage = lazy(() => import('../pages/AuthorProfilePage'))
 const SeriesIndexPage = lazy(() => import('../pages/SeriesIndexPage'))
 const SeriesDetailPage = lazy(() => import('../pages/SeriesDetailPage'))
 const JobsListingPage = lazy(() => import('../pages/JobsListingPage'))

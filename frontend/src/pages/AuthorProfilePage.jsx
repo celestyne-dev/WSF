@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Globe, ArrowRight, ArrowUpRight } from 'lucide-react'
 import SocialIcon from '../components/ui/SocialIcon'
-import { fetchAuthorBySlug } from '../api/taxonomies'
-import { fetchArticles } from '../api/articles'
+import { fetchAuthorBySlug, mapAuthor } from '../api/taxonomies'
+import { fetchArticles, mapArticle } from '../api/articles'
 import { resolveImage, resolveAltText } from '../utils/media'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
@@ -22,7 +22,8 @@ import LearningProgramCard from '../components/cards/LearningProgramCard'
 import { mapResource } from '../api/resources'
 import { mapLearningProgram } from '../api/learning'
 import { trackEvent } from '../utils/analytics'
-import { authorProfileModel } from '../utils/authorAuthority'
+import { authorBootstrapState, authorProfileModel } from '../utils/authorAuthority'
+import { readBootstrap, consumeBootstrap } from '../utils/bootstrap'
 
 // schema.org ProfilePage (mainEntity: the Author's Person identity) — the
 // data shape is the pure buildAuthorProfilePageStructuredData() (utils/
@@ -49,13 +50,32 @@ function useAuthorStructuredData(author, canonicalUrl) {
 
 export default function AuthorProfilePage() {
   const { slug } = useParams()
-  const [author, setAuthor] = useState(undefined)
-  const [articles, setArticles] = useState([])
+  // Hard load: the server embeds this page's public data once (spa_shell
+  // _safe_public_author_payload), so the first client frame is the final
+  // page with no Author/articles refetch. readBootstrap only reads the DOM
+  // and checks the slug, so it is safe in this memo; the tag is removed
+  // (consumeBootstrap) from the effect below. A client-side navigation to
+  // another Author finds no matching tag and fetches normally.
+  const bootstrap = useMemo(
+    () => authorBootstrapState(readBootstrap('author', slug), { mapAuthor, mapArticle }),
+    [slug],
+  )
+  const [author, setAuthor] = useState(() => bootstrap?.author ?? undefined)
+  const [articles, setArticles] = useState(() => bootstrap?.articles ?? [])
   const [page, setPage] = useState(1)
-  const [pagination, setPagination] = useState(null)
+  const [pagination, setPagination] = useState(() => bootstrap?.pagination ?? null)
   const [error, setError] = useState(null)
+  // Which slug's bootstrapped article page 1 has already been shown, so only
+  // the very first page-1 render skips the fetch (pagination and a later
+  // return to page 1 always fetch).
+  const bootstrapArticlesShown = useRef(null)
 
   useEffect(() => {
+    if (bootstrap) {
+      consumeBootstrap('author')
+      trackEvent('author_profile_view', { authorSlug: bootstrap.author.slug })
+      return undefined
+    }
     let active = true
     setAuthor(undefined)
     setError(null)
@@ -72,10 +92,14 @@ export default function AuthorProfilePage() {
     return () => {
       active = false
     }
-  }, [slug])
+  }, [slug, bootstrap])
 
   useEffect(() => {
     if (!author) return
+    if (bootstrap && page === 1 && bootstrapArticlesShown.current !== slug) {
+      bootstrapArticlesShown.current = slug
+      return
+    }
     let active = true
     fetchArticles({ author: slug, page, pageSize: 9 })
       .then((res) => {
@@ -87,7 +111,7 @@ export default function AuthorProfilePage() {
     return () => {
       active = false
     }
-  }, [author, slug, page])
+  }, [author, slug, page, bootstrap])
 
   const canonicalUrl = `https://womenshapingfutures.org/authors/${slug}`
   // One effective canonical for useSeo, the ProfilePage JSON-LD and the

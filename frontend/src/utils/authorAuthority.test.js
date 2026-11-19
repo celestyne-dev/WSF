@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  authorBootstrapState,
   authorExternalLinks,
   authorFirstName,
   authorInitials,
@@ -131,4 +132,37 @@ test('nothing at all: no sections; credentials without a bio take the main colum
   assert.equal(m.credentials.length, 1)
   // Later archive pages keep the articles section even if a page is short.
   assert.deepEqual(authorProfileModel({ name: 'X' }, { articleCount: 0, page: 2 }).sections, ['articles'])
+})
+
+const mappers = {
+  mapAuthor: (a) => ({ id: a.id, slug: a.slug, name: a.name, mapped: true }),
+  mapArticle: (a) => ({ id: a.id, slug: a.slug, mapped: true }),
+}
+
+test('bootstrap maps to the same state shapes the API path produces', () => {
+  const state = authorBootstrapState(
+    {
+      key: 'celestine',
+      data: {
+        author: { id: 1, slug: 'celestine', name: 'Celestine' },
+        authority: { counts: { articles: 12 } },
+        articles: [{ id: 5, slug: 'a5' }],
+        meta: { page: 1, per_page: 9, total: 12, total_pages: 2 },
+      },
+    },
+    mappers,
+  )
+  assert.deepEqual(state.author, { id: 1, slug: 'celestine', name: 'Celestine', mapped: true, authority: { counts: { articles: 12 } } })
+  assert.deepEqual(state.articles, [{ id: 5, slug: 'a5', mapped: true }])
+  assert.deepEqual(state.pagination, { page: 1, pageSize: 9, totalItems: 12, totalPages: 2 })
+})
+
+test('missing or malformed bootstrap means fetch normally', () => {
+  assert.equal(authorBootstrapState(null, mappers), null)
+  assert.equal(authorBootstrapState({ key: 'x' }, mappers), null)
+  assert.equal(authorBootstrapState({ key: 'x', data: { author: null } }, mappers), null)
+  const noArticles = authorBootstrapState({ key: 'x', data: { author: { id: 1, slug: 'x' } } }, mappers)
+  assert.deepEqual(noArticles.articles, [])
+  assert.equal(noArticles.pagination, null)
+  assert.equal(noArticles.author.authority, null)
 })

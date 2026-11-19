@@ -404,6 +404,88 @@ def _safe_public_person_payload(person):
     return payload
 
 
+# AuthorProfilePage renders its portrait with MediaImage variant="card" and
+# these `sizes`; the prerender <img> and the LCP preload use the same values
+# so the browser fetches one file that React then reuses.
+_AUTHOR_PORTRAIT_SIZES = "(min-width: 1024px) 260px, (min-width: 768px) 200px, (min-width: 640px) 180px, 130px"
+
+
+def _safe_public_author_payload(author):
+    """The public Author detail page's data, embedded once for a hard load
+    (frontend/src/pages/AuthorProfilePage.jsx reads it via readBootstrap):
+
+      author    - the SAME public dump GET /api/v1/authors/{slug} returns an
+                  anonymous visitor (user_id excluded; linked Person only when
+                  published; published Topics only);
+      authority - the same bounded public authority block that endpoint returns;
+      articles/meta - page 1 of GET /api/v1/articles?author={slug} at the
+                  page's own page size (published only, public taxonomy only).
+
+    Media internals (file paths, uploader ids) are redacted like every other
+    bootstrap, and nested bylines are slimmed to what the cards read (see
+    _slim_bootstrap_bylines). Size trade-off: embedding the first article
+    page costs roughly 1 kB per article summary but removes a second
+    blocking API request on first load.
+    """
+    from app.schemas.people import AuthorDetailSchema
+    from app.services.author_authority import author_article_first_page, author_authority
+    from app.services.public_visibility import public_author_dump
+
+    articles, meta = author_article_first_page(author)
+    payload = {
+        "author": public_author_dump(AuthorDetailSchema().dump(author), author),
+        "authority": author_authority(author),
+        "articles": articles,
+        "meta": meta,
+    }
+    return _redact_internal_media_fields(_slim_bootstrap_bylines(payload))
+
+
+_BYLINE_KEYS = ("id", "slug", "name", "role", "photo")
+
+
+def _slim_byline(person):
+    """A nested Author/instructor reduced to what the cards read
+    (mapArticle/mapResource/mapInstructor: id, slug, name, role, photo)."""
+    return {k: person.get(k) for k in _BYLINE_KEYS if k in person} if isinstance(person, dict) else person
+
+
+def _slim_bootstrap_bylines(payload):
+    """Every Article/Resource summary and Learning card repeats its full
+    nested Author (bio, topics, SEO, ...) — about 2.5 kB each — though the
+    page's cards only show a byline. Trim those nested people in the
+    embedded copy only (the API responses are unchanged)."""
+    for article in payload["articles"]:
+        if isinstance(article, dict):
+            article["author"] = _slim_byline(article.get("author"))
+            if isinstance(article.get("co_authors"), list):
+                article["co_authors"] = [_slim_byline(a) for a in article["co_authors"]]
+    for resource in payload["authority"].get("resources") or []:
+        if isinstance(resource, dict) and "author" in resource:
+            resource["author"] = _slim_byline(resource["author"])
+    for program in payload["authority"].get("learningPrograms") or []:
+        if isinstance(program, dict):
+            for key in ("primary_instructor", "primaryInstructor"):
+                if key in program:
+                    program[key] = _slim_byline(program[key])
+            for key in ("co_instructors", "coInstructors"):
+                if isinstance(program.get(key), list):
+                    program[key] = [_slim_byline(a) for a in program[key]]
+    return payload
+
+
+def _author_portrait(author):
+    media = author.photo
+    if media is None:
+        return None
+    href, candidates = _image_preload_candidates(media, preferred_variant="card")
+    if not href:
+        return None
+    srcset = ", ".join(f"{url} {width}w" for width, url in candidates) if len(candidates) > 1 else None
+    return {"src": href, "srcset": srcset, "sizes": _AUTHOR_PORTRAIT_SIZES,
+            "alt": media.alt_text or f"Portrait of {author.name}"}
+
+
 def _set_bootstrap_data(html_doc, bootstrap_type, payload):
     """WSF SEO Phase 2D — embeds one small, non-executable
     `<script type="application/json" data-wsf-bootstrap="{type}">` tag
@@ -1798,6 +1880,8 @@ _ENTITY_IMAGE_PRELOAD = {
     # ProductDetailPage's first gallery image is `priority`, variant
     # "large", no explicit sizes (MediaImage then uses "100vw").
     "shop": (_product_primary_media, "100vw", "large"),
+    # AuthorProfilePage's portrait is `priority`, variant "card".
+    "authors": (lambda e: e.photo, _AUTHOR_PORTRAIT_SIZES, "card"),
 }
 
 # The list/landing pages that get a 2-level ("Home" > Section)
@@ -2392,6 +2476,21 @@ def _render_entity_detail(prefix, slug):
             html_doc, media=get_media(entity), public_site_url=public_site_url, sizes=sizes, preferred_variant=preferred_variant
         )
 
+    if prefix == "authors":
+        # One-shot bootstrap so AuthorProfilePage's first client frame is the
+        # final page (no Author/articles refetch), plus a prerender that
+        # mirrors that page's layout so React's replacement is near-invisible.
+        from app.services.author_authority import author_latest_articles
+
+        bootstrap = _safe_public_author_payload(entity)
+        html_doc = _set_bootstrap_data(html_doc, "author", {"key": entity.slug, "data": bootstrap})
+        html_doc = _set_root_prerender(html_doc, render_author_prerender(
+            bootstrap["author"],
+            authority={**bootstrap["authority"], "latestArticles": author_latest_articles(entity)},
+            portrait=_author_portrait(entity),
+        ))
+        return _html_response(html_doc)
+
     if prefix == "people":
         # AI Search / GEO Phase 1B — visible profile content inside #root,
         # plus a one-shot bootstrap so PersonProfilePage renders the
@@ -2439,20 +2538,6 @@ def _public_detail_prerender(prefix, entity):
         from app.schemas.people import OrganizationSchema
 
         return render_organization_prerender(OrganizationSchema().dump(entity))
-    if prefix == "authors":
-        from app.schemas.people import AuthorDetailSchema
-
-        from app.services.public_visibility import public_author_dump
-
-        # The same public payload AuthorDetailResource gives an anonymous
-        # visitor: user_id excluded, the linked Person only when published,
-        # Topics only when published, plus its sources. No article grid here.
-        from app.services.author_authority import author_authority, author_latest_articles
-
-        return render_author_prerender(
-            public_author_dump(AuthorDetailSchema().dump(entity), entity),
-            authority={**author_authority(entity), "latestArticles": author_latest_articles(entity)},
-        )
     if prefix == "topics":
         from app.schemas.taxonomy import TopicDetailSchema
 

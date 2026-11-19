@@ -108,3 +108,23 @@ export function authorProfileModel(author, { articleCount = 0, page = 1 } = {}) 
     sections,
   }
 }
+
+// Maps the server's one-shot Author bootstrap ({key, data: {author,
+// authority, articles, meta}}, see backend spa_shell._safe_public_author_payload)
+// into exactly the state AuthorProfilePage builds from its API calls:
+// `author` = fetchAuthorBySlug()'s shape, `articles`/`pagination` =
+// fetchArticles({author, page: 1})'s shape. The mappers are injected so this
+// stays Node-testable. Returns null when there is nothing usable (the caller
+// then fetches normally). Slug matching is readBootstrap's job.
+export function authorBootstrapState(payload, { mapAuthor, mapArticle }) {
+  const data = payload?.data
+  if (!data || typeof data !== 'object' || !data.author || typeof data.author !== 'object') return null
+  const meta = data.meta
+  return {
+    author: { ...mapAuthor(data.author), authority: data.authority || null },
+    articles: Array.isArray(data.articles) ? data.articles.map(mapArticle) : [],
+    pagination: meta
+      ? { page: meta.page, pageSize: meta.per_page, totalItems: meta.total, totalPages: meta.total_pages }
+      : null,
+  }
+}

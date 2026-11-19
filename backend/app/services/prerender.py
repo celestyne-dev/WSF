@@ -274,13 +274,14 @@ _CREDENTIAL_NAME_CLASS = "text-base font-semibold text-charcoal"
 _CREDENTIAL_NOTE_CLASS = "mt-1 text-sm text-charcoal-600/80"
 
 
-def render_credentials(credentials, section_id):
+def render_credentials(credentials, section_id, compact=False):
     """AI Search / GEO Phase 4B — a profile's editor-entered credentials &
     qualifications, the same markup React's CredentialsList renders (same
     order, same section id). Escaped plain text; a credential link only
     for an http(s) URL, as an ordinary crawlable anchor (no nofollow/
     sponsored/ugc). Never any verification wording: an entry records what
-    the profile states, nothing more."""
+    the profile states, nothing more. `compact` = CredentialsList.jsx's
+    sidebar style (used beside the Author About section)."""
     items = []
     for credential in credentials or []:
         if not isinstance(credential, dict) or not _is_nonblank(credential.get("name")):
@@ -297,13 +298,16 @@ def render_credentials(credentials, section_id):
             )
         if _is_nonblank(credential.get("note")):
             parts.append(f'<p class="{_CREDENTIAL_NOTE_CLASS}">{_text(credential["note"])}</p>')
-        items.append(f"<li>{''.join(parts)}</li>")
+        li_open = '<li class="py-3">' if compact else "<li>"
+        items.append(f"{li_open}{''.join(parts)}</li>")
     if not items:
         return ""
+    heading_class = "text-xs font-semibold uppercase tracking-widest2 text-burgundy-600" if compact else _SECTION_H2_CLASS
+    list_class = "mt-4 divide-y divide-taupe-200 border-y border-taupe-200" if compact else _CREDENTIALS_LIST_CLASS
     return (
         f'<section aria-labelledby="{_attr(section_id)}">'
-        f'<h2 id="{_attr(section_id)}" class="{_SECTION_H2_CLASS}">Credentials &amp; qualifications</h2>'
-        f'<ul class="{_CREDENTIALS_LIST_CLASS}">{"".join(items)}</ul></section>'
+        f'<h2 id="{_attr(section_id)}" class="{heading_class}">Credentials &amp; qualifications</h2>'
+        f'<ul class="{list_class}">{"".join(items)}</ul></section>'
     )
 
 
@@ -712,51 +716,197 @@ def _link_list(links):
     return f'<ul class="{_CHIPS_CLASS}">{items}</ul>' if items else ""
 
 
-def render_author_prerender(payload, authority=None):
+# --- Author authority profile -------------------------------------------------------
+# A dedicated first paint that mirrors frontend/src/pages/AuthorProfilePage.jsx
+# (cream hero band, 4:5 portrait beside the identity block, ruled stats, then the
+# About / credentials band and the section rhythm below), so React's first
+# commit replaces it with a near-identical page instead of a different layout.
+# Every class string below is copied from that React source (or Breadcrumb.jsx /
+# CredentialsList.jsx), so it is guaranteed to exist in the built Tailwind CSS.
+_AUTHOR_HERO_BAND = "border-b border-taupe-200 bg-cream"
+_AUTHOR_HERO_INNER = "container-editorial max-w-[1240px] pb-8 pt-5"
+_AUTHOR_HERO_GRID = (
+    "mt-6 grid grid-cols-1 gap-6 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center sm:gap-8 "
+    "md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14"
+)
+_AUTHOR_PORTRAIT = "aspect-[4/5] w-[130px] rounded-lg border border-taupe-200 object-cover sm:w-full"
+_AUTHOR_INITIALS = (
+    "flex aspect-[4/5] w-[130px] items-center justify-center rounded-lg border border-taupe-200 bg-ivory-200 "
+    "font-serif text-4xl text-burgundy-600 sm:w-full md:text-5xl lg:text-6xl"
+)
+_AUTHOR_H1 = "font-serif text-[32px] font-semibold leading-[1.1] text-charcoal sm:text-4xl lg:text-[46px]"
+_AUTHOR_HEADLINE = "mt-2 font-serif text-lg leading-snug text-burgundy-700 sm:text-xl"
+_AUTHOR_ROLE = "mt-2 text-sm text-charcoal-600 sm:text-base"
+_AUTHOR_LABEL = "text-[11px] font-semibold uppercase tracking-widest2 text-charcoal-600/80"
+_AUTHOR_CHIP = (
+    "inline-block rounded-full border border-taupe-300 bg-ivory px-3 py-1 text-xs font-medium text-charcoal-600 "
+    "transition-colors hover:border-burgundy-500 hover:text-burgundy-600"
+)
+_AUTHOR_STAT = "flex flex-col-reverse py-2.5 pr-6 sm:pr-8"
+_AUTHOR_STAT_DIVIDER = "border-l border-taupe-200 pl-6 sm:pl-8"
+_AUTHOR_LINK = (
+    "inline-flex items-center gap-1.5 border-b border-taupe-300 pb-0.5 font-semibold text-charcoal "
+    "transition-colors hover:border-burgundy-600 hover:text-burgundy-600"
+)
+_AUTHOR_SECTION = "border-t border-taupe-200 py-14 lg:py-16"
+_AUTHOR_H2 = "font-serif text-2xl font-semibold text-charcoal sm:text-3xl"
+_AUTHOR_SUBTITLE = "mt-2 text-sm text-charcoal-600"
+_AUTHOR_SOCIAL_LABELS = {"Twitter": "X (Twitter)"}
+
+
+def author_place(payload):
+    """"Nairobi, Kenya" — same rule as authorPlace() in utils/authorAuthority.js."""
+    location = (payload.get("location") or "").strip()
+    country = ((payload.get("country") or {}).get("name") or "").strip() if isinstance(payload.get("country"), dict) else ""
+    if location and country and country.lower() not in location.lower():
+        return f"{location}, {country}"
+    return location or country
+
+
+def author_initials(name):
+    parts = (name or "").split()
+    if not parts:
+        return ""
+    return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else "")).upper()
+
+
+def _author_breadcrumbs(name):
+    # Same structure/classes as components/ui/Breadcrumb.jsx (a text
+    # separator stands in for its decorative chevron icon).
+    sep = '<span class="text-charcoal-600">›</span>'
+    return (
+        '<div class="opacity-80"><nav aria-label="Breadcrumb" class="text-xs text-charcoal-600">'
+        '<ol class="flex flex-wrap items-center gap-1.5">'
+        '<li><a href="/" class="hover:text-burgundy-600">Home</a></li>'
+        f'<li class="flex items-center gap-1.5">{sep}<a href="/authors" class="hover:text-burgundy-600">Authors</a></li>'
+        f'<li class="flex items-center gap-1.5">{sep}<span class="text-charcoal" aria-current="page">{_text(name)}</span></li>'
+        "</ol></nav></div>"
+    )
+
+
+def _author_portrait(name, portrait):
+    if portrait and _is_nonblank(portrait.get("src")):
+        srcset = f' srcset="{_attr(portrait["srcset"])}" sizes="{_attr(portrait.get("sizes") or "")}"' if portrait.get("srcset") else ""
+        return (
+            f'<img src="{_attr(portrait["src"])}"{srcset} alt="{_attr(portrait.get("alt") or f"Portrait of {name}")}" '
+            f'width="520" height="650" fetchpriority="high" class="{_AUTHOR_PORTRAIT}">'
+        )
+    initials = author_initials(name)
+    return f'<div role="img" aria-label="{_attr(f"Portrait placeholder for {name}")}" class="{_AUTHOR_INITIALS}">{_text(initials)}</div>'
+
+
+def _author_stats(counts):
+    stats = [(counts.get("articles"), "Article", "Articles"), (counts.get("resources"), "Career Tool", "Career Tools"),
+             (counts.get("courses"), "Course", "Courses")]
+    cells = [
+        f'<div class="{_AUTHOR_STAT}{" " + _AUTHOR_STAT_DIVIDER if i else ""}">'
+        f'<dt class="text-[11px] font-semibold uppercase tracking-wider text-charcoal-600">{one if n == 1 else many}</dt>'
+        f'<dd class="font-serif text-3xl font-semibold leading-none text-charcoal">{n}</dd></div>'
+        for i, (n, one, many) in enumerate((s for s in stats if isinstance(s[0], int) and s[0] > 0))
+    ]
+    return f'<dl class="mt-5 inline-flex max-w-full flex-wrap border-y border-taupe-200">{"".join(cells)}</dl>' if cells else ""
+
+
+def _author_section(section_id, heading, subtitle, inner):
+    return (
+        f'<section aria-labelledby="{section_id}" class="{_AUTHOR_SECTION}">'
+        f'<h2 id="{section_id}" class="{_AUTHOR_H2}">{_text(heading)}</h2>'
+        + (f'<p class="{_AUTHOR_SUBTITLE}">{_text(subtitle)}</p>' if subtitle else "")
+        + f"{inner}</section>"
+    )
+
+
+def render_author_prerender(payload, authority=None, portrait=None):
     """`payload` = the public Author payload (AuthorSchema dump + public
     filtering): `person` is null unless published, `topics` holds only
     published Topics. `authority` = app/services/author_authority.py's
     bounded block (counts, Resources, Learning programs, latest Articles)
-    — the paginated archive itself is never server-rendered."""
+    — the paginated archive itself is never server-rendered. `portrait` =
+    {src, srcset, sizes, alt} built from the public Media variants (the same
+    file AuthorProfilePage's MediaImage will request), or None.
+
+    Semantic order: name, headline, role · place, expertise, counts, links,
+    then About, credentials, Learning, Resources, Articles, Sources."""
     authority = authority or {}
-    # Identity, headline, role/location, expertise, then authority counts —
-    # the same order as the React profile (AuthorProfilePage.jsx).
-    header = [_h1(payload.get("name")), _paragraph(payload.get("headline"), _META_CLASS), _paragraph(payload.get("role"))]
-    country = payload.get("country") if isinstance(payload.get("country"), dict) else {}
-    place = payload.get("location") or country.get("name")
-    if _is_nonblank(place):
-        header.append(f'<p class="{_META_CLASS}">{_text(place)}</p>')
-    topics = [t for t in (payload.get("topics") or []) if isinstance(t, dict) and _is_nonblank(t.get("slug"))]
+    name = payload.get("name") or ""
+    first_name = name.split(" ")[0]
+
+    identity = [f'<h1 class="{_AUTHOR_H1}">{_text(name)}</h1>']
+    if _is_nonblank(payload.get("headline")):
+        identity.append(f'<p class="{_AUTHOR_HEADLINE}">{_text(payload["headline"])}</p>')
+    role_line = " · ".join(v for v in ((payload.get("role") or "").strip(), author_place(payload)) if v)
+    if role_line:
+        identity.append(f'<p class="{_AUTHOR_ROLE}">{_text(role_line)}</p>')
+    topics = [t for t in (payload.get("topics") or []) if isinstance(t, dict) and _is_nonblank(t.get("slug")) and _is_nonblank(t.get("name"))]
     if topics:
-        chips = "".join(f'<li class="{_CHIP_CLASS}"><a href="/topics/{_attr(t["slug"])}">{_text(t.get("name"))}</a></li>' for t in topics)
-        header.append(f'<ul class="{_CHIPS_CLASS}" aria-label="Areas of expertise">{chips}</ul>')
-    counts = authority.get("counts") or {}
-    stats = [(counts.get("articles"), "Article", "Articles"), (counts.get("resources"), "Career Tool", "Career Tools"),
-             (counts.get("courses"), "Course", "Courses")]
-    stat_text = " · ".join(f"{n} {one if n == 1 else many}" for n, one, many in stats if isinstance(n, int) and n > 0)
-    if stat_text:
-        header.append(f'<p class="{_META_CLASS}">{_text(stat_text)}</p>')
+        chips = "".join(f'<li><a href="/topics/{_attr(t["slug"])}" class="{_AUTHOR_CHIP}">{_text(t["name"])}</a></li>' for t in topics)
+        identity.append(
+            f'<div class="mt-5"><p class="{_AUTHOR_LABEL}">Areas of expertise</p>'
+            f'<ul aria-label="Areas of expertise" class="mt-2 flex flex-wrap gap-2">{chips}</ul></div>'
+        )
+    identity.append(_author_stats(authority.get("counts") or {}))
     links = ([("Website", payload.get("website"))] if _http_url(payload.get("website")) else []) + _social_links(payload.get("social"))
-    header.append(_link_list(links))
+    link_items = [
+        f'<li><a href="{_attr(url)}" target="_blank" rel="noopener noreferrer" class="{_AUTHOR_LINK}">'
+        f'{_text(_AUTHOR_SOCIAL_LABELS.get(label, label))}</a></li>'
+        for label, url in links if _http_url(url)
+    ]
     person = payload.get("person") if isinstance(payload.get("person"), dict) else None
     if person and _is_nonblank(person.get("slug")):
-        header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View full profile</a></p>')
-    first_name = (payload.get("name") or "").split(" ")[0]
-    body = [render_content_blocks(payload.get("bio") or [])]
+        link_items.append(
+            f'<li><a href="/people/{_attr(person["slug"])}" class="inline-flex items-center gap-1 font-semibold text-burgundy-600 hover:underline">'
+            "View full profile →</a></li>"
+        )
+    if link_items:
+        identity.append(f'<ul class="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">{"".join(link_items)}</ul>')
+
+    hero = (
+        f'<header class="{_AUTHOR_HERO_BAND}"><div class="{_AUTHOR_HERO_INNER}">{_author_breadcrumbs(name)}'
+        f'<div class="{_AUTHOR_HERO_GRID}">{_author_portrait(name, portrait)}<div class="min-w-0">{"".join(identity)}</div></div>'
+        "</div></header>"
+    )
+
+    body = []
+    bio = render_content_blocks(payload.get("bio") or [])
+    credentials = render_credentials(payload.get("credentials") or [], "author-credentials", compact=True)
+    if bio or credentials:
+        sidebar = bool(bio and credentials)
+        wrapper = (
+            "grid grid-cols-1 gap-12 pb-14 pt-10 lg:grid-cols-12 lg:gap-16 lg:pb-16 lg:pt-12" if sidebar
+            else "pb-14 pt-10 md:grid md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14 lg:pb-16 lg:pt-12"
+        )
+        inner = ""
+        if bio:
+            inner += (
+                f'<section aria-labelledby="author-about" class="{"max-w-reading lg:col-span-8" if sidebar else "max-w-reading md:col-start-2"}">'
+                f'<h2 id="author-about" class="{_AUTHOR_H2}">About {_text(first_name)}</h2>'
+                f'<div class="mt-6 text-[17px] leading-[1.75] text-charcoal-700 sm:text-lg">{bio}</div></section>'
+            )
+        if credentials:
+            aside_class = "lg:col-span-4" if sidebar else f"max-w-reading md:col-start-2{' mt-12' if bio else ''}"
+            inner += f'<aside class="{aside_class}">{credentials}</aside>'
+        body.append(f'<div class="{wrapper}">{inner}</div>')
+
     programs = [p for p in authority.get("learningPrograms") or [] if isinstance(p, dict) and _is_nonblank(p.get("slug"))]
     if programs:
-        body.append(_section(f"Learn with {first_name}", _item_list(_learning_card(p) for p in programs)))
+        body.append(_author_section("author-learning", f"Learn with {first_name}", f"Courses and learning programs taught by {first_name}.",
+                                    _item_list(_learning_card(p) for p in programs)))
     resources = [r for r in authority.get("resources") or [] if isinstance(r, dict) and _is_nonblank(r.get("slug"))]
     if resources:
-        body.append(_section(f"Career tools by {first_name}", _item_list(_resource_card(r) for r in resources)))
+        body.append(_author_section("author-resources", f"Career tools by {first_name}",
+                                    f"Practical guides, templates and toolkits created by {first_name}.",
+                                    _item_list(_resource_card(r) for r in resources)))
     articles = [a for a in authority.get("latestArticles") or [] if isinstance(a, dict) and _is_nonblank(a.get("slug"))]
     if articles:
-        body.append(_section("Latest articles", _item_list(_article_card(a) for a in articles)))
-    body += [
-        render_credentials(payload.get("credentials") or [], "author-credentials"),
-        render_source_references(payload.get("sources") or [], "author-sources"),
-    ]
-    return _main("author", header, body)
+        body.append(_author_section("author-articles", "Latest articles", None, _item_list(_article_card(a) for a in articles)))
+    sources = render_source_references(payload.get("sources") or [], "author-sources")
+    if sources:
+        body.append(f'<div class="max-w-reading pb-14 text-sm">{sources}</div>')
+
+    return (
+        f'<main data-wsf-prerender="author">{hero}'
+        f'<div class="container-editorial max-w-[1240px]">{"".join(body)}</div></main>'
+    )
 
 
 def _editorial_depth(payload, people_heading, people_key, people_card, sources_id):

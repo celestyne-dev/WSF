@@ -2,7 +2,7 @@
 // <script type="application/json" data-wsf-bootstrap="{type}"> tag the
 // server (backend/app/services/spa_shell.py's _set_bootstrap_data)
 // embeds in the initial HTML for a hard load of "/", an Article's flat
-// /{slug} route, or /people/{slug}, so that route's own first client-side
+// /{slug} route, /people/{slug} or /authors/{slug}, so that route's own first client-side
 // fetch (GET /public/homepage, GET /articles/{slug}, or GET
 // /people/{slug}) can be skipped entirely — see frontend/src/store/
 // index.js (homepage), pages/ArticlePage.jsx (article) and pages/
@@ -35,7 +35,7 @@ function bootstrapScriptSelector(type) {
 
 /**
  * Returns the parsed `{key, data}` bootstrap payload for `type`
- * ("article" | "homepage" | "person"), or `null` when there's nothing to use —
+ * ("article" | "homepage" | "person" | "author"), or `null` when there's nothing to use —
  * every one of these is a normal, expected "fall back to the API"
  * case, never thrown: no `document` (a non-browser environment, e.g. a
  * future test runner), no matching script tag (most routes never get
