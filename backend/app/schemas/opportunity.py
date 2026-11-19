@@ -191,7 +191,10 @@ class EventSchema(ma.SQLAlchemyAutoSchema):
         # list/detail, Saved Items, search, …) is safe by construction.
         # app/api/v1/events.py's EventDetailResource is the one place
         # that re-attaches it, and only after checking who's asking.
-        exclude = ("virtual_link",)
+        # recording_url/recording_provider are likewise never in list or
+        # card dumps: the recording is served only through the detail
+        # payload's access-checked `postEvent` (app/services/event_post_content.py).
+        exclude = ("virtual_link", "recording_url", "recording_provider")
 
     def get_is_past(self, obj):
         """Computed from the event's own date(s), not stored — an event
@@ -483,6 +486,13 @@ class EventInputSchema(ma.Schema):
     sponsored = fields.Boolean(required=False, load_default=False)
     speakers = fields.List(fields.Nested(EventSpeakerInputSchema), required=False, load_default=list)
     sponsors = fields.List(fields.Nested(EventSponsorInputSchema), required=False, load_default=list)
+    # Post-event content (no load_default: an omitted key keeps the saved
+    # value, so older clients never wipe it).
+    recording_url = fields.String(required=False, allow_none=True, data_key="recordingUrl", validate=validate.Length(max=500))
+    recording_provider = fields.String(required=False, allow_none=True, data_key="recordingProvider")
+    post_event_resource_slug = fields.String(required=False, allow_none=True, data_key="postEventResourceSlug")
+    post_event_article_slug = fields.String(required=False, allow_none=True, data_key="postEventArticleSlug")
+    post_event_learning_program_slug = fields.String(required=False, allow_none=True, data_key="postEventLearningProgramSlug")
 
     @validates_schema
     def validate_dates(self, data, **kwargs):

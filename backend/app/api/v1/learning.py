@@ -17,9 +17,11 @@ from app.models.learning import (
     LearningProgram,
     LearningProgramEvent,
     LearningProgramRelatedArticle,
+    VIDEO_LESSON_TYPES,
 )
 from app.models.article import Article
 from app.models.learning_enrollment import LearningEnrollment
+from app.models.media import Media
 from app.models.opportunity import Event
 from app.models.people import Author, Organization
 from app.models.resource import Resource as ResourceModel
@@ -35,6 +37,7 @@ from app.schemas.learning import (
 )
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.homepage import validate_cta_url
+from app.services.video_embed import is_safe_video_url, resolve_video_provider
 from app.services.audit import log_action
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.career_hub import viewer_membership_label
@@ -190,6 +193,31 @@ def _is_meaningful_lesson(lesson):
     return bool(lesson.external_url)
 
 
+def _resolve_lesson_video(lesson_data, lesson_type, external_url):
+    """Video/recording metadata for one submitted lesson. Non-video
+    lessons always store none (so switching a lesson's type never leaves
+    stale video facts behind). Provider is detected from the URL; a
+    contradicting explicit provider, an unsafe captions URL or an unknown
+    thumbnail media id is rejected (422/404)."""
+    empty = {"video_provider": None, "transcript": None, "captions_url": None, "thumbnail_media_id": None}
+    if lesson_type not in VIDEO_LESSON_TYPES:
+        return empty
+    title = lesson_data["title"]
+    try:
+        provider = resolve_video_provider(external_url, lesson_data.get("video_provider"))
+    except ValueError as exc:
+        raise ApiError(f'Lesson "{title}": {exc}', 422, code="invalid_url")
+    captions_url = (lesson_data.get("captions_url") or "").strip() or None
+    if captions_url and not is_safe_video_url(captions_url):
+        raise ApiError(f'Lesson "{title}" has an unsafe captions URL.', 422, code="invalid_url")
+    thumbnail_id = lesson_data.get("thumbnail_media_id")
+    if thumbnail_id is not None and db.session.get(Media, thumbnail_id) is None:
+        raise ApiError(f'Lesson "{title}": thumbnail image not found.', 404, code="not_found")
+    transcript = (lesson_data.get("transcript") or "").strip() or None
+    return {"video_provider": provider, "transcript": transcript, "captions_url": captions_url,
+            "thumbnail_media_id": thumbnail_id}
+
+
 def _validate_for_publish(program):
     """Enforced only when a program's effective status is "published" — a
     draft may stay incomplete indefinitely, but the public CTA a published
@@ -231,6 +259,29 @@ def _dump_from_id(program_id, schema):
     return schema.dump(program)
 
 
+def _programs_with_lesson_type(lesson_type):
+    return (
+        db.session.query(LearningModule.learning_program_id)
+        .join(LearningLesson, LearningLesson.module_id == LearningModule.id)
+        .filter(LearningLesson.lesson_type == lesson_type)
+    )
+
+
+class LearningFacetsResource(Resource):
+    """Which optional public filters have real content behind them, so the
+    Learning page never shows a filter that would return nothing (e.g.
+    "Video lessons" before any published program has one). Two EXISTS
+    checks over published programs; no per-program work."""
+
+    def get(self):
+        published = LearningProgram.query.filter_by(status="published")
+        formats = {
+            t: db.session.query(published.filter(LearningProgram.id.in_(_programs_with_lesson_type(t))).exists()).scalar()
+            for t in VIDEO_LESSON_TYPES
+        }
+        return success_response({"lessonFormats": [t for t in VIDEO_LESSON_TYPES if formats[t]]})
+
+
 class LearningProgramPublicListResource(Resource):
     def get(self):
         query = LearningProgram.query.filter_by(status="published")
@@ -254,6 +305,8 @@ class LearningProgramPublicListResource(Resource):
             query = query.filter(db.cast(LearningProgram.audience, db.Text).ilike(f'%"{request.args["audience"]}"%'))
         if request.args.get("featured") == "true":
             query = query.filter(LearningProgram.featured.is_(True))
+        if request.args.get("lesson_format") in VIDEO_LESSON_TYPES:
+            query = query.filter(LearningProgram.id.in_(_programs_with_lesson_type(request.args["lesson_format"])))
         if request.args.get("q"):
             like = f"%{request.args['q']}%"
             from sqlalchemy import or_
@@ -493,12 +546,14 @@ class AdminLearningCurriculumResource(Resource):
                         raise ApiError(
                             f'Lesson "{lesson_data["title"]}" has an unsafe external URL.', 422, code="invalid_url"
                         )
-                if lesson_type in ("video", "external_link") and not external_url:
+                if lesson_type in ("video", "recording", "external_link") and not external_url:
                     raise ApiError(
                         f'Lesson "{lesson_data["title"]}" needs an external URL for lesson type "{lesson_type}".',
                         422,
                         code="validation_error",
                     )
+
+                video = _resolve_lesson_video(lesson_data, lesson_type, external_url)
 
                 lesson_id = lesson_data.get("id")
                 if lesson_id is not None:
@@ -519,6 +574,8 @@ class AdminLearningCurriculumResource(Resource):
                 lesson.resource_id = resource.id if resource else None
                 lesson.external_url = external_url
                 lesson.duration_minutes = lesson_data.get("duration_minutes")
+                for key, value in video.items():
+                    setattr(lesson, key, value)
                 lesson.sort_order = lesson_index
                 lessons.append(lesson)
 
@@ -625,6 +682,7 @@ class LearningEnrollmentAdminListResource(Resource):
 
 
 api.add_resource(LearningProgramPublicListResource, "")
+api.add_resource(LearningFacetsResource, "/meta/facets")
 api.add_resource(LearningProgramPublicDetailResource, "/<string:slug>")
 api.add_resource(AdminLearningProgramListResource, "/admin/programs")
 api.add_resource(AdminLearningProgramDetailResource, "/admin/programs/<int:program_id>")

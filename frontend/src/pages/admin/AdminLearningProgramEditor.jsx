@@ -16,6 +16,7 @@ import { fetchAuthors, fetchOrganizations, fetchTopics } from '../../api/taxonom
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
+import { VIDEO_PROVIDER_OPTIONS, isVideoLesson } from '../../utils/videoEmbed'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import EntitySelect from '../../components/cms/EntitySelect'
 import PageLoader from '../../components/ui/PageLoader'
@@ -57,7 +58,8 @@ const LESSON_TYPES = [
   { value: 'text', label: 'Text' },
   { value: 'article', label: 'Article' },
   { value: 'resource', label: 'Resource' },
-  { value: 'video', label: 'Video (external link)' },
+  { value: 'video', label: 'Video (YouTube, Vimeo, Wistia, Loom or link)' },
+  { value: 'recording', label: 'Recording (session replay)' },
   { value: 'external_link', label: 'External link' },
   { value: 'activity', label: 'Activity' },
 ]
@@ -185,6 +187,10 @@ function modulesToForm(p) {
       resourceSlug: l.resource?.slug || null,
       externalUrl: l.externalUrl || '',
       durationMinutes: l.durationMinutes ?? '',
+      videoProvider: l.videoProvider || '',
+      transcript: l.transcript || '',
+      captionsUrl: l.captionsUrl || '',
+      thumbnail: l.thumbnail || null,
     })),
   }))
 }
@@ -265,8 +271,27 @@ function LessonEditor({ lesson, onChange, onRemove, onMoveUp, onMoveDown, canMov
         {lesson.lessonType === 'resource' && (
           <EntitySelect value={lesson.resourceSlug} onChange={(v) => patch({ resourceSlug: v })} loadOptions={searchResources} placeholder="Search resources to link…" />
         )}
-        {(lesson.lessonType === 'video' || lesson.lessonType === 'external_link') && (
+        {lesson.lessonType === 'external_link' && (
           <input value={lesson.externalUrl} onChange={(e) => patch({ externalUrl: e.target.value })} placeholder="https://…" className={inputClass} />
+        )}
+        {isVideoLesson(lesson) && (
+          <div className="space-y-2 border border-taupe-200 p-3">
+            <p className="text-[11px] text-charcoal-600/70">
+              Paste the public watch link. WSF does not host video: YouTube, Vimeo, Wistia and Loom links are embedded safely; any other link opens on its own site.
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr]">
+              <input value={lesson.externalUrl} onChange={(e) => patch({ externalUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=…" className={inputClass} />
+              <select value={lesson.videoProvider || ''} onChange={(e) => patch({ videoProvider: e.target.value })} className={inputClass} aria-label="Video provider">
+                {VIDEO_PROVIDER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <input value={lesson.captionsUrl || ''} onChange={(e) => patch({ captionsUrl: e.target.value })} placeholder="Captions file URL (optional, https://…)" className={inputClass} />
+            <textarea value={lesson.transcript || ''} onChange={(e) => patch({ transcript: e.target.value })} rows={3} placeholder="Transcript (optional)" className={inputClass} />
+            <EntitySelect value={lesson.resourceSlug} onChange={(v) => patch({ resourceSlug: v })} loadOptions={searchResources} placeholder="Slides or handout Resource (optional)…" />
+            <MediaPicker label="Thumbnail (optional)" aspect={16 / 9} value={lesson.thumbnail || null} onChange={(media) => patch({ thumbnail: media })} />
+          </div>
         )}
         {(lesson.lessonType === 'text' || lesson.lessonType === 'activity') && (
           <div className="border border-taupe-200 p-2">

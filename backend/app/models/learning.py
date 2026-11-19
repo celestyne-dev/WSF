@@ -275,7 +275,11 @@ class LearningModule(db.Model):
     )
 
 
-LESSON_TYPES = ("article", "resource", "video", "activity", "external_link", "text")
+LESSON_TYPES = ("article", "resource", "video", "recording", "activity", "external_link", "text")
+# Lesson types whose external_url is a watchable video reference (provider
+# metadata, optional transcript/captions/thumbnail). "recording" is a
+# recorded live session (e.g. a webinar replay); "video" is purpose-made.
+VIDEO_LESSON_TYPES = ("video", "recording")
 _LESSON_TYPE_CHECK_SQL = "lesson_type IN (" + ", ".join(f"'{t}'" for t in LESSON_TYPES) + ")"
 
 
@@ -304,6 +308,16 @@ class LearningLesson(db.Model):
     external_url = db.Column(db.String(500))
     duration_minutes = db.Column(db.Integer)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # Video/recording metadata (lesson_type in VIDEO_LESSON_TYPES only).
+    # No hosting: external_url is the provider watch URL; the provider is
+    # detected server-side (app/services/video_embed.py) and the embed URL
+    # is derived, never stored or accepted as HTML. For these types the
+    # optional resource_id is the companion "slides / handout" Resource.
+    video_provider = db.Column(db.String(20))
+    transcript = db.Column(db.Text)
+    captions_url = db.Column(db.String(500))
+    thumbnail_media_id = db.Column(db.Integer, db.ForeignKey("media.id", ondelete="SET NULL"), nullable=True)
 
     article = db.relationship("Article", foreign_keys=[article_id])
     resource = db.relationship("Resource", foreign_keys=[resource_id])
+    thumbnail = db.relationship("Media", foreign_keys=[thumbnail_media_id])

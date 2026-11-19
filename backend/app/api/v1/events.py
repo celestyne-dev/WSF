@@ -16,6 +16,8 @@ from app.schemas.opportunity import EventInputSchema, EventSchema
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
+from app.services.event_access import can_access_event
+from app.services.event_post_content import apply_post_event_fields, post_event_payload
 from app.services.event_registrations import (
     admin_update_registration_status,
     count_active_registrations,
@@ -46,6 +48,7 @@ def _dump_event_for_staff(event):
     """
     data = event_schema.dump(event)
     data["virtual_link"] = event.virtual_link
+    data["postEvent"] = post_event_payload(event, staff=True)
     return data
 
 
@@ -179,6 +182,7 @@ def _apply_fields(event, data, organizer, speakers, sponsors):
     event.sponsored = data.get("sponsored", False)
     event.speakers = speakers
     event.sponsors = sponsors
+    apply_post_event_fields(event, data)
     if event.status in ("published", "scheduled") and event.published_date is None:
         event.published_date = data.get("published_date") or date.today()
     elif data.get("published_date"):
@@ -351,7 +355,9 @@ class EventDetailResource(Resource):
             # attendee access, not CMS access.
             data = _dump_event_for_staff(event)
         else:
-            data = serialize_event_for_viewer(event, _current_user_or_none())
+            viewer = _current_user_or_none()
+            data = serialize_event_for_viewer(event, viewer)
+            data["postEvent"] = post_event_payload(event, can_view_recording=can_access_event(event, viewer))
         data.update(registration_availability(event))
         return success_response(data)
 

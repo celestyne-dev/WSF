@@ -10,6 +10,7 @@ from app.models.learning import (
     LEARNING_PROGRAM_TYPES,
     LEARNING_STATUSES,
     LESSON_TYPES,
+    VIDEO_LESSON_TYPES,
     LearningLesson,
     LearningModule,
     LearningProgram,
@@ -17,6 +18,7 @@ from app.models.learning import (
 from app.schemas.commerce import ProductSchema
 from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema
+from app.services.video_embed import VIDEO_PROVIDERS, video_embed_url
 
 # A lesson's Article/Resource reference is only ever shown to a public
 # reader when that Article/Resource is itself currently eligible for
@@ -30,11 +32,20 @@ _LESSON_RESOURCE_ONLY = ("id", "slug", "name")
 class LearningLessonSchema(ma.SQLAlchemyAutoSchema):
     article = fields.Method("get_article")
     resource = fields.Method("get_resource")
+    thumbnail = fields.Nested(MediaSchema, dump_only=True)
+    # Derived server-side from the stored watch URL for the allowlisted
+    # providers only (app/services/video_embed.py); never stored or edited.
+    embed_url = fields.Method("get_embed_url")
 
     class Meta:
         model = LearningLesson
         load_instance = False
-        exclude = ("module_id",)
+        exclude = ("module_id", "thumbnail_media_id")
+
+    def get_embed_url(self, obj):
+        if obj.lesson_type not in VIDEO_LESSON_TYPES or not obj.external_url:
+            return None
+        return video_embed_url(obj.external_url, obj.video_provider)
 
     def get_article(self, obj):
         if obj.article is None or obj.article.status != "published":
@@ -70,6 +81,12 @@ class LearningLessonOutlineSchema(ma.Schema):
     summary = fields.String(dump_only=True)
     duration_minutes = fields.Integer(dump_only=True, data_key="durationMinutes")
     sort_order = fields.Integer(dump_only=True, data_key="sortOrder")
+    # Safe, non-protected video facts only (never the URL/transcript).
+    video_provider = fields.String(dump_only=True, data_key="videoProvider")
+    has_transcript = fields.Method("get_has_transcript", data_key="hasTranscript")
+
+    def get_has_transcript(self, obj):
+        return bool(obj.transcript)
 
 
 class LearningModuleOutlineSchema(ma.Schema):
@@ -280,6 +297,10 @@ class LearningLessonInputSchema(ma.Schema):
     resource_slug = fields.String(required=False, allow_none=True, data_key="resourceSlug")
     external_url = fields.String(required=False, allow_none=True, data_key="externalUrl")
     duration_minutes = fields.Integer(required=False, allow_none=True, data_key="durationMinutes", validate=validate.Range(min=0))
+    video_provider = fields.String(required=False, allow_none=True, data_key="videoProvider", validate=validate.OneOf(VIDEO_PROVIDERS))
+    transcript = fields.String(required=False, allow_none=True, validate=validate.Length(max=100_000))
+    captions_url = fields.String(required=False, allow_none=True, data_key="captionsUrl", validate=validate.Length(max=500))
+    thumbnail_media_id = fields.Integer(required=False, allow_none=True, data_key="thumbnailMediaId")
 
 
 class LearningModuleInputSchema(ma.Schema):

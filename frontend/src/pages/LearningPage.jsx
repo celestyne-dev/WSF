@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
-import { fetchLearningPrograms } from '../api/learning'
+import { fetchLearningFacets, fetchLearningPrograms } from '../api/learning'
 import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
@@ -32,17 +32,21 @@ const DELIVERY_MODES = [
   { value: 'hybrid', label: 'Hybrid' },
 ]
 
+const LESSON_FORMAT_LABELS = { video: 'Video lessons', recording: 'Session recordings' }
+
 export default function LearningPage() {
   const [query, setQuery] = useState('')
   const [programType, setProgramType] = useState('')
   const [difficultyLevel, setDifficultyLevel] = useState('')
   const [deliveryMode, setDeliveryMode] = useState('')
+  const [lessonFormat, setLessonFormat] = useState('')
+  const [lessonFormats, setLessonFormats] = useState([])
   const [featured, setFeatured] = useState(null)
   const [latest, setLatest] = useState(null)
   const [results, setResults] = useState(null)
   const [error, setError] = useState(null)
 
-  const isFiltering = !!(query || programType || difficultyLevel || deliveryMode)
+  const isFiltering = !!(query || programType || difficultyLevel || deliveryMode || lessonFormat)
 
   useSeo({
     title: 'Learning | Women Shaping Futures',
@@ -65,6 +69,9 @@ export default function LearningPage() {
         setLatest(latestRes.items)
       })
       .catch(() => {})
+    fetchLearningFacets()
+      .then((facets) => active && setLessonFormats(facets.lessonFormats))
+      .catch(() => {})
     return () => {
       active = false
     }
@@ -77,13 +84,13 @@ export default function LearningPage() {
     }
     let active = true
     setError(null)
-    fetchLearningPrograms({ programType, difficultyLevel, deliveryMode, q: query, pageSize: 100 })
+    fetchLearningPrograms({ programType, difficultyLevel, deliveryMode, lessonFormat, q: query, pageSize: 100 })
       .then((res) => active && setResults(res.items))
       .catch(() => active && setError('Something went wrong loading learning programs. Please try again.'))
     return () => {
       active = false
     }
-  }, [programType, difficultyLevel, deliveryMode, query, isFiltering])
+  }, [programType, difficultyLevel, deliveryMode, lessonFormat, query, isFiltering])
 
   return (
     <div>
@@ -106,6 +113,14 @@ export default function LearningPage() {
           <FilterSelect label="Type" value={programType} onChange={setProgramType} options={PROGRAM_TYPES} />
           <FilterSelect label="Level" value={difficultyLevel} onChange={setDifficultyLevel} options={DIFFICULTY_LEVELS} />
           <FilterSelect label="Delivery" value={deliveryMode} onChange={setDeliveryMode} options={DELIVERY_MODES} />
+          {lessonFormats.length > 0 && (
+            <FilterSelect
+              label="Includes"
+              value={lessonFormat}
+              onChange={setLessonFormat}
+              options={lessonFormats.map((f) => ({ value: f, label: LESSON_FORMAT_LABELS[f] || f }))}
+            />
+          )}
         </div>
 
         {isFiltering ? (

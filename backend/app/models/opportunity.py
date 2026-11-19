@@ -404,6 +404,18 @@ class Event(db.Model):
     featured = db.Column(db.Boolean, nullable=False, default=False)
     sponsored = db.Column(db.Boolean, nullable=False, default=False)
 
+    # Post-event content: references only, never copies or uploaded files.
+    # A public recording watch URL (no hosting; provider detected by
+    # app/services/video_embed.py) plus links to an existing Resource
+    # (slides/handout), Article (write-up) and Learning program (go deeper).
+    recording_url = db.Column(db.String(500))
+    recording_provider = db.Column(db.String(20))
+    post_event_resource_id = db.Column(db.Integer, db.ForeignKey("resources.id", ondelete="SET NULL"), nullable=True)
+    post_event_article_id = db.Column(db.Integer, db.ForeignKey("articles.id", ondelete="SET NULL"), nullable=True)
+    post_event_learning_program_id = db.Column(
+        db.Integer, db.ForeignKey("learning_programs.id", ondelete="SET NULL"), nullable=True
+    )
+
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
@@ -411,6 +423,9 @@ class Event(db.Model):
 
     country = db.relationship("Country", foreign_keys=[country_code])
     cover_media = db.relationship("Media", foreign_keys=[cover_media_id])
+    post_event_resource = db.relationship("Resource", foreign_keys=[post_event_resource_id])
+    post_event_article = db.relationship("Article", foreign_keys=[post_event_article_id])
+    post_event_learning_program = db.relationship("LearningProgram", foreign_keys=[post_event_learning_program_id])
     organizer = db.relationship("Organization", foreign_keys=[organizer_id])
     speakers = db.relationship(
         "EventSpeaker", order_by="EventSpeaker.position", cascade="all, delete-orphan", backref="event"

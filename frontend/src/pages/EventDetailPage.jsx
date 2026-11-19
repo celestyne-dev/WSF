@@ -20,6 +20,58 @@ import SaveButton from '../components/account/SaveButton'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
+import VideoEmbed from '../components/ui/VideoEmbed'
+
+// Post-event content: a recording reference plus links to existing,
+// published WSF content. The backend sends `postEvent` only when at least
+// one item is publicly available, so no empty section ever renders.
+function PostEventContent({ event }) {
+  const { recording, recordingLocked, resource, article, learningProgram } = event.postEvent
+  return (
+    <div className="mt-10 border border-taupe-200 bg-white p-6">
+      <h2 className="font-serif text-2xl font-semibold text-charcoal">{event.isPast ? 'Post-event content' : 'Event content'}</h2>
+      {recording && (
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-semibold text-charcoal">Recording</p>
+          <VideoEmbed
+            title={`${event.title} recording`}
+            url={recording.url}
+            embedUrl={recording.embedUrl}
+            provider={recording.provider}
+          />
+        </div>
+      )}
+      {recordingLocked && (
+        <p className="mt-4 text-sm text-charcoal-600">
+          The recording is available to WSF Circle members.{' '}
+          <Link to="/circle" className="font-semibold text-burgundy-600 hover:underline">Explore WSF Circle</Link>
+        </p>
+      )}
+      {(resource || article || learningProgram) && (
+        <ul className="mt-5 space-y-2 text-sm">
+          {resource && (
+            <li>
+              <span className="text-charcoal-600">Slides and handouts: </span>
+              <Link to={`/resources/${resource.slug}`} onClick={() => trackEvent('post_event_content_click', { kind: 'resource', eventSlug: event.slug })} className="font-semibold text-burgundy-600 hover:underline">{resource.name}</Link>
+            </li>
+          )}
+          {article && (
+            <li>
+              <span className="text-charcoal-600">Read the write-up: </span>
+              <Link to={`/${article.slug}`} onClick={() => trackEvent('post_event_content_click', { kind: 'article', eventSlug: event.slug })} className="font-semibold text-burgundy-600 hover:underline">{article.title}</Link>
+            </li>
+          )}
+          {learningProgram && (
+            <li>
+              <span className="text-charcoal-600">Keep learning: </span>
+              <Link to={`/learning/${learningProgram.slug}`} onClick={() => trackEvent('post_event_content_click', { kind: 'learning', eventSlug: event.slug })} className="font-semibold text-burgundy-600 hover:underline">{learningProgram.title}</Link>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 const ATTENDANCE_MODE = {
   'in-person': 'https://schema.org/OfflineEventAttendanceMode',
@@ -488,6 +540,8 @@ export default function EventDetailPage() {
           {event.shortDescription && <p className="text-lg leading-relaxed text-charcoal-600">{event.shortDescription}</p>}
 
           <ArticleContent blocks={event.description} />
+
+          {event.postEvent && <PostEventContent event={event} />}
 
           {event.agenda?.length > 0 && (
             <div className="mt-10">

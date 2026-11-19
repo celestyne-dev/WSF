@@ -118,6 +118,22 @@ export function mapEvent(e) {
     coverMedia: mapMediaRef(e.cover_media),
     featured: e.featured,
     sponsored: e.sponsored,
+    // Post-event content (detail responses only): a recording reference
+    // and links to existing public Resource/Article/Learning program.
+    // `editor` carries raw slugs for the CMS (staff responses only).
+    postEvent: mapPostEvent(e.postEvent),
+  }
+}
+
+function mapPostEvent(p) {
+  if (!p) return null
+  return {
+    recording: p.recording || null,
+    resource: p.resource || null,
+    article: p.article || null,
+    learningProgram: p.learningProgram || null,
+    recordingLocked: !!p.recordingLocked,
+    editor: p.editor || null,
   }
 }
 
@@ -260,6 +276,17 @@ function toApiPayload(form) {
     sponsored: !!form.sponsored,
     speakers: (form.speakers || []).map(toSpeakerPayload),
     sponsors: (form.sponsors || []).map(toSponsorPayload),
+    // Only sent when the form carries them, so an omitted key keeps the
+    // saved post-event links server-side.
+    ...('recordingUrl' in form
+      ? {
+          recordingUrl: form.recordingUrl || null,
+          recordingProvider: form.recordingProvider || null,
+          postEventResourceSlug: form.postEventResourceSlug || null,
+          postEventArticleSlug: form.postEventArticleSlug || null,
+          postEventLearningProgramSlug: form.postEventLearningProgramSlug || null,
+        }
+      : {}),
   }
 }
 

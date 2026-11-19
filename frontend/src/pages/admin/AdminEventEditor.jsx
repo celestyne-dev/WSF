@@ -13,6 +13,24 @@ import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
+import EntitySelect from '../../components/cms/EntitySelect'
+import { fetchArticles } from '../../api/articles'
+import { fetchResources } from '../../api/resources'
+import { fetchAdminLearningPrograms } from '../../api/learning'
+import { VIDEO_PROVIDER_OPTIONS } from '../../utils/videoEmbed'
+
+async function searchArticles(query) {
+  const res = await fetchArticles({ query, pageSize: 8 })
+  return res.items.map((a) => ({ value: a.slug, label: a.title }))
+}
+async function searchResources(query) {
+  const res = await fetchResources({ q: query, pageSize: 8 })
+  return res.items.map((r) => ({ value: r.slug, label: r.name }))
+}
+async function searchLearningPrograms(query) {
+  const res = await fetchAdminLearningPrograms({ query, pageSize: 8 })
+  return res.items.map((p) => ({ value: p.slug, label: p.title }))
+}
 
 function slugify(text) {
   return text
@@ -110,6 +128,11 @@ function blankForm() {
     registrationMode: 'external',
     registrationDeadline: '',
     registrationInstructions: '',
+    recordingUrl: '',
+    recordingProvider: '',
+    postEventResourceSlug: null,
+    postEventArticleSlug: null,
+    postEventLearningProgramSlug: null,
     soldOut: false,
     ticketPrice: '',
     currency: '',
@@ -156,6 +179,11 @@ function toForm(event) {
     registrationMode: event.registrationMode || 'external',
     registrationDeadline: event.registrationDeadline || '',
     registrationInstructions: event.registrationInstructions || '',
+    recordingUrl: event.postEvent?.editor?.recordingUrl || '',
+    recordingProvider: event.postEvent?.editor?.recordingProvider || '',
+    postEventResourceSlug: event.postEvent?.editor?.resourceSlug || null,
+    postEventArticleSlug: event.postEvent?.editor?.articleSlug || null,
+    postEventLearningProgramSlug: event.postEvent?.editor?.learningProgramSlug || null,
     soldOut: !!event.soldOut,
     ticketPrice: event.ticketPrice ?? '',
     currency: event.currency || '',
@@ -614,6 +642,11 @@ export default function AdminEventEditor() {
       registrationMode: form.registrationMode,
       registrationDeadline: form.registrationDeadline || null,
       registrationInstructions: form.registrationInstructions || null,
+      recordingUrl: form.recordingUrl.trim() || null,
+      recordingProvider: form.recordingProvider || null,
+      postEventResourceSlug: form.postEventResourceSlug || null,
+      postEventArticleSlug: form.postEventArticleSlug || null,
+      postEventLearningProgramSlug: form.postEventLearningProgramSlug || null,
       soldOut: form.soldOut,
       ticketPrice: form.ticketPrice === '' ? null : Number(form.ticketPrice),
       currency: form.currency || null,
@@ -921,6 +954,31 @@ export default function AdminEventEditor() {
 
           <Section title="Sponsors" description="Link an existing Organization wherever one exists, or add a sponsor's details directly.">
             <SponsorsEditor sponsors={setListField('sponsors')} organizations={organizations} />
+          </Section>
+
+          <Section
+            title="Post-event content"
+            description="After the event, link the recording and existing WSF content. Nothing is copied or uploaded here: link the recording's public watch URL and pick existing items. Only published items appear publicly."
+          >
+            <Field label="Recording link" hint="optional — YouTube, Vimeo, Wistia and Loom are embedded; other links open on their own site">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr]">
+                <input value={form.recordingUrl} onChange={(e) => updateField('recordingUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+                <select value={form.recordingProvider} onChange={(e) => updateField('recordingProvider', e.target.value)} aria-label="Recording provider" className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                  {VIDEO_PROVIDER_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            </Field>
+            <Field label="Slides or handout" hint="an existing Resource">
+              <EntitySelect value={form.postEventResourceSlug} onChange={(v) => updateField('postEventResourceSlug', v)} loadOptions={searchResources} placeholder="Search resources…" />
+            </Field>
+            <Field label="Event write-up" hint="an existing Article">
+              <EntitySelect value={form.postEventArticleSlug} onChange={(v) => updateField('postEventArticleSlug', v)} loadOptions={searchArticles} placeholder="Search articles…" />
+            </Field>
+            <Field label="Keep learning" hint="an existing Learning program">
+              <EntitySelect value={form.postEventLearningProgramSlug} onChange={(v) => updateField('postEventLearningProgramSlug', v)} loadOptions={searchLearningPrograms} placeholder="Search learning programs…" />
+            </Field>
           </Section>
 
           <Section title="Media">

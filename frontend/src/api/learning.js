@@ -70,6 +70,15 @@ function mapLesson(l) {
     externalUrl: l.external_url || l.externalUrl || null,
     durationMinutes: l.duration_minutes ?? l.durationMinutes ?? null,
     sortOrder: l.sort_order ?? l.sortOrder ?? 0,
+    // Video/recording metadata (no hosting; embedUrl is backend-derived
+    // for allowlisted providers only). The outline shape carries only
+    // videoProvider + hasTranscript, never the URL or transcript itself.
+    videoProvider: l.video_provider ?? l.videoProvider ?? null,
+    embedUrl: l.embed_url ?? l.embedUrl ?? null,
+    transcript: l.transcript || '',
+    hasTranscript: !!(l.transcript || l.hasTranscript),
+    captionsUrl: l.captions_url ?? l.captionsUrl ?? null,
+    thumbnail: mapMediaRef(l.thumbnail),
   }
 }
 
@@ -148,6 +157,14 @@ export function mapLearningProgram(p) {
 // Public
 // ---------------------------------------------------------------------------
 
+// Which optional filters have real published content behind them (e.g.
+// "Video lessons"), so the page never offers a filter that returns nothing.
+export async function fetchLearningFacets() {
+  if (USE_MOCK) return { lessonFormats: [] }
+  const { data } = await apiClient.get('/learning/meta/facets')
+  return { lessonFormats: Array.isArray(data?.lessonFormats) ? data.lessonFormats : [] }
+}
+
 export async function fetchLearningPrograms(params = {}) {
   if (!USE_MOCK) {
     const { data } = await apiClient.get('/learning', {
@@ -159,6 +176,7 @@ export async function fetchLearningPrograms(params = {}) {
         topic: params.topic || undefined,
         audience: params.audience || undefined,
         featured: params.featured || undefined,
+        lessonFormat: params.lessonFormat || undefined,
         q: params.q || undefined,
         page: params.page,
         pageSize: params.pageSize,
@@ -283,6 +301,14 @@ function toCurriculumPayload(modules) {
         resourceSlug: l.resourceSlug || undefined,
         externalUrl: l.externalUrl || undefined,
         durationMinutes: l.durationMinutes === '' || l.durationMinutes == null ? undefined : Number(l.durationMinutes),
+        ...(l.lessonType === 'video' || l.lessonType === 'recording'
+          ? {
+              videoProvider: l.videoProvider || undefined,
+              transcript: l.transcript || null,
+              captionsUrl: l.captionsUrl || null,
+              thumbnailMediaId: l.thumbnail?.id || null,
+            }
+          : {}),
       })),
     })),
   }

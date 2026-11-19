@@ -25,6 +25,8 @@ import SaveButton from '../components/account/SaveButton'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
+import VideoEmbed from '../components/ui/VideoEmbed'
+import { isVideoLesson } from '../utils/videoEmbed'
 
 const PROGRAM_TYPE_LABEL = {
   course: 'Course',
@@ -38,6 +40,7 @@ const LESSON_ICON = {
   article: FileText,
   resource: BookOpen,
   video: PlayCircle,
+  recording: PlayCircle,
   external_link: ExternalLink,
   activity: ClipboardList,
   text: FileText,
@@ -48,8 +51,11 @@ function LessonRow({ lesson, enrollment, onToggleComplete, toggleBusy }) {
   const label = lesson.article?.title || lesson.resource?.name || lesson.title
   const linkClass = 'text-sm font-medium text-charcoal hover:text-burgundy-600'
 
+  const video = isVideoLesson(lesson)
   let content
-  if (lesson.article) {
+  if (video) {
+    content = <span className={linkClass.replace(' hover:text-burgundy-600', '')}>{lesson.title}</span>
+  } else if (lesson.article) {
     content = <Link to={`/${lesson.article.slug}`} className={linkClass}>{label}</Link>
   } else if (lesson.resource) {
     content = <Link to={`/resources/${lesson.resource.slug}`} className={linkClass}>{label}</Link>
@@ -82,6 +88,28 @@ function LessonRow({ lesson, enrollment, onToggleComplete, toggleBusy }) {
             <div className="mt-2 text-sm text-charcoal-700">
               <ArticleContent blocks={lesson.content} />
             </div>
+          )}
+          {video && lesson.lessonType === 'recording' && <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-plum-600">Session recording</p>}
+          {video && lesson.externalUrl && (
+            <div className="mt-2">
+              <VideoEmbed
+                title={lesson.title}
+                url={lesson.externalUrl}
+                embedUrl={lesson.embedUrl}
+                provider={lesson.videoProvider}
+                transcript={lesson.transcript}
+                captionsUrl={lesson.captionsUrl}
+                thumbnail={lesson.thumbnail}
+              />
+            </div>
+          )}
+          {video && !lesson.externalUrl && lesson.hasTranscript && (
+            <p className="mt-0.5 text-xs text-charcoal-600/70">Includes a transcript</p>
+          )}
+          {video && lesson.resource && (
+            <Link to={`/resources/${lesson.resource.slug}`} className="mt-1 inline-block text-xs font-semibold text-burgundy-600 hover:underline">
+              Slides: {lesson.resource.name}
+            </Link>
           )}
         </div>
         {lesson.durationMinutes ? <span className="shrink-0 text-xs text-charcoal-600/70">{lesson.durationMinutes} min</span> : null}
