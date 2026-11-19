@@ -188,7 +188,7 @@ export default function OrganizationDetailPage() {
           <section aria-labelledby="workplace-practices">
             <p id="workplace-practices" className="eyebrow mb-2">Workplace practices</p>
             <p className="mb-5 max-w-2xl text-xs text-charcoal-600">
-              What we know about working at {org.name}, with where each item comes from. This is not a WSF certification or endorsement.
+              Workplace information is based on employer-provided or publicly available information and does not represent WSF certification. Each item shows where it comes from.
             </p>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {org.workplacePractices.map((p) => (
@@ -201,7 +201,7 @@ export default function OrganizationDetailPage() {
                       <>
                         {' · '}
                         <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer nofollow" className="font-semibold text-burgundy-600 hover:underline">
-                          Source
+                          View source<span className="sr-only"> for {labelFor(WORKPLACE_PRACTICES, p.practice)} (opens in a new tab)</span>
                         </a>
                       </>
                     )}

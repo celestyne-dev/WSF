@@ -129,10 +129,22 @@ export default function AuthorProfilePage() {
             <MediaImage media={author.photoMedia} variant="card" mediaPath={author.photo} alt={resolveAltText(author.photoMedia, author.name)} width={200} height={200} aspect={1} sizes="112px" className="h-28 w-28 rounded-full object-cover" />
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{author.name}</h1>
-              {author.role && <p className="mt-1 text-base text-charcoal-600">{author.role}</p>}
-              {author.headline && <p className="mt-1 text-sm font-medium text-plum-600">{author.headline}</p>}
-              {(author.location || author.country) && (
-                <p className="mt-1 text-sm text-charcoal-600">{author.location || author.country?.name}</p>
+              {author.headline && <p className="mt-1 text-base font-medium text-plum-600">{author.headline}</p>}
+              {(author.role || author.location || author.country) && (
+                <p className="mt-1 text-sm text-charcoal-600">
+                  {[author.role, author.location || author.country?.name].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              {author.topics?.length > 0 && (
+                <ul aria-label="Areas of expertise" className="mt-3 flex flex-wrap gap-2">
+                  {author.topics.map((t) => (
+                    <li key={t.slug}>
+                      <Link to={`/topics/${t.slug}`} className="inline-block bg-taupe-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600 hover:bg-taupe-200">
+                        {t.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               )}
               {stats.length > 0 && (
                 <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
@@ -190,21 +202,6 @@ export default function AuthorProfilePage() {
           </section>
         )}
 
-        {author.topics?.length > 0 && (
-          <section aria-labelledby="author-expertise">
-            <h2 id="author-expertise" className="font-serif text-2xl font-semibold text-charcoal">Areas of expertise</h2>
-            <ul className="mt-4 flex flex-wrap gap-2">
-              {author.topics.map((t) => (
-                <li key={t.slug}>
-                  <Link to={`/topics/${t.slug}`} className="inline-block bg-taupe-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-charcoal-600 hover:bg-taupe-200">
-                    {t.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
         {hasItems(programs) && (
           <section aria-labelledby="author-learning">
             <h2 id="author-learning" className="font-serif text-2xl font-semibold text-charcoal">Learn with {firstName}</h2>
@@ -231,6 +228,7 @@ export default function AuthorProfilePage() {
           </section>
         )}
 
+        {(articles.length > 0 || page > 1) && (
         <section aria-labelledby="author-articles">
         <h2 id="author-articles" className="font-serif text-2xl font-semibold text-charcoal">Latest articles</h2>
         <p className="eyebrow mb-6 mt-2">{pagination?.totalItems ?? articles.length} articles by {author.name}</p>
@@ -266,9 +264,10 @@ export default function AuthorProfilePage() {
             )}
           </>
         ) : (
-          <EmptyState title="No published articles yet" />
+          <EmptyState title="No more articles" />
         )}
         </section>
+        )}
 
         {author.credentials?.length > 0 && (
           <div className="max-w-2xl">

@@ -250,12 +250,12 @@ export default function SubmitStoryPage() {
           </div>
 
           <div className="space-y-3 border border-taupe-200 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Career outcome (optional)</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Career milestone (optional)</p>
             <p className="text-xs text-charcoal-600/80">
-              Did your story include a career move? With your permission, we may share it anonymously or with your first name and initial among career moves from our community. We never say WSF caused it.
+              Is there a career milestone in your story you’d like to share, such as a new job, a promotion or starting a business? This is completely optional and your story is submitted either way. With your permission, and only after our editors review it, we may share a one-line summary among career moves from our community. We never present it as caused by WSF.
             </p>
-            <select value={form.outcomeType} onChange={(e) => setField('outcomeType', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" aria-label="Career outcome">
-              <option value="">No outcome to share</option>
+            <select value={form.outcomeType} onChange={(e) => setField('outcomeType', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" aria-label="Career milestone">
+              <option value="">No milestone to share</option>
               {CAREER_OUTCOME_TYPES.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
@@ -264,17 +264,17 @@ export default function SubmitStoryPage() {
               <>
                 <label className="flex items-start gap-2 text-sm text-charcoal-600">
                   <input type="checkbox" checked={form.outcomePublishConsent} onChange={(e) => setField('outcomePublishConsent', e.target.checked)} className="mt-1" />
-                  Women Shaping Futures may publish this career outcome (after editorial review).
+                  Women Shaping Futures may publish this milestone after editorial review. If you leave this unticked it will never be published.
                 </label>
                 <fieldset className="space-y-1 text-sm text-charcoal-600">
                   <legend className="text-xs font-semibold text-charcoal-600">If published, show it as</legend>
                   <label className="flex items-center gap-2">
                     <input type="radio" name="outcomeAttribution" checked={form.outcomeAttribution === 'anonymous'} onChange={() => setField('outcomeAttribution', 'anonymous')} />
-                    Anonymous (“A WSF community member”)
+                    Anonymously, as “A WSF community member”
                   </label>
                   <label className="flex items-center gap-2">
                     <input type="radio" name="outcomeAttribution" checked={form.outcomeAttribution === 'first_name'} onChange={() => setField('outcomeAttribution', 'first_name')} />
-                    My first name and last initial
+                    With my first name and last initial (for example “{(form.firstName || 'Amina').trim()} {((form.lastName || 'K').trim()[0] || 'K').toUpperCase()}.”)
                   </label>
                 </fieldset>
               </>

@@ -280,14 +280,28 @@ class TestMigrations:
 
 
 class TestVerificationShell:
-    def test_verify_route_is_a_noindex_shell_without_lookup(self, client, app):
+    def test_verify_shell_status_follows_certificate_existence(self, client, app, learner, admin):
         import os
 
         app.config["SPA_INDEX_PATH"] = os.path.join(os.path.dirname(__file__), "fixtures", "spa_index.html")
-        resp = client.get(f"/certificates/verify/{uuid.uuid4()}")
-        assert resp.status_code == 200
-        html = resp.get_data(as_text=True)
-        assert "noindex, nofollow" in html and "Verify a Certificate" in html
+
+        def shell(public_id):
+            resp = client.get(f"/certificates/verify/{public_id}")
+            html = resp.get_data(as_text=True)
+            # Same safe noindex shell whatever the status; never a recipient name.
+            assert "noindex, nofollow" in html and "Verify a Certificate" in html
+            assert "Amara" not in html and "Okafor" not in html
+            return resp.status_code
+
+        assert shell(uuid.uuid4()) == 404  # invented id: never looks valid
+        assert shell("not-a-uuid") == 404
+        program_id, lesson_ids = _program(app, lessons=1)
+        _finish(client, learner, program_id, lesson_ids)
+        cert = _certificates(app)[0]
+        assert shell(cert.public_id) == 200
+        client.post(f"/api/v1/certificates/admin/{cert.id}/revoke", json={"reason": "Issued in error"}, headers=admin)
+        assert shell(cert.public_id) == 200  # revoked still exists; the page shows it as revoked
+        assert client.get(f"/api/v1/certificates/verify/{cert.public_id}").get_json()["data"]["status"] == "revoked"
         assert client.get("/certificates/verify").status_code == 404
 
     def test_certificates_is_a_reserved_slug(self):

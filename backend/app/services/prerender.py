@@ -719,7 +719,9 @@ def render_author_prerender(payload, authority=None):
     bounded block (counts, Resources, Learning programs, latest Articles)
     — the paginated archive itself is never server-rendered."""
     authority = authority or {}
-    header = [_h1(payload.get("name")), _paragraph(payload.get("role")), _paragraph(payload.get("headline"), _META_CLASS)]
+    # Identity, headline, role/location, expertise, then authority counts —
+    # the same order as the React profile (AuthorProfilePage.jsx).
+    header = [_h1(payload.get("name")), _paragraph(payload.get("headline"), _META_CLASS), _paragraph(payload.get("role"))]
     country = payload.get("country") if isinstance(payload.get("country"), dict) else {}
     place = payload.get("location") or country.get("name")
     if _is_nonblank(place):
@@ -727,22 +729,20 @@ def render_author_prerender(payload, authority=None):
     topics = [t for t in (payload.get("topics") or []) if isinstance(t, dict) and _is_nonblank(t.get("slug"))]
     if topics:
         chips = "".join(f'<li class="{_CHIP_CLASS}"><a href="/topics/{_attr(t["slug"])}">{_text(t.get("name"))}</a></li>' for t in topics)
-        header.append(f'<ul class="{_CHIPS_CLASS}" aria-label="Topics">{chips}</ul>')
-    links = ([("Website", payload.get("website"))] if _http_url(payload.get("website")) else []) + _social_links(payload.get("social"))
-    header.append(_link_list(links))
-    person = payload.get("person") if isinstance(payload.get("person"), dict) else None
-    if person and _is_nonblank(person.get("slug")):
-        header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View full profile</a></p>')
+        header.append(f'<ul class="{_CHIPS_CLASS}" aria-label="Areas of expertise">{chips}</ul>')
     counts = authority.get("counts") or {}
     stats = [(counts.get("articles"), "Article", "Articles"), (counts.get("resources"), "Career Tool", "Career Tools"),
              (counts.get("courses"), "Course", "Courses")]
     stat_text = " · ".join(f"{n} {one if n == 1 else many}" for n, one, many in stats if isinstance(n, int) and n > 0)
     if stat_text:
         header.append(f'<p class="{_META_CLASS}">{_text(stat_text)}</p>')
+    links = ([("Website", payload.get("website"))] if _http_url(payload.get("website")) else []) + _social_links(payload.get("social"))
+    header.append(_link_list(links))
+    person = payload.get("person") if isinstance(payload.get("person"), dict) else None
+    if person and _is_nonblank(person.get("slug")):
+        header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View full profile</a></p>')
     first_name = (payload.get("name") or "").split(" ")[0]
     body = [render_content_blocks(payload.get("bio") or [])]
-    if topics:
-        body.append(_section("Areas of expertise", f'<ul>{"".join(f"<li>{_hub_link("/topics/" + t["slug"], t.get("name"))}</li>" for t in topics)}</ul>'))
     programs = [p for p in authority.get("learningPrograms") or [] if isinstance(p, dict) and _is_nonblank(p.get("slug"))]
     if programs:
         body.append(_section(f"Learn with {first_name}", _item_list(_learning_card(p) for p in programs)))

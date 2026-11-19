@@ -17,6 +17,11 @@ export default function WorkplacePracticesEditor({ value, onChange }) {
 
   return (
     <div className="space-y-3">
+      <ul className="space-y-1 border border-taupe-200 bg-cream p-3 text-xs text-charcoal-600">
+        <li><span className="font-semibold text-charcoal">Self-reported by the employer:</span> the employer told us. A source link is optional.</li>
+        <li><span className="font-semibold text-charcoal">Publicly documented:</span> stated in a public source such as the employer’s policy page or annual report. Source link required.</li>
+        <li><span className="font-semibold text-charcoal">Source reviewed by WSF:</span> a WSF editor checked the linked public source. Source link required. This is not a certification.</li>
+      </ul>
       {rows.map((row, i) => (
         <div key={row.practice} className="space-y-2 border border-taupe-200 p-3">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">

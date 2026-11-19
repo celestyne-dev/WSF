@@ -217,7 +217,7 @@ export default function AdminAuthorEditor() {
                 </datalist>
               </Field>
             </div>
-            <Field label="Professional headline" hint="optional — shown under the role on the public profile, e.g. Career, Leadership & Future of Work">
+            <Field label="Professional headline" hint="optional, up to 160 characters — a one-line summary shown under the name on the public profile, e.g. Career, Leadership & Future of Work">
               <input value={form.headline} maxLength={160} onChange={(e) => updateField('headline', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
             <Field label="Slug" hint={`public URL: womenshapingfutures.org/authors/${form.slug || 'your-slug'}`}>
@@ -275,7 +275,7 @@ export default function AdminAuthorEditor() {
             </Field>
           </Section>
 
-          <Section title="Editorial role / expertise" description="What this author writes about — uses the existing Topic taxonomy.">
+          <Section title="Areas of expertise" description="Topics this author writes about or teaches. Shown as “Areas of expertise” on the public profile (uses the existing Topic taxonomy).">
             <div className="flex flex-wrap gap-2">
               {topics.map((t) => (
                 <button

@@ -43,7 +43,7 @@ export default function CareerGoalsSettings() {
   return (
     <section id="career-goals" aria-labelledby="career-goals-heading" className="mt-12 border-t border-taupe-200 pt-8">
       <h3 id="career-goals-heading" className="font-serif text-xl font-semibold text-charcoal">Career goals</h3>
-      <p className="mt-1 text-sm text-charcoal-600">Used only to recommend Career Hub tools for you. Never shown publicly.</p>
+      <p className="mt-1 text-sm text-charcoal-600">Choose what you want to make progress on. We’ll use this to make Career Hub more relevant. Your goals are private and never shown publicly.</p>
       {error && <p className="mt-4 text-sm text-rose-600">{error}</p>}
       {!error && options === null && <div className="mt-4 h-16 animate-pulse bg-taupe-100" />}
       {options && options.length > 0 && (

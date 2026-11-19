@@ -347,7 +347,7 @@ export default function AdminOrganizationEditor() {
 
           <Section
             title="Workplace practices"
-            description="Optional employer workplace profile. Say where each claim comes from. WSF does not certify employers, and nothing here is shown as a certification."
+            description="Optional employer workplace profile. Record each practice with where the information comes from. WSF does not certify employers: never describe an employer as certified or verified here."
           >
             <WorkplacePracticesEditor value={form.workplacePractices} onChange={(v) => updateField('workplacePractices', v)} />
           </Section>

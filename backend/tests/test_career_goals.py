@@ -75,6 +75,16 @@ class TestCareerGoals:
         body = client.get("/api/v1/career-hub/me/recommended", headers=headers).get_data(as_text=True)
         assert "secret/path.pdf" not in body
 
+    def test_item_matching_several_goals_is_recommended_once(self, client, app):
+        headers = _user(client)
+        promo = _topic(app, "promotion-2", goal="get_promoted")
+        pay = _topic(app, "pay-2", goal="earn_more")
+        _resource(app, "both-goals", topics=(promo, pay))
+        _program(app, "both-goals-course", topics=(promo, pay))
+        client.put("/api/v1/career-hub/me/goals", json={"goals": ["get_promoted", "earn_more"]}, headers=headers)
+        slugs = [c["slug"] for c in client.get("/api/v1/career-hub/me/recommended", headers=headers).get_json()["data"]["items"]]
+        assert sorted(slugs) == ["both-goals", "both-goals-course"]
+
     def test_migration_chain(self):
         from alembic.config import Config
         from alembic.script import ScriptDirectory

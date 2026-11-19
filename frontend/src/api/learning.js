@@ -301,9 +301,10 @@ function toCurriculumPayload(modules) {
         resourceSlug: l.resourceSlug || undefined,
         externalUrl: l.externalUrl || undefined,
         durationMinutes: l.durationMinutes === '' || l.durationMinutes == null ? undefined : Number(l.durationMinutes),
+        // No videoProvider: the server detects it from the link, so a
+        // changed link can never be saved with a stale provider.
         ...(l.lessonType === 'video' || l.lessonType === 'recording'
           ? {
-              videoProvider: l.videoProvider || undefined,
               transcript: l.transcript || null,
               captionsUrl: l.captionsUrl || null,
               thumbnailMediaId: l.thumbnail?.id || null,

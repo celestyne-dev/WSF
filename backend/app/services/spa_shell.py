@@ -2509,14 +2509,24 @@ def _render_unsubscribe_shell():
     return _html_response(html_doc)
 
 
-def _render_certificate_verification_shell():
+def _render_certificate_verification_shell(public_id):
     """/certificates/verify/<public_id> — a real React route
     (CertificateVerifyPage.jsx). Deliberately noindex and never in the
     sitemap: a certificate is a personal record that is shareable by
-    link, not public content to be discovered by search. The public id is
-    not looked up here, so this shell never reveals whether a certificate
-    exists and never writes a recipient name into the head.
+    link, not public content to be discovered by search.
+
+    The HTML is identical either way (generic title, no recipient name in
+    the head), so React renders its own valid / revoked / not-found state.
+    Only the HTTP status differs: 404 when no certificate has this public
+    id (one indexed lookup on the unique column), 200 otherwise, revoked
+    included. That reveals nothing beyond what the public verification
+    API already answers for the same link.
     """
+    from app.models.learning_certificate import LearningCertificate
+
+    exists = db.session.query(
+        LearningCertificate.query.filter_by(public_id=public_id).exists()
+    ).scalar()
     site_identity = get_site_identity_resolved()
     site_name = site_identity.get("site_name") or "Women Shaping Futures"
     html_doc = _apply_base_seo(
@@ -2530,7 +2540,7 @@ def _render_certificate_verification_shell():
         image_alt=None,
         site_name=site_name,
     )
-    return _html_response(html_doc)
+    return _html_response(html_doc, status=200 if exists else 404)
 
 
 def is_reserved_path(subpath):
@@ -2602,7 +2612,7 @@ def resolve_spa_response(subpath):
         return _render_unsubscribe_shell()
 
     if len(segments) == 3 and segments[0] == "certificates" and segments[1] == "verify" and segments[2]:
-        return _render_certificate_verification_shell()
+        return _render_certificate_verification_shell(segments[2])
 
     if len(segments) == 2 and segments[0] in _ENTITY_DETAIL_PREFIXES and segments[1]:
         return _render_entity_detail(segments[0], segments[1])

@@ -17,7 +17,7 @@ import EntitySelect from '../../components/cms/EntitySelect'
 import { fetchArticles } from '../../api/articles'
 import { fetchResources } from '../../api/resources'
 import { fetchAdminLearningPrograms } from '../../api/learning'
-import { VIDEO_PROVIDER_OPTIONS } from '../../utils/videoEmbed'
+import VideoLinkHint from '../../components/cms/VideoLinkHint'
 
 async function searchArticles(query) {
   const res = await fetchArticles({ query, pageSize: 8 })
@@ -129,7 +129,6 @@ function blankForm() {
     registrationDeadline: '',
     registrationInstructions: '',
     recordingUrl: '',
-    recordingProvider: '',
     postEventResourceSlug: null,
     postEventArticleSlug: null,
     postEventLearningProgramSlug: null,
@@ -180,7 +179,6 @@ function toForm(event) {
     registrationDeadline: event.registrationDeadline || '',
     registrationInstructions: event.registrationInstructions || '',
     recordingUrl: event.postEvent?.editor?.recordingUrl || '',
-    recordingProvider: event.postEvent?.editor?.recordingProvider || '',
     postEventResourceSlug: event.postEvent?.editor?.resourceSlug || null,
     postEventArticleSlug: event.postEvent?.editor?.articleSlug || null,
     postEventLearningProgramSlug: event.postEvent?.editor?.learningProgramSlug || null,
@@ -643,7 +641,7 @@ export default function AdminEventEditor() {
       registrationDeadline: form.registrationDeadline || null,
       registrationInstructions: form.registrationInstructions || null,
       recordingUrl: form.recordingUrl.trim() || null,
-      recordingProvider: form.recordingProvider || null,
+      recordingProvider: null,
       postEventResourceSlug: form.postEventResourceSlug || null,
       postEventArticleSlug: form.postEventArticleSlug || null,
       postEventLearningProgramSlug: form.postEventLearningProgramSlug || null,
@@ -958,25 +956,21 @@ export default function AdminEventEditor() {
 
           <Section
             title="Post-event content"
-            description="After the event, link the recording and existing WSF content. Nothing is copied or uploaded here: link the recording's public watch URL and pick existing items. Only published items appear publicly."
+            description="Optional. Add these after the event to turn the session into a reusable learning resource. Nothing is copied or uploaded: link the recording and pick existing WSF content. Only published items appear publicly, and a Circle-only event's recording is shown only to members with access."
           >
-            <Field label="Recording link" hint="optional — YouTube, Vimeo, Wistia and Loom are embedded; other links open on their own site">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr]">
-                <input value={form.recordingUrl} onChange={(e) => updateField('recordingUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
-                <select value={form.recordingProvider} onChange={(e) => updateField('recordingProvider', e.target.value)} aria-label="Recording provider" className="w-full border border-taupe-300 px-3 py-2 text-sm">
-                  {VIDEO_PROVIDER_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+            <Field label="Recording link" hint="optional — YouTube, Vimeo, Wistia and Loom play on the page; other links open on their own site">
+              <input value={form.recordingUrl} onChange={(e) => updateField('recordingUrl', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              <div className="mt-1">
+                <VideoLinkHint url={form.recordingUrl} />
               </div>
             </Field>
-            <Field label="Slides or handout" hint="an existing Resource">
+            <Field label="Slides or resource" hint="optional — an existing Resource">
               <EntitySelect value={form.postEventResourceSlug} onChange={(v) => updateField('postEventResourceSlug', v)} loadOptions={searchResources} placeholder="Search resources…" />
             </Field>
-            <Field label="Event write-up" hint="an existing Article">
+            <Field label="Key takeaways article" hint="optional — an existing Article">
               <EntitySelect value={form.postEventArticleSlug} onChange={(v) => updateField('postEventArticleSlug', v)} loadOptions={searchArticles} placeholder="Search articles…" />
             </Field>
-            <Field label="Keep learning" hint="an existing Learning program">
+            <Field label="Related Learning program" hint="optional — an existing program">
               <EntitySelect value={form.postEventLearningProgramSlug} onChange={(v) => updateField('postEventLearningProgramSlug', v)} loadOptions={searchLearningPrograms} placeholder="Search learning programs…" />
             </Field>
           </Section>

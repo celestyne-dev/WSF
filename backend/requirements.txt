@@ -15,6 +15,9 @@ python-dotenv==1.0.1
 Pillow==10.4.0
 # Server-side certificate PDFs (app/services/learning_certificates.py).
 reportlab==4.2.5
+# ReportLab requires chardet (unpinned); requests 2.32.3 only accepts
+# chardet >=3.0.2,<6 and warns (RequestsDependencyWarning) otherwise.
+chardet==5.2.0
 qrcode==7.4.2
 gunicorn==22.0.0
 bleach==6.4.0

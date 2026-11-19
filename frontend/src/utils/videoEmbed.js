@@ -35,3 +35,43 @@ export const VIDEO_LESSON_TYPES = ['video', 'recording']
 export function isVideoLesson(lesson) {
   return !!lesson && VIDEO_LESSON_TYPES.includes(lesson.lessonType)
 }
+
+// Mirrors backend app/services/video_embed.py _PROVIDER_HOSTS: a preview of
+// what the server will detect, used only for editor guidance. The server
+// stays authoritative.
+const PROVIDER_HOSTS = {
+  youtube: ['youtube.com', 'youtu.be', 'youtube-nocookie.com'],
+  vimeo: ['vimeo.com'],
+  wistia: ['wistia.com', 'wistia.net', 'wi.st'],
+  loom: ['loom.com'],
+}
+
+// -> {state: 'empty'|'embed_code'|'invalid'|'embed'|'link', provider, label}
+export function describeVideoLink(url) {
+  const value = (url || '').trim()
+  if (!value) return { state: 'empty', provider: null, label: null }
+  if (/<\s*iframe|<\s*script|<\s*embed/i.test(value)) return { state: 'embed_code', provider: null, label: null }
+  let parsed
+  try {
+    parsed = new URL(value)
+  } catch {
+    return { state: 'invalid', provider: null, label: null }
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol) || /\s/.test(value)) return { state: 'invalid', provider: null, label: null }
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
+  for (const [provider, domains] of Object.entries(PROVIDER_HOSTS)) {
+    if (domains.some((d) => host === d || host.endsWith(`.${d}`))) {
+      return { state: 'embed', provider, label: videoProviderLabel(provider) }
+    }
+  }
+  return { state: 'link', provider: 'other', label: null }
+}
+
+export function videoLinkHint(url) {
+  const info = describeVideoLink(url)
+  if (info.state === 'embed_code') return { tone: 'error', text: 'Paste the video’s link, not its embed code. Embed code is never accepted.' }
+  if (info.state === 'invalid') return { tone: 'error', text: 'Enter a full link starting with https://' }
+  if (info.state === 'embed') return { tone: 'ok', text: `${info.label} link detected: it will play on the page.` }
+  if (info.state === 'link') return { tone: 'info', text: 'Not a YouTube, Vimeo, Wistia or Loom link: it will open as a link on its own site rather than play on the page.' }
+  return null
+}

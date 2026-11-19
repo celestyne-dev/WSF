@@ -182,3 +182,23 @@ class TestAuthorPrerender:
         assert "Latest articles" in root
         assert len(re.findall(r'href="/pre\d"', root)) == 6  # bounded, not the archive
         assert "vault/secret.pdf" not in html
+
+    def test_prerender_order_and_single_expertise_list(self, client, app):
+        from app.models.taxonomy import Topic
+
+        app.config["SPA_INDEX_PATH"] = FIXTURE_INDEX_PATH
+        topic_id = _add(app, Topic(slug="leadership", name="Leadership", status="published"))
+        aid = _author(app, headline="Career, Leadership & Future of Work", location="Nairobi")
+        with app.app_context():
+            from app.models.people import Author
+
+            author = db.session.get(Author, aid)
+            author.topics.append(db.session.get(Topic, topic_id))
+            db.session.commit()
+        _article(app, aid, "order-1")
+        html = client.get("/authors/celestine").get_data(as_text=True)
+        root = html.split('data-wsf-prerender="author"', 1)[1]
+        positions = [root.index(s) for s in ("Celestine Nyamoita", "Future of Work", "Founder &amp; Editor", "Nairobi",
+                                              'href="/topics/leadership"', "1 Article")]
+        assert positions == sorted(positions), positions
+        assert root.count('href="/topics/leadership"') == 1

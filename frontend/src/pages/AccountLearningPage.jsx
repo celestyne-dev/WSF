@@ -47,7 +47,7 @@ function CertificateActions({ certificate }) {
         Download PDF
       </button>
       <Link to={`/certificates/verify/${certificate.publicId}`} className="font-semibold text-burgundy-600 hover:underline">
-        Verify
+        Verify credential
       </Link>
       {certificate.linkedinUrl && (
         <a

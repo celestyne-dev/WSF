@@ -107,16 +107,16 @@ export default function AdminLearningCertificates() {
           </p>
           <p className="mt-1 text-charcoal-600">
             {action.kind === 'revoke'
-              ? 'The verification page will show this certificate as revoked.'
-              : 'The current certificate is revoked and a new one is issued from the learner’s current name and the program’s current details.'}
+              ? 'The certificate stays on record and its verification page will show it as revoked. This cannot be undone.'
+              : 'The existing certificate will remain in history as revoked and a replacement will be issued, using the learner’s current name and the program’s current details.'}
           </p>
           <label className="mt-3 block">
             <span className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Reason (required)</span>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} className="mt-1 w-full border border-taupe-300 bg-white px-3 py-2" />
+            <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus className="mt-1 w-full border border-taupe-300 bg-white px-3 py-2" />
           </label>
           <div className="mt-3 flex gap-3">
             <button type="submit" disabled={busy || !reason.trim()} className="btn-primary !px-4 !py-2 text-xs disabled:opacity-60">
-              Confirm
+              {action.kind === 'revoke' ? 'Revoke certificate' : 'Revoke and reissue'}
             </button>
             <button type="button" onClick={() => setAction(null)} className="btn-secondary !px-4 !py-2 text-xs">
               Cancel

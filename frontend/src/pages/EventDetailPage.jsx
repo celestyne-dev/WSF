@@ -29,10 +29,10 @@ function PostEventContent({ event }) {
   const { recording, recordingLocked, resource, article, learningProgram } = event.postEvent
   return (
     <div className="mt-10 border border-taupe-200 bg-white p-6">
-      <h2 className="font-serif text-2xl font-semibold text-charcoal">{event.isPast ? 'Post-event content' : 'Event content'}</h2>
+      <h2 className="font-serif text-2xl font-semibold text-charcoal">From this event</h2>
       {recording && (
         <div className="mt-4">
-          <p className="mb-2 text-sm font-semibold text-charcoal">Recording</p>
+          <p className="mb-2 text-sm font-semibold text-charcoal">Watch the recording</p>
           <VideoEmbed
             title={`${event.title} recording`}
             url={recording.url}
@@ -51,19 +51,19 @@ function PostEventContent({ event }) {
         <ul className="mt-5 space-y-2 text-sm">
           {resource && (
             <li>
-              <span className="text-charcoal-600">Slides and handouts: </span>
+              <span className="text-charcoal-600">Slides and resources: </span>
               <Link to={`/resources/${resource.slug}`} onClick={() => trackEvent('post_event_content_click', { kind: 'resource', eventSlug: event.slug })} className="font-semibold text-burgundy-600 hover:underline">{resource.name}</Link>
             </li>
           )}
           {article && (
             <li>
-              <span className="text-charcoal-600">Read the write-up: </span>
+              <span className="text-charcoal-600">Read the key takeaways: </span>
               <Link to={`/${article.slug}`} onClick={() => trackEvent('post_event_content_click', { kind: 'article', eventSlug: event.slug })} className="font-semibold text-burgundy-600 hover:underline">{article.title}</Link>
             </li>
           )}
           {learningProgram && (
             <li>
-              <span className="text-charcoal-600">Keep learning: </span>
+              <span className="text-charcoal-600">Explore the related program: </span>
               <Link to={`/learning/${learningProgram.slug}`} onClick={() => trackEvent('post_event_content_click', { kind: 'learning', eventSlug: event.slug })} className="font-semibold text-burgundy-600 hover:underline">{learningProgram.title}</Link>
             </li>
           )}

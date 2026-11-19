@@ -27,7 +27,7 @@ export default function CareerGoalsPicker({ goals, value, onChange, disabled = f
         })}
       </div>
       <p className="mt-2 text-xs text-charcoal-600/70">
-        Choose up to {MAX_CAREER_GOALS}. {selected.length}/{MAX_CAREER_GOALS} selected. Your goals are private and only used to suggest tools for you.
+        Choose up to {MAX_CAREER_GOALS}. {selected.length}/{MAX_CAREER_GOALS} selected.
       </p>
     </div>
   )

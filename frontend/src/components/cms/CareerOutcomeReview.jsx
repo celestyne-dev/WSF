@@ -2,22 +2,19 @@ import { useState } from 'react'
 import { toast } from 'react-toastify'
 import { reviewSubmissionOutcome } from '../../api/submissions'
 import { CAREER_OUTCOME_TYPES, labelFor } from '../../constants/workplace'
+import { outcomePublicCredit } from '../../utils/careerOutcomes'
 
-const STATUS_OPTIONS = [
-  { value: 'pending', label: 'Pending review' },
-  { value: 'approved', label: 'Approved (public)' },
-  { value: 'rejected', label: 'Not published' },
-]
+const STATUS_LABEL = { none: 'No outcome', pending: 'Awaiting review', approved: 'Published', rejected: 'Not published' }
 
 const input = 'w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
 
 // Career outcome review on a Story Submission. Publishing needs the
 // submitter's consent, a type and an editor-written one-line summary
-// (never the raw story). Staff may make attribution anonymous, never named.
+// (never the raw story). Staff may make attribution anonymous, never
+// named; the API enforces the same rules.
 export default function CareerOutcomeReview({ submission, onUpdated }) {
   const [review, setReview] = useState({
     outcomeType: submission.outcomeType,
-    outcomeStatus: submission.outcomeStatus === 'none' ? 'pending' : submission.outcomeStatus,
     outcomeSummary: submission.outcomeSummary,
     outcomeAttribution: submission.outcomeAttribution,
   })
@@ -25,12 +22,15 @@ export default function CareerOutcomeReview({ submission, onUpdated }) {
 
   if (!submission.outcomeType && submission.outcomeStatus === 'none') return null
 
-  async function save() {
+  const credit = outcomePublicCredit(review.outcomeAttribution, submission.firstName, submission.lastName)
+  const canApprove = submission.outcomePublishConsent && review.outcomeType && review.outcomeSummary?.trim()
+
+  async function save(outcomeStatus, message) {
     setSaving(true)
     try {
-      const updated = await reviewSubmissionOutcome(submission.id, review)
+      const updated = await reviewSubmissionOutcome(submission.id, { ...review, outcomeStatus })
       onUpdated(updated)
-      toast.success('Career outcome updated.')
+      toast.success(message)
     } catch (err) {
       toast.error(err?.apiError?.message || 'Something went wrong saving this outcome.')
     } finally {
@@ -38,14 +38,34 @@ export default function CareerOutcomeReview({ submission, onUpdated }) {
     }
   }
 
+  const currentStatus = submission.outcomeStatus === 'none' ? 'pending' : submission.outcomeStatus
+
   return (
     <div className="border border-taupe-200 bg-white p-6">
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600">Career outcome</p>
-      <p className="mb-4 text-xs text-charcoal-600/80">
-        Submitted: {labelFor(CAREER_OUTCOME_TYPES, submission.outcomeType) || '—'} · Publish permission:{' '}
-        <span className="font-semibold">{submission.outcomePublishConsent ? 'Yes' : 'No'}</span> · Attribution:{' '}
-        {submission.outcomeAttribution === 'first_name' ? 'First name and initial' : 'Anonymous'}
-      </p>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Career outcome</p>
+        <span className="text-xs font-semibold text-charcoal-600">{STATUS_LABEL[submission.outcomeStatus] || submission.outcomeStatus}</span>
+      </div>
+      <dl className="mb-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-xs text-charcoal-600/70">Submitted outcome</dt>
+          <dd className="text-charcoal">{labelFor(CAREER_OUTCOME_TYPES, submission.outcomeType) || '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-charcoal-600/70">Publish permission</dt>
+          <dd className={submission.outcomePublishConsent ? 'text-emerald-700' : 'font-semibold text-rose-600'}>
+            {submission.outcomePublishConsent ? 'Given' : 'Not given: this outcome can never be published'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-charcoal-600/70">Requested credit</dt>
+          <dd className="text-charcoal">{submission.outcomeAttribution === 'first_name' ? 'First name and last initial' : 'Anonymous'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-charcoal-600/70">Public credit that will appear</dt>
+          <dd className="font-semibold text-charcoal">{credit}</dd>
+        </div>
+      </dl>
       <div className="space-y-3">
         <select value={review.outcomeType} onChange={(e) => setReview({ ...review, outcomeType: e.target.value })} className={input} aria-label="Outcome type">
           {CAREER_OUTCOME_TYPES.map((o) => (
@@ -57,30 +77,34 @@ export default function CareerOutcomeReview({ submission, onUpdated }) {
           onChange={(e) => setReview({ ...review, outcomeSummary: e.target.value })}
           maxLength={280}
           placeholder="Public one-line summary, e.g. “Promoted to engineering manager.”"
+          aria-label="Public summary"
           className={input}
         />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <select value={review.outcomeStatus} onChange={(e) => setReview({ ...review, outcomeStatus: e.target.value })} className={input} aria-label="Outcome status">
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value} disabled={o.value === 'approved' && !submission.outcomePublishConsent}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          {submission.outcomeAttribution === 'first_name' && (
-            <label className="flex items-center gap-2 text-sm text-charcoal-600">
-              <input
-                type="checkbox"
-                checked={review.outcomeAttribution === 'anonymous'}
-                onChange={(e) => setReview({ ...review, outcomeAttribution: e.target.checked ? 'anonymous' : 'first_name' })}
-              />
-              Publish anonymously instead
-            </label>
-          )}
+        <p className="text-xs text-charcoal-600/70">Write a short factual summary from the story above. Do not say or imply WSF caused the outcome.</p>
+        {submission.outcomeAttribution === 'first_name' && (
+          <label className="flex items-center gap-2 text-sm text-charcoal-600">
+            <input
+              type="checkbox"
+              checked={review.outcomeAttribution === 'anonymous'}
+              onChange={(e) => setReview({ ...review, outcomeAttribution: e.target.checked ? 'anonymous' : 'first_name' })}
+            />
+            Publish anonymously instead (cannot be undone by staff)
+          </label>
+        )}
+        <div className="flex flex-wrap gap-3 pt-1">
+          <button type="button" onClick={() => save('approved', 'Career outcome approved and published.')} disabled={saving || !canApprove} className="btn-primary !px-4 !py-2 text-xs disabled:opacity-60">
+            Approve and publish
+          </button>
+          <button type="button" onClick={() => save('rejected', 'Career outcome will not be published.')} disabled={saving} className="btn-secondary !px-4 !py-2 text-xs disabled:opacity-60">
+            Do not publish
+          </button>
+          <button type="button" onClick={() => save(currentStatus, 'Career outcome saved.')} disabled={saving} className="text-xs font-semibold text-charcoal-600 hover:text-burgundy-600 disabled:opacity-60">
+            Save without changing status
+          </button>
         </div>
-        <button type="button" onClick={save} disabled={saving} className="btn-primary !px-4 !py-2 text-xs disabled:opacity-60">
-          Save outcome review
-        </button>
+        {!canApprove && submission.outcomePublishConsent && (
+          <p className="text-xs text-amber-700">Add a public summary to approve.</p>
+        )}
       </div>
     </div>
   )

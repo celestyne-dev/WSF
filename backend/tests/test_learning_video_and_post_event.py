@@ -112,6 +112,26 @@ class TestVideoLessons:
             lesson = db.session.get(LearningLesson, lesson_id)
             assert lesson.video_provider is None and lesson.transcript is None
 
+    def test_changed_link_redetects_provider_without_stale_value(self, client, app, admin):  # noqa: F811
+        # The Studio editor no longer sends videoProvider: the server must
+        # re-detect from the new link instead of keeping the old provider.
+        program_id, _ = _make_program(app, lesson_count=1, status="draft")
+        first = _put_curriculum(client, admin, program_id, [
+            {"title": "V", "lessonType": "video", "externalUrl": "https://vimeo.com/1234567"}])
+        module = first.get_json()["data"]["modules"][0]
+        lesson = module["lessons"][0]
+        assert lesson["video_provider"] == "vimeo"
+        second = client.put(f"/api/v1/learning/admin/programs/{program_id}/curriculum", headers=admin, json={
+            "modules": [{"id": module["id"], "title": "Module", "lessons": [
+                {"id": lesson["id"], "title": "V", "lessonType": "video", "externalUrl": "https://youtu.be/dQw4w9WgXcQ"}]}]})
+        assert second.status_code == 200, second.get_json()
+        updated = second.get_json()["data"]["modules"][0]["lessons"][0]
+        assert updated["video_provider"] == "youtube"
+        assert updated["embed_url"] == "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"
+        iframe = _put_curriculum(client, admin, program_id, [
+            {"title": "V", "lessonType": "video", "externalUrl": '<iframe src="https://player.vimeo.com/video/1"></iframe>'}])
+        assert iframe.status_code == 422
+
     def test_outline_never_leaks_url_or_transcript(self, client, app, admin):  # noqa: F811
         program_id, _ = _make_program(app, lesson_count=1, slug="circle-video", access_type="circle_only")
         _put_curriculum(client, admin, program_id, [
@@ -204,6 +224,18 @@ class TestPostEventContent:
         assert "vimeo.com" not in client.get("/api/v1/events").get_data(as_text=True)
         staff = client.get(f"/api/v1/events/{slug}", headers=admin).get_json()["data"]["postEvent"]
         assert staff["recording"]["url"] == "https://vimeo.com/7654321"
+
+    def test_changed_recording_link_redetects_provider(self, client, app, admin):  # noqa: F811
+        past = (date.today() - timedelta(days=7)).isoformat()
+        created = client.post("/api/v1/events", json=_base_payload(
+            date=past, status="published", recordingUrl="https://vimeo.com/7654321"), headers=admin)
+        slug = created.get_json()["data"]["slug"]
+        resp = client.put(f"/api/v1/events/{slug}", json=_base_payload(
+            date=past, status="published", recordingUrl="https://www.loom.com/share/0f1e2d3c4b5a", recordingProvider=None),
+            headers=admin)
+        assert resp.status_code == 200, resp.get_json()
+        rec = client.get(f"/api/v1/events/{slug}").get_json()["data"]["postEvent"]["recording"]
+        assert rec["provider"] == "loom" and rec["embedUrl"] == "https://www.loom.com/embed/0f1e2d3c4b5a"
 
     def test_event_without_post_content_has_none(self, client, app, admin):  # noqa: F811
         created = client.post("/api/v1/events", json=_base_payload(status="published"), headers=admin)

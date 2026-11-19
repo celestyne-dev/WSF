@@ -107,7 +107,7 @@ function ForYourGoals({ goalOptions, onOpen }) {
     return (
       <section aria-labelledby="career-hub-goals-prompt" className="mt-12 border border-taupe-200 bg-white p-6">
         <h2 id="career-hub-goals-prompt" className="font-serif text-xl font-semibold text-charcoal">What are you working towards?</h2>
-        <p className="mt-1 text-sm text-charcoal-600">Pick your goals and we’ll suggest tools for them. You can change this any time in your account.</p>
+        <p className="mt-1 text-sm text-charcoal-600">Choose what you want to make progress on. We’ll use this to make Career Hub more relevant. You can skip this and change it any time in your account.</p>
         <div className="mt-4">
           <CareerGoalsPicker goals={goalOptions} value={draft} onChange={setDraft} disabled={saving} />
         </div>
