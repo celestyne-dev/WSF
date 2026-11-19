@@ -217,6 +217,9 @@ export default function AdminAuthorEditor() {
                 </datalist>
               </Field>
             </div>
+            <Field label="Professional headline" hint="optional — shown under the role on the public profile, e.g. Career, Leadership & Future of Work">
+              <input value={form.headline} maxLength={160} onChange={(e) => updateField('headline', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+            </Field>
             <Field label="Slug" hint={`public URL: womenshapingfutures.org/authors/${form.slug || 'your-slug'}`}>
               <input
                 value={form.slug}

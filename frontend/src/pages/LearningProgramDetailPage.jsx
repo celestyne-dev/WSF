@@ -394,7 +394,18 @@ export default function LearningProgramDetailPage() {
               <Link to={`/authors/${program.primaryInstructor.slug}`} className="font-medium text-charcoal hover:text-burgundy-600">
                 {program.primaryInstructor.name}
               </Link>
-              {program.coInstructors?.length > 0 && ` and ${program.coInstructors.map((i) => i.name).join(', ')}`}
+              {program.coInstructors?.map((instructor, i) => (
+                <span key={instructor.slug || instructor.name}>
+                  {i === 0 ? ' and ' : ', '}
+                  {instructor.slug ? (
+                    <Link to={`/authors/${instructor.slug}`} className="font-medium text-charcoal hover:text-burgundy-600">
+                      {instructor.name}
+                    </Link>
+                  ) : (
+                    instructor.name
+                  )}
+                </span>
+              ))}
             </p>
           )}
 

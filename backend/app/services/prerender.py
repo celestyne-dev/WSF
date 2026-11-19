@@ -712,11 +712,14 @@ def _link_list(links):
     return f'<ul class="{_CHIPS_CLASS}">{items}</ul>' if items else ""
 
 
-def render_author_prerender(payload):
+def render_author_prerender(payload, authority=None):
     """`payload` = the public Author payload (AuthorSchema dump + public
     filtering): `person` is null unless published, `topics` holds only
-    published Topics."""
-    header = [_h1(payload.get("name")), _paragraph(payload.get("role"))]
+    published Topics. `authority` = app/services/author_authority.py's
+    bounded block (counts, Resources, Learning programs, latest Articles)
+    — the paginated archive itself is never server-rendered."""
+    authority = authority or {}
+    header = [_h1(payload.get("name")), _paragraph(payload.get("role")), _paragraph(payload.get("headline"), _META_CLASS)]
     country = payload.get("country") if isinstance(payload.get("country"), dict) else {}
     place = payload.get("location") or country.get("name")
     if _is_nonblank(place):
@@ -729,9 +732,27 @@ def render_author_prerender(payload):
     header.append(_link_list(links))
     person = payload.get("person") if isinstance(payload.get("person"), dict) else None
     if person and _is_nonblank(person.get("slug")):
-        header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View profile</a></p>')
-    body = [
-        render_content_blocks(payload.get("bio") or []),
+        header.append(f'<p class="mt-4"><a href="/people/{_attr(person["slug"])}" class="{_LINK_CLASS}">View full profile</a></p>')
+    counts = authority.get("counts") or {}
+    stats = [(counts.get("articles"), "Article", "Articles"), (counts.get("resources"), "Career Tool", "Career Tools"),
+             (counts.get("courses"), "Course", "Courses")]
+    stat_text = " · ".join(f"{n} {one if n == 1 else many}" for n, one, many in stats if isinstance(n, int) and n > 0)
+    if stat_text:
+        header.append(f'<p class="{_META_CLASS}">{_text(stat_text)}</p>')
+    first_name = (payload.get("name") or "").split(" ")[0]
+    body = [render_content_blocks(payload.get("bio") or [])]
+    if topics:
+        body.append(_section("Areas of expertise", f'<ul>{"".join(f"<li>{_hub_link("/topics/" + t["slug"], t.get("name"))}</li>" for t in topics)}</ul>'))
+    programs = [p for p in authority.get("learningPrograms") or [] if isinstance(p, dict) and _is_nonblank(p.get("slug"))]
+    if programs:
+        body.append(_section(f"Learn with {first_name}", _item_list(_learning_card(p) for p in programs)))
+    resources = [r for r in authority.get("resources") or [] if isinstance(r, dict) and _is_nonblank(r.get("slug"))]
+    if resources:
+        body.append(_section(f"Career tools by {first_name}", _item_list(_resource_card(r) for r in resources)))
+    articles = [a for a in authority.get("latestArticles") or [] if isinstance(a, dict) and _is_nonblank(a.get("slug"))]
+    if articles:
+        body.append(_section("Latest articles", _item_list(_article_card(a) for a in articles)))
+    body += [
         render_credentials(payload.get("credentials") or [], "author-credentials"),
         render_source_references(payload.get("sources") or [], "author-sources"),
     ]

@@ -163,6 +163,7 @@ function mapAuthor(a) {
     slug: a.slug,
     name: a.name,
     role: a.role,
+    headline: a.headline || '',
     photo: a.photo?.public_url || null,
     photoMedia: mapMediaRef(a.photo),
     photoMediaId: a.photo?.id || null,
@@ -391,7 +392,10 @@ export async function fetchAuthors(params = {}) {
 export async function fetchAuthorBySlug(slug) {
   if (!USE_MOCK) {
     try {
-      return mapAuthor((await apiClient.get(`/authors/${slug}`)).data.author)
+      const data = (await apiClient.get(`/authors/${slug}`)).data
+      // `authority` (counts + bounded Resources/Learning) stays raw here;
+      // the profile page maps it with the Resource/Learning card mappers.
+      return { ...mapAuthor(data.author), authority: data.authority || null }
     } catch (err) {
       if (err.response?.status === 404) return null
       throw err

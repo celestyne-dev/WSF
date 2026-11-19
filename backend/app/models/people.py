@@ -157,6 +157,10 @@ class Author(db.Model):
     slug = db.Column(db.String(160), unique=True, nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(200))
+    # Optional professional headline shown under the role on the authority
+    # profile (e.g. "Career, Leadership & Future of Work"). Author-owned —
+    # never copied from a linked Person.
+    headline = db.Column(db.String(160), nullable=True)
     photo_media_id = db.Column(db.Integer, db.ForeignKey("media.id"), nullable=True)
     # Ordered content-block list — same shape/sanitizer/editor as
     # Person.bio and Article.content. short_bio stays plain text for

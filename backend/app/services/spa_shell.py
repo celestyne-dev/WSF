@@ -2447,7 +2447,12 @@ def _public_detail_prerender(prefix, entity):
         # The same public payload AuthorDetailResource gives an anonymous
         # visitor: user_id excluded, the linked Person only when published,
         # Topics only when published, plus its sources. No article grid here.
-        return render_author_prerender(public_author_dump(AuthorDetailSchema().dump(entity), entity))
+        from app.services.author_authority import author_authority, author_latest_articles
+
+        return render_author_prerender(
+            public_author_dump(AuthorDetailSchema().dump(entity), entity),
+            authority={**author_authority(entity), "latestArticles": author_latest_articles(entity)},
+        )
     if prefix == "topics":
         from app.schemas.taxonomy import TopicDetailSchema
 

@@ -17,6 +17,12 @@ import { buildAuthorProfilePageStructuredData } from '../utils/profileStructured
 import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
 import NotFoundPage from './NotFoundPage'
+import ResourceCard from '../components/cards/ResourceCard'
+import LearningProgramCard from '../components/cards/LearningProgramCard'
+import { mapResource } from '../api/resources'
+import { mapLearningProgram } from '../api/learning'
+import { trackEvent } from '../utils/analytics'
+import { authorFirstName, authorStatItems, hasItems } from '../utils/authorAuthority'
 
 // schema.org ProfilePage (mainEntity: the Author's Person identity) — the
 // data shape is the pure buildAuthorProfilePageStructuredData() (utils/
@@ -59,6 +65,7 @@ export default function AuthorProfilePage() {
       .then((data) => {
         if (!active) return
         setAuthor(data)
+        if (data) trackEvent('author_profile_view', { authorSlug: data.slug })
       })
       .catch(() => active && setError('Something went wrong loading this profile. Please try again.'))
 
@@ -108,6 +115,11 @@ export default function AuthorProfilePage() {
   if (author === undefined) return <PageLoader />
   if (author === null) return <NotFoundPage />
 
+  const firstName = authorFirstName(author.name)
+  const stats = authorStatItems(author.authority?.counts)
+  const programs = (author.authority?.learningPrograms || []).map(mapLearningProgram)
+  const tools = (author.authority?.resources || []).map(mapResource)
+
   return (
     <div>
       <div className="border-b border-taupe-200 bg-cream py-10">
@@ -118,17 +130,20 @@ export default function AuthorProfilePage() {
             <div>
               <h1 className="font-serif text-3xl font-semibold text-charcoal sm:text-4xl">{author.name}</h1>
               {author.role && <p className="mt-1 text-base text-charcoal-600">{author.role}</p>}
+              {author.headline && <p className="mt-1 text-sm font-medium text-plum-600">{author.headline}</p>}
               {(author.location || author.country) && (
                 <p className="mt-1 text-sm text-charcoal-600">{author.location || author.country?.name}</p>
               )}
-              {author.topics?.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {author.topics.map((t) => (
-                    <Link key={t.slug} to={`/topics/${t.slug}`} className="bg-taupe-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600 hover:bg-taupe-200">
-                      {t.name}
-                    </Link>
+              {stats.length > 0 && (
+                <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                  {stats.map((stat) => (
+                    <div key={stat.label} className="flex items-baseline gap-1.5">
+                      <dt className="sr-only">{stat.label}</dt>
+                      <dd className="font-serif text-xl font-semibold text-charcoal">{stat.value}</dd>
+                      <span className="text-charcoal-600">{stat.label}</span>
+                    </div>
                   ))}
-                </div>
+                </dl>
               )}
               {(author.website || author.social?.linkedin || author.social?.twitter || author.social?.instagram) && (
                 <div className="mt-3 flex gap-4">
@@ -156,34 +171,69 @@ export default function AuthorProfilePage() {
               )}
               {author.person && (
                 <Link to={`/people/${author.person.slug}`} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-burgundy-600 hover:underline">
-                  View profile <ArrowRight size={14} />
+                  View full profile <ArrowRight size={14} />
                 </Link>
               )}
             </div>
           </div>
 
-          {author.bio?.length > 0 && (
-            <div className="mt-6 max-w-2xl">
-              <ArticleContent blocks={author.bio} />
-            </div>
-          )}
-
-          {author.credentials?.length > 0 && (
-            <div className="max-w-2xl">
-              <CredentialsList credentials={author.credentials} id="author-credentials" />
-            </div>
-          )}
-
-          {author.sources?.length > 0 && (
-            <div className="max-w-2xl">
-              <SourceReferences sources={author.sources} id="author-sources" />
-            </div>
-          )}
         </div>
       </div>
 
-      <div className="container-editorial py-14">
-        <p className="eyebrow mb-6">{pagination?.totalItems ?? articles.length} articles by {author.name}</p>
+      <div className="container-editorial space-y-14 py-14">
+        {author.bio?.length > 0 && (
+          <section aria-labelledby="author-about" className="max-w-2xl">
+            <h2 id="author-about" className="font-serif text-2xl font-semibold text-charcoal">About {firstName}</h2>
+            <div className="mt-4">
+              <ArticleContent blocks={author.bio} />
+            </div>
+          </section>
+        )}
+
+        {author.topics?.length > 0 && (
+          <section aria-labelledby="author-expertise">
+            <h2 id="author-expertise" className="font-serif text-2xl font-semibold text-charcoal">Areas of expertise</h2>
+            <ul className="mt-4 flex flex-wrap gap-2">
+              {author.topics.map((t) => (
+                <li key={t.slug}>
+                  <Link to={`/topics/${t.slug}`} className="inline-block bg-taupe-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-charcoal-600 hover:bg-taupe-200">
+                    {t.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {hasItems(programs) && (
+          <section aria-labelledby="author-learning">
+            <h2 id="author-learning" className="font-serif text-2xl font-semibold text-charcoal">Learn with {firstName}</h2>
+            <ul className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+              {programs.map((program) => (
+                <li key={program.id} onClickCapture={() => trackEvent('author_course_click', { authorSlug: author.slug, programSlug: program.slug })}>
+                  <LearningProgramCard program={program} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {hasItems(tools) && (
+          <section aria-labelledby="author-resources">
+            <h2 id="author-resources" className="font-serif text-2xl font-semibold text-charcoal">Career tools by {firstName}</h2>
+            <ul className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+              {tools.map((resource) => (
+                <li key={resource.id} onClickCapture={() => trackEvent('author_resource_click', { authorSlug: author.slug, resourceSlug: resource.slug })}>
+                  <ResourceCard resource={resource} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section aria-labelledby="author-articles">
+        <h2 id="author-articles" className="font-serif text-2xl font-semibold text-charcoal">Latest articles</h2>
+        <p className="eyebrow mb-6 mt-2">{pagination?.totalItems ?? articles.length} articles by {author.name}</p>
         {articles.length ? (
           <>
             <div className="grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
@@ -217,6 +267,19 @@ export default function AuthorProfilePage() {
           </>
         ) : (
           <EmptyState title="No published articles yet" />
+        )}
+        </section>
+
+        {author.credentials?.length > 0 && (
+          <div className="max-w-2xl">
+            <CredentialsList credentials={author.credentials} id="author-credentials" />
+          </div>
+        )}
+
+        {author.sources?.length > 0 && (
+          <div className="max-w-2xl">
+            <SourceReferences sources={author.sources} id="author-sources" />
+          </div>
         )}
       </div>
     </div>

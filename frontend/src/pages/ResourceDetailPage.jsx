@@ -756,7 +756,16 @@ export default function ResourceDetailPage() {
           <h1 className="mt-3 max-w-xl font-serif text-4xl font-semibold leading-tight text-charcoal sm:text-5xl">{resource.name}</h1>
           {resource.subtitle && <p className="mt-3 max-w-xl text-lg leading-relaxed text-charcoal-600">{resource.subtitle}</p>}
           {(resource.author?.name || resource.authorName) && (
-            <p className="mt-4 text-sm font-medium text-charcoal-600">By {resource.author?.name || resource.authorName}</p>
+            <p className="mt-4 text-sm font-medium text-charcoal-600">
+              By{' '}
+              {resource.author?.slug ? (
+                <Link to={`/authors/${resource.author.slug}`} className="text-charcoal hover:text-burgundy-600 hover:underline">
+                  {resource.author.name}
+                </Link>
+              ) : (
+                resource.author?.name || resource.authorName
+              )}
+            </p>
           )}
 
           {resource.sponsored && (

@@ -2,14 +2,16 @@ from flask import Blueprint, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
 from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
 
 from app.auth.decorators import permission_required
 from app.extensions import db
 from app.models.article import Article
 from app.models.people import Author, Person
 from app.models.taxonomy import Topic
-from app.schemas.article import article_summary_schema
+from app.schemas.article import PublicArticleSchema, article_summary_schema
 from app.schemas.people import AuthorDetailSchema, AuthorInputSchema, AuthorSchema
+from app.services.author_authority import author_authority
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
@@ -80,6 +82,8 @@ def _resolve_person(person_id):
 def _apply_fields(author, data, topics, person):
     author.name = data["name"]
     author.role = data.get("role")
+    if "headline" in data:
+        author.headline = (data["headline"] or "").strip() or None
     author.photo_media_id = data.get("photo_media_id")
     author.bio = sanitize_content_blocks(data.get("bio", []))
     author.short_bio = data.get("short_bio")
@@ -125,6 +129,9 @@ def _is_referenced_by_articles(author):
     return Article.query.filter(
         or_(Article.author_id == author.id, Article.co_authors.any(id=author.id))
     ).first() is not None
+
+
+_ARCHIVE_SCHEMA = PublicArticleSchema(many=True, exclude=tuple(article_summary_schema().exclude) + ("author.article_count",))
 
 
 class AuthorListResource(Resource):
@@ -177,17 +184,29 @@ class AuthorDetailResource(Resource):
         if author.status != "active" and not editor:
             raise ApiError("Author not found.", 404, code="not_found")
 
-        query = Article.query.filter_by(author_id=author.id, status="published").order_by(
-            Article.publish_date.desc()
+        # Eager-loaded so the archive page costs a fixed number of queries
+        # (no per-article topic/tag/author lookups); the nested byline drops
+        # its article_count, which no article card reads (one COUNT per row).
+        query = (
+            Article.query.filter_by(author_id=author.id, status="published")
+            .options(
+                selectinload(Article.author), selectinload(Article.topics), selectinload(Article.tags),
+                selectinload(Article.series), selectinload(Article.category), selectinload(Article.hero_media),
+            )
+            .order_by(Article.publish_date.desc())
         )
         result = paginate(query, None)
-        articles = article_summary_schema(many=True).dump(result["items"])
+        articles = _ARCHIVE_SCHEMA.dump(result["items"])
         # Editors (the CMS) keep every linked Topic; the public payload only
         # the published ones (see app/services/public_visibility.py).
         author_data = author_detail_schema.dump(author)
         if not editor:
             author_data = public_author_dump(author_data, author)
-        return success_response({"author": author_data, "articles": articles}, meta=result["meta"])
+        # Bounded authority block (counts + a few Resources/Learning
+        # programs), public-only content — see app/services/author_authority.py.
+        return success_response(
+            {"author": author_data, "articles": articles, "authority": author_authority(author)}, meta=result["meta"]
+        )
 
     def put(self, slug):
         _require_manage()

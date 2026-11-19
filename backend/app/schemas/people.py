@@ -201,6 +201,8 @@ class AuthorInputSchema(ma.Schema):
     name = fields.String(required=True, validate=validate.Length(min=1, max=200))
     slug = fields.String(required=False, allow_none=True, validate=validate.Length(max=160))
     role = fields.String(required=False, allow_none=True)
+    # Omitted -> stored headline untouched (older clients); null clears it.
+    headline = fields.String(required=False, allow_none=True, validate=validate.Length(max=160))
     photo_media_id = fields.Integer(required=False, allow_none=True, data_key="photoMediaId")
     # Ordered content-block list — same shape as Article.content/Person.bio,
     # sanitized through the same sanitize_content_blocks() service.
