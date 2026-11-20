@@ -29,7 +29,7 @@ from app.schemas.nominations import (
 from app.services.audit import log_action
 from app.services.newsletter import upsert_subscriber
 from app.services.notifications import notify_nomination_received
-from app.services.slugs import generate_unique_slug
+from app.services.flat_slugs import generate_flat_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -372,7 +372,7 @@ class NominationConvertToArticleResource(Resource):
 
         body_parts = [p for p in (nomination.achievements, nomination.why_significant, nomination.who_impacted) if p]
         article = Article(
-            slug=generate_unique_slug(Article, nomination.nominee_name),
+            slug=generate_flat_slug(nomination.nominee_name),
             title=nomination.nomination_summary or nomination.nominee_name,
             excerpt=nomination.nomination_summary,
             author_id=author.id,

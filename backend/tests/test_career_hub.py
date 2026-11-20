@@ -295,10 +295,12 @@ class TestCircleInclusionAndPricing:
         assert cards["circle-yearly"]["access"]["level"] == "circle"
         assert cards["free"]["circle"]["included"] is False and cards["free"]["pricing"] is None
         assert cards["course-circle"]["circle"]["included"] is True
-        # A WSF-owned digital product program is purchasable AND included
-        # with Lifetime (never with Monthly/Yearly) — both are shown.
+        # A WSF-owned digital product program is included with Lifetime
+        # (never with Monthly/Yearly). It carries NO price: a normal Product
+        # purchase does not unlock Learning in this launch.
         assert cards["course-product"]["circle"] == {"included": True, "scope": "lifetime", "label": "Included with Lifetime WSF Circle"}
-        assert cards["course-product"]["pricing"]["prices"][0]["formatted"].startswith("KES")
+        assert cards["course-product"]["pricing"] is None
+        assert cards["course-product"]["access"] == {"level": "premium", "label": "Premium"}
 
     def test_inclusion_claims_match_check_resource_access(self, client, app):
         """The display claim must agree with the authorization rule for a

@@ -22,7 +22,8 @@ from app.services.audit import log_action
 from app.services.notifications import notify_article_approved, notify_article_review_requested
 from app.services.content_blocks import sanitize_editor_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
-from app.services.slugs import create_redirect_for_slug_change, generate_unique_slug, validate_explicit_slug
+from app.services.flat_slugs import generate_flat_slug, reclaim_redirect_slug, validate_flat_slug
+from app.services.slugs import create_redirect_for_slug_change
 from app.utils.filtering import apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -317,9 +318,10 @@ class ArticleListResource(Resource):
 
         article = Article(created_by_id=user.id)
         if data.get("slug"):
-            article.slug = validate_explicit_slug(Article, data["slug"])
+            article.slug = validate_flat_slug(data["slug"], kind="article")
+            reclaim_redirect_slug(article.slug)
         else:
-            article.slug = generate_unique_slug(Article, data["title"])
+            article.slug = generate_flat_slug(data["title"])
 
         requested_status = data.get("status", "draft")
         if requested_status not in _CREATABLE_STATUSES:
@@ -405,7 +407,9 @@ class ArticleDetailResource(Resource):
         public_before = capture_public_urls(article)
         old_slug = article.slug
         if data.get("slug") and data["slug"] != old_slug:
-            article.slug = validate_explicit_slug(Article, data["slug"], current_id=article.id)
+            # A rename retires any Redirect from the new slug through
+            # create_redirect_for_slug_change below.
+            article.slug = validate_flat_slug(data["slug"], kind="article", article_id=article.id)
 
         _apply_fields(article, data, relations)
         if article.status == "published":

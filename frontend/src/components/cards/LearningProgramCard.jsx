@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
-import { formatCurrency } from '../../utils/format'
+import { programCardAccessLabel } from '../../utils/learningAccess'
 import { formatMinutes } from '../../utils/learning'
 
 const PROGRAM_TYPE_LABEL = {
@@ -9,18 +9,6 @@ const PROGRAM_TYPE_LABEL = {
   program: 'Program',
   learning_series: 'Learning Series',
   challenge: 'Challenge',
-}
-
-function accessLabel(program) {
-  if (program.accessType === 'circle_only') return 'WSF Circle'
-  if (program.accessType === 'product') {
-    if (program.product) {
-      return program.product.price ? formatCurrency(program.product.price, program.product.currency) : 'Premium'
-    }
-    return 'Premium'
-  }
-  if (program.accessType === 'external') return 'External'
-  return 'Free'
 }
 
 export default function LearningProgramCard({ program }) {
@@ -56,7 +44,7 @@ export default function LearningProgramCard({ program }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm font-medium text-charcoal-600">
           {program.primaryInstructor?.name && <span>{program.primaryInstructor.name}</span>}
           {program.primaryInstructor?.name && <span className="text-charcoal-600/40">·</span>}
-          <span>{accessLabel(program)}</span>
+          <span>{programCardAccessLabel(program)}</span>
         </div>
         {program.lifetimeIncluded && program.accessType === 'product' && (
           <p className="mt-1 text-xs font-semibold text-plum-600">Included with WSF Lifetime</p>

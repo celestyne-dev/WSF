@@ -775,7 +775,9 @@ def render_learning_prerender(program):
     provider = program.provider_organization
     provider_html = _text(provider.name) if provider is not None and provider.status == "published" else ""
     duration = _text(f"{program.duration_value} {program.duration_unit or ''}".strip()) if program.duration_value else ""
-    access = {"free": "Free", "circle_only": "WSF Circle members"}.get(program.access_type, "")
+    # product: "Premium" only, never the linked Product's price (a Product
+    # purchase does not unlock Learning; see learning_access.py).
+    access = {"free": "Free", "circle_only": "WSF Circle members", "product": "Premium"}.get(program.access_type, "")
     header.append(_facts([
         ("Type", _text(_humanize(program.program_type))),
         ("Level", _text(_humanize(program.difficulty_level))),
@@ -862,6 +864,46 @@ def _link_list(links):
         if _http_url(url)
     )
     return f'<ul class="{_CHIPS_CLASS}">{items}</ul>' if items else ""
+
+
+# --- General Page ----------------------------------------------------------------
+# A published Studio Page at /<slug>: the same layout React renders
+# (GeneralPage.jsx = InstitutionalPageHero + InstitutionalPageShell +
+# ArticleContent). Class strings are copied from those components, so they
+# exist in the built CSS and the first paint has the final geometry.
+_PAGE_HERO_BAND = "border-b border-taupe-200 bg-cream"
+_PAGE_HERO_INNER = "container-editorial py-16 sm:py-20 lg:py-24"
+_PAGE_H1 = "mt-3 font-serif text-4xl font-semibold leading-[1.1] text-charcoal sm:text-5xl lg:text-6xl"
+_PAGE_DECK = "mt-5 max-w-2xl text-lg leading-relaxed text-charcoal-600 sm:text-xl"
+_PAGE_SHELL = "container-editorial py-14 sm:py-16 lg:py-20"
+_PAGE_FIGURE = "mb-14 border border-taupe-200 bg-cream lg:mb-16"
+_PAGE_HERO_IMG = "aspect-[7/4] w-full object-cover"
+_PAGE_COLUMN = "mx-auto max-w-reading lg:max-w-3xl xl:max-w-4xl"
+
+
+def render_page_prerender(payload, hero=None):
+    """`payload` = PagePublicSchema dump of a PUBLISHED general Page (the
+    same object the one-shot bootstrap carries). `hero` = {src, srcset,
+    sizes, alt} for its hero media (same file React's MediaImage asks for),
+    or None. Content goes through render_content_blocks, i.e. the shared
+    sanitizer."""
+    title = payload.get("title") or ""
+    header = f'<h1 class="{_PAGE_H1}">{_text(title)}</h1>'
+    if _is_nonblank(payload.get("subtitle")):
+        header += f'<p class="{_PAGE_DECK}">{_text(payload["subtitle"])}</p>'
+    figure = ""
+    if hero and _is_nonblank(hero.get("src")):
+        srcset = f' srcset="{_attr(hero["srcset"])}" sizes="{_attr(hero.get("sizes") or "100vw")}"' if hero.get("srcset") else ""
+        figure = (
+            f'<figure class="{_PAGE_FIGURE}"><img src="{_attr(hero["src"])}"{srcset} alt="{_attr(hero.get("alt") or "")}" '
+            f'width="1400" height="800" fetchpriority="high" class="{_PAGE_HERO_IMG}"></figure>'
+        )
+    body = render_content_blocks(payload.get("content") or [])
+    return (
+        f'<main data-wsf-prerender="page"><div class="{_PAGE_HERO_BAND}"><div class="{_PAGE_HERO_INNER}">'
+        f'<div class="max-w-3xl">{header}</div></div></div>'
+        f'<div class="{_PAGE_SHELL}">{figure}<div class="{_PAGE_COLUMN}">{body}</div></div></main>'
+    )
 
 
 # --- Author authority profile -------------------------------------------------------

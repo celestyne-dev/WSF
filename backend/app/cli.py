@@ -187,6 +187,36 @@ def register_cli(app):
         db.session.commit()
         click.echo(f"Super admin ready: {email}")
 
+    @app.cli.command("learning-lifetime-preflight")
+    def learning_lifetime_preflight_command():
+        """Read-only: is /lifetime safe to launch? Reports slug conflicts
+        (Article, general Page, Article Redirect: a deployment BLOCKER, exit
+        1) and the active Lifetime plan(s) (name, slug, founding, max
+        members, enabled currencies). No active plan is a warning only.
+        Never writes, never prints secrets. Run as
+        `flask --app run:app learning-lifetime-preflight`."""
+        from app.services.lifetime_preflight import lifetime_preflight
+
+        result = lifetime_preflight()
+        click.echo(f'Flat slug "/{result["slug"]}": ' + ("CONFLICT" if result["blockers"] else "free (reserved route)"))
+        if result["plans"]:
+            for plan in result["plans"]:
+                seats = "unlimited" if plan["maxMembers"] is None else f'{plan["maxMembers"]} (remaining {plan["remaining"]})'
+                click.echo(
+                    f'Active Lifetime plan: {plan["name"]} [{plan["slug"]}] founding={"yes" if plan["founding"] else "no"} '
+                    f'max_members={seats} currencies={", ".join(plan["currencies"]) or "none"}'
+                )
+        else:
+            click.echo("Active Lifetime plan: none")
+        for warning in result["warnings"]:
+            click.echo(f"WARNING: {warning}")
+        for blocker in result["blockers"]:
+            click.echo(f"BLOCKER: {blocker}")
+        if result["blockers"]:
+            click.echo("Lifetime preflight FAILED.")
+            raise SystemExit(1)
+        click.echo("Lifetime preflight PASSED.")
+
     @app.cli.command("production-check")
     def production_check_command():
         """Read-only pre-flight check for a production deployment. Verifies

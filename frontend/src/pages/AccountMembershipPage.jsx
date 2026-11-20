@@ -106,7 +106,7 @@ export default function AccountMembershipPage() {
       <h2 className="font-serif text-2xl font-semibold text-charcoal">WSF Circle</h2>
 
       {showSuccessBanner && (
-        <div className="mt-6 border border-burgundy-400 bg-blush-50 p-5 text-center">
+        <div className="mt-6 rounded-card border border-burgundy-400 bg-blush-50 p-5 text-center">
           <p className="font-serif text-lg font-semibold text-charcoal">Your WSF Circle membership is active.</p>
           <p className="mt-1 text-sm text-charcoal-600">Welcome to the community.</p>
         </div>
@@ -114,30 +114,30 @@ export default function AccountMembershipPage() {
 
       <div className="mt-8">
         {error ? (
-          <div className="border border-taupe-200 p-6">
+          <div className="rounded-card border border-taupe-200 p-6">
             <p className="text-sm text-charcoal-600">{error}</p>
             <button type="button" onClick={() => setRetryCount((n) => n + 1)} className="btn-secondary mt-4">
               Try again
             </button>
           </div>
         ) : membership === undefined ? (
-          <div className="h-40 animate-pulse bg-taupe-100" />
+          <div className="h-40 animate-pulse rounded-card bg-taupe-100" />
         ) : !subscription ? (
-          <div className="border border-taupe-200 p-6">
+          <div className="rounded-card border border-taupe-200 p-6">
             <p className="text-sm text-charcoal-600">You are not currently a WSF Circle member.</p>
             <Link to="/circle" className="btn-primary mt-4 inline-block">
               Explore WSF Circle
             </Link>
           </div>
         ) : status === "pending" ? (
-          <div className="border border-taupe-200 p-6">
+          <div className="rounded-card border border-taupe-200 p-6">
             <p className="font-serif text-lg font-semibold text-charcoal">Membership pending</p>
             <p className="mt-2 text-sm text-charcoal-600">
               Your WSF Circle membership is being set up. We'll let you know as soon as it's confirmed.
             </p>
           </div>
         ) : status === "active" ? (
-          <div className="border border-taupe-200 p-6">
+          <div className="rounded-card border border-taupe-200 p-6">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-burgundy-600">Active</p>
               {subscription.memberBadge && (
@@ -259,7 +259,7 @@ export default function AccountMembershipPage() {
             )}
           </div>
         ) : status === "past_due" ? (
-          <div className="border border-taupe-200 p-6">
+          <div className="rounded-card border border-taupe-200 p-6">
             <p className="font-serif text-lg font-semibold text-charcoal">Membership needs attention</p>
             <p className="mt-2 text-sm text-charcoal-600">
               There's an issue with your WSF Circle membership. Please contact Women Shaping Futures so we can help.
@@ -269,7 +269,7 @@ export default function AccountMembershipPage() {
             </Link>
           </div>
         ) : (
-          <div className="border border-taupe-200 p-6">
+          <div className="rounded-card border border-taupe-200 p-6">
             <p className="font-serif text-lg font-semibold text-charcoal">
               {status === 'cancelled' ? 'Membership cancelled' : status === 'expired' ? 'Membership expired' : 'Not currently active'}
             </p>

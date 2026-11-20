@@ -240,26 +240,6 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
-def _product_pricing(product):
-    """A product-access Learning program's price comes from its linked
-    Product (Product stays the one source of truth); shown only while that
-    Product is active with a visible, positive price."""
-    from app.services.money import format_money, legacy_whole_units_to_minor
-
-    if product is None or product.status != "active" or not product.price_visible:
-        return None
-    whole = product.sale_price if product.sale_price is not None else product.price
-    if not whole or whole <= 0:
-        return None
-    try:
-        minor = legacy_whole_units_to_minor(whole, product.currency)
-        formatted = format_money(minor, product.currency)
-    except Exception:  # unknown/legacy currency: show nothing rather than a wrong price
-        return None
-    price = {"currency": product.currency, "amountMinor": minor, "formatted": formatted, "checkoutAvailable": False}
-    return {"prices": [price], "defaultCurrency": product.currency, "oneTime": True}
-
-
 def build_resource_card(resource, settings):
     from app.services.payment_providers import TRANSACTION_RESOURCE_PURCHASE
     from app.services.pricing import public_pricing_payload
@@ -315,7 +295,11 @@ def build_program_card(program):
         "estimatedTime": program_estimated_time(program),
         "access": program_access(program),
         "circle": _circle(program_circle_inclusion(program)),
-        "pricing": _product_pricing(program.product) if program.access_type == "product" else None,
+        # No price for a premium (product) course: a normal Product/Order
+        # purchase does not grant Learning access in this launch, so a price
+        # here would imply an individual course purchase that doesn't exist.
+        # Premium courses are reached through WSF Lifetime only.
+        "pricing": None,
         "publishedAt": _iso(program.published_at),
         "featured": program.featured,
         "url": f"/learning/{program.slug}",

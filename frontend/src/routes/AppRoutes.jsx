@@ -16,7 +16,7 @@ import PageLoader from '../components/ui/PageLoader'
 // stays lazy() exactly as before — this is deliberately not a general
 // "stop code-splitting" change.
 import HomePage from '../pages/HomePage'
-import ArticlePage from '../pages/ArticlePage'
+import FlatSlugPage from '../pages/FlatSlugPage'
 // Author profiles are also eager: a hard load of /authors/{slug} arrives
 // with a server prerender and a one-shot data bootstrap, so the page can
 // render its final UI on React's FIRST commit. As a lazy() route it would
@@ -275,7 +275,7 @@ export default function AppRoutes() {
           <Route path="/articles/:slug" element={<ArticleLegacyRedirect />} />
 
           {/* Flat public article URL — ranks below every static route above. */}
-          <Route path="/:slug" element={<ArticlePage />} />
+          <Route path="/:slug" element={<FlatSlugPage />} />
 
           <Route path="*" element={<NotFoundPage />} />
         </Route>

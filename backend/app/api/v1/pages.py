@@ -6,7 +6,6 @@ from flask_restful import Api, Resource
 
 from app.auth.decorators import permission_required
 from app.extensions import db
-from app.models.article import Article
 from app.models.page import PAGE_STATUSES, SYSTEM_PAGE_KEYS, Page, PageRevision
 from app.schemas.page import (
     PageInputSchema,
@@ -20,7 +19,7 @@ from app.schemas.page import (
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_editor_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
-from app.services.slugs import generate_unique_slug, validate_explicit_slug
+from app.services.flat_slugs import generate_flat_slug, validate_flat_slug
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -46,29 +45,16 @@ def _get_page_or_404(page_id):
 
 
 def _unique_general_page_slug(base_value, current_id=None):
-    """Delegates to the same reserved-slug + uniqueness logic Article uses
-    (app/services/slugs.py), then additionally steps past any slug already
-    claimed by a published-or-not Article — Articles use flat top-level
-    URLs, so a Page and an Article can otherwise collide at the same path.
-    """
-    candidate = generate_unique_slug(Page, base_value, current_id=current_id)
-    suffix = 2
-    base = candidate
-    while Article.query.filter_by(slug=candidate).first() is not None:
-        candidate = f"{base}-{suffix}"
-        suffix += 1
-    return candidate
+    """Generated Page slug: the shared flat-namespace rule
+    (app/services/flat_slugs.py) steps past Articles, Pages, Article
+    Redirects and reserved routes."""
+    return generate_flat_slug(base_value, page_id=current_id)
 
 
 def _validate_general_page_slug(raw_slug, current_id=None):
-    candidate = validate_explicit_slug(Page, raw_slug, current_id=current_id)
-    if Article.query.filter_by(slug=candidate).first() is not None:
-        raise ApiError(
-            f'"{candidate}" is already used by a published article URL and cannot be used as a page slug.',
-            409,
-            code="slug_taken",
-        )
-    return candidate
+    """Explicit Page slug: refused (409 slug_taken) when an Article, another
+    Page or an Article Redirect owns it; reserved routes are a 400."""
+    return validate_flat_slug(raw_slug, kind="page", page_id=current_id)
 
 
 def _json_safe_changes(data):

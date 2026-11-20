@@ -8,7 +8,7 @@ import { mapMediaRef } from '../utils/media'
 // LegalPage) fall back to nothing but a clean "not available" state if the
 // backend has no row for a key yet — never fabricated legal text.
 
-function mapPagePublic(p) {
+export function mapPagePublic(p) {
   if (!p) return null
   return {
     key: p.key,

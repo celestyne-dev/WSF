@@ -35,7 +35,7 @@ from app.services.career_outcomes import apply_outcome_review
 from app.services.newsletter import upsert_subscriber
 from app.services.media import MediaService
 from app.services.notifications import notify_story_submission_received
-from app.services.slugs import generate_unique_slug
+from app.services.flat_slugs import generate_flat_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -374,7 +374,7 @@ class SubmissionConvertToArticleResource(Resource):
             raise ApiError("That Author could not be found.", 422, code="invalid_author")
 
         article = Article(
-            slug=generate_unique_slug(Article, submission.title),
+            slug=generate_flat_slug(submission.title),
             title=submission.title,
             excerpt=submission.summary,
             author_id=author.id,

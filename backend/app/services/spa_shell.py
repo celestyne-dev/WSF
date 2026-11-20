@@ -111,12 +111,14 @@ from app.services.prerender import (
     render_newsletter_prerender,
     render_opportunity_prerender,
     render_organization_prerender,
+    render_page_prerender,
     render_person_prerender,
     render_product_prerender,
     render_resource_prerender,
     render_series_prerender,
     render_topic_prerender,
 )
+from app.schemas.page import PagePublicSchema
 from app.services.public_visibility import is_public_author, is_public_organization, is_public_person
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
@@ -2283,7 +2285,9 @@ def _render_general_page_shell(page):
     site_name = site_identity.get("site_name") or "Women Shaping Futures"
     seo = page.seo or {}
     canonical = seo.get("canonical") or f"{public_site_url.rstrip('/')}/{page.slug}"
-    image_url, image_alt = _resolve_social_image(None, page.hero_media, site_identity, public_site_url)
+    # Social image: the Page's SEO image (Studio "Social / OG image"), else
+    # its hero, else the site default.
+    image_url, image_alt = _resolve_social_image(_explicit_seo_image_media(seo), page.hero_media, site_identity, public_site_url)
     html_doc = _apply_base_seo(
         _read_index_html(),
         title=seo.get("title") or page.title,
@@ -2298,7 +2302,28 @@ def _render_general_page_shell(page):
     html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
     breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(page.title, canonical)])
     html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
+    # First paint: the hero image the React shell marks `priority`
+    # (MediaImage variant="large", sizes 100vw), a one-shot bootstrap with
+    # the exact public payload GET /pages/public/<slug> returns (so React
+    # renders the Page on its first commit, with no Article request and
+    # no Page refetch), and the visible prerender built from that payload.
+    html_doc = _set_image_preload(html_doc, media=page.hero_media, public_site_url=public_site_url,
+                                  sizes="100vw", preferred_variant="large")
+    payload = json.loads(json.dumps(PagePublicSchema().dump(page), default=str))
+    html_doc = _set_bootstrap_data(html_doc, "page", {"key": page.slug, "data": payload})
+    html_doc = _set_root_prerender(html_doc, render_page_prerender(payload, _page_hero(page)))
     return _html_response(html_doc)
+
+
+def _page_hero(page):
+    media = page.hero_media
+    if media is None:
+        return None
+    href, candidates = _image_preload_candidates(media, preferred_variant="large")
+    if not href:
+        return None
+    srcset = ", ".join(f"{url} {width}w" for width, url in candidates) if len(candidates) > 1 else None
+    return {"src": href, "srcset": srcset, "sizes": "100vw", "alt": media.alt_text or ""}
 
 
 # AI Search / GEO Phase 3B3 — hub/listing pages with a visible prerender.

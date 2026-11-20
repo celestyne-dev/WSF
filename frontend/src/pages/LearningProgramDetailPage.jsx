@@ -3,7 +3,7 @@ import { toast } from 'react-toastify'
 import { Award, BookOpen, Check, Clock, ExternalLink, FileText, Gauge, Layers, ListChecks, Route } from 'lucide-react'
 import useCourse from '../hooks/useCourse'
 import { resolveImage } from '../utils/media'
-import { formatCurrency, formatDate } from '../utils/format'
+import { formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
 import { LEVEL_LABEL, PROGRAM_TYPE_LABEL, currentModuleIndex, formatMinutes, nextIncompleteLesson, programMetaLines } from '../utils/learning'
 import useSeo from '../hooks/useSeo'
@@ -22,21 +22,7 @@ import CourseCompletion from '../components/learning/CourseCompletion'
 import FinalAssessment from '../components/learning/FinalAssessment'
 import LifetimeValueNote from '../components/learning/LifetimeValueNote'
 import useLifetimeOffer from '../hooks/useLifetimeOffer'
-
-function priceLabel(program) {
-  const product = program.product
-  if (!product) return null
-  const price = product.salePrice ?? product.price
-  return price ? formatCurrency(price, product.currency) : null
-}
-
-function accessLabel(program) {
-  if (program.accessType === 'free') return 'Free'
-  if (program.accessType === 'circle_only') return 'Included with WSF Circle'
-  if (program.accessType === 'product') return priceLabel(program) || 'Premium'
-  if (program.accessType === 'external') return 'External enrollment'
-  return null
-}
+import { premiumCourseState, programAccessLabel } from '../utils/learningAccess'
 
 // The primary call to action, from the backend's own access answers.
 function CourseCta({ course, program, onSignIn }) {
@@ -67,22 +53,19 @@ function CourseCta({ course, program, onSignIn }) {
     ) : null
   }
 
-  if (program.accessType === 'product' && program.viewerCanAccess !== true) {
+  // Premium (product) course without access: WSF Lifetime is the only way
+  // in for this launch. Never a "Buy" link to the linked Product: a Product
+  // purchase does not unlock Learning (see utils/learningAccess.js).
+  const premium = premiumCourseState(program, { lifetimeOnSale })
+  if (premium === 'lifetime') {
     return (
-      <div className="flex flex-wrap items-center gap-3">
-        {program.product && (
-          <Link to={`/shop/${program.product.slug}`} className="btn-primary">
-            Buy this course{priceLabel(program) ? ` — ${priceLabel(program)}` : ''}
-          </Link>
-        )}
-        {program.lifetimeIncluded && lifetimeOnSale && (
-          <Link to="/lifetime" className="btn-secondary">
-            Get WSF Lifetime
-          </Link>
-        )}
-      </div>
+      <Link to="/lifetime" className="btn-primary">
+        Get WSF Lifetime
+      </Link>
     )
   }
+  if (premium === 'info') return <p className="text-sm font-semibold text-plum-600">Available with WSF Lifetime</p>
+  if (premium === 'unavailable') return <p className="text-sm text-charcoal-600">This premium course isn&rsquo;t open for enrollment yet.</p>
 
   if (program.accessType === 'circle_only' && (!program.viewerCanAccess || accessDenied)) {
     return signedIn ? (
@@ -211,7 +194,7 @@ export default function LearningProgramDetailPage() {
             )}
 
             <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
-              {!lifetimeViewer && accessLabel(program) && <p className="text-lg font-semibold text-charcoal">{accessLabel(program)}</p>}
+              {!lifetimeViewer && programAccessLabel(program) && <p className="text-lg font-semibold text-charcoal">{programAccessLabel(program)}</p>}
               <LifetimeValueNote included={program.lifetimeIncluded && program.accessType !== 'free'} viewerLabel={program.viewerMembershipLabel} />
             </div>
             {program.circleInclusion?.included && program.accessType === 'circle_only' && !program.viewerMembershipLabel && program.circleInclusion.label && (
@@ -339,7 +322,7 @@ export default function LearningProgramDetailPage() {
               <Fact icon={Gauge} label="Level" value={LEVEL_LABEL[program.difficultyLevel]} />
               <Fact icon={ListChecks} label="Final assessment" value={program.assessment ? `${program.assessment.questionCount} questions · pass mark ${program.assessment.passingScore}%` : null} />
               <Fact icon={Award} label="Certificate" value={program.certificateAvailable ? 'Certificate of Completion' : null} />
-              <Fact icon={BookOpen} label="Access" value={accessLabel(program)} />
+              <Fact icon={BookOpen} label="Access" value={programAccessLabel(program)} />
             </ul>
           </div>
           {program.learningPaths?.length > 0 && (
