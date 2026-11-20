@@ -1,15 +1,18 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import Header from '../components/layout/Header'
 import Footer from '../components/layout/Footer'
-import MobileNav from '../components/layout/MobileNav'
 import SearchOverlay from '../components/layout/SearchOverlay'
 import { loadNavigation, loadCountries, loadSiteSettings, loadFooter } from '../features/site/siteSlice'
 import { closeOverlays } from '../features/navigation/uiSlice'
 import { restoreSession } from '../features/auth/authSlice'
 import { captureAcquisitionContext } from '../utils/analytics'
 import useSiteStructuredData from '../hooks/useSiteStructuredData'
+
+// Only needed once a visitor opens the menu (below lg), so it is split out
+// of the main bundle; the tap that opens it starts the (small) download.
+const MobileNav = lazy(() => import('../components/layout/MobileNav'))
 
 export default function PublicLayout() {
   const dispatch = useDispatch()
@@ -19,6 +22,7 @@ export default function PublicLayout() {
   const footerStatus = useSelector((s) => s.site.footerStatus)
   const accessToken = useSelector((s) => s.auth.accessToken)
   const user = useSelector((s) => s.auth.user)
+  const mobileNavOpen = useSelector((s) => s.ui.mobileNavOpen)
   const location = useLocation()
 
   useSiteStructuredData()
@@ -50,7 +54,11 @@ export default function PublicLayout() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <MobileNav />
+      {mobileNavOpen && (
+        <Suspense fallback={null}>
+          <MobileNav />
+        </Suspense>
+      )}
       <SearchOverlay />
       <main className="flex-1">
         <Outlet />

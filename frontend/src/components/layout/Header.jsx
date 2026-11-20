@@ -1,251 +1,219 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { Search, Menu, User } from 'lucide-react'
+import { ChevronDown, Menu, Search } from 'lucide-react'
 import Logo from './Logo'
+import AccountMenu from './AccountMenu'
+import MegaMenuPanel from './MegaMenuPanel'
+import NavDestination from './NavDestination'
 import { toggleMobileNav, toggleSearch } from '../../features/navigation/uiSlice'
-import { hasCmsAccess, getDefaultCmsRoute } from '../../utils/permissions'
-import { externalRel, publicNavLink } from '../../utils/navigation'
+import { buildHeaderNavigation, isEntryActive } from '../../utils/megaMenu'
 
-/** A CMS nav item is either a real link (`url` set) or a non-clickable
- * "group" grouping label (`itemType === 'group'`, `url` null) that exists
- * only to hold a dropdown — see backend services/navigation.py. Both can
- * carry children.
- */
-function NavTrigger({ item, isOpen, onToggle }) {
-  const link = publicNavLink(item)
-  const sharedClassName = `flex items-center gap-1 py-7 text-sm font-semibold uppercase tracking-wide text-charcoal transition-colors hover:text-burgundy-600`
+// Short grace period before a hover-opened menu closes, so moving the
+// pointer from a trigger down into its panel (or across a small gap)
+// never closes it by accident.
+const CLOSE_DELAY_MS = 150
 
-  if (!link) return null
-
-  // A group (no destination of its own) is a dropdown trigger button —
-  // never a link, and never a fallback to "/".
-  if (link.kind === 'group') {
-    return (
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        aria-haspopup="true"
-        className={sharedClassName}
-      >
-        {item.label}
-      </button>
-    )
-  }
-
-  if (link.kind === 'external') {
-    return (
-      <a
-        href={link.href}
-        target={link.newTab ? '_blank' : undefined}
-        rel={externalRel(link.newTab)}
-        aria-expanded={item.children?.length ? isOpen : undefined}
-        aria-haspopup={item.children?.length ? 'true' : undefined}
-        className={sharedClassName}
-      >
-        {item.label}
-      </a>
-    )
-  }
-
-  return (
-    <NavLink
-      to={link.to}
-      aria-expanded={item.children?.length ? isOpen : undefined}
-      aria-haspopup={item.children?.length ? 'true' : undefined}
-      className={({ isActive }) => `${sharedClassName} ${isActive ? 'text-burgundy-600' : ''}`}
-    >
-      {item.label}
-    </NavLink>
-  )
-}
+// Header height is fixed (64px, 68px from lg, plus a 1px border) so the
+// server's first-paint placeholder (backend spa_shell._HEADER_PLACEHOLDER_OPEN
+// and _HEADER_RESERVE_STYLE) reserves exactly this space and the page does
+// not move when React mounts. Keep those heights in sync with this file.
+//
+// The desktop bar starts at `xl` (1280px): measured in Chromium, six
+// top-level items plus the wordmark and actions need ~1,200px, so at `lg`
+// (1024px) they overflowed. Below xl the accordion menu is used.
+const triggerBase =
+  'relative inline-flex h-full items-center gap-1 whitespace-nowrap px-3 text-[15px] font-semibold text-charcoal transition-colors hover:text-burgundy-600 focus-visible:text-burgundy-600 2xl:px-4'
+const activeBar = 'after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-burgundy-600 2xl:after:inset-x-4'
 
 export default function Header() {
   const navigation = useSelector((s) => s.site.navigation)
-  const user = useSelector((s) => s.auth.user)
-  const accessToken = useSelector((s) => s.auth.accessToken)
   const dispatch = useDispatch()
-  const [openDropdown, setOpenDropdown] = useState(null)
-  const navRef = useRef(null)
+  const location = useLocation()
+  const entries = useMemo(() => buildHeaderNavigation(navigation), [navigation])
 
-  // Logged out -> /login (which itself links to /register — see
-  // LoginPage). Logged in, any account type (public or CMS staff) -> her
-  // own /account; staff keep their normal sidebar access regardless, since
-  // this icon never branches on CMS permissions, only on "is there a
-  // session". A stored accessToken with `user` still null means
-  // PublicLayout's restoreSession() is in flight (e.g. right after a
-  // refresh) — treated as authenticated here too, so the header doesn't
-  // flash a "Sign in" state for a session that's actually still there.
-  const isAuthenticated = Boolean(user || accessToken)
-  const accountHref = isAuthenticated ? '/account' : '/login'
-  const accountLabel = isAuthenticated ? 'My account' : 'Sign in'
+  // { id, reason: 'hover' | 'click' } — only one menu is ever open. A
+  // hover-opened menu closes when the pointer leaves trigger + panel; a
+  // click/keyboard-opened one stays until clicked again, Escape, an
+  // outside click, or navigation.
+  const [open, setOpen] = useState(null)
+  const closeTimer = useRef(null)
+  const headerRef = useRef(null)
+  const triggerRefs = useRef({})
 
-  // Separate from the account icon above: a return path into WSF Studio
-  // for CMS staff only. Deliberately keyed off `user` directly (not the
-  // accessToken-while-restoring fallback isAuthenticated uses) — while
-  // restoreSession() is still in flight there's no permissions list yet to
-  // check, so this simply waits rather than guessing CMS access.
-  const hasStudioAccess = user ? hasCmsAccess(user) : false
-  const studioHref = hasStudioAccess ? getDefaultCmsRoute(user) : null
-
-  const primary = navigation?.primary || []
-  const secondary = navigation?.secondary || []
-
-  useEffect(() => {
-    function handleKeyDown(e) {
-      if (e.key === 'Escape') setOpenDropdown(null)
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+  // The server's static first-paint header placeholder (outside #root) is
+  // replaced by this header before the browser paints React's first frame.
+  useLayoutEffect(() => {
+    document.querySelectorAll('[data-wsf-header-placeholder], [data-wsf-header-placeholder-style]').forEach((el) => el.remove())
   }, [])
 
-  // Keyboard users tabbing through the header open a dropdown by focusing
-  // its trigger or any of its children, and close it once focus leaves
-  // the whole <li> — this is the standard "focus-within" pattern, done in
-  // JS since it also needs to update `aria-expanded` on the trigger.
-  function handleBlur(e, itemId) {
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-      setOpenDropdown((current) => (current === itemId ? null : current))
+  const cancelClose = useCallback(() => {
+    clearTimeout(closeTimer.current)
+  }, [])
+
+  const close = useCallback(() => {
+    clearTimeout(closeTimer.current)
+    setOpen(null)
+  }, [])
+
+  const openMenu = useCallback((id, reason) => {
+    clearTimeout(closeTimer.current)
+    setOpen((current) => (current?.id === id && current.reason === 'click' && reason === 'hover' ? current : { id, reason }))
+  }, [])
+
+  const scheduleClose = useCallback(() => {
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setOpen((current) => (current?.reason === 'hover' ? null : current)), CLOSE_DELAY_MS)
+  }, [])
+
+  // Navigating closes any open menu.
+  const [lastPath, setLastPath] = useState(location.pathname)
+  if (lastPath !== location.pathname) {
+    setLastPath(location.pathname)
+    if (open) setOpen(null)
+  }
+
+  useEffect(() => () => clearTimeout(closeTimer.current), [])
+
+  useEffect(() => {
+    if (!open) return undefined
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        const trigger = triggerRefs.current[open.id]
+        close()
+        trigger?.focus()
+      }
+    }
+    function onPointerDown(e) {
+      if (!headerRef.current?.contains(e.target)) close()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [open, close])
+
+  function onTriggerClick(id) {
+    setOpen((current) => (current?.id === id && current.reason === 'click' ? null : { id, reason: 'click' }))
+  }
+
+  function onTriggerKeyDown(e, id) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      openMenu(id, 'click')
+      requestAnimationFrame(() => document.getElementById(`mega-menu-${id}`)?.querySelector('a')?.focus())
     }
   }
 
-  return (
-    <header className="sticky top-0 z-40 bg-ivory/95 backdrop-blur">
-      {secondary.length > 0 && (
-        <div className="hidden border-b border-taupe-200 bg-charcoal text-ivory lg:block">
-          <div className="container-editorial flex h-9 items-center justify-end gap-5 text-xs">
-            {secondary.map((item) => {
-              const link = publicNavLink(item)
-              if (link?.kind === 'external') {
-                return (
-                  <a
-                    key={item.id}
-                    href={link.href}
-                    target={link.newTab ? '_blank' : undefined}
-                    rel={externalRel(link.newTab)}
-                    className="tracking-wide hover:text-blush-200"
-                  >
-                    {item.label}
-                  </a>
-                )
-              }
-              if (link?.kind === 'internal') {
-                return (
-                  <Link key={item.id} to={link.to} className="tracking-wide hover:text-blush-200">
-                    {item.label}
-                  </Link>
-                )
-              }
-              return null // the utility bar has no dropdowns
-            })}
-          </div>
-        </div>
-      )}
+  // Mouse only: touch "hover" must not open-then-close on tap.
+  const onHoverEnter = (id) => (e) => {
+    if (e.pointerType === 'mouse') openMenu(id, 'hover')
+  }
+  const onHoverLeave = (e) => {
+    if (e.pointerType === 'mouse') scheduleClose()
+  }
 
-      <div className="border-b border-taupe-200">
-        <div className="container-editorial flex items-center justify-between gap-4 py-3">
+  const menuEntries = entries.filter((e) => e.menu)
+  const isMenuOpen = Boolean(open)
+
+  return (
+    <header
+      ref={headerRef}
+      className={`sticky top-0 z-40 border-b border-taupe-200 bg-ivory transition-shadow ${isMenuOpen ? 'shadow-sm' : ''}`}
+      onBlur={(e) => {
+        // Keyboard focus leaving the header closes an open menu.
+        if (open && e.relatedTarget && !headerRef.current?.contains(e.relatedTarget)) close()
+      }}
+    >
+      <div className="container-editorial flex h-16 items-center gap-4 lg:h-[68px]">
+        <div className="mr-auto shrink-0 xl:mr-4 2xl:mr-10">
+          <Logo />
+        </div>
+
+        <nav aria-label="Primary" className="hidden h-full flex-1 justify-center xl:flex">
+          <ul className="flex h-full items-stretch">
+            {entries.map((entry) => {
+              const active = isEntryActive(entry, location.pathname)
+              const cta = entry.style === 'cta'
+              const className = `${triggerBase} ${active ? `text-burgundy-600 ${activeBar}` : ''} ${cta ? 'text-burgundy-600' : ''}`
+              if (!entry.menu) {
+                return (
+                  <li key={entry.id} className="flex h-full">
+                    <NavDestination link={entry.link} className={className} aria-current={active ? 'page' : undefined}>
+                      {entry.label}
+                    </NavDestination>
+                  </li>
+                )
+              }
+              const isOpen = open?.id === entry.id
+              return (
+                <li key={entry.id} className="flex h-full" onPointerEnter={onHoverEnter(entry.id)} onPointerLeave={onHoverLeave}>
+                  <button
+                    ref={(el) => {
+                      triggerRefs.current[entry.id] = el
+                    }}
+                    type="button"
+                    aria-expanded={isOpen}
+                    aria-haspopup="true"
+                    aria-controls={`mega-menu-${entry.id}`}
+                    onClick={() => onTriggerClick(entry.id)}
+                    onKeyDown={(e) => onTriggerKeyDown(e, entry.id)}
+                    className={`${className} ${isOpen ? 'text-burgundy-600' : ''}`}
+                  >
+                    {entry.label}
+                    <ChevronDown size={14} aria-hidden="true" className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </nav>
+
+        <div className="flex items-center gap-1 xl:ml-4 2xl:ml-6">
+          <button
+            type="button"
+            onClick={() => dispatch(toggleSearch(true))}
+            aria-label="Search"
+            className="rounded-full p-2 text-charcoal transition-colors hover:text-burgundy-600"
+          >
+            <Search size={20} aria-hidden="true" />
+          </button>
+          <div className="hidden sm:block">
+            <AccountMenu />
+          </div>
+          <Link
+            to="/newsletter"
+            className="ml-2 hidden bg-plum-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ivory transition-colors hover:bg-plum-700 md:inline-flex"
+          >
+            Subscribe
+          </Link>
           <button
             type="button"
             onClick={() => dispatch(toggleMobileNav(true))}
             aria-label="Open menu"
-            className="p-1 text-charcoal lg:hidden"
+            className="ml-1 p-1 text-charcoal xl:hidden"
           >
-            <Menu size={26} />
+            <Menu size={26} aria-hidden="true" />
           </button>
-
-          <Logo />
-
-          <nav aria-label="Primary" className="hidden lg:block" ref={navRef}>
-            <ul className="flex items-center gap-5 xl:gap-6">
-              {primary.map((item) => {
-                const hasChildren = item.children?.length > 0
-                const isOpen = openDropdown === item.id
-                return (
-                  <li
-                    key={item.id}
-                    className="relative"
-                    onMouseEnter={() => hasChildren && setOpenDropdown(item.id)}
-                    onMouseLeave={() => hasChildren && setOpenDropdown(null)}
-                    onFocus={() => hasChildren && setOpenDropdown(item.id)}
-                    onBlur={(e) => hasChildren && handleBlur(e, item.id)}
-                  >
-                    {/* Always opens (never toggles closed) on click — a real
-                        mouse click is preceded by a hover, which already
-                        opened it via onMouseEnter, so a toggle would
-                        immediately close what the hover just opened.
-                        Closing happens via mouseleave/blur-out/Escape. */}
-                    <NavTrigger item={item} isOpen={isOpen} onToggle={() => setOpenDropdown(item.id)} />
-                    {hasChildren && isOpen && (
-                      <div
-                        role="menu"
-                        aria-label={`${item.label} submenu`}
-                        className="absolute left-1/2 top-full w-56 -translate-x-1/2 border border-taupe-200 bg-ivory py-2 shadow-card"
-                      >
-                        {item.children.map((child) => {
-                          const link = publicNavLink(child)
-                          if (link?.kind === 'external') {
-                            return (
-                              <a
-                                key={child.id}
-                                role="menuitem"
-                                href={link.href}
-                                target={link.newTab ? '_blank' : undefined}
-                                rel={externalRel(link.newTab)}
-                                className="block px-4 py-2 text-sm text-charcoal-600 hover:bg-blush-50 hover:text-burgundy-600"
-                              >
-                                {child.label}
-                              </a>
-                            )
-                          }
-                          if (link?.kind === 'internal') {
-                            return (
-                              <Link
-                                key={child.id}
-                                role="menuitem"
-                                to={link.to}
-                                className="block px-4 py-2 text-sm text-charcoal-600 hover:bg-blush-50 hover:text-burgundy-600"
-                              >
-                                {child.label}
-                              </Link>
-                            )
-                          }
-                          return null // children are links only (max depth 2)
-                        })}
-                      </div>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          </nav>
-
-          <div className="flex items-center gap-1 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => dispatch(toggleSearch(true))}
-              aria-label="Search"
-              className="p-2 text-charcoal transition-colors hover:text-burgundy-600"
-            >
-              <Search size={20} />
-            </button>
-            {hasStudioAccess && (
-              <Link
-                to={studioHref}
-                aria-label="Go to WSF Studio"
-                className="hidden items-center border border-burgundy-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-burgundy-600 transition-colors hover:border-burgundy-400 hover:bg-blush-50 sm:inline-flex"
-              >
-                WSF Studio
-              </Link>
-            )}
-            <Link to={accountHref} aria-label={accountLabel} className="hidden p-2 text-charcoal transition-colors hover:text-burgundy-600 sm:block">
-              <User size={20} />
-            </Link>
-            <Link to="/newsletter" className="ml-1 hidden bg-plum-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ivory transition-colors hover:bg-plum-700 md:inline-flex">
-              Subscribe
-            </Link>
-          </div>
         </div>
+      </div>
+
+      <div className="hidden xl:block">
+        {menuEntries.map((entry) => (
+          <MegaMenuPanel
+            key={entry.id}
+            id={`mega-menu-${entry.id}`}
+            entry={entry}
+            open={open?.id === entry.id}
+            onNavigate={close}
+            onPointerEnter={(e) => {
+              if (e.pointerType === 'mouse') cancelClose()
+            }}
+            onPointerLeave={onHoverLeave}
+          />
+        ))}
       </div>
     </header>
   )

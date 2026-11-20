@@ -294,6 +294,55 @@ def _set_image_preload(html_doc, *, media, public_site_url, sizes, preferred_var
 _EMPTY_ROOT_RE = re.compile(r'<div id="root">\s*</div>')
 
 
+# The public header's first-paint placeholder. The React header (frontend/
+# src/components/layout/Header.jsx) has a fixed height (h-16 + 1px border =
+# 65px; lg:h-[68px] + border = 69px) and lives inside #root, so without this
+# the whole prerendered page moved down 65-69px when React mounted.
+#
+# This static banner shows only the stable site logo (the same choice
+# Logo.jsx makes: the configured logo image, else the wordmark) — no
+# navigation. It is position:fixed OUTSIDE #root, and the prerendered
+# <main> reserves the header's height with a ::before block (inline rule
+# below), so #root itself starts at y=0 both before and after React mounts:
+# React only replaces #root's children and Header removes this banner in a
+# layout effect, before the browser paints — no layout shift is recorded.
+# Every class string is copied from Header.jsx / Logo.jsx / existing
+# components, so it exists in the built CSS. Keep the two heights in the
+# rule below in sync with Header.jsx.
+_HEADER_RESERVE_STYLE = (
+    "<style data-wsf-header-placeholder-style>#root>[data-wsf-prerender]::before"
+    '{content:"";display:block;height:65px}'
+    "@media (min-width:1024px){#root>[data-wsf-prerender]::before{height:69px}}</style>"
+)
+_HEADER_PLACEHOLDER_OPEN = (
+    '<header data-wsf-header-placeholder="true" class="fixed inset-x-0 top-0 z-40 border-b border-taupe-200 bg-ivory">'
+    '<div class="container-editorial flex h-16 items-center gap-4 lg:h-[68px]"><div class="mr-auto shrink-0 xl:mr-4 2xl:mr-10">'
+)
+_HEADER_PLACEHOLDER_CLOSE = "</div></div></header>"
+_WORDMARK = (
+    '<a href="/" class="flex flex-col items-start leading-none">'
+    '<span class="whitespace-nowrap font-serif text-xl font-semibold tracking-tight sm:text-[1.5rem] text-charcoal">'
+    'Women Shaping <span class="text-burgundy-500">Futures</span></span>'
+    '<span class="mt-0.5 hidden whitespace-nowrap text-[10px] font-semibold uppercase tracking-widest2 sm:block text-charcoal-600">'
+    "Stories &middot; Opportunity &middot; Growth</span></a>"
+)
+
+
+def _header_placeholder_html():
+    identity = get_site_identity_resolved()
+    site_name = identity.get("site_name") or "Women Shaping Futures"
+    logo = identity.get("logo")
+    logo_url = (logo.variant_url("card") or logo.public_url) if logo is not None else None
+    if logo_url:
+        mark = (
+            f'<a href="/" class="flex items-center"><img src="{_escape(logo_url, quote=True)}" '
+            f'alt="{_escape(site_name, quote=True)}" class="h-8 w-auto sm:h-9"></a>'
+        )
+    else:
+        mark = _WORDMARK
+    return _HEADER_RESERVE_STYLE + _HEADER_PLACEHOLDER_OPEN + mark + _HEADER_PLACEHOLDER_CLOSE
+
+
 def _set_root_prerender(html_doc, inner_html):
     """Puts visible, semantic page content INSIDE the SPA's own #root
     (see app/services/prerender.py). main.jsx uses createRoot().render()
@@ -303,7 +352,8 @@ def _set_root_prerender(html_doc, inner_html):
     """
     if not inner_html or len(_EMPTY_ROOT_RE.findall(html_doc)) != 1:
         return html_doc
-    return _EMPTY_ROOT_RE.sub(lambda _m: f'<div id="root">{inner_html}</div>', html_doc, count=1)
+    placeholder = _header_placeholder_html()
+    return _EMPTY_ROOT_RE.sub(lambda _m: f'{placeholder}<div id="root">{inner_html}</div>', html_doc, count=1)
 
 
 _BOOTSTRAP_RE_CACHE = {}
