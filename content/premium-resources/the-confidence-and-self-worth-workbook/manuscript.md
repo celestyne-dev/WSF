@@ -1,6 +1,7 @@
 ---
 title: "The Confidence & Self-Worth Workbook"
 subtitle: "Practical exercises to quiet self-doubt, own your strengths and take up the space you've earned at work and in life"
+coverbg: "#f6ece6"
 kind: workbook
 kindlabel: "Workbook"
 ---

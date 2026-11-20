@@ -8,6 +8,7 @@ from pathlib import Path
 FRONT = """---
 title: "The 30-Day Mindset Reset Workbook"
 subtitle: "Thirty short, practical days to quiet the inner critic, rebuild your focus and choose your thoughts on purpose"
+coverbg: "#eef1e8"
 kind: workbook
 kindlabel: "Workbook"
 ---

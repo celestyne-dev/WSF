@@ -1,6 +1,7 @@
 ---
 title: "The Power of Starting Again"
 subtitle: "A practical, honest companion for women rebuilding after a career setback, a closed chapter, or a plan that didn't work out"
+coverbg: "#f6f1e7"
 kind: ebook
 kindlabel: "eBook"
 ---

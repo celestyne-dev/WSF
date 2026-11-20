@@ -1,6 +1,7 @@
 ---
 title: "The Letting Go & Moving Forward Guide"
 subtitle: "A reflective guide for releasing what no longer serves you (old hurts, regrets, roles and expectations) and walking lighter into what's next"
+coverbg: "#e9eef0"
 kind: guide
 kindlabel: "Reflection guide"
 ---

@@ -7,6 +7,7 @@ from pathlib import Path
 FRONT = """---
 title: "The Daily Reflection Journal"
 subtitle: "Ninety days of five-minute mornings and evenings for a calmer mind, clearer priorities and a kinder voice in your head"
+coverbg: "#f3ece4"
 kind: journal
 kindlabel: "Guided journal"
 ---
