@@ -18,7 +18,7 @@ export default function PersonCard({ person }) {
         height={750}
         aspect={0.8}
         sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
-        className="aspect-[4/5] w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        className="aspect-[4/5] w-full rounded-media object-cover transition-transform duration-500 group-hover:scale-105"
       />
       <div className="mt-3">
         <h3 className="font-serif text-lg font-semibold text-charcoal transition-colors group-hover:text-burgundy-600">

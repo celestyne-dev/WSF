@@ -9,6 +9,7 @@ import { closeOverlays } from '../features/navigation/uiSlice'
 import { restoreSession } from '../features/auth/authSlice'
 import { captureAcquisitionContext } from '../utils/analytics'
 import useSiteStructuredData from '../hooks/useSiteStructuredData'
+import { applyCornerStyle } from '../utils/appearance'
 
 // Only needed once a visitor opens the menu (below lg), so it is split out
 // of the main bundle; the tap that opens it starts the (small) download.
@@ -23,9 +24,17 @@ export default function PublicLayout() {
   const accessToken = useSelector((s) => s.auth.accessToken)
   const user = useSelector((s) => s.auth.user)
   const mobileNavOpen = useSelector((s) => s.ui.mobileNavOpen)
+  const cornerStyle = useSelector((s) => s.site.settings?.appearance?.cornerStyle)
   const location = useLocation()
 
   useSiteStructuredData()
+
+  // Keeps <html data-wsf-corners> in step with the loaded public settings.
+  // The server already set it for first paint; until settings arrive
+  // (cornerStyle undefined) the server's value is left alone.
+  useEffect(() => {
+    if (cornerStyle) applyCornerStyle(cornerStyle)
+  }, [cornerStyle])
 
   useEffect(() => {
     if (navigationStatus === 'idle') dispatch(loadNavigation())

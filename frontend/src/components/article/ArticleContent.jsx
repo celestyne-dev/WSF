@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom'
 import MediaImage from '../ui/MediaImage'
 import NewsletterForm from '../ui/NewsletterForm'
 import { ArrowRight, Check, Quote } from 'lucide-react'
+import { resolveListStarts, visibleItems } from '../../utils/listNumbering'
+import { isInternalPath, safeLinkUrl } from '../../utils/linkSafety'
 
 // Block text (paragraph/list-item/quote/callout) may contain a small
 // allow-listed set of inline tags (b/strong/i/em/u/a/br) — sanitized
@@ -117,7 +119,7 @@ function ImageBlock({ block, variant }) {
         width={1400}
         height={933}
         aspect={3 / 2}
-        className="aspect-[3/2] w-full object-cover"
+        className={`aspect-[3/2] w-full object-cover ${isArticle ? 'rounded-media' : ''}`}
       />
       {(block.caption || block.credit) && (
         <figcaption className={isArticle ? 'mt-3 text-sm leading-relaxed text-charcoal-600' : 'mt-2 text-sm text-charcoal-600'}>
@@ -173,20 +175,31 @@ function BlockQuote({ block, variant }) {
   )
 }
 
-function ListBlock({ block, variant }) {
-  const Tag = block.style === 'number' ? 'ol' : 'ul'
+// `listStart` is the derived start number for numbered lists (see
+// utils/listNumbering.js, shared with the editor and the server prerender):
+// a list set to "Continue previous" picks up after the last numbered list,
+// even with paragraphs/images/headings between them. It is written as a
+// real <ol start>, so screen readers and copy/paste keep the right numbers.
+// Blank items are never rendered (and never counted), matching the server.
+function ListBlock({ block, variant, listStart }) {
+  const numbered = block.style === 'number'
+  const Tag = numbered ? 'ol' : 'ul'
+  const items = visibleItems(block.items)
+  if (!items.length) return null
+  const start = numbered && listStart > 1 ? listStart : undefined
+  const first = start || 1
   if (variant === 'resource') {
     // A deliberately wider, custom-marker "editorial panel" treatment for
     // Resource detail pages only. `list-none` drops the browser bullet/
     // number — Safari+VoiceOver is known to also drop the implicit list
     // role along with it, so `role="list"` restores that explicitly.
     return (
-      <Tag role="list" className="mt-6 max-w-[880px] list-none divide-y divide-taupe-200">
-        {block.items.map((item, i) => (
+      <Tag role="list" start={start} className="mt-6 max-w-[880px] list-none divide-y divide-taupe-200">
+        {items.map((item, i) => (
           <li key={i} className="flex items-start gap-3 py-2.5 font-sans text-[1.0625rem] leading-[1.7] text-charcoal">
-            {block.style === 'number' ? (
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-plum-600 text-xs font-semibold text-ivory">
-                {i + 1}
+            {numbered ? (
+              <span className="mt-0.5 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-plum-600 px-1.5 text-xs font-semibold text-ivory">
+                {first + i}
               </span>
             ) : (
               <Check size={18} className="mt-0.5 shrink-0 text-plum-600" aria-hidden="true" />
@@ -200,28 +213,32 @@ function ListBlock({ block, variant }) {
   if (variant === 'person') {
     return (
       <Tag
-        className={`mt-5 space-y-2.5 pl-6 font-sans text-lg leading-[1.75] text-charcoal marker:text-burgundy-500 ${ARTICLE_LINK_CLASSES} ${block.style === 'number' ? 'list-decimal' : 'list-disc'}`}
+        start={start}
+        className={`mt-5 space-y-2.5 pl-6 font-sans text-lg leading-[1.75] text-charcoal marker:text-burgundy-500 ${ARTICLE_LINK_CLASSES} ${numbered ? 'list-decimal' : 'list-disc'}`}
       >
-        {block.items.map((item, i) => (
+        {items.map((item, i) => (
           <InlineHtml key={i} as="li" html={item} />
         ))}
       </Tag>
     )
   }
   if (variant === 'article') {
+    // One fixed, wider gutter for every numbered list so continued
+    // numbers ("11.", "104.") never clip and consecutive lists align.
     return (
       <Tag
-        className={`mt-6 space-y-3 pl-5 font-sans text-[1.1875rem] leading-[1.8] text-charcoal ${ARTICLE_LINK_CLASSES} ${block.style === 'number' ? 'list-decimal' : 'list-disc'}`}
+        start={start}
+        className={`mt-6 space-y-3 font-sans text-[1.1875rem] leading-[1.8] text-charcoal marker:font-semibold marker:text-burgundy-600 ${ARTICLE_LINK_CLASSES} ${numbered ? 'list-decimal pl-10' : 'list-disc pl-6 marker:text-burgundy-500'}`}
       >
-        {block.items.map((item, i) => (
-          <InlineHtml key={i} as="li" html={item} />
+        {items.map((item, i) => (
+          <InlineHtml key={i} as="li" html={item} className="pl-1" />
         ))}
       </Tag>
     )
   }
   return (
-    <Tag className={`mt-5 space-y-2 pl-5 font-sans text-lg leading-relaxed text-charcoal-600 ${block.style === 'number' ? 'list-decimal' : 'list-disc'}`}>
-      {block.items.map((item, i) => (
+    <Tag start={start} className={`mt-5 space-y-2 pl-5 font-sans text-lg leading-relaxed text-charcoal-600 ${numbered ? 'list-decimal' : 'list-disc'}`}>
+      {items.map((item, i) => (
         <InlineHtml key={i} as="li" html={item} />
       ))}
     </Tag>
@@ -252,16 +269,16 @@ function CalloutList({ block, className = '' }) {
 function Highlight({ block, variant }) {
   if (variant === 'article') {
     return (
-      <div className="my-10 border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6 sm:p-8">
+      <aside className="my-10 rounded-card border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6 sm:p-8">
         {block.title && <p className="eyebrow mb-2">{block.title}</p>}
         <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal sm:text-xl" />
         <CalloutList block={block} className="marker:text-burgundy-500" />
-      </div>
+      </aside>
     )
   }
   if (variant === 'resource') {
     return (
-      <div className="my-10 max-w-[820px] border border-taupe-200 border-l-4 border-l-plum-600 bg-blush-50 p-7 sm:p-8">
+      <div className="my-10 max-w-[820px] rounded-card border border-taupe-200 border-l-4 border-l-plum-600 bg-blush-50 p-7 sm:p-8">
         {block.title && <p className="eyebrow mb-2">{block.title}</p>}
         <InlineHtml as="p" html={block.text} className="font-serif text-lg italic leading-relaxed text-charcoal sm:text-xl" />
         <CalloutList block={block} className="marker:text-plum-600" />
@@ -270,7 +287,7 @@ function Highlight({ block, variant }) {
   }
   if (variant === 'person') {
     return (
-      <div className="my-8 border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6">
+      <div className="my-8 rounded-card border border-taupe-200 border-l-4 border-l-burgundy-500 bg-cream p-6">
         {block.title && <p className="eyebrow mb-2">{block.title}</p>}
         <InlineHtml as="p" html={block.text} className="font-serif text-lg leading-relaxed text-charcoal" />
         <CalloutList block={block} className="marker:text-burgundy-500" />
@@ -359,13 +376,72 @@ function AdSlot({ block }) {
   )
 }
 
-function ButtonBlock({ block }) {
+// Internal WSF paths use the router (no full reload); external http(s)
+// links get rel="noopener noreferrer" and open in the same tab unless an
+// editor explicitly marked a Simple CTA "external" (Newsletter's existing
+// option). Unsafe URLs (javascript:, data:, …) render no link at all.
+function SmartLink({ url, className, children, newTab = false }) {
+  if (isInternalPath(url)) {
+    return (
+      <Link to={url} className={className}>
+        {children}
+      </Link>
+    )
+  }
   return (
-    <div className="my-6">
-      <a href={block.url} className="btn-primary" target={block.external ? '_blank' : undefined} rel="noreferrer">
+    <a href={url} className={className} rel="noopener noreferrer" target={newTab ? '_blank' : undefined}>
+      {children}
+    </a>
+  )
+}
+
+// "Simple CTA": one button, nothing else. Shared with Newsletter issues,
+// which is why mailto: stays allowed here (never on the rich CTA).
+function ButtonBlock({ block }) {
+  const url = safeLinkUrl(block.url, { allowMailto: true })
+  if (!url || !block.label) return null
+  return (
+    <p className="my-8">
+      <SmartLink url={url} className="btn-primary" newTab={block.external === true}>
         {block.label}
-      </a>
-    </div>
+      </SmartLink>
+    </p>
+  )
+}
+
+// Rich in-article CTA (eyebrow/title/text/button, three controlled styles,
+// two alignments). Class strings are shared verbatim with the server
+// prerender (backend prerender._render_cta) so first paint matches React.
+const CTA_BOX = {
+  soft: 'wsf-cta my-10 rounded-card border border-taupe-200 bg-cream p-6 sm:p-8',
+  outline: 'wsf-cta my-10 rounded-card border-2 border-burgundy-600 bg-ivory p-6 sm:p-8',
+  strong: 'wsf-cta my-10 rounded-card bg-plum-700 p-6 text-ivory sm:p-8',
+}
+
+export function CtaBlock({ block }) {
+  if (!block.title && !block.text) return null
+  const style = CTA_BOX[block.style] ? block.style : 'soft'
+  const strong = style === 'strong'
+  const url = safeLinkUrl(block.buttonUrl)
+  return (
+    <aside className={`${CTA_BOX[style]}${block.align === 'center' ? ' text-center' : ''}`}>
+      {block.eyebrow && (
+        <p className={strong ? 'text-xs font-semibold uppercase tracking-[0.14em] text-ivory/80' : 'eyebrow'}>{block.eyebrow}</p>
+      )}
+      {block.title && (
+        <p className={`mt-2 font-serif text-2xl font-semibold leading-snug ${strong ? 'text-ivory' : 'text-charcoal'}`}>{block.title}</p>
+      )}
+      {block.text && (
+        <p className={`mt-2 text-base leading-relaxed ${strong ? 'text-ivory/90' : 'text-charcoal-600'}`}>{block.text}</p>
+      )}
+      {block.buttonLabel && url && (
+        <p className="mt-5">
+          <SmartLink url={url} className={strong ? 'btn-light' : 'btn-primary'}>
+            {block.buttonLabel}
+          </SmartLink>
+        </p>
+      )}
+    </aside>
   )
 }
 
@@ -459,6 +535,7 @@ const RENDERERS = {
   sponsorBlock: SponsorBlock,
   ad: AdSlot,
   button: ButtonBlock,
+  cta: CtaBlock,
   table: TableBlock,
   faq: FaqBlock,
   articleCard: ArticleCardBlock,
@@ -490,6 +567,9 @@ export default function ArticleContent({ blocks = [], relatedArticlesBySlug, hea
   // paragraph behavior change outside those two treatments.
   const firstParagraphIndex =
     variant === 'article' || variant === 'resource' ? blocks.findIndex((b) => b.type === 'paragraph') : -1
+  // One derived start number per block (null for non-numbered blocks):
+  // "Continue previous" lists pick up after the last numbered list.
+  const listStarts = resolveListStarts(blocks)
   return (
     <div>
       {blocks.map((block, i) => {
@@ -503,6 +583,7 @@ export default function ArticleContent({ blocks = [], relatedArticlesBySlug, hea
             headingId={headingIdForBlock ? headingIdForBlock(block, i) : undefined}
             variant={variant}
             isLeadParagraph={i === firstParagraphIndex}
+            listStart={listStarts[i]}
           />
         )
       })}

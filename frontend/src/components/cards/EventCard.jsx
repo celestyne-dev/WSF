@@ -10,7 +10,7 @@ export default function EventCard({ event }) {
   const locationLine = event.format === 'virtual' ? 'Online' : [event.location, event.format === 'hybrid' ? 'Hybrid' : null].filter(Boolean).join(' · ')
 
   return (
-    <Link to={`/events/${event.slug}`} className="group flex gap-4 border border-taupe-200 bg-white p-4 transition-colors hover:border-burgundy-500/40">
+    <Link to={`/events/${event.slug}`} className="group flex overflow-hidden rounded-card gap-4 border border-taupe-200 bg-white p-4 transition-colors hover:border-burgundy-500/40">
       <div className="flex w-16 shrink-0 flex-col items-center justify-center bg-plum-600 py-2 text-ivory">
         <span className="text-xs font-semibold uppercase tracking-wide">{date.toLocaleDateString('en-US', { month: 'short' })}</span>
         <span className="font-serif text-2xl font-semibold">{date.getDate()}</span>

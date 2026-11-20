@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { Clock, Sparkles } from 'lucide-react'
+import { ArrowRight, ChevronDown, Clock, Sparkles } from 'lucide-react'
 import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles, mapArticle } from '../api/articles'
 import { fetchPersonBySlug } from '../api/people'
 import { readBootstrap, consumeBootstrap } from '../utils/bootstrap'
@@ -16,7 +16,10 @@ import PageLoader from '../components/ui/PageLoader'
 import Breadcrumb from '../components/ui/Breadcrumb'
 import MediaImage from '../components/ui/MediaImage'
 import ShareBar from '../components/ui/ShareBar'
-import ArticleContent from '../components/article/ArticleContent'
+import ArticleContent, { CtaBlock } from '../components/article/ArticleContent'
+import NewsletterForm from '../components/ui/NewsletterForm'
+import { buildArticleToc } from '../utils/headingToc'
+import { CTA_PRESETS } from '../constants/ctaPresets'
 import SourceReferences from '../components/article/SourceReferences'
 import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
 import ArticleCard from '../components/cards/ArticleCard'
@@ -57,6 +60,51 @@ function AiDisclosureNotice({ text }) {
 // ratio, so the real ratio to render at is whichever generated variant's
 // dimensions we can read — largest/most-hero-like first — falling back to
 // 3:2 only when no variant metadata is available at all (e.g. mock mode).
+// "In this article": H2/H3 links using the same ids the body headings get
+// (utils/headingToc.js). Desktop: top of the sticky right column.
+// Mobile/tablet: a collapsed native disclosure above the body.
+function TocLinks({ entries }) {
+  return (
+    <ol className="space-y-2 text-sm">
+      {entries.map((h) => (
+        <li key={h.id} className={h.level === 3 ? 'pl-3' : ''}>
+          <a href={`#${h.id}`} className={`block leading-snug transition-colors hover:text-burgundy-600 ${h.level === 3 ? 'text-[13px] text-charcoal-600' : 'text-charcoal'}`}>
+            {h.text}
+          </a>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+// End-of-article author card (the byline above stays the primary credit).
+function AuthorCard({ author }) {
+  if (!author) return null
+  return (
+    <section aria-label="About the author" className="mt-14 flex gap-5 rounded-card border border-taupe-200 bg-white p-6 sm:p-7">
+      <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt="" width={128} height={128} aspect={1} sizes="64px" className="h-16 w-16 shrink-0 rounded-full object-cover" />
+      <div className="min-w-0">
+        <p className="eyebrow">About the author</p>
+        <p className="mt-1 font-serif text-xl font-semibold text-charcoal">
+          <Link to={`/authors/${author.slug}`} className="hover:text-burgundy-600">
+            {author.name}
+          </Link>
+        </p>
+        {author.role && <p className="text-sm text-charcoal-600">{author.role}</p>}
+        {author.shortBio && <p className="mt-3 text-[15px] leading-relaxed text-charcoal-600">{author.shortBio}</p>}
+        <Link to={`/authors/${author.slug}`} className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-burgundy-600 hover:text-burgundy-700">
+          More from {author.name} <ArrowRight size={14} aria-hidden="true" />
+        </Link>
+      </div>
+    </section>
+  )
+}
+
+// One closing CTA, only when the editor hasn't already placed one in the
+// body (a cta / Simple CTA block), so a reader is never asked twice.
+const END_OF_ARTICLE_CTA = { type: 'cta', style: 'soft', align: 'left', ...CTA_PRESETS.find((p) => p.key === 'career-hub').fields }
+
+
 function getMediaAspect(media) {
   const preferred = [
     media?.variants?.hero,
@@ -244,6 +292,7 @@ export default function ArticlePage() {
   )
 
   useArticleStructuredData(article, effectiveCanonicalUrl, socialImageUrl)
+  const toc = useMemo(() => buildArticleToc(article?.content), [article?.content])
   // Fixed "Home > Stories > Article title" hierarchy, matching the
   // server's own breadcrumb (spa_shell.py's render_article_shell) —
   // deliberately independent of the visible <Breadcrumb> below, which
@@ -260,8 +309,13 @@ export default function ArticlePage() {
   const author = article.author
   const coAuthors = article.coAuthors || []
   const topic = article.topic
-  const hasSidebar = popular.length > 0 || hasSponsorSidebar
   const heroAspect = getMediaAspect(article.heroMedia)
+  const tocEntries = toc.entries
+  const hasToc = tocEntries.length > 0
+  const hasSidebarContent = popular.length > 0 || hasSponsorSidebar || hasToc
+  const contentBlocks = article.content || []
+  const hasInlineCta = contentBlocks.some((b) => b?.type === 'cta' || b?.type === 'button')
+  const hasInlineNewsletter = contentBlocks.some((b) => b?.type === 'newsletterCta')
 
   return (
     <article>
@@ -366,7 +420,7 @@ export default function ArticlePage() {
             aspect={heroAspect}
             sizes="(min-width: 1120px) 1120px, 100vw"
             priority
-            className="h-auto w-full object-contain"
+            className="h-auto w-full rounded-media object-contain"
           />
           {(article.heroImageCaption || article.heroImageCredit) && (
             <p className="mt-3 text-sm text-charcoal-600">
@@ -388,19 +442,36 @@ export default function ArticlePage() {
           is never unmounted/remounted by this toggle) so its own fetch
           only ever runs once. */}
       <div className="container-editorial mt-12">
-        <div className={hasSidebar ? 'mx-auto max-w-[1064px] lg:grid lg:grid-cols-[minmax(0,720px)_280px] lg:gap-16' : 'mx-auto max-w-reading'}>
-          <div>
-            <ArticleContent variant="article" blocks={article.content} relatedArticlesBySlug={relatedArticlesBySlug} />
+        <div className={hasSidebarContent ? 'mx-auto max-w-[1064px] lg:grid lg:grid-cols-[minmax(0,720px)_280px] lg:gap-16' : 'mx-auto max-w-reading'}>
+          <div className="min-w-0">
+            {hasToc && (
+              <details className="group mb-8 rounded-card border border-taupe-200 bg-white lg:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-charcoal [&::-webkit-details-marker]:hidden">
+                  In this article
+                  <ChevronDown size={18} aria-hidden="true" className="text-charcoal-600 transition-transform group-open:rotate-180" />
+                </summary>
+                <nav aria-label="In this article" className="border-t border-taupe-200 px-4 py-4">
+                  <TocLinks entries={tocEntries} />
+                </nav>
+              </details>
+            )}
+            <ArticleContent
+              variant="article"
+              blocks={article.content}
+              relatedArticlesBySlug={relatedArticlesBySlug}
+              headingIdForBlock={(block, i) => toc.idByIndex.get(i)}
+            />
             <SourceReferences sources={article.sources} />
-
             {relatedPerson && (
-              <div className="my-14 border border-taupe-200 bg-ivory p-6 sm:p-7">
+              <div className="mt-14 rounded-card border border-taupe-200 bg-ivory p-6 sm:p-7">
                 <p className="eyebrow mb-3">Featured in this story</p>
                 <div className="max-w-[220px]">
                   <PersonCard person={relatedPerson} />
                 </div>
               </div>
             )}
+            <AuthorCard author={author} />
+            {!hasInlineCta && <CtaBlock block={END_OF_ARTICLE_CTA} />}
 
             {nextArticle && (
               <div className="mt-16 border-t-2 border-charcoal pt-8">
@@ -419,7 +490,13 @@ export default function ArticlePage() {
             )}
           </div>
 
-          <aside className={hasSidebar ? 'mt-14 space-y-10 lg:mt-0 lg:self-start lg:sticky lg:top-28' : 'mt-14 space-y-10'}>
+          <aside className={hasSidebarContent ? 'mt-14 space-y-10 lg:mt-0 lg:self-start lg:sticky lg:top-28' : 'mt-14 space-y-10'}>
+            {hasToc && (
+              <nav aria-label="In this article" className="hidden border-l-2 border-burgundy-500 pl-5 lg:block">
+                <p className="eyebrow mb-4">In this article</p>
+                <TocLinks entries={tocEntries} />
+              </nav>
+            )}
             <SponsorPlacementStrip placementKey="article_sidebar" layout="stack" onAvailabilityChange={setHasSponsorSidebar} />
             {popular.length > 0 && (
               <div>
@@ -448,6 +525,20 @@ export default function ArticlePage() {
             ))}
           </div>
         </div>
+      )}
+
+      {!hasInlineNewsletter && (
+        <section aria-labelledby="article-newsletter-title" className="container-editorial pb-16">
+          <div className="mx-auto max-w-[1064px] rounded-card bg-plum-600 px-6 py-10 text-center sm:px-10">
+            <h2 id="article-newsletter-title" className="font-serif text-2xl font-semibold text-ivory sm:text-3xl">
+              Get stories like this every week
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-ivory/85">WSF Weekly: one thoughtful email with the best of Women Shaping Futures.</p>
+            <div className="mx-auto mt-6 flex max-w-md justify-center">
+              <NewsletterForm variant="dark" source="article-end" />
+            </div>
+          </div>
+        </section>
       )}
     </article>
   )

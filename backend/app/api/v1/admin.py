@@ -29,6 +29,7 @@ from app.schemas.cms import (
     SocialLinkSchema,
 )
 from app.schemas.commerce import SponsorSchema
+from app.services.appearance import APPEARANCE_KEY, AppearanceError, public_appearance_payload, save_appearance
 from app.services.audit import log_action
 from app.services.cms import (
     replace_footer_groups,
@@ -346,7 +347,7 @@ class AdminFooterResource(Resource):
         return success_response(_dump_footer())
 
 
-ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY}
+ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY}
 
 
 class AdminSettingsResource(Resource):
@@ -408,6 +409,14 @@ class AdminSettingsResource(Resource):
                 changes=payment_settings,
             )
 
+        if APPEARANCE_KEY in settings_data:
+            # Controlled presets only (see app/services/appearance.py).
+            try:
+                appearance = save_appearance(settings_data[APPEARANCE_KEY])
+            except AppearanceError as exc:
+                raise ApiError(str(exc), 422, code="validation_error")
+            log_action(current_user, "settings.update", "SiteSetting", entity_id=APPEARANCE_KEY, changes=appearance)
+
         if "audience_stats" in settings_data:
             audience_value = settings_data["audience_stats"]
             if not isinstance(audience_value, dict):
@@ -425,6 +434,7 @@ class AdminSettingsResource(Resource):
             # Settings + read-only provider capability ("configured": yes/no
             # only) + the ISO 4217 catalogue. Never any secret value.
             PAYMENT_SETTINGS_KEY: admin_payment_settings_payload(),
+            APPEARANCE_KEY: public_appearance_payload(),
         }
 
 

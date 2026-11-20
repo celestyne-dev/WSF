@@ -8,6 +8,7 @@ from app.schemas.geography import CountrySchema
 from app.services.footer import build_public_footer
 from app.services.homepage import get_enabled_homepage_modules, public_homepage_modules_payload
 from app.services.navigation import serialize_public_menu
+from app.services.appearance import public_appearance_payload
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 from app.utils.responses import success_response
 
@@ -107,6 +108,8 @@ class SiteSettingsResource(Resource):
                 "branding": {"logo": _public_media_ref(identity["logo"])},
                 "contact": {"email": identity["contact_email"]},
                 "social": social_link_schema.dump(social_links, many=True),
+                # Controlled design presets only (app/services/appearance.py).
+                "appearance": public_appearance_payload(),
                 "seo": {
                     "defaultTitle": identity["seo_default_title"],
                     "defaultDescription": identity["seo_default_description"],

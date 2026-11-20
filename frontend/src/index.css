@@ -6,6 +6,45 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Public design tokens: corner radius (Studio -> Settings -> Appearance).
+   The server writes data-wsf-corners on <html> (backend spa_shell) so the
+   first paint already uses the saved preset; utils/appearance.js keeps it
+   in sync on the client. Only these four controlled presets exist (no raw
+   CSS from the CMS). Avatars, icon circles, dots and pills use
+   rounded-full and never follow these tokens.
+     control  buttons, inputs, small chips
+     card     cards, callouts, CTA panels
+     media    article/card images
+     surface  floating panels (mega menu, account menu)
+   Square (all 0) preserves the site as it was before this setting.
+   The selectors are not limited to :root so Studio's Appearance preview
+   can scope a preset to its own box. */
+:root,
+[data-wsf-corners='square'] {
+  --wsf-radius-control: 0px;
+  --wsf-radius-card: 0px;
+  --wsf-radius-media: 0px;
+  --wsf-radius-surface: 0px;
+}
+[data-wsf-corners='subtle'] {
+  --wsf-radius-control: 4px;
+  --wsf-radius-card: 6px;
+  --wsf-radius-media: 4px;
+  --wsf-radius-surface: 8px;
+}
+[data-wsf-corners='soft'] {
+  --wsf-radius-control: 8px;
+  --wsf-radius-card: 12px;
+  --wsf-radius-media: 10px;
+  --wsf-radius-surface: 16px;
+}
+[data-wsf-corners='rounded'] {
+  --wsf-radius-control: 12px;
+  --wsf-radius-card: 18px;
+  --wsf-radius-media: 14px;
+  --wsf-radius-surface: 20px;
+}
+
 body {
   @apply bg-ivory text-charcoal font-sans antialiased;
 }
@@ -33,15 +72,20 @@ body {
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 bg-plum-600 px-6 py-3 text-sm font-semibold text-ivory transition-colors duration-250 hover:bg-plum-700;
+    @apply rounded-control inline-flex items-center justify-center gap-2 bg-plum-600 px-6 py-3 text-sm font-semibold text-ivory transition-colors duration-250 hover:bg-plum-700;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 border border-charcoal px-6 py-3 text-sm font-semibold text-charcoal transition-colors duration-250 hover:bg-charcoal hover:text-ivory;
+    @apply rounded-control inline-flex items-center justify-center gap-2 border border-charcoal px-6 py-3 text-sm font-semibold text-charcoal transition-colors duration-250 hover:bg-charcoal hover:text-ivory;
+  }
+
+  /* On dark panels (the "Strong" in-article CTA). */
+  .btn-light {
+    @apply rounded-control inline-flex items-center justify-center gap-2 bg-ivory px-6 py-3 text-sm font-semibold text-plum-700 transition-colors duration-250 hover:bg-blush-100;
   }
 
   .btn-outline-light {
-    @apply inline-flex items-center justify-center gap-2 border border-ivory/70 px-6 py-3 text-sm font-semibold text-ivory transition-colors duration-250 hover:bg-ivory hover:text-charcoal;
+    @apply rounded-control inline-flex items-center justify-center gap-2 border border-ivory/70 px-6 py-3 text-sm font-semibold text-ivory transition-colors duration-250 hover:bg-ivory hover:text-charcoal;
   }
 
   .link-underline {

@@ -22,7 +22,7 @@ export default function CareerHubCard({ card, onOpen }) {
     <Link
       to={card.url}
       onClick={() => onOpen?.(card)}
-      className="group flex h-full min-w-0 flex-col border border-taupe-200 bg-white transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-burgundy-600"
+      className="group flex overflow-hidden rounded-card h-full min-w-0 flex-col border border-taupe-200 bg-white transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-burgundy-600"
     >
       <div className="relative overflow-hidden bg-taupe-100">
         <MediaImage

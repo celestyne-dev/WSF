@@ -53,6 +53,14 @@ export default {
         'content': '1280px',
         'reading': '720px',
       },
+      // Corner tokens driven by Studio -> Settings -> Appearance (see the
+      // --wsf-radius-* variables in src/index.css).
+      borderRadius: {
+        control: 'var(--wsf-radius-control)',
+        card: 'var(--wsf-radius-card)',
+        media: 'var(--wsf-radius-media)',
+        surface: 'var(--wsf-radius-surface)',
+      },
       boxShadow: {
         card: '0 1px 2px rgba(36,31,33,0.04), 0 8px 24px rgba(36,31,33,0.06)',
       },

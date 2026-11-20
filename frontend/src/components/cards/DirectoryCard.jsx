@@ -16,7 +16,7 @@ export default function DirectoryCard({ listing }) {
   return (
     <Link
       to={`/directory/${org.slug}`}
-      className="group flex flex-col gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
+      className="group flex overflow-hidden rounded-card flex-col gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
       <div className="flex items-start gap-4">
         {org.logo ? (

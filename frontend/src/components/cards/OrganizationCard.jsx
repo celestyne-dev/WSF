@@ -23,7 +23,7 @@ export default function OrganizationCard({ organization }) {
   return (
     <Link
       to={`/organizations/${organization.slug}`}
-      className="group flex items-center gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
+      className="group flex overflow-hidden rounded-card items-center gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
       {organization.logo ? (
         <div className="flex h-16 w-16 shrink-0 items-center justify-center border border-taupe-100 bg-white p-2">

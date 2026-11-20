@@ -26,7 +26,7 @@ export default function LearningProgramCard({ program }) {
   if (!program) return null
   return (
     <Link to={`/learning/${program.slug}`} className="group block">
-      <div className="relative overflow-hidden bg-taupe-100">
+      <div className="relative overflow-hidden rounded-media bg-taupe-100">
         <MediaImage
           media={program.heroMedia}
           variant="card"

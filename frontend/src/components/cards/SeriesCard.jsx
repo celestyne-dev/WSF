@@ -5,7 +5,7 @@ import { resolveAltText } from '../../utils/media'
 export default function SeriesCard({ item }) {
   if (!item) return null
   return (
-    <Link to={`/series/${item.slug}`} className="group relative block overflow-hidden">
+    <Link to={`/series/${item.slug}`} className="group relative block overflow-hidden rounded-media">
       <MediaImage
         media={item.coverMedia}
         variant="card"

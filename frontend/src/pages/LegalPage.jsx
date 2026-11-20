@@ -5,38 +5,11 @@ import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import InstitutionalPageHero from '../components/pages/InstitutionalPageHero'
 import InstitutionalPageShell from '../components/pages/InstitutionalPageShell'
 import LegalPageLayout from '../components/pages/LegalPageLayout'
+import { buildHeadingToc } from '../utils/headingToc'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 
-// "On this page" anchor ids are derived purely from each heading
-// block's own text — never a separate CMS field, and never an API
-// call — so an editor renaming a heading in AdminPageEditor just works
-// with no extra step. Duplicate headings (two sections both titled
-// "Overview", say) get a stable "-2", "-3", ... suffix in document
-// order so every anchor is still unique.
-function slugifyHeading(text) {
-  const base = (text || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .slice(0, 60)
-  return base || 'section'
-}
-
-function buildHeadingToc(blocks) {
-  const seenCounts = new Map()
-  const headings = []
-  for (const block of blocks || []) {
-    if (block.type !== 'heading') continue
-    const base = slugifyHeading(block.text)
-    const seen = seenCounts.get(base) || 0
-    seenCounts.set(base, seen + 1)
-    const id = seen === 0 ? base : `${base}-${seen + 1}`
-    headings.push({ id, text: block.text, level: block.level || 2 })
-  }
-  return headings
-}
+// "On this page" anchor ids: see utils/headingToc.js (shared with ArticlePage).
 
 // Backs /privacy, /terms, /cookies, /editorial-policy — each a fixed
 // system Page identified by `docKey` (== its stable backend `key`, see

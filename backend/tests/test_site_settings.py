@@ -251,7 +251,8 @@ class TestPublicSerializerMinimization:
         public = client.get("/api/v1/public/settings").get_json()["data"]
 
         assert "audience_stats" not in public
-        assert set(public.keys()) == {"site", "branding", "contact", "social", "seo"}
+        assert set(public.keys()) == {"site", "branding", "contact", "social", "seo", "appearance"}
+        assert public["appearance"] == {"cornerStyle": "square"}
         # Media is dumped through the same public-safe schema every other
         # public endpoint already uses — never a raw filesystem path.
         logo_id = _upload_media(client, admin_token, "logo3.png")

@@ -19,7 +19,7 @@ export default function ResourceCard({ resource }) {
   const badge = isYearlyOnly ? { icon: Sparkles, label: 'Circle Yearly & Lifetime' } : ACCESS_BADGE[resource.accessType]
   return (
     <Link to={`/resources/${resource.slug}`} className="group block">
-      <div className="relative overflow-hidden bg-taupe-100">
+      <div className="relative overflow-hidden rounded-media bg-taupe-100">
         <MediaImage
           media={resource.coverMedia}
           variant="card"

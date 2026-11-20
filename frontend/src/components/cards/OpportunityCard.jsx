@@ -17,7 +17,7 @@ export default function OpportunityCard({ opportunity }) {
   return (
     <Link
       to={`/opportunities/${opportunity.slug}`}
-      className="group flex flex-col justify-between border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
+      className="group flex overflow-hidden rounded-card flex-col justify-between border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
       <div>
         <div className="flex items-center justify-between gap-3">

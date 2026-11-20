@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
-import { Save, Eye, AlertTriangle, X } from 'lucide-react'
+import { Save, Eye, AlertTriangle, X, ChevronDown } from 'lucide-react'
 import {
   fetchArticleBySlug,
   createArticle,
@@ -24,6 +24,7 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import MediaPicker from '../../components/cms/MediaPicker'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import { ARTICLE_BLOCK_TYPES } from '../../constants/contentBlockTypes'
 import SourcesEditor from '../../components/cms/SourcesEditor'
 import { blankSource, describeSourceErrors, sourcesToPayload, validateSources } from '../../utils/sources'
 import ArticleWorkflowPanel from '../../components/cms/ArticleWorkflowPanel'
@@ -135,13 +136,83 @@ function toForm(article) {
   }
 }
 
-function Section({ title, description, children }) {
+// Editor sections. The writing flow (Basic info, Hero, Byline, Content,
+// Sources) is always open; secondary settings are `collapsible` native
+// <details> (keyboard and screen-reader friendly), opening by themselves
+// when they already hold something.
+function Section({ id, step, title, description, children, collapsible = false, defaultOpen = true }) {
+  const heading = (
+    <span className="flex items-baseline gap-2">
+      {step && <span className="text-[11px] font-semibold tabular-nums text-burgundy-600">{step}</span>}
+      <span className="font-serif text-lg font-semibold text-charcoal">{title}</span>
+    </span>
+  )
+  if (collapsible) {
+    return (
+      <CollapsibleSection id={id} defaultOpen={defaultOpen} heading={heading} description={description}>
+        {children}
+      </CollapsibleSection>
+    )
+  }
   return (
-    <div className="border border-taupe-200 bg-white p-6">
-      <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">{title}</p>
-      {description && <p className="mt-0.5 text-xs text-charcoal-600/70">{description}</p>}
-      <div className="mt-3 space-y-4">{children}</div>
-    </div>
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24 border border-taupe-200 bg-white p-6">
+      <h2 id={`${id}-title`}>{heading}</h2>
+      {description && <p className="mt-0.5 text-xs text-charcoal-600/80">{description}</p>}
+      <div className="mt-4 space-y-4">{children}</div>
+    </section>
+  )
+}
+
+// Opens by itself once it has content (e.g. after the article loads with
+// SEO overrides set) until the editor toggles it; never closes on its own.
+function CollapsibleSection({ id, defaultOpen, heading, description, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const [touched, setTouched] = useState(false)
+  if (defaultOpen && !open && !touched) setOpen(true)
+  return (
+    <details
+      id={id}
+      open={open}
+      onToggle={(e) => {
+        if (e.currentTarget.open !== open) {
+          setTouched(true)
+          setOpen(e.currentTarget.open)
+        }
+      }}
+      className="group scroll-mt-24 border border-taupe-200 bg-white"
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-6 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          {heading}
+          {description && <span className="mt-0.5 block text-xs text-charcoal-600/80">{description}</span>}
+        </span>
+        <ChevronDown size={16} className="shrink-0 text-charcoal-600 transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="space-y-4 px-6 pb-6">{children}</div>
+    </details>
+  )
+}
+
+const EDITOR_SECTIONS = [
+  ['basic', 'Basic info'],
+  ['hero', 'Hero & media'],
+  ['byline', 'Byline'],
+  ['content', 'Content'],
+  ['sources', 'Sources'],
+  ['classification', 'Classification'],
+  ['relationships', 'Relationships'],
+  ['seo', 'SEO & social'],
+]
+
+function SectionNav() {
+  return (
+    <nav aria-label="Editor sections" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-b border-taupe-200 bg-ivory/95 px-1 py-2 backdrop-blur">
+      {EDITOR_SECTIONS.map(([id, label]) => (
+        <a key={id} href={`#${id}`} className="shrink-0 px-2.5 py-1 text-xs font-medium text-charcoal-600 hover:bg-white hover:text-burgundy-600">
+          {label}
+        </a>
+      ))}
+    </nav>
   )
 }
 
@@ -414,7 +485,8 @@ export default function AdminArticleEditor() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
-          <Section title="Basic information">
+          <SectionNav />
+          <Section id="basic" step="1" title="Basic info">
             <Field label="Title">
               <input value={form.title} onChange={(e) => updateField('title', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
@@ -437,18 +509,7 @@ export default function AdminArticleEditor() {
             </Field>
           </Section>
 
-          <Section title="Content" description="Write the full article body here — this is what publishes to the public page.">
-            <ArticleBlockEditor blocks={form.content} onChange={(content) => updateField('content', content)} />
-          </Section>
-
-          <Section
-            title="Sources & references"
-            description="Add the reports, studies, official pages, datasets or other sources used to support this article. Sources are shown publicly."
-          >
-            <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
-          </Section>
-
-          <Section title="Media" description="The hero image leads the article and its cards across the site.">
+          <Section id="hero" step="2" title="Hero & media" description="The hero image leads the article and its cards across the site.">
             <MediaPicker label="Hero image" aspect={16 / 9} value={form.heroMedia} onChange={(media) => updateField('heroMedia', media)} />
             {form.heroMedia && (
               <div className="space-y-2">
@@ -475,18 +536,39 @@ export default function AdminArticleEditor() {
             )}
           </Section>
 
-          <Section title="Classification">
+          <Section id="byline" step="3" title="Byline" description="Who wrote it. The author's name links to their public profile.">
+            <Field label="Author">
+              <select value={form.authorSlug} onChange={(e) => updateField('authorSlug', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                {authors.map((a) => (
+                  <option key={a.slug} value={a.slug}>
+                    {a.name}
+                    {a.role ? ` — ${a.role}` : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </Section>
+
+          <Section
+            id="content"
+            step="4"
+            title="Content"
+            description="The article body. Add blocks with the + lines between blocks; use the arrows to reorder."
+          >
+            <ArticleBlockEditor blocks={form.content} onChange={(content) => updateField('content', content)} blockTypes={ARTICLE_BLOCK_TYPES} />
+          </Section>
+
+          <Section
+            id="sources"
+            step="5"
+            title="Sources & references"
+            description="Add the reports, studies, official pages, datasets or other sources used to support this article. Sources are shown publicly."
+          >
+            <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
+          </Section>
+
+          <Section id="classification" step="6" title="Classification" description="Where the story lives on the site: category, series, topics and tags." collapsible>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Author">
-                <select value={form.authorSlug} onChange={(e) => updateField('authorSlug', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
-                  {authors.map((a) => (
-                    <option key={a.slug} value={a.slug}>
-                      {a.name}
-                      {a.role ? ` — ${a.role}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </Field>
               <Field label="Category" hint="optional">
                 <select value={form.categorySlug} onChange={(e) => updateField('categorySlug', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
                   <option value="">— None —</option>
@@ -497,17 +579,17 @@ export default function AdminArticleEditor() {
                   ))}
                 </select>
               </Field>
+              <Field label="Series" hint="optional">
+                <select value={form.seriesSlug} onChange={(e) => updateField('seriesSlug', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
+                  <option value="">— None —</option>
+                  {series.map((s) => (
+                    <option key={s.slug} value={s.slug}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
-            <Field label="Series" hint="optional">
-              <select value={form.seriesSlug} onChange={(e) => updateField('seriesSlug', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
-                <option value="">— None —</option>
-                {series.map((s) => (
-                  <option key={s.slug} value={s.slug}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
             <Field label="Topics">
               <div className="flex flex-wrap gap-2">
                 {topics.map((t) => (
@@ -525,6 +607,16 @@ export default function AdminArticleEditor() {
             <Field label="Tags">
               <TagInput value={form.tagSlugs} onChange={(tagSlugs) => updateField('tagSlugs', tagSlugs)} />
             </Field>
+          </Section>
+
+          <Section
+            id="relationships"
+            step="7"
+            title="Relationships"
+            description="People this story mentions or profiles; they link back from their profiles."
+            collapsible
+            defaultOpen={form.relatedPersonSlugs.length > 0}
+          >
             <Field label="People mentioned / profiled" hint="optional">
               <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto">
                 {people.map((p) => (
@@ -541,7 +633,14 @@ export default function AdminArticleEditor() {
             </Field>
           </Section>
 
-          <Section title="SEO">
+          <Section
+            id="seo"
+            step="8"
+            title="SEO & social"
+            description="Optional overrides; sensible defaults come from the title, excerpt and hero image."
+            collapsible
+            defaultOpen={Boolean(form.seoTitle || form.seoDescription || form.seoCanonical || form.seoOgMedia)}
+          >
             <Field label="SEO title" hint="falls back to the article title">
               <input value={form.seoTitle} onChange={(e) => updateField('seoTitle', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
             </Field>
@@ -553,6 +652,7 @@ export default function AdminArticleEditor() {
             </Field>
             <MediaPicker label="Social / OG image" aspect={1.91 / 1} value={form.seoOgMedia} onChange={(media) => updateField('seoOgMedia', media)} />
           </Section>
+
         </div>
 
         <div className="space-y-4">
@@ -577,7 +677,8 @@ export default function AdminArticleEditor() {
           )}
 
           <div className="border border-taupe-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Details</p>
+            <h2 className="font-serif text-lg font-semibold text-charcoal">Publishing</h2>
+            <p className="mt-0.5 text-xs text-charcoal-600/80">Placement flags, sponsorship and save.</p>
             <div className="mt-3 space-y-2">
               <label className="flex items-center gap-2 text-sm text-charcoal-600">
                 <input type="checkbox" checked={form.featured} onChange={(e) => updateField('featured', e.target.checked)} />
@@ -642,7 +743,7 @@ export default function AdminArticleEditor() {
           </div>
 
           <div className="border border-taupe-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">AI / editorial transparency</p>
+            <h2 className="font-serif text-lg font-semibold text-charcoal">AI & editorial disclosure</h2>
             <p className="mt-1 text-xs text-charcoal-600/70">
               This is editorial governance, not an AI writer — record how generative AI was used, if at all, and whether a human reviewed it.
             </p>

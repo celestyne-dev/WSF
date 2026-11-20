@@ -10,7 +10,7 @@ export default function JobCard({ job }) {
   return (
     <Link
       to={`/jobs/${job.slug}`}
-      className="group flex items-start gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
+      className="group flex overflow-hidden rounded-card items-start gap-4 border border-taupe-200 bg-white p-5 transition-colors hover:border-burgundy-500/40"
     >
       {job.logo ? (
         <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-taupe-100 bg-white p-1.5">

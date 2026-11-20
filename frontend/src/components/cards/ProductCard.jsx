@@ -9,7 +9,7 @@ export default function ProductCard({ product }) {
 
   return (
     <Link to={`/shop/${product.slug}`} className="group block">
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden rounded-media">
         <MediaImage
           media={product.coverMedia}
           variant="card"

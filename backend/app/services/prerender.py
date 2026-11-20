@@ -23,7 +23,7 @@ exist in the build.
 from datetime import datetime
 from html import escape
 
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import resolve_list_starts, sanitize_content_blocks
 
 # --- class names (each one already present in the React source) ---------
 _MAIN_CLASS = "container-editorial py-10"
@@ -92,12 +92,15 @@ def _inline(value):
     return value if isinstance(value, str) else ""
 
 
-def _list_html(tag, items, list_class):
+def _list_html(tag, items, list_class, start=None):
     rows = "".join(f"<li>{_inline(item)}</li>" for item in items if _is_nonblank(item))
     if not rows:
         return ""
     marker = "list-decimal" if tag == "ol" else "list-disc"
-    return f'<{tag} class="{list_class} {marker}">{rows}</{tag}>'
+    # Same derived start as React (utils/listNumbering.js): `start` is only
+    # written when a list does not begin at 1, exactly like <ol start> there.
+    start_attr = f' start="{int(start)}"' if tag == "ol" and isinstance(start, int) and start != 1 else ""
+    return f'<{tag}{start_attr} class="{list_class} {marker}">{rows}</{tag}>'
 
 
 def _safe_media_url(media, fallback_path=None):
@@ -113,7 +116,47 @@ def _safe_media_url(media, fallback_path=None):
     return None
 
 
-def _render_block(block):
+def _internal_or_http(url):
+    return isinstance(url, str) and (url.startswith("/") or url.startswith("https://") or url.startswith("http://"))
+
+
+def _cta_link_attrs(url):
+    """CTA/button links (already passed through content_blocks.safe_link_url):
+    internal paths as-is; external links get rel="noopener noreferrer" and
+    never an automatic new tab, matching ArticleContent.jsx."""
+    if url.startswith("/"):
+        return f'href="{_attr(url)}"'
+    return f'href="{_attr(url)}" rel="noopener noreferrer"'
+
+
+_CTA_BOX_CLASSES = {
+    "soft": "wsf-cta my-10 rounded-card border border-taupe-200 bg-cream p-6 sm:p-8",
+    "outline": "wsf-cta my-10 rounded-card border-2 border-burgundy-600 bg-ivory p-6 sm:p-8",
+    "strong": "wsf-cta my-10 rounded-card bg-plum-700 p-6 text-ivory sm:p-8",
+}
+
+
+def _render_cta(block):
+    title, text, label, url = block.get("title"), block.get("text"), block.get("buttonLabel"), block.get("buttonUrl")
+    if not (_is_nonblank(title) or _is_nonblank(text)):
+        return ""
+    style = block.get("style") if block.get("style") in _CTA_BOX_CLASSES else "soft"
+    strong = style == "strong"
+    center = " text-center" if block.get("align") == "center" else ""
+    parts = []
+    if _is_nonblank(block.get("eyebrow")):
+        parts.append(f'<p class="{"text-xs font-semibold uppercase tracking-[0.14em] text-ivory/80" if strong else "eyebrow"}">{_text(block["eyebrow"])}</p>')
+    if _is_nonblank(title):
+        parts.append(f'<p class="mt-2 font-serif text-2xl font-semibold leading-snug {"text-ivory" if strong else "text-charcoal"}">{_text(title)}</p>')
+    if _is_nonblank(text):
+        parts.append(f'<p class="mt-2 text-base leading-relaxed {"text-ivory/90" if strong else "text-charcoal-600"}">{_text(text)}</p>')
+    if _is_nonblank(label) and _internal_or_http(url):
+        button_class = "btn-light" if strong else "btn-primary"
+        parts.append(f'<p class="mt-5"><a {_cta_link_attrs(url)} class="{button_class}">{_text(label)}</a></p>')
+    return f'<aside class="{_CTA_BOX_CLASSES[style]}{center}">{"".join(parts)}</aside>'
+
+
+def _render_block(block, list_start=None):
     kind = block.get("type")
     if kind == "heading":
         if not _is_nonblank(block.get("text")):
@@ -124,7 +167,7 @@ def _render_block(block):
         return f'<p class="{_PARAGRAPH_CLASS}">{_inline(block.get("text"))}</p>' if _is_nonblank(block.get("text")) else ""
     if kind == "list":
         items = block.get("items") if isinstance(block.get("items"), list) else []
-        return _list_html("ol" if block.get("style") == "number" else "ul", items, _LIST_CLASS)
+        return _list_html("ol" if block.get("style") == "number" else "ul", items, _LIST_CLASS, start=list_start)
     if kind in ("blockquote", "pullquote"):
         if not _is_nonblank(block.get("text")):
             return ""
@@ -179,14 +222,23 @@ def _render_block(block):
             if isinstance(item, dict) and _is_nonblank(item.get("q"))
         )
         return f'<section class="{_FAQ_CLASS}">{entries}</section>' if entries else ""
-    # newsletterCta / ad / sponsorBlock / button / relatedBlock /
+    if kind == "cta":
+        return _render_cta(block)
+    if kind == "button":
+        url = block.get("url")
+        if not (_is_nonblank(block.get("label")) and _internal_or_http(url)):
+            return ""
+        return f'<p class="my-8"><a {_cta_link_attrs(url)} class="btn-primary">{_text(block["label"])}</a></p>'
+    # newsletterCta / ad / sponsorBlock / relatedBlock /
     # articleCard / footerNote / anything unknown: application or
     # interactive blocks React alone renders — never guessed at here.
     return ""
 
 
 def render_content_blocks(blocks):
-    return "".join(_render_block(block) for block in sanitize_content_blocks(blocks))
+    clean = sanitize_content_blocks(blocks)
+    starts = resolve_list_starts(clean)
+    return "".join(_render_block(block, list_start=start) for block, start in zip(clean, starts))
 
 
 def _format_date(value):
@@ -1034,7 +1086,7 @@ def render_product_prerender(payload):
     return _main("product", header, body)
 
 
-def _render_newsletter_block(block, published_article_slugs):
+def _render_newsletter_block(block, published_article_slugs, list_start=None):
     """The email-safe block types the archive page also renders
     (ArticleContent's articleCard/button/footerNote) — static display
     only: no merge fields, no unsubscribe placeholders, http(s) links
@@ -1055,7 +1107,7 @@ def _render_newsletter_block(block, published_article_slugs):
     if kind == "footerNote":
         text = _clean_inline_html(block.get("text")) if _is_nonblank(block.get("text")) else ""
         return f'<p class="mt-10 text-xs text-charcoal-600/70">{text}</p>' if text else ""
-    return _render_block(block)
+    return _render_block(block, list_start=list_start)
 
 
 def render_newsletter_prerender(payload, published_article_slugs=frozenset()):
@@ -1072,7 +1124,8 @@ def render_newsletter_prerender(payload, published_article_slugs=frozenset()):
     if sent:
         header.append(f'<p class="{_META_CLASS}">Sent {sent}</p>')
     blocks = sanitize_content_blocks(payload.get("content") or [])
-    body = ["".join(_render_newsletter_block(b, published_article_slugs) for b in blocks)]
+    starts = resolve_list_starts(blocks)
+    body = ["".join(_render_newsletter_block(b, published_article_slugs, start) for b, start in zip(blocks, starts))]
     return _main("newsletter", header, body)
 
 

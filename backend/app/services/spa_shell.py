@@ -96,6 +96,7 @@ from app.schemas.article import article_summary_schema, public_article_schema
 from app.schemas.cms import HomepageModuleSchema
 from app.schemas.commerce import ProductSchema
 from app.schemas.people import PersonDetailSchema
+from app.services.appearance import DEFAULT_CORNER_STYLE, get_appearance
 from app.services.event_registrations import is_event_publicly_visible
 from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
 from app.services.prerender import (
@@ -575,7 +576,31 @@ def _absolute_url(value, public_site_url):
     return None
 
 
+_HTML_OPEN_RE = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
+_CORNERS_ATTR_RE = re.compile(r'\sdata-wsf-corners="[^"]*"')
+
+
+def _set_appearance_attributes(html_doc):
+    """Writes the saved Appearance preset onto <html> (e.g.
+    data-wsf-corners="soft") so the very first paint already uses the
+    right design tokens (frontend/src/index.css) and React's own update
+    from /public/settings (frontend/src/utils/appearance.js) is a no-op.
+    Only a value from the controlled enum ever reaches the markup."""
+    try:
+        corner_style = get_appearance()["corner_style"]
+    except Exception:  # pragma: no cover - a settings read must never break page delivery
+        db.session.rollback()
+        corner_style = DEFAULT_CORNER_STYLE
+
+    def _replace(match):
+        tag = _CORNERS_ATTR_RE.sub("", match.group(0))
+        return f'{tag[:-1].rstrip()} data-wsf-corners="{corner_style}">'
+
+    return _HTML_OPEN_RE.sub(_replace, html_doc, count=1)
+
+
 def _html_response(html_doc, status=200):
+    html_doc = _set_appearance_attributes(html_doc)
     response = Response(html_doc, status=status, mimetype="text/html")
     # Matches the Nginx template's own `location = /index.html` treatment
     # of this exact file — this is the same document, just with metadata

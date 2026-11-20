@@ -107,6 +107,7 @@ function mapSiteSettings(data) {
       defaultDescription: data.seo?.defaultDescription || null,
       defaultOgImage: mapMediaRef(data.seo?.defaultOgImage),
     },
+    appearance: { cornerStyle: data.appearance?.cornerStyle || null },
   }
 }
 
