@@ -83,7 +83,7 @@ def author_resources(author, limit=RESOURCE_LIMIT):
 
 def author_learning(author, limit=LEARNING_LIMIT):
     from app.models.learning import LearningProgram
-    from app.schemas.learning import learning_program_summary_schema
+    from app.schemas.learning import summary_schema_for
     from app.services.public_visibility import public_learning_dump
 
     rows = (
@@ -98,7 +98,7 @@ def author_learning(author, limit=LEARNING_LIMIT):
         .limit(limit)
         .all()
     )
-    schema = learning_program_summary_schema()
+    schema = summary_schema_for(rows)
     return [public_learning_dump(schema.dump(p), p) for p in rows]
 
 

@@ -19,6 +19,10 @@ import MediaPicker from '../../components/cms/MediaPicker'
 import { isVideoLesson } from '../../utils/videoEmbed'
 import VideoLinkHint from '../../components/cms/VideoLinkHint'
 import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
+import QuestionListEditor from '../../components/cms/QuestionListEditor'
+import ArticleContent from '../../components/article/ArticleContent'
+import { LEARNING_RENDERERS } from '../../components/learning/learningRenderers'
+import { LESSON_BLOCK_TYPES } from '../../constants/contentBlockTypes'
 import EntitySelect from '../../components/cms/EntitySelect'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
@@ -55,14 +59,15 @@ const ACCESS_TYPES = [
   { value: 'external', label: 'External — enrollment hosted elsewhere' },
   { value: 'product', label: 'Product — commercial access via Shop' },
 ]
+// Text-first: reading/doing lessons first; video stays available but last.
 const LESSON_TYPES = [
-  { value: 'text', label: 'Text' },
-  { value: 'article', label: 'Article' },
-  { value: 'resource', label: 'Resource' },
-  { value: 'video', label: 'Video (a course video lesson)' },
-  { value: 'recording', label: 'Recording (webinar, masterclass or event recording)' },
+  { value: 'text', label: 'Text lesson (recommended)' },
+  { value: 'activity', label: 'Activity / exercise' },
+  { value: 'article', label: 'Existing Article' },
+  { value: 'resource', label: 'Existing Resource' },
   { value: 'external_link', label: 'External link' },
-  { value: 'activity', label: 'Activity' },
+  { value: 'video', label: 'Video (optional)' },
+  { value: 'recording', label: 'Recording of a live session (optional)' },
 ]
 
 async function searchAuthors(query) {
@@ -95,6 +100,17 @@ async function searchTopics(query) {
   return all.filter((t) => !q || t.name.toLowerCase().includes(q)).slice(0, 12).map((t) => ({ value: t.slug, label: t.name }))
 }
 
+// Mirrors backend app/services/learning_access.is_lifetime_eligible_program
+// (the server decides; this only explains the setting in Studio).
+function lifetimeAccessExplanation(form) {
+  if (form.providerOrganizationSlug) return 'Partner-provided courses are never included in WSF Lifetime, whatever this setting says.'
+  if (form.accessType === 'external') return 'External-enrollment courses are never included in WSF Lifetime.'
+  if (form.accessType === 'free') return 'Free courses are open to everyone, so this setting has no effect.'
+  if (form.accessType === 'circle_only') return 'Every WSF Circle tier, Lifetime included, opens WSF Circle courses — this setting has no effect.'
+  if (form.lifetimeAccess === 'excluded') return 'Lifetime members will need to buy this course.'
+  return 'Included for Lifetime members when the linked Product is a digital or downloadable product (services and physical products never are).'
+}
+
 function blankForm() {
   return {
     title: '',
@@ -107,7 +123,12 @@ function blankForm() {
     topicSlugs: [],
     overview: [],
     learningOutcomes: [],
+    skills: [],
     prerequisites: [],
+    lifetimeAccess: 'default',
+    finalAssessmentQuestions: [],
+    finalAssessmentRequired: false,
+    finalAssessmentPassingScore: 70,
     durationValue: '',
     durationUnit: '',
     heroMedia: null,
@@ -146,7 +167,12 @@ function toForm(p) {
     topicSlugs: (p.topics || []).map((t) => t.slug),
     overview: p.overview || [],
     learningOutcomes: p.learningOutcomes || [],
+    skills: p.skills || [],
     prerequisites: p.prerequisites || [],
+    lifetimeAccess: p.lifetimeAccess || 'default',
+    finalAssessmentQuestions: p.finalAssessmentQuestions || [],
+    finalAssessmentRequired: !!p.finalAssessmentRequired,
+    finalAssessmentPassingScore: p.finalAssessmentPassingScore || 70,
     durationValue: p.durationValue ?? '',
     durationUnit: p.durationUnit || '',
     heroMedia: p.heroMedia || null,
@@ -240,6 +266,39 @@ function ItemShell({ label, onMoveUp, onMoveDown, onRemove, canMoveUp, canMoveDo
 
 const inputClass = 'w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
 
+// Text-first lesson authoring with the grouped learning-block picker, plus
+// an in-Studio preview (rendered here, so draft lessons are never exposed
+// publicly). Knowledge checks are not gradable in the preview.
+function LessonContentEditor({ lesson, onChange }) {
+  const [preview, setPreview] = useState(false)
+  return (
+    <div className="border border-taupe-200">
+      <div className="flex items-center justify-between border-b border-taupe-200 bg-taupe-50 px-3 py-1.5" role="tablist" aria-label="Lesson content view">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-600">Lesson content</p>
+        <div className="flex gap-1">
+          <button type="button" role="tab" aria-selected={!preview} onClick={() => setPreview(false)} className={`px-2.5 py-1 text-xs font-semibold ${!preview ? 'bg-plum-600 text-ivory' : 'text-charcoal-600'}`}>Edit</button>
+          <button type="button" role="tab" aria-selected={preview} onClick={() => setPreview(true)} className={`px-2.5 py-1 text-xs font-semibold ${preview ? 'bg-plum-600 text-ivory' : 'text-charcoal-600'}`}>Preview</button>
+        </div>
+      </div>
+      <div className="p-2">
+        {preview ? (
+          <div className="mx-auto max-w-[720px] bg-ivory px-4 py-6">
+            <h3 className="font-serif text-2xl font-semibold text-charcoal">{lesson.title || 'Untitled lesson'}</h3>
+            {lesson.summary && <p className="mt-2 text-lg text-charcoal-600">{lesson.summary}</p>}
+            {lesson.content?.length ? (
+              <ArticleContent variant="article" blocks={lesson.content} extraRenderers={LEARNING_RENDERERS} rendererProps={{ lessonId: null }} />
+            ) : (
+              <p className="mt-4 text-sm text-charcoal-600">Nothing to preview yet.</p>
+            )}
+          </div>
+        ) : (
+          <ArticleBlockEditor blocks={lesson.content} onChange={onChange} blockTypes={LESSON_BLOCK_TYPES} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 function LessonEditor({ lesson, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   function patch(fields) {
     onChange({ ...lesson, ...fields })
@@ -291,9 +350,7 @@ function LessonEditor({ lesson, onChange, onRemove, onMoveUp, onMoveDown, canMov
           </div>
         )}
         {(lesson.lessonType === 'text' || lesson.lessonType === 'activity') && (
-          <div className="border border-taupe-200 p-2">
-            <ArticleBlockEditor blocks={lesson.content} onChange={(v) => patch({ content: v })} />
-          </div>
+          <LessonContentEditor lesson={lesson} onChange={(content) => patch({ content })} />
         )}
       </div>
     </ItemShell>
@@ -514,6 +571,11 @@ export default function AdminLearningProgramEditor() {
       topicSlugs: form.topicSlugs,
       overview: form.overview,
       learningOutcomes: form.learningOutcomes,
+      skills: form.skills,
+      lifetimeAccess: form.lifetimeAccess,
+      finalAssessment: form.finalAssessmentQuestions,
+      finalAssessmentRequired: form.finalAssessmentRequired,
+      finalAssessmentPassingScore: Number(form.finalAssessmentPassingScore) || 70,
       prerequisites: form.prerequisites,
       durationValue: form.durationValue === '' ? undefined : Number(form.durationValue),
       durationUnit: form.durationUnit || undefined,
@@ -619,7 +681,7 @@ export default function AdminLearningProgramEditor() {
             <ArticleBlockEditor blocks={form.overview} onChange={(v) => updateField('overview', v)} />
           </Section>
 
-          <Section title="Educational details">
+          <Section title="Outcomes, skills & level" description="What learners will be able to do. Shown near the top of the course page.">
             <Field label="Difficulty level">
               <select value={form.difficultyLevel} onChange={(e) => updateField('difficultyLevel', e.target.value)} className={inputClass}>
                 <option value="">— None —</option>
@@ -646,6 +708,15 @@ export default function AdminLearningProgramEditor() {
                 rows={3}
                 value={form.learningOutcomes.join('\n')}
                 onChange={(e) => updateField('learningOutcomes', e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Skills you'll build" hint="one per line, short labels (e.g. Boundary setting)">
+              <textarea
+                rows={3}
+                value={form.skills.join('\n')}
+                onChange={(e) => updateField('skills', e.target.value.split('\n').slice(0, 12))}
+                onBlur={(e) => updateField('skills', e.target.value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 12))}
                 className={inputClass}
               />
             </Field>
@@ -735,6 +806,14 @@ export default function AdminLearningProgramEditor() {
                 (checked automatically). Circle membership pricing lives in the Circle Plan, not here.
               </p>
             )}
+            <Field label="WSF Lifetime" hint="who gets this course with WSF Lifetime">
+              <select value={form.lifetimeAccess} onChange={(e) => updateField('lifetimeAccess', e.target.value)} className={inputClass} aria-describedby="lifetime-access-help">
+                <option value="default">Use default</option>
+                <option value="included">Included</option>
+                <option value="excluded">Excluded</option>
+              </select>
+              <p id="lifetime-access-help" className="mt-1 text-xs text-charcoal-600/80">{lifetimeAccessExplanation(form)}</p>
+            </Field>
           </Section>
 
           <Section
@@ -764,6 +843,24 @@ export default function AdminLearningProgramEditor() {
                   <Link to="/admin/learning/certificates" className="font-semibold text-burgundy-600 hover:underline">Manage certificates</Link>
                 </p>
               </>
+            )}
+          </Section>
+
+          <Section
+            title="Final assessment (optional)"
+            description="A short end-of-course check. Knowledge checks inside lessons are separate and never block progress."
+          >
+            <QuestionListEditor questions={form.finalAssessmentQuestions} onChange={(v) => updateField('finalAssessmentQuestions', v)} max={25} />
+            {form.finalAssessmentQuestions.length > 0 && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-sm text-charcoal">
+                  <input type="checkbox" checked={form.finalAssessmentRequired} onChange={(e) => updateField('finalAssessmentRequired', e.target.checked)} />
+                  Required to complete the course (and earn any certificate)
+                </label>
+                <Field label="Passing score (%)">
+                  <input type="number" min={1} max={100} value={form.finalAssessmentPassingScore} onChange={(e) => updateField('finalAssessmentPassingScore', e.target.value)} className={inputClass} />
+                </Field>
+              </div>
             )}
           </Section>
 

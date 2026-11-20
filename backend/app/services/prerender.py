@@ -695,11 +695,45 @@ def render_resource_prerender(payload):
     return _main("resource", header, body)
 
 
+def _minutes_label(minutes):
+    if not minutes:
+        return ""
+    hours, mins = divmod(int(minutes), 60)
+    if not hours:
+        return f"{mins} min"
+    return f"{hours} hr {mins} min" if mins else f"{hours} hr"
+
+
+def _program_meta_line(program, stats):
+    """"Self-paced · Text-based · Intermediate" + "5 modules · 18 lessons ·
+    Approx. 2 hr 30 min" — derived facts only (learning_catalog)."""
+    first = [
+        "Self-paced" if program.delivery_mode == "self_paced" else _humanize(program.delivery_mode),
+        stats.get("formatLabel") or "",
+        _humanize(program.difficulty_level),
+    ]
+    second = []
+    if stats.get("moduleCount"):
+        second.append(f"{stats['moduleCount']} module{'s' if stats['moduleCount'] != 1 else ''}")
+    if stats.get("lessonCount"):
+        second.append(f"{stats['lessonCount']} lesson{'s' if stats['lessonCount'] != 1 else ''}")
+    if stats.get("totalMinutes"):
+        second.append(f"Approx. {_minutes_label(stats['totalMinutes'])}")
+    return [" · ".join(x for x in first if x), " · ".join(second)]
+
+
 def render_learning_prerender(program):
     """`program` is the published LearningProgram row. Public CATALOG
-    columns only — modules, lessons, assessments, enrollment and the
-    external/product delivery targets are never read here."""
+    columns and derived counts ("3 modules · 9 lessons · Approx. 1 hr")
+    only — module/lesson titles, lesson content, assessments, enrollment
+    and the external/product delivery targets are never written into the
+    server HTML (a long-standing rule, see tests/test_spa_shell_geo_phase3b1.py)."""
+    from app.services.learning_catalog import program_stats
+
+    stats = program_stats(program)
     header = [_h1(program.title), _paragraph(program.subtitle)]
+    for line in _program_meta_line(program, stats):
+        header.append(_paragraph(line, _META_CLASS))
     instructor = program.primary_instructor
     by = (
         f'<a href="/authors/{_attr(instructor.slug)}" class="{_LINK_CLASS}">{_text(instructor.name)}</a>'
@@ -723,9 +757,34 @@ def render_learning_prerender(program):
         _paragraph(program.short_description, _PARAGRAPH_CLASS),
         render_content_blocks(program.overview or []),
         _section("What you'll learn", _string_list(program.learning_outcomes)),
+        _section("Skills you'll build", _string_list(program.skills)),
+
         _section("Prerequisites", _string_list(program.prerequisites)),
     ]
     return _main("learning", header, body)
+
+
+def render_learning_path_prerender(path, programs):
+    """A published Learning Path: its copy and its published courses in
+    order (title, link, short description) — catalog facts only."""
+    from app.services.learning_paths import path_facts
+
+    facts = path_facts(path)
+    meta = [f"{facts['courseCount']} course{'s' if facts['courseCount'] != 1 else ''}"]
+    if facts.get("totalMinutes"):
+        meta.append(f"Approx. {_minutes_label(facts['totalMinutes'])}")
+    header = ['<p class="eyebrow">Learning Path</p>', _h1(path.title), _paragraph(path.subtitle), _paragraph(" · ".join(meta), _META_CLASS)]
+    courses = "".join(
+        f'<li><h3 class="{_FAQ_Q_CLASS}"><a href="/learning/{_attr(p.slug)}" class="{_LINK_CLASS}">{_text(p.title)}</a></h3>'
+        f"{_paragraph(p.short_description or p.subtitle)}</li>"
+        for p in programs
+    )
+    body = [
+        _paragraph(path.short_description, _PARAGRAPH_CLASS),
+        render_content_blocks(path.description or []),
+        _section("Courses in this path", f"<ol>{courses}</ol>"),
+    ]
+    return _main("learning-path", header, body)
 
 
 def render_organization_prerender(payload):

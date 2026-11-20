@@ -22,8 +22,11 @@ from app.services.learning_enrollments import (
     mark_lesson_incomplete,
     prefetch_active_certificates,
     serialize_enrollment_for_owner,
+    submit_final_assessment,
     withdraw,
 )
+from app.services.learning_assessments import learner_assessment_payload
+from app.services.learning_catalog import catalog_stats
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
 
@@ -115,7 +118,10 @@ class LearningEnrollmentMeResource(Resource):
         query = query.order_by(LearningEnrollment.enrolled_at.desc())
         result = paginate(query, schema=None)
         certificates = prefetch_active_certificates(result["items"])
-        items = [serialize_enrollment_for_owner(e, _program_summary_schema, certificates) for e in result["items"]]
+        # Per-request schema: the batched stats must never outlive this request.
+        program_schema = learning_program_summary_schema()
+        program_schema.context = {"catalog_stats": catalog_stats([e.learning_program_id for e in result["items"]])}
+        items = [serialize_enrollment_for_owner(e, program_schema, certificates) for e in result["items"]]
         return success_response(items, meta=result["meta"])
 
 
@@ -160,9 +166,28 @@ class LearningLessonCompletionResource(Resource):
         return success_response({"enrollment": _dump_enrollment(enrollment)})
 
 
+class LearningFinalAssessmentResource(Resource):
+    """The optional final assessment of the learner's own enrollment:
+    GET the questions (never the answers), POST answers to be graded."""
+
+    @active_user_required
+    def get(self, enrollment_id):
+        enrollment = _fetch_owned_enrollment_or_404(enrollment_id, current_user)
+        fetch_protected_curriculum(enrollment)
+        return success_response(learner_assessment_payload(enrollment))
+
+    @active_user_required
+    def post(self, enrollment_id):
+        enrollment = _fetch_owned_enrollment_or_404(enrollment_id, current_user)
+        data = request.get_json(silent=True) or {}
+        result = submit_final_assessment(enrollment, data.get("answers"))
+        return success_response({"result": result, "enrollment": _dump_enrollment(enrollment)})
+
+
 api.add_resource(LearningEnrollmentListResource, "")
 api.add_resource(LearningEnrollmentCheckResource, "/check")
 api.add_resource(LearningEnrollmentMeResource, "/me")
 api.add_resource(LearningEnrollmentWithdrawResource, "/<int:enrollment_id>/withdraw")
 api.add_resource(LearningEnrollmentCurriculumResource, "/<int:enrollment_id>/curriculum")
 api.add_resource(LearningLessonCompletionResource, "/<int:enrollment_id>/lessons/<int:lesson_id>/complete")
+api.add_resource(LearningFinalAssessmentResource, "/<int:enrollment_id>/assessment")

@@ -108,6 +108,7 @@ def create_app(config_name="development"):
     from app.api.v1.certificates import certificates_bp
     from app.api.v1.career_outcomes import career_outcomes_bp
     from app.api.v1.learning_enrollments import learning_enrollments_bp
+    from app.api.v1.learning_paths import learning_paths_bp
     from app.api.v1.media import media_bp
     from app.api.v1.newsletter import newsletter_bp
     from app.api.v1.nominations import nominations_bp
@@ -177,6 +178,7 @@ def create_app(config_name="development"):
     app.register_blueprint(certificates_bp, url_prefix="/api/v1/certificates")
     app.register_blueprint(career_outcomes_bp, url_prefix="/api/v1/career-outcomes")
     app.register_blueprint(learning_enrollments_bp, url_prefix="/api/v1/learning-enrollments")
+    app.register_blueprint(learning_paths_bp, url_prefix="/api/v1/learning-paths")
     app.register_blueprint(notifications_bp, url_prefix="/api/v1/admin/notifications")
     app.register_blueprint(saved_bp, url_prefix="/api/v1/saved")
     app.register_blueprint(webhooks_bp, url_prefix="/api/v1/webhooks")

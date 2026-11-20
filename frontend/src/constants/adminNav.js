@@ -37,6 +37,7 @@ import {
   ShieldCheck,
   MessageSquare,
   Library,
+  Route,
   Bell,
   Sparkles,
   Receipt,
@@ -120,6 +121,7 @@ export const NAV_GROUPS = [
     heading: 'Learning',
     items: [
       { to: '/admin/learning', icon: Library, label: 'Programs', permission: ['learning.manage'] },
+      { to: '/admin/learning/paths', icon: Route, label: 'Learning Paths', permission: ['learning.manage'] },
       { to: '/admin/learning/certificates', icon: Award, label: 'Certificates', permission: ['learning.manage'] },
     ],
   },

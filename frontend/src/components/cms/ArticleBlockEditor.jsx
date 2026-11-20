@@ -21,9 +21,17 @@ import {
   Plus,
   X,
   PanelTop,
+  Sparkles,
+  Lightbulb,
+  NotebookPen,
+  BookOpen,
+  ListChecks,
+  MessageCircleQuestion,
+  Library,
   Link2,
 } from 'lucide-react'
 import MediaPicker from './MediaPicker'
+import QuestionListEditor from './QuestionListEditor'
 import { fetchArticles } from '../../api/articles'
 import { CTA_PRESETS } from '../../constants/ctaPresets'
 import { DEFAULT_CONTENT_BLOCK_TYPES } from '../../constants/contentBlockTypes'
@@ -725,6 +733,113 @@ function ArticleCardBlock({ block, onChange }) {
   )
 }
 
+
+// --- Learning blocks (lesson content only) ---------------------------------
+// Shapes mirror backend content_blocks.LEARNING_BLOCK_SANITIZERS; the
+// learner-facing renderers live in components/learning/LearningBlocks.jsx.
+function LinesField({ value, onChange, placeholder, label, max }) {
+  return (
+    <textarea
+      rows={3}
+      value={(value || []).join('\n')}
+      onChange={(e) => onChange(e.target.value.split('\n').slice(0, max))}
+      onBlur={(e) => onChange(e.target.value.split('\n').map((v) => v.trim()).filter(Boolean).slice(0, max))}
+      placeholder={placeholder}
+      aria-label={label}
+      className={inputClass}
+    />
+  )
+}
+
+function KeyTakeawaysBlock({ block, onChange }) {
+  return (
+    <div className="space-y-2">
+      <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={80} placeholder="Title (default: Key takeaways)" aria-label="Title" className={inputClass} />
+      <LinesField value={block.items} onChange={(items) => onChange({ ...block, items })} placeholder="One takeaway per line" label="Takeaways" max={12} />
+    </div>
+  )
+}
+
+function TryThisBlock({ block, onChange }) {
+  return (
+    <div className="space-y-2">
+      <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={80} placeholder="Title (default: Try this)" aria-label="Title" className={inputClass} />
+      <RichTextField value={block.text} onChange={(text) => onChange({ ...block, text })} placeholder="A practical action to try at work this week…" />
+    </div>
+  )
+}
+
+function ReflectionBlock({ block, onChange }) {
+  return (
+    <div className="space-y-2">
+      <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={80} placeholder="Title (default: Reflection)" aria-label="Title" className={inputClass} />
+      <LinesField value={block.prompts} onChange={(prompts) => onChange({ ...block, prompts })} placeholder="One question per line (up to 5)" label="Reflection questions" max={5} />
+      <p className="text-[11px] text-charcoal-600">Learners answer privately; answers stay on their own device.</p>
+    </div>
+  )
+}
+
+function CaseStudyBlock({ block, onChange }) {
+  return (
+    <div className="space-y-2">
+      <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={160} placeholder="Case study title" aria-label="Case study title" className={inputClass} />
+      <RichTextField value={block.text} onChange={(text) => onChange({ ...block, text })} placeholder="The scenario…" />
+      <LinesField value={block.questions} onChange={(questions) => onChange({ ...block, questions })} placeholder="Discussion questions, one per line (optional)" label="Discussion questions" max={5} />
+    </div>
+  )
+}
+
+function ChecklistBlock({ block, onChange }) {
+  return (
+    <div className="space-y-2">
+      <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={80} placeholder="Title (default: Checklist)" aria-label="Title" className={inputClass} />
+      <LinesField value={block.items} onChange={(items) => onChange({ ...block, items })} placeholder="One item per line (up to 20)" label="Checklist items" max={20} />
+    </div>
+  )
+}
+
+function KnowledgeCheckBlock({ block, onChange }) {
+  return (
+    <div className="space-y-2">
+      <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={80} placeholder="Title (default: Knowledge check)" aria-label="Title" className={inputClass} />
+      <p className="text-[11px] text-charcoal-600">2–5 quick questions. Learners get instant feedback; it never blocks their progress.</p>
+      <QuestionListEditor questions={block.questions || []} onChange={(questions) => onChange({ ...block, questions })} max={5} />
+    </div>
+  )
+}
+
+function ResourceLinkBlock({ block, onChange }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <input value={block.resourceSlug || ''} onChange={(e) => onChange({ ...block, resourceSlug: e.target.value.trim().toLowerCase() })} placeholder="Resource slug, e.g. salary-negotiation-workbook" aria-label="Resource slug" className={inputClass} />
+      <input value={block.label || ''} onChange={(e) => onChange({ ...block, label: e.target.value })} maxLength={120} placeholder="Link text (optional)" aria-label="Link text" className={inputClass} />
+      <input value={block.note || ''} onChange={(e) => onChange({ ...block, note: e.target.value })} maxLength={300} placeholder="Short note (optional)" aria-label="Note" className={`${inputClass} sm:col-span-2`} />
+      <p className="text-[11px] text-charcoal-600 sm:col-span-2">Links to the Resource page, where its own access rules apply — files are never exposed here.</p>
+    </div>
+  )
+}
+
+function FurtherReadingBlock({ block, onChange }) {
+  const links = block.links?.length ? block.links : [{ label: '', url: '' }]
+  const update = (i, field, value) => onChange({ ...block, links: links.map((l, idx) => (idx === i ? { ...l, [field]: value } : l)) })
+  return (
+    <div className="space-y-2">
+      <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={80} placeholder="Title (default: Further reading)" aria-label="Title" className={inputClass} />
+      {links.map((link, i) => (
+        <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <input value={link.label} onChange={(e) => update(i, 'label', e.target.value)} maxLength={160} placeholder="Link text" aria-label={`Link ${i + 1} text`} className={inputClass} />
+          <input value={link.url} onChange={(e) => update(i, 'url', e.target.value)} placeholder="/topics/… or https://…" aria-label={`Link ${i + 1} address`} className={inputClass} />
+          <button type="button" onClick={() => onChange({ ...block, links: links.filter((_, idx) => idx !== i) })} aria-label={`Remove link ${i + 1}`} className="p-1 text-charcoal-600 hover:text-rose-600"><Trash2 size={14} /></button>
+          {link.url && !safeLinkUrl(link.url) && <p className="text-xs text-rose-600 sm:col-span-3">Use a site path or a full https:// address.</p>}
+        </div>
+      ))}
+      {links.length < 8 && (
+        <button type="button" onClick={() => onChange({ ...block, links: [...links, { label: '', url: '' }] })} className="text-xs font-semibold text-burgundy-600">+ Add link</button>
+      )}
+    </div>
+  )
+}
+
 const BLOCK_KINDS = {
   heading: { label: 'Heading', icon: Heading2, Editor: HeadingBlock },
   paragraph: { label: 'Paragraph', icon: Pilcrow, Editor: ParagraphBlock },
@@ -739,6 +854,14 @@ const BLOCK_KINDS = {
   relatedBlock: { label: 'Related article', icon: Link2, Editor: RelatedBlockEditor },
   articleCard: { label: 'Article card', icon: Newspaper, Editor: ArticleCardBlock },
   footerNote: { label: 'Footer note', icon: AlignLeft, Editor: FooterNoteBlock },
+  keyTakeaways: { label: 'Key takeaways', icon: Sparkles, Editor: KeyTakeawaysBlock },
+  tryThis: { label: 'Try this', icon: Lightbulb, Editor: TryThisBlock },
+  reflection: { label: 'Reflection', icon: NotebookPen, Editor: ReflectionBlock },
+  caseStudy: { label: 'Case study', icon: BookOpen, Editor: CaseStudyBlock },
+  checklist: { label: 'Checklist', icon: ListChecks, Editor: ChecklistBlock },
+  knowledgeCheck: { label: 'Knowledge check', icon: MessageCircleQuestion, Editor: KnowledgeCheckBlock },
+  resourceLink: { label: 'Worksheet / Resource', icon: NotebookPen, Editor: ResourceLinkBlock },
+  furtherReading: { label: 'Further reading', icon: Library, Editor: FurtherReadingBlock },
 }
 
 function blankBlock(type) {
@@ -766,6 +889,21 @@ function blankBlock(type) {
       return { type, articleSlug: '', title: '', excerpt: '', imageUrl: '' }
     case 'footerNote':
       return { type, text: '' }
+    case 'keyTakeaways':
+    case 'checklist':
+      return { type, title: '', items: [] }
+    case 'tryThis':
+      return { type, title: '', text: '' }
+    case 'reflection':
+      return { type, title: '', prompts: [] }
+    case 'caseStudy':
+      return { type, title: '', text: '', questions: [] }
+    case 'knowledgeCheck':
+      return { type, title: '', questions: [] }
+    case 'resourceLink':
+      return { type, resourceSlug: '', label: '', note: '' }
+    case 'furtherReading':
+      return { type, title: '', links: [] }
     default:
       return { type }
   }
@@ -773,8 +911,10 @@ function blankBlock(type) {
 
 const BLOCK_GROUPS = [
   { key: 'text', label: 'Text' },
+  { key: 'learning', label: 'Learning' },
   { key: 'editorial', label: 'Editorial' },
   { key: 'media', label: 'Media' },
+  { key: 'resources', label: 'Resources' },
   { key: 'engagement', label: 'Engagement' },
 ]
 
@@ -792,6 +932,14 @@ const ADD_MENU = [
   { type: 'relatedBlock', group: 'engagement', label: 'Related article', icon: Link2, description: 'Link up to three published stories.' },
   { type: 'articleCard', group: 'engagement', label: 'Article card', icon: Newspaper, description: 'A saved snapshot of one story (email-safe).' },
   { type: 'footerNote', group: 'editorial', label: 'Footer note', icon: AlignLeft, description: 'Small print at the end.' },
+  { type: 'keyTakeaways', group: 'learning', label: 'Key takeaways', icon: Sparkles, description: 'The lesson’s main points, in a few lines.' },
+  { type: 'caseStudy', group: 'learning', label: 'Example / case study', icon: BookOpen, description: 'A real-world scenario with questions.' },
+  { type: 'reflection', group: 'learning', label: 'Exercise / reflection', icon: NotebookPen, description: 'Questions learners answer privately.' },
+  { type: 'tryThis', group: 'learning', label: 'Try this', icon: Lightbulb, description: 'One practical action to take at work.' },
+  { type: 'checklist', group: 'learning', label: 'Checklist', icon: ListChecks, description: 'Steps learners can tick off.' },
+  { type: 'knowledgeCheck', group: 'learning', label: 'Knowledge check', icon: MessageCircleQuestion, description: '2–5 quick questions with instant feedback.' },
+  { type: 'resourceLink', group: 'resources', label: 'Worksheet / Resource', icon: NotebookPen, description: 'Point to a WSF Resource to use alongside.' },
+  { type: 'furtherReading', group: 'resources', label: 'Further reading', icon: Library, description: 'A short list of useful links.' },
 ]
 
 // The set every caller sees when it doesn't pass `blockTypes` (Resource,

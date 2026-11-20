@@ -23,26 +23,43 @@ CURRICULUM_ACCESS_REASONS = ("circle_required", "program_unavailable", "enrollme
 LIFETIME_DIGITAL_PRODUCT_TYPES = ("digital", "downloadable")
 
 
+def lifetime_forced_exclusion(program):
+    """Categories WSF Lifetime can NEVER include, whatever the Studio
+    override says: partner/third-party programs (a provider Organization),
+    external-enrollment programs, and product programs not sold as a
+    digital/downloadable Product (services, coaching, physical goods, or
+    no Product at all). Returns a short reason code, or None."""
+    if program.provider_organization_id is not None:
+        return "partner"
+    if program.access_type == "external":
+        return "external"
+    if program.access_type == "product":
+        product = program.product
+        if product is None or product.type not in LIFETIME_DIGITAL_PRODUCT_TYPES:
+            return "not_digital"
+    return None
+
+
 def is_lifetime_eligible_program(program):
-    """Whether a Learning program is WSF-owned digital Learning that WSF
-    Circle Lifetime includes — decided from the program's own fields and
-    its linked Product, never from Product titles or a blanket Product
-    rule:
-      * WSF-owned: no partner provider Organization (WSF-as-provider is
-        represented by leaving provider_organization_id empty);
-      * free / circle_only: included;
-      * product: included only when the program has a linked Product AND
-        that Product is a digital/downloadable wrapper for it;
-      * external: never (third-party/external enrollment).
+    """Whether WSF Lifetime includes this program. Precedence (highest
+    first):
+      1. Forced exclusion (lifetime_forced_exclusion): partner, external,
+         non-digital product -> never included; the override cannot
+         bypass it.
+      2. free / circle_only -> always included. A free program is open to
+         everyone and every Circle tier (Lifetime is the highest) unlocks
+         circle_only, so an "excluded" override would contradict the
+         Circle rule and is ignored here.
+      3. product (WSF-owned digital) -> the Studio override decides:
+         "excluded" -> not included; "default" or "included" -> included.
     Evaluated live on every request, so future eligible programs are
     included automatically with no per-member rows."""
-    if program.provider_organization_id is not None:
+    if lifetime_forced_exclusion(program) is not None:
         return False
     if program.access_type in ("free", "circle_only"):
         return True
     if program.access_type == "product":
-        product = program.product
-        return product is not None and product.type in LIFETIME_DIGITAL_PRODUCT_TYPES
+        return getattr(program, "lifetime_access", "default") != "excluded"
     return False
 
 

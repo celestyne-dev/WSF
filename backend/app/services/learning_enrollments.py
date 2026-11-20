@@ -29,6 +29,8 @@ from app.extensions import db
 from app.models.learning import LearningProgram
 from app.models.learning_enrollment import LearningEnrollment, LearningLessonProgress
 from app.services.learning_access import can_access_program_content, curriculum_access_state
+from app.services.learning_assessments import assessment_gates_completion, assessment_summary, grade_assessment
+from app.services.learning_catalog import next_lesson_id
 from app.services.learning_certificates import issue_certificate_if_eligible, program_issues_certificates
 from app.utils.responses import ApiError
 
@@ -174,6 +176,27 @@ def _check_progress_allowed(enrollment, lesson):
         )
 
 
+def completion_requirements_met(enrollment, summary):
+    """THE course-completion rule: every current lesson complete AND, only
+    when the Program requires a final assessment that has questions, a
+    passing score. Lifetime/Circle change access, never this rule."""
+    lessons_done = summary["total_lessons"] > 0 and summary["completed_lessons"] >= summary["total_lessons"]
+    if not lessons_done:
+        return False
+    if assessment_gates_completion(enrollment.learning_program):
+        return enrollment.final_assessment_passed_at is not None
+    return True
+
+
+def _apply_completion(enrollment, summary):
+    if completion_requirements_met(enrollment, summary):
+        if enrollment.completed_at is None:
+            enrollment.completed_at = datetime.now(timezone.utc)
+        # Backend-authoritative, idempotent certificate issuance in the same
+        # transaction as completion (no-op unless the program opted in).
+        issue_certificate_if_eligible(enrollment)
+
+
 def mark_lesson_complete(enrollment, lesson):
     _check_progress_allowed(enrollment, lesson)
     program = enrollment.learning_program
@@ -182,12 +205,7 @@ def mark_lesson_complete(enrollment, lesson):
         enrollment.lesson_progress.append(LearningLessonProgress(lesson_id=lesson.id))
 
     summary = progress_summary(enrollment, program)
-    if summary["total_lessons"] > 0 and summary["completed_lessons"] >= summary["total_lessons"]:
-        if enrollment.completed_at is None:
-            enrollment.completed_at = datetime.now(timezone.utc)
-        # Backend-authoritative, idempotent certificate issuance in the same
-        # transaction as completion (no-op unless the program opted in).
-        issue_certificate_if_eligible(enrollment)
+    _apply_completion(enrollment, summary)
 
     db.session.commit()
     return summary
@@ -208,6 +226,18 @@ def mark_lesson_incomplete(enrollment, lesson):
 
     db.session.commit()
     return summary
+
+
+def submit_final_assessment(enrollment, answers):
+    """Grades the optional final assessment for the learner's own active,
+    accessible enrollment, then re-applies the completion rule (a pass may
+    complete the course and issue its certificate)."""
+    fetch_protected_curriculum(enrollment)
+    result = grade_assessment(enrollment, answers)
+    summary = progress_summary(enrollment)
+    _apply_completion(enrollment, summary)
+    db.session.commit()
+    return {**result, "completed": enrollment.completed_at is not None, **summary}
 
 
 _NO_PREFETCH = object()
@@ -258,6 +288,10 @@ def serialize_enrollment_for_owner(enrollment, program_summary_schema, certifica
         # learner's active certificate, if issued. `certificates` is an
         # optional {enrollment_id: certificate} prefetch for list pages.
         "certificate_enabled": program_issues_certificates(program),
+        "next_lesson_id": next_lesson_id(program, [p.lesson_id for p in enrollment.lesson_progress]),
+        "final_assessment": assessment_summary(program),
+        "final_assessment_best_score": enrollment.final_assessment_best_score,
+        "final_assessment_passed": enrollment.final_assessment_passed_at is not None,
         "certificate": _owner_certificate(enrollment, certificates),
     }
 

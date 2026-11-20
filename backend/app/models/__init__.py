@@ -50,6 +50,8 @@ from app.models.directory import (  # noqa: F401
 from app.models.learning import (  # noqa: F401
     LearningLesson,
     LearningModule,
+    LearningPath,
+    LearningPathProgram,
     LearningProgram,
     LearningProgramEvent,
     LearningProgramRelatedArticle,

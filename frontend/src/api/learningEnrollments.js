@@ -32,6 +32,12 @@ function mapEnrollment(e) {
     // program issues one, and the learner's active certificate if issued.
     certificateEnabled: !!(e.certificate_enabled ?? e.certificateEnabled),
     certificate: mapCertificate(e.certificate),
+    // The first lesson (curriculum order) not yet completed; null when all are.
+    nextLessonId: e.next_lesson_id ?? null,
+    // Optional final assessment: public summary + the learner's own result.
+    finalAssessment: e.final_assessment || null,
+    finalAssessmentBestScore: e.final_assessment_best_score ?? null,
+    finalAssessmentPassed: !!e.final_assessment_passed,
     program: mapLearningProgram(e.program),
   }
 }
@@ -125,4 +131,15 @@ export async function fetchAdminLearningEnrollments(programId, params = {}) {
       totalPages: pagination.total_pages || 0,
     },
   }
+}
+
+// Optional final assessment of the learner's own enrollment.
+export async function fetchFinalAssessment(enrollmentId) {
+  const { data } = await apiClient.get(`/learning-enrollments/${enrollmentId}/assessment`)
+  return data
+}
+
+export async function submitFinalAssessment(enrollmentId, answers) {
+  const { data } = await apiClient.post(`/learning-enrollments/${enrollmentId}/assessment`, { answers })
+  return { result: data.result, enrollment: mapEnrollment(data.enrollment) }
 }

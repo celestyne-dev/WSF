@@ -561,7 +561,11 @@ const RENDERERS = {
 // long-form treatment — darker body copy, slightly stronger headings,
 // clearer list markers, an accented Callout — with no lead-paragraph
 // styling; every block type it doesn't name falls back to the generic look.
-export default function ArticleContent({ blocks = [], relatedArticlesBySlug, headingIdForBlock, variant }) {
+// `extraRenderers` (optional) adds block types for one caller only — the
+// Learning lesson page passes its learning blocks (components/learning/
+// LearningBlocks.jsx) so they never enter the main bundle. `rendererProps`
+// is spread into every renderer (e.g. the lesson id a knowledge check posts to).
+export default function ArticleContent({ blocks = [], relatedArticlesBySlug, headingIdForBlock, variant, extraRenderers, rendererProps }) {
   // -1 unless variant is "article" or "resource" (every other caller), so
   // `i === firstParagraphIndex` below is never true for them — no lead-
   // paragraph behavior change outside those two treatments.
@@ -573,7 +577,7 @@ export default function ArticleContent({ blocks = [], relatedArticlesBySlug, hea
   return (
     <div>
       {blocks.map((block, i) => {
-        const Renderer = RENDERERS[block.type]
+        const Renderer = (extraRenderers && extraRenderers[block.type]) || RENDERERS[block.type]
         if (!Renderer) return null
         return (
           <Renderer
@@ -584,6 +588,8 @@ export default function ArticleContent({ blocks = [], relatedArticlesBySlug, hea
             variant={variant}
             isLeadParagraph={i === firstParagraphIndex}
             listStart={listStarts[i]}
+            blockIndex={i}
+            {...rendererProps}
           />
         )
       })}

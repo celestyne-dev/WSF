@@ -75,6 +75,10 @@ const MentorshipPage = lazy(() => import('../pages/MentorshipPage'))
 const CommunityPage = lazy(() => import('../pages/CommunityPage'))
 const LearningPage = lazy(() => import('../pages/LearningPage'))
 const LearningProgramDetailPage = lazy(() => import('../pages/LearningProgramDetailPage'))
+const LearningLessonPage = lazy(() => import('../pages/LearningLessonPage'))
+const LearningPathsPage = lazy(() => import('../pages/LearningPathsPage'))
+const LearningPathDetailPage = lazy(() => import('../pages/LearningPathDetailPage'))
+const LifetimePage = lazy(() => import('../pages/LifetimePage'))
 const CertificateVerifyPage = lazy(() => import('../pages/CertificateVerifyPage'))
 const ShopPage = lazy(() => import('../pages/ShopPage'))
 const ProductDetailPage = lazy(() => import('../pages/ProductDetailPage'))
@@ -103,6 +107,8 @@ const AdminLearningPrograms = lazy(() => import('../pages/admin/AdminLearningPro
 const AdminLearningProgramEditor = lazy(() => import('../pages/admin/AdminLearningProgramEditor'))
 const AdminLearningEnrollments = lazy(() => import('../pages/admin/AdminLearningEnrollments'))
 const AdminLearningCertificates = lazy(() => import('../pages/admin/AdminLearningCertificates'))
+const AdminLearningPaths = lazy(() => import('../pages/admin/AdminLearningPaths'))
+const AdminLearningPathEditor = lazy(() => import('../pages/admin/AdminLearningPathEditor'))
 const AdminProducts = lazy(() => import('../pages/admin/AdminProducts'))
 const AdminProductEditor = lazy(() => import('../pages/admin/AdminProductEditor'))
 const AdminOrders = lazy(() => import('../pages/admin/AdminOrders'))
@@ -251,7 +257,11 @@ export default function AppRoutes() {
           <Route path="/circle" element={<CirclePage />} />
           <Route path="/circle/checkout/callback" element={<CircleCheckoutCallbackPage />} />
           <Route path="/learning" element={<LearningPage />} />
+          <Route path="/learning/paths" element={<LearningPathsPage />} />
+          <Route path="/learning/paths/:slug" element={<LearningPathDetailPage />} />
           <Route path="/learning/:slug" element={<LearningProgramDetailPage />} />
+          <Route path="/learning/:slug/lessons/:lessonId" element={<LearningLessonPage />} />
+          <Route path="/lifetime" element={<LifetimePage />} />
           <Route path="/certificates/verify/:publicId" element={<CertificateVerifyPage />} />
           <Route path="/shop" element={<ShopPage />} />
           <Route path="/shop/:slug" element={<ProductDetailPage />} />
@@ -301,6 +311,9 @@ export default function AppRoutes() {
           <Route path="learning" element={<AdminLearningPrograms />} />
           <Route path="learning/new" element={<AdminLearningProgramEditor />} />
           <Route path="learning/certificates" element={<AdminLearningCertificates />} />
+          <Route path="learning/paths" element={<AdminLearningPaths />} />
+          <Route path="learning/paths/new" element={<AdminLearningPathEditor />} />
+          <Route path="learning/paths/:id" element={<AdminLearningPathEditor />} />
           <Route path="learning/:id" element={<AdminLearningProgramEditor />} />
           <Route path="learning/:id/enrollments" element={<AdminLearningEnrollments />} />
           <Route path="products" element={<AdminProducts />} />

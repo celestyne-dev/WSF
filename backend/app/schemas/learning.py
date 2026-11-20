@@ -10,6 +10,7 @@ from app.models.learning import (
     LEARNING_PROGRAM_TYPES,
     LEARNING_STATUSES,
     LESSON_TYPES,
+    LIFETIME_ACCESS_OPTIONS,
     VIDEO_LESSON_TYPES,
     LearningLesson,
     LearningModule,
@@ -29,7 +30,15 @@ _LESSON_ARTICLE_ONLY = ("id", "slug", "title")
 _LESSON_RESOURCE_ONLY = ("id", "slug", "name")
 
 
+def _include_answers(schema):
+    return bool((schema.context or {}).get("include_answers"))
+
+
 class LearningLessonSchema(ma.SQLAlchemyAutoSchema):
+    # Knowledge-check answers are stripped from lesson content for every
+    # learner/public payload; only the Studio editor (context
+    # include_answers=True) receives them. See content_blocks.public_lesson_content.
+    content = fields.Method("get_content")
     article = fields.Method("get_article")
     resource = fields.Method("get_resource")
     thumbnail = fields.Nested(MediaSchema, dump_only=True)
@@ -41,6 +50,11 @@ class LearningLessonSchema(ma.SQLAlchemyAutoSchema):
         model = LearningLesson
         load_instance = False
         exclude = ("module_id", "thumbnail_media_id")
+
+    def get_content(self, obj):
+        from app.services.content_blocks import public_lesson_content
+
+        return obj.content or [] if _include_answers(self) else public_lesson_content(obj.content or [])
 
     def get_embed_url(self, obj):
         if obj.lesson_type not in VIDEO_LESSON_TYPES or not obj.external_url:
@@ -132,10 +146,41 @@ class LearningProgramSchema(ma.SQLAlchemyAutoSchema):
     career_format = fields.Method("get_career_format", data_key="format")
     estimated_time = fields.Method("get_estimated_time", data_key="estimatedTime")
     circle_inclusion = fields.Method("get_circle_inclusion", data_key="circleInclusion")
+    # Derived curriculum facts (module/lesson counts, total minutes,
+    # Text-based/Mixed/Video-led) — see app/services/learning_catalog.py.
+    # List endpoints pass precomputed `catalog_stats` in context (one
+    # grouped query); a detail dump derives from the loaded modules.
+    stats = fields.Method("get_stats")
+    # Full questions (with answers) only for the Studio editor; everyone
+    # else gets the public summary below.
+    final_assessment = fields.Method("get_final_assessment")
+    final_assessment_summary = fields.Method("get_final_assessment_summary", data_key="finalAssessment")
+    lifetime_included = fields.Method("get_lifetime_included", data_key="lifetimeIncluded")
 
     class Meta:
         model = LearningProgram
         load_instance = False
+
+    def get_stats(self, obj):
+        from app.services.learning_catalog import EMPTY_STATS, program_stats
+
+        prefetched = (self.context or {}).get("catalog_stats")
+        if prefetched is not None:
+            return prefetched.get(obj.id, EMPTY_STATS)
+        return program_stats(obj)
+
+    def get_final_assessment(self, obj):
+        return obj.final_assessment or [] if _include_answers(self) else None
+
+    def get_final_assessment_summary(self, obj):
+        from app.services.learning_assessments import assessment_summary
+
+        return assessment_summary(obj)
+
+    def get_lifetime_included(self, obj):
+        from app.services.learning_access import is_lifetime_eligible_program
+
+        return is_lifetime_eligible_program(obj)
 
     def get_career_format(self, obj):
         from app.services.career_hub import program_format
@@ -223,6 +268,17 @@ def learning_program_summary_schema(many=False):
     )
 
 
+def summary_schema_for(programs):
+    """A summary schema whose derived `stats` for these programs come from
+    ONE grouped query (app/services/learning_catalog.catalog_stats) instead
+    of loading every program's modules/lessons — use it for any list."""
+    from app.services.learning_catalog import catalog_stats
+
+    schema = learning_program_summary_schema()
+    schema.context = {"catalog_stats": catalog_stats([p.id for p in programs])}
+    return schema
+
+
 def admin_learning_program_summary_schema(many=False):
     """Row shape for the admin Learning list (spec section 50) — no full
     curriculum/overview, but includes status (never shown publicly).
@@ -250,7 +306,12 @@ class LearningProgramInputSchema(ma.Schema):
     topic_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="topicSlugs")
 
     overview = fields.List(fields.Dict(), required=False, load_default=list)
-    learning_outcomes = fields.List(fields.String(), required=False, load_default=list, data_key="learningOutcomes")
+    learning_outcomes = fields.List(fields.String(validate=validate.Length(max=300)), required=False, load_default=list, data_key="learningOutcomes", validate=validate.Length(max=12))
+    skills = fields.List(fields.String(validate=validate.Length(max=60)), required=False, load_default=list, validate=validate.Length(max=12))
+    lifetime_access = fields.String(required=False, load_default="default", data_key="lifetimeAccess", validate=validate.OneOf(LIFETIME_ACCESS_OPTIONS))
+    final_assessment = fields.List(fields.Dict(), required=False, load_default=list, data_key="finalAssessment")
+    final_assessment_required = fields.Boolean(required=False, load_default=False, data_key="finalAssessmentRequired")
+    final_assessment_passing_score = fields.Integer(required=False, load_default=70, data_key="finalAssessmentPassingScore", validate=validate.Range(min=1, max=100))
     prerequisites = fields.List(fields.String(), required=False, load_default=list)
     duration_value = fields.Integer(required=False, allow_none=True, data_key="durationValue", validate=validate.Range(min=1))
     duration_unit = fields.String(required=False, allow_none=True, data_key="durationUnit", validate=validate.OneOf(DURATION_UNITS))

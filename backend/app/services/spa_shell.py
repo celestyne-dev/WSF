@@ -84,7 +84,7 @@ from app.models.commerce import Product
 from app.models.community import CommunityPage
 from app.models.directory import DirectoryListing
 from app.models.entity_redirect import EntityRedirect
-from app.models.learning import LearningProgram
+from app.models.learning import LearningPath, LearningProgram
 from app.models.media import Media
 from app.models.newsletter import NewsletterIssue
 from app.models.opportunity import Event, Job, Opportunity
@@ -1921,7 +1921,41 @@ _ENTITY_TYPE_BY_PREFIX = {
 # frontend/src/hooks/useBreadcrumbStructuredData.js).
 # Topic/Series/Opportunity get BreadcrumbList only (see section 9 of the
 # implementation task) — deliberately absent from this second dict.
+def _build_course_json_ld(program, canonical, public_site_url, site_name):
+    """schema.org Course for a published WSF Learning program — accurate
+    facts only: name, description, URL, provider (WSF, or the published
+    partner Organization), level, skills it teaches, free access, and an
+    online self-paced instance with a workload only when lesson durations
+    are actually set. No ratings, prices, credentials or accreditation."""
+    from app.services.learning_catalog import program_stats
+
+    partner = program.provider_organization
+    provider_name = partner.name if partner is not None and partner.status == "published" else site_name
+    data = {
+        "@context": "https://schema.org",
+        "@type": "Course",
+        "name": program.title,
+        "description": program.short_description or program.subtitle or program.title,
+        "url": canonical,
+        "provider": {"@type": "Organization", "name": provider_name},
+    }
+    if program.difficulty_level and program.difficulty_level != "all_levels":
+        data["educationalLevel"] = program.difficulty_level.replace("_", " ").title()
+    if program.skills:
+        data["teaches"] = [s for s in program.skills if s]
+    if program.access_type == "free":
+        data["isAccessibleForFree"] = True
+    if program.delivery_mode == "self_paced":
+        instance = {"@type": "CourseInstance", "courseMode": "Online"}
+        minutes = program_stats(program).get("totalMinutes")
+        if minutes:
+            instance["courseWorkload"] = f"PT{int(minutes)}M"
+        data["hasCourseInstance"] = [instance]
+    return data
+
+
 _ENTITY_STRUCTURED_DATA_BUILDERS = {
+    "learning": ("data-course-structured-data", _build_course_json_ld),
     "jobs": ("data-job-structured-data", _build_job_json_ld),
     "events": ("data-event-structured-data", _build_event_json_ld),
     "resources": ("data-resource-structured-data", _build_resource_json_ld),
@@ -1930,8 +1964,8 @@ _ENTITY_STRUCTURED_DATA_BUILDERS = {
     "organizations": ("data-org-structured-data", _build_organization_json_ld),
     "directory": ("data-directory-structured-data", _build_directory_json_ld),
     "shop": ("data-product-structured-data", _build_product_json_ld),
-    # Learning/Newsletter have no frontend structured-data hook, so no
-    # entity schema is invented for them here — BreadcrumbList only.
+    # Newsletter has no entity schema — BreadcrumbList only. Learning's
+    # Course data is server-rendered only (accurate catalog facts).
 }
 
 # WSF SEO Phase 2C — the 3 non-Article entity-detail prefixes whose
@@ -2078,8 +2112,18 @@ _STATIC_ROUTES = {
     ),
     "learning": (
         "list",
-        "Learning | Women Shaping Futures",
-        "Courses, masterclasses, and learning programs on leadership, entrepreneurship, and career growth.",
+        "WSF Learning | Women Shaping Futures",
+        "Self-paced, text-first courses and guided learning paths to build the skills that move your career forward.",
+    ),
+    "learning/paths": (
+        "list",
+        "Learning Paths | WSF Learning",
+        "Guided career journeys: a few focused WSF courses, in order, for one career goal.",
+    ),
+    "lifetime": (
+        "list",
+        "WSF Lifetime | Women Shaping Futures",
+        "One payment. Lifetime access to eligible WSF courses, learning paths, premium career resources and member benefits.",
     ),
     "shop": ("list", "Shop | Women Shaping Futures", "Digital products, guides, templates, and workbooks from Women Shaping Futures."),
     # Public singleton pages already listed in sitemap.py's
@@ -2242,9 +2286,9 @@ _HUB_PAGES = {
     "resources": ("resources-index", "Resource Library", "Guides, Workbooks & Toolkits Built for Your Next Move",
                   "Practical tools from our editors and career coaches — career planning, negotiation, leadership, and business, free, WSF Circle, and premium.",
                   "Featured resources", "resources", "resources_hub", "No resources are listed right now — check back soon."),
-    "learning": ("learning-index", "WSF Learning", "Courses, Masterclasses & Learning Programs",
-                 "Structured learning on leadership, entrepreneurship, and career growth — self-paced courses, live masterclasses, and guided programs.",
-                 "Programs", "learning", "learning_hub", "No learning programs are listed right now — check back soon."),
+    "learning": ("learning-index", "WSF Learning", "Build the skills to move your career forward.",
+                 "Self-paced, text-first courses and guided learning paths — practical, mobile-friendly, and easy to finish in short sessions.",
+                 "All courses", "learning", "learning_hub", "New courses are on the way. Check back soon."),
     "people": ("people-index", "People", "The People Directory",
                "Founders, executives, scientists, and public servants — the women building the future, profiled by WSF, from every region.",
                "Profiles", "people", "people_hub", "No profiles are listed right now — check back soon."),
@@ -2294,7 +2338,82 @@ def _hub_prerender(subpath):
         return _career_hub_prerender()
     if subpath == "mentorship":
         return _mentorship_prerender(public_hubs.mentorship_programs_hub())
+    if subpath == "learning/paths":
+        return _learning_paths_prerender()
+    if subpath == "lifetime":
+        return _lifetime_prerender(public_hubs.circle_plans_hub())
     return None
+
+
+# Same copy as frontend/src/constants/lifetime.js (kept in sync by
+# tests/test_learning_lifetime_phase.py). "Eligible" is deliberate: Lifetime
+# covers WSF-owned digital learning and resources, never everything.
+LIFETIME_TITLE = "Everything you need to keep growing your career — for life."
+LIFETIME_LEAD = (
+    "One payment. Lifetime access to eligible WSF courses, learning paths, premium career tools, "
+    "resources and member benefits."
+)
+LIFETIME_INCLUDED = (
+    "Unlimited eligible WSF Learning courses",
+    "Learning Paths",
+    "Certificates of Completion when you complete a certificate-enabled course",
+    "Premium Resource Vault",
+    "Career Hub member benefits",
+    "WSF Circle membership",
+    "Future eligible WSF-owned digital courses and resources",
+)
+LIFETIME_EXCLUDED_NOTE = (
+    "Not included: physical products, 1:1 coaching, CV writing and other done-for-you services, consulting, "
+    "retreats and travel, paid in-person events, partner or external courses, and third-party certifications."
+)
+
+
+def _lifetime_prerender(plans):
+    from app.services.prerender import _paragraph, _section, _string_list, _text
+
+    lifetime = [p for p in plans if p.get("billingInterval") == "lifetime"]
+    if lifetime:
+        cards = []
+        for plan in lifetime:
+            default = next((p for p in plan.get("prices") or [] if p.get("currency") == plan.get("defaultCurrency")), None)
+            price = f"{default['formatted']} one-time" if default else ""
+            availability = plan.get("availability") or {}
+            offer = ""
+            if plan.get("isFounding"):
+                offer = "Founding Lifetime Membership · " + ("Founding offer full" if availability.get("full") else "Limited availability")
+            cards.append(f"<li><h3>{_text(plan.get('name'))}</h3>{_paragraph(offer)}{_paragraph(price)}{_paragraph(plan.get('shortDescription'))}</li>")
+        plans_html = _paragraph("One payment. No membership renewal.") + f"<ul>{''.join(cards)}</ul>"
+    else:
+        plans_html = _paragraph("WSF Lifetime is not open for new members right now. Join the WSF Weekly newsletter to hear when it opens.")
+    extra = [
+        _section("What's included", _string_list(LIFETIME_INCLUDED) + _paragraph(LIFETIME_EXCLUDED_NOTE)),
+        _section("Join WSF Lifetime", plans_html),
+    ]
+    return render_hub_prerender("lifetime", "WSF Lifetime", LIFETIME_TITLE, LIFETIME_LEAD, None, None, [], None, extra_sections=extra)
+
+
+def _learning_paths_prerender():
+    from app.services.learning_paths import path_facts, public_paths_query, published_programs
+    from app.services.prerender import _attr, _paragraph, _section, _text
+
+    paths = [p for p in public_paths_query().order_by(LearningPath.featured.desc(), LearningPath.title).limit(48).all() if published_programs(p)]
+    if paths:
+        items = []
+        for path in paths:
+            facts = path_facts(path)
+            meta = f"{facts['courseCount']} course{'s' if facts['courseCount'] != 1 else ''}"
+            items.append(
+                f'<li><h3><a href="/learning/paths/{_attr(path.slug)}" class="font-medium text-burgundy-600 hover:underline">{_text(path.title)}</a></h3>'
+                f"{_paragraph(meta)}{_paragraph(path.short_description or path.subtitle)}</li>"
+            )
+        body = f"<ul>{''.join(items)}</ul>"
+    else:
+        body = _paragraph("Learning Paths are coming soon. Browse WSF courses in the meantime.")
+    return render_hub_prerender(
+        "learning-paths", "WSF Learning", "Learning Paths",
+        "Guided career journeys: a few focused WSF courses, in order, for one career goal.",
+        None, None, [], None, extra_sections=[_section("All paths", body)],
+    )
 
 
 def _circle_prerender(plans):
@@ -2707,6 +2826,89 @@ def is_reserved_path(subpath):
     return subpath in _RESERVED_EXACT or any(subpath.startswith(p) for p in _RESERVED_PREFIXES)
 
 
+def _render_learning_lesson_shell(program_slug):
+    """/learning/<slug>/lessons/<id>: a real SPA route for a published
+    course, but never indexable (lesson pages are the learner's working
+    space; the course page is the canonical public page). Unknown or
+    unpublished course -> the normal 404. No lesson content, title or
+    access state is ever written into this HTML."""
+    program = _lookup_learning_program(program_slug)
+    if program is None:
+        return _render_404_shell()
+    public_site_url = current_app.config["PUBLIC_SITE_URL"]
+    site_name = get_site_identity_resolved().get("site_name") or "Women Shaping Futures"
+    html_doc = _apply_base_seo(
+        _read_index_html(),
+        title=f"{program.title} | WSF Learning",
+        description=None,
+        canonical=f"{public_site_url.rstrip('/')}/learning/{program.slug}",
+        robots="noindex, follow",
+        og_type="website",
+        image_url=None,
+        image_alt=None,
+        site_name=site_name,
+    )
+    return _html_response(html_doc)
+
+
+def _build_learning_path_json_ld(path, programs, canonical, public_site_url):
+    """CollectionPage + ItemList of the path's published courses, in order
+    — nothing else is claimed (no ratings, credentials, prices)."""
+    base = public_site_url.rstrip("/")
+    return {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": path.title,
+        "description": path.short_description or path.subtitle or None,
+        "url": canonical,
+        "mainEntity": {
+            "@type": "ItemList",
+            "numberOfItems": len(programs),
+            "itemListElement": [
+                {"@type": "ListItem", "position": i + 1, "url": f"{base}/learning/{p.slug}", "name": p.title}
+                for i, p in enumerate(programs)
+            ],
+        },
+    }
+
+
+def _render_learning_path_shell(slug):
+    from app.services.learning_paths import public_paths_query, published_programs
+    from app.services.prerender import render_learning_path_prerender
+
+    path = public_paths_query().filter(LearningPath.slug == slug).first()
+    programs = published_programs(path) if path is not None else []
+    if not programs:
+        return _render_404_shell()
+    public_site_url = current_app.config["PUBLIC_SITE_URL"]
+    site_identity = get_site_identity_resolved()
+    site_name = site_identity.get("site_name") or "Women Shaping Futures"
+    seo = path.seo or {}
+    canonical = f"{public_site_url.rstrip('/')}/learning/paths/{path.slug}"
+    image_url, image_alt = _resolve_social_image(None, path.hero_media, site_identity, public_site_url)
+    html_doc = _apply_base_seo(
+        _read_index_html(),
+        title=seo.get("title") or f"{path.title} | WSF Learning Paths",
+        description=seo.get("description") or path.short_description or path.subtitle or path.title,
+        canonical=canonical,
+        robots="index, follow",
+        og_type="website",
+        image_url=image_url,
+        image_alt=image_alt,
+        site_name=site_name,
+    )
+    html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
+    base = public_site_url.rstrip("/")
+    breadcrumb = _build_breadcrumb_json_ld(
+        public_site_url,
+        [("Learning", f"{base}/learning"), ("Learning Paths", f"{base}/learning/paths"), (path.title, canonical)],
+    )
+    html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
+    html_doc = _set_structured_data(html_doc, "data-learning-path-structured-data", _build_learning_path_json_ld(path, programs, canonical, public_site_url))
+    html_doc = _set_root_prerender(html_doc, render_learning_path_prerender(path, programs))
+    return _html_response(html_doc)
+
+
 def resolve_spa_response(subpath):
     """The one entry point app/__init__.py's catch-all route calls for
     any path Nginx's own static-file try_files would have missed in
@@ -2773,6 +2975,12 @@ def resolve_spa_response(subpath):
 
     if len(segments) == 3 and segments[0] == "certificates" and segments[1] == "verify" and segments[2]:
         return _render_certificate_verification_shell(segments[2])
+
+    if len(segments) == 3 and segments[0] == "learning" and segments[1] == "paths" and segments[2]:
+        return _render_learning_path_shell(segments[2])
+
+    if len(segments) == 4 and segments[0] == "learning" and segments[2] == "lessons" and segments[3].isdigit():
+        return _render_learning_lesson_shell(segments[1])
 
     if len(segments) == 2 and segments[0] in _ENTITY_DETAIL_PREFIXES and segments[1]:
         return _render_entity_detail(segments[0], segments[1])

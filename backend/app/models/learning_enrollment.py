@@ -42,6 +42,10 @@ class LearningEnrollment(db.Model):
     enrolled_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     withdrawn_at = db.Column(db.DateTime(timezone=True), nullable=True)
     completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # Optional final assessment (see app/services/learning_assessments.py):
+    # the learner's best score (0-100) and when she first passed.
+    final_assessment_best_score = db.Column(db.Integer, nullable=True)
+    final_assessment_passed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     updated_at = db.Column(
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
     )

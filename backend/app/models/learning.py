@@ -1,7 +1,13 @@
-"""WSF Learning: structured educational offerings (short courses,
-masterclasses, guided programs, learning series) — deliberately NOT a
-full LMS. See the final report for the exhaustive out-of-scope list
-(no accounts, entitlement, progress tracking, quizzes, certificates).
+"""WSF Learning: structured, text-first educational offerings (short
+courses, masterclasses, guided programs, learning series, challenges) and
+Learning Paths that group them into guided career journeys.
+
+Deliberately NOT a full LMS: enrollment/progress live in
+app/models/learning_enrollment.py, certificates in learning_certificate.py,
+lightweight knowledge checks are content blocks inside lessons, and the
+optional final assessment is a short question list on the Program itself
+(app/services/learning_assessments.py). Video lessons remain supported but
+optional; a course with zero video is the default case.
 
 One controlled LearningProgram model (rather than separate Course/
 Masterclass/Program models) — `program_type` classifies it, matching how
@@ -75,6 +81,9 @@ _DURATION_UNIT_CHECK_SQL = "duration_unit IS NULL OR duration_unit IN (" + ", ".
 LEARNING_STATUSES = ("draft", "review", "published", "archived")
 _LEARNING_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in LEARNING_STATUSES) + ")"
 
+LIFETIME_ACCESS_OPTIONS = ("default", "included", "excluded")
+_LIFETIME_ACCESS_CHECK_SQL = "lifetime_access IN (" + ", ".join(f"'{o}'" for o in LIFETIME_ACCESS_OPTIONS) + ")"
+
 learning_program_topics = db.Table(
     "learning_program_topics",
     db.Column("learning_program_id", db.Integer, db.ForeignKey("learning_programs.id", ondelete="CASCADE"), primary_key=True),
@@ -146,6 +155,8 @@ class LearningProgram(db.Model):
         db.CheckConstraint(_DURATION_UNIT_CHECK_SQL, name="ck_learning_programs_duration_unit"),
         db.CheckConstraint(_LEARNING_STATUS_CHECK_SQL, name="ck_learning_programs_status"),
         db.CheckConstraint("duration_value IS NULL OR duration_value > 0", name="ck_learning_programs_duration_positive"),
+        db.CheckConstraint(_LIFETIME_ACCESS_CHECK_SQL, name="ck_learning_programs_lifetime_access"),
+        db.CheckConstraint("final_assessment_passing_score BETWEEN 1 AND 100", name="ck_learning_programs_passing_score"),
     )
 
     # IDENTITY
@@ -200,6 +211,23 @@ class LearningProgram(db.Model):
     # (validated at the schema layer via services.homepage.validate_cta_url,
     # the same validator every other CMS CTA field already uses).
     external_url = db.Column(db.String(500))
+
+    # "Skills you'll build" — short plain labels (list[str]), like
+    # learning_outcomes. Topics remain the browse taxonomy.
+    skills = db.Column(db.JSON)
+
+    # WSF LIFETIME — Studio override: "default" | "included" | "excluded".
+    # Never bypasses a forced exclusion (partner provider, external,
+    # non-digital product) — see app/services/learning_access.py.
+    lifetime_access = db.Column(db.String(10), nullable=False, default="default", server_default="default")
+
+    # FINAL ASSESSMENT (optional) — a short question list in the same shape
+    # as a knowledgeCheck block's questions (see services/
+    # learning_assessments.py). Only gates completion when required AND it
+    # has questions; otherwise the "all lessons complete" rule stands.
+    final_assessment = db.Column(db.JSON)
+    final_assessment_required = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    final_assessment_passing_score = db.Column(db.Integer, nullable=False, default=70, server_default="70")
 
     # CERTIFICATE — explicit per-program opt-in (default off). Only WSF-owned
     # programs ever issue (see app/services/learning_certificates.py).
@@ -321,3 +349,71 @@ class LearningLesson(db.Model):
     article = db.relationship("Article", foreign_keys=[article_id])
     resource = db.relationship("Resource", foreign_keys=[resource_id])
     thumbnail = db.relationship("Media", foreign_keys=[thumbnail_media_id])
+
+
+class LearningPathProgram(db.Model):
+    """Ordered membership of a Program in a Learning Path."""
+
+    __tablename__ = "learning_path_programs"
+    __table_args__ = (
+        db.UniqueConstraint("learning_path_id", "learning_program_id", name="uq_learning_path_programs_path_program"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    learning_path_id = db.Column(db.Integer, db.ForeignKey("learning_paths.id", ondelete="CASCADE"), nullable=False, index=True)
+    learning_program_id = db.Column(db.Integer, db.ForeignKey("learning_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
+    program = db.relationship("LearningProgram", foreign_keys=[learning_program_id])
+
+
+def _path_goal_check_sql():
+    from app.models.taxonomy import CAREER_GOALS
+
+    return "career_goal IS NULL OR career_goal IN (" + ", ".join(f"'{g}'" for g in CAREER_GOALS) + ")"
+
+
+class LearningPath(db.Model):
+    """A guided career journey: an ordered, curated set of existing
+    Learning Programs ("Get Promoted": four courses in order). Not a
+    Series (Series groups editorial Articles) and not a Program (it owns no
+    curriculum). Total duration, course count, Lifetime inclusion and a
+    learner's progress are all DERIVED from its Programs, never stored.
+    No path-level certificate: certificates stay course-level.
+    """
+
+    __tablename__ = "learning_paths"
+    __table_args__ = (
+        db.CheckConstraint(_path_goal_check_sql(), name="ck_learning_paths_career_goal"),
+        db.CheckConstraint(_DIFFICULTY_CHECK_SQL, name="ck_learning_paths_difficulty"),
+        db.CheckConstraint(_LEARNING_STATUS_CHECK_SQL, name="ck_learning_paths_status"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(220), unique=True, nullable=False, index=True)
+    title = db.Column(db.String(200), nullable=False)
+    subtitle = db.Column(db.String(300))
+    short_description = db.Column(db.Text)
+    description = db.Column(db.JSON, nullable=False, default=list, server_default="[]")
+    # One of the Career Hub goal keys (Topic.career_goal vocabulary) — the
+    # deterministic link used for "Recommended for your goals".
+    career_goal = db.Column(db.String(30), nullable=True, index=True)
+    difficulty_level = db.Column(db.String(20))
+    hero_media_id = db.Column(db.Integer, db.ForeignKey("media.id", ondelete="SET NULL"), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="draft", server_default="draft", index=True)
+    featured = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    published_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    seo = db.Column(db.JSON)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False)
+
+    hero_media = db.relationship("Media", foreign_keys=[hero_media_id])
+    program_links = db.relationship(
+        "LearningPathProgram",
+        order_by="LearningPathProgram.position",
+        cascade="all, delete-orphan",
+        backref="path",
+    )
+
+    def __repr__(self):
+        return f"<LearningPath {self.slug}>"

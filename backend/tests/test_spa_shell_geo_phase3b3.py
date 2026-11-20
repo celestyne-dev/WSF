@@ -71,7 +71,7 @@ HUBS = [
     ("/opportunities", "opportunities-index", "Opportunities"),
     ("/events", "events-index", "Events"),
     ("/resources", "resources-index", "Guides, Workbooks &amp; Toolkits Built for Your Next Move"),
-    ("/learning", "learning-index", "Courses, Masterclasses &amp; Learning Programs"),
+    ("/learning", "learning-index", "Build the skills to move your career forward."),
     ("/people", "people-index", "The People Directory"),
     ("/organizations", "organizations-index", "Organizations"),
     ("/authors", "authors-index", "Our Authors &amp; Editors"),
@@ -159,7 +159,7 @@ def test_resources_and_learning_hubs_security(client, app):
     root = _assert_hub(_raw(client, "/resources"), "resources-index", "Guides, Workbooks &amp; Toolkits Built for Your Next Move", f"{SITE}/resources")
     assert 'href="/resources/hub-kit"' in root and "Premium" in root and "KES 1,500" in root
     _absent(root, "Secret Inactive Author", "secret-res-sponsor", "Secret Resource Topic", "SECRET-FILE", "SECRET-PATH")
-    root = _assert_hub(_raw(client, "/learning"), "learning-index", "Courses, Masterclasses &amp; Learning Programs", f"{SITE}/learning")
+    root = _assert_hub(_raw(client, "/learning"), "learning-index", "Build the skills to move your career forward.", f"{SITE}/learning")
     assert 'href="/learning/hub-course"' in root and "4 weeks" in root
     _absent(_raw(client, "/learning"), "SECRET-MODULE", "SECRET-LESSON", "SECRET-LESSON-BODY")
 

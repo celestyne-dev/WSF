@@ -183,6 +183,23 @@ export default function AccountMembershipPage() {
                 <p className="mt-1 text-xs text-charcoal-600/80">{LIFETIME_SCOPE_NOTE}</p>
               </div>
             )}
+            {subscription.isLifetime && status === 'active' && (
+              <div className="mt-5 border-t border-taupe-200 pt-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Included with your Lifetime membership</p>
+                <ul className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  {[
+                    ['Eligible WSF courses and Learning Paths', '/learning'],
+                    ['Premium Resource Vault', '/resources'],
+                    ['Career Hub member benefits', '/career-hub'],
+                    ['WSF Circle membership', '/circle'],
+                  ].map(([label, to]) => (
+                    <li key={to}>
+                      <Link to={to} className="font-medium text-burgundy-600 hover:underline">{label}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {subscription.cancelAtPeriodEnd && !subscription.isLifetime && (
               <p className="mt-4 text-sm text-charcoal-600">
                 Your membership is set to end{subscription.currentPeriodEnd ? ` on ${formatDate(subscription.currentPeriodEnd)}` : ''}.

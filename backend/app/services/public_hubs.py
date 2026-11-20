@@ -95,7 +95,7 @@ def learning_hub(limit=HUB_BATCH_SIZE):
     """Catalog summaries only — learning_program_summary_schema excludes
     modules/curriculum; instructors/provider/topics are publicly filtered."""
     from app.models.learning import LearningProgram
-    from app.schemas.learning import learning_program_summary_schema
+    from app.schemas.learning import summary_schema_for
     from app.services.public_visibility import public_learning_dump
 
     rows = (
@@ -104,7 +104,7 @@ def learning_hub(limit=HUB_BATCH_SIZE):
         .limit(limit)
         .all()
     )
-    schema = learning_program_summary_schema()
+    schema = summary_schema_for(rows)
     return [public_learning_dump(schema.dump(p), p) for p in rows]
 
 

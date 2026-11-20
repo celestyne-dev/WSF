@@ -112,6 +112,8 @@ def sanitize_content_blocks(blocks):
             block = _sanitize_button(block)
         if block_type == "relatedBlock":
             block = _sanitize_related_block(block)
+        if block_type in LEARNING_BLOCK_SANITIZERS:
+            block = LEARNING_BLOCK_SANITIZERS[block_type](block)
         if block_type == "highlight":
             if "title" in block:
                 block["title"] = _clean_callout_title(block["title"])
@@ -266,3 +268,175 @@ def _sanitize_related_block(block):
         if isinstance(slug, str) and _SLUG_RE.match(slug.strip()) and slug.strip() not in clean:
             clean.append(slug.strip())
     return {"type": "relatedBlock", "heading": _plain(block.get("heading"), 80), "articleSlugs": clean[:3]}
+
+
+# --- Learning blocks (lesson content) -------------------------------------
+# Text-first lesson elements offered by the lesson editor only. Each is
+# reduced to a fixed, plain shape: inline formatting only where a reader
+# sees running text (Try this / Case study scenario / Key takeaways),
+# plain text everywhere else, bounded list lengths, and safe links only.
+# Knowledge-check answers (`correct`, `explanation`) are stored here but
+# stripped before any lesson content leaves the server — see
+# public_lesson_content() — and are only revealed per question by the
+# answer-check endpoint after the learner has answered.
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+KNOWLEDGE_CHECK_KINDS = ("single", "multiple", "true_false")
+MAX_CHECK_QUESTIONS = 5
+MAX_ASSESSMENT_QUESTIONS = 25
+MAX_OPTIONS = 6
+
+
+def _plain_list(values, limit, max_items):
+    values = values if isinstance(values, list) else []
+    out = [_plain(v, limit) for v in values if isinstance(v, str) and v.strip()]
+    return out[:max_items]
+
+
+def _inline_list(values, max_items):
+    values = values if isinstance(values, list) else []
+    out = [_clean_inline_html(v) for v in values if isinstance(v, str) and v.strip()]
+    return out[:max_items]
+
+
+def _stable_id(value, fallback):
+    return value if isinstance(value, str) and _ID_RE.match(value) else fallback
+
+
+def sanitize_question(question, index):
+    """One knowledge-check / final-assessment question. Lenient (a draft
+    may be incomplete) but never stores anything outside this shape."""
+    q = question if isinstance(question, dict) else {}
+    kind = q.get("kind") if q.get("kind") in KNOWLEDGE_CHECK_KINDS else "single"
+    if kind == "true_false":
+        raw = q.get("options") if isinstance(q.get("options"), list) else []
+        true_correct = bool(raw and isinstance(raw[0], dict) and raw[0].get("correct") is True)
+        options = [
+            {"id": "true", "text": "True", "correct": true_correct},
+            {"id": "false", "text": "False", "correct": not true_correct},
+        ]
+    else:
+        options, seen = [], set()
+        for i, option in enumerate((q.get("options") if isinstance(q.get("options"), list) else [])[:MAX_OPTIONS]):
+            if not isinstance(option, dict):
+                continue
+            option_id = _stable_id(option.get("id"), f"o{i + 1}")
+            if option_id in seen:
+                option_id = f"o{i + 1}"
+            seen.add(option_id)
+            options.append({"id": option_id, "text": _plain(option.get("text"), 200), "correct": option.get("correct") is True})
+        if kind == "single":
+            # Exactly one correct answer: keep the first one marked.
+            first = next((o for o in options if o["correct"]), None)
+            for o in options:
+                o["correct"] = o is first
+    return {
+        "id": _stable_id(q.get("id"), f"q{index + 1}"),
+        "prompt": _plain(q.get("prompt"), 300),
+        "kind": kind,
+        "options": options,
+        "explanation": _plain(q.get("explanation"), 600),
+    }
+
+
+def sanitize_questions(questions, max_questions):
+    questions = questions if isinstance(questions, list) else []
+    out, seen = [], set()
+    for i, question in enumerate(questions[:max_questions]):
+        clean = sanitize_question(question, i)
+        if clean["id"] in seen:
+            clean["id"] = f"q{i + 1}"
+        seen.add(clean["id"])
+        out.append(clean)
+    return out
+
+
+def _sanitize_key_takeaways(block):
+    return {"type": "keyTakeaways", "title": _plain(block.get("title"), 80), "items": _inline_list(block.get("items"), 12)}
+
+
+def _sanitize_try_this(block):
+    return {"type": "tryThis", "title": _plain(block.get("title"), 80), "text": _clean_inline_html(block.get("text") or "")}
+
+
+def _sanitize_reflection(block):
+    return {"type": "reflection", "title": _plain(block.get("title"), 80), "prompts": _plain_list(block.get("prompts"), 300, 5)}
+
+
+def _sanitize_case_study(block):
+    return {
+        "type": "caseStudy",
+        "title": _plain(block.get("title"), 160),
+        "text": _clean_inline_html(block.get("text") or ""),
+        "questions": _plain_list(block.get("questions"), 300, 5),
+    }
+
+
+def _sanitize_checklist(block):
+    return {"type": "checklist", "title": _plain(block.get("title"), 80), "items": _plain_list(block.get("items"), 200, 20)}
+
+
+def _sanitize_knowledge_check(block):
+    return {
+        "type": "knowledgeCheck",
+        "title": _plain(block.get("title"), 80),
+        "questions": sanitize_questions(block.get("questions"), MAX_CHECK_QUESTIONS),
+    }
+
+
+def _sanitize_resource_link(block):
+    slug = block.get("resourceSlug")
+    slug = slug.strip() if isinstance(slug, str) else ""
+    return {
+        "type": "resourceLink",
+        "resourceSlug": slug if _SLUG_RE.match(slug) else "",
+        "label": _plain(block.get("label"), 120),
+        "note": _plain(block.get("note"), 300),
+    }
+
+
+def _sanitize_further_reading(block):
+    links = []
+    for link in (block.get("links") if isinstance(block.get("links"), list) else [])[:8]:
+        if not isinstance(link, dict):
+            continue
+        url = safe_link_url(link.get("url"))
+        label = _plain(link.get("label"), 160)
+        if url and label:
+            links.append({"label": label, "url": url})
+    return {"type": "furtherReading", "title": _plain(block.get("title"), 80), "links": links}
+
+
+LEARNING_BLOCK_SANITIZERS = {
+    "keyTakeaways": _sanitize_key_takeaways,
+    "tryThis": _sanitize_try_this,
+    "reflection": _sanitize_reflection,
+    "caseStudy": _sanitize_case_study,
+    "checklist": _sanitize_checklist,
+    "knowledgeCheck": _sanitize_knowledge_check,
+    "resourceLink": _sanitize_resource_link,
+    "furtherReading": _sanitize_further_reading,
+}
+
+
+def public_question(question):
+    """A question as a learner may see it BEFORE answering: no
+    correct flags, no explanation."""
+    return {
+        "id": question.get("id"),
+        "prompt": question.get("prompt"),
+        "kind": question.get("kind"),
+        "options": [{"id": o.get("id"), "text": o.get("text")} for o in question.get("options") or []],
+    }
+
+
+def public_lesson_content(blocks):
+    """Lesson content safe to send to any client: knowledge-check answers
+    removed. Every other block is returned unchanged."""
+    if not isinstance(blocks, list):
+        return []
+    out = []
+    for block in blocks:
+        if isinstance(block, dict) and block.get("type") == "knowledgeCheck":
+            block = {**block, "questions": [public_question(q) for q in block.get("questions") or [] if isinstance(q, dict)]}
+        out.append(block)
+    return out

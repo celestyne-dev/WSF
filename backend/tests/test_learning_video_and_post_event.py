@@ -143,16 +143,16 @@ class TestVideoLessons:
         assert lesson["videoProvider"] == "vimeo" and lesson["hasTranscript"] is True
 
     def test_facets_and_filter_only_when_real_content(self, client, app, admin):  # noqa: F811
-        assert client.get("/api/v1/learning/meta/facets").get_json()["data"] == {"lessonFormats": []}
+        assert client.get("/api/v1/learning/meta/facets").get_json()["data"]["lessonFormats"] == []
         draft_id, _ = _make_program(app, lesson_count=1, status="draft")
         _put_curriculum(client, admin, draft_id, [{"title": "V", "lessonType": "video", "externalUrl": "https://vimeo.com/1234567"}])
-        assert client.get("/api/v1/learning/meta/facets").get_json()["data"] == {"lessonFormats": []}
+        assert client.get("/api/v1/learning/meta/facets").get_json()["data"]["lessonFormats"] == []
         pub_id, _ = _make_program(app, lesson_count=1, slug="has-recording")
         _make_program(app, lesson_count=1, slug="plain")
         _put_curriculum(client, admin, pub_id, [
             {"title": "T", "lessonType": "text", "content": [{"type": "paragraph", "text": "Hi"}]},
             {"title": "R", "lessonType": "recording", "externalUrl": "https://vimeo.com/1234567"}])
-        assert client.get("/api/v1/learning/meta/facets").get_json()["data"] == {"lessonFormats": ["recording"]}
+        assert client.get("/api/v1/learning/meta/facets").get_json()["data"]["lessonFormats"] == ["recording"]
         listed = client.get("/api/v1/learning?lesson_format=recording").get_json()["data"]
         assert [p["slug"] for p in listed] == ["has-recording"]
 

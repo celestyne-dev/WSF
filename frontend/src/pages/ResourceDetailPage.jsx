@@ -22,6 +22,7 @@ import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
 import { UNAVAILABLE_CURRENCY_MESSAGE, canCheckoutPrice, pickDefaultPrice } from '../utils/money'
+import LifetimeValueNote from '../components/learning/LifetimeValueNote'
 
 // Checkout Phase 1: a premium Resource's display price is its selected (or
 // server-default) price option's server-formatted text; legacy whole-unit
@@ -817,6 +818,12 @@ export default function ResourceDetailPage() {
                   <p className="mt-1 text-xs text-charcoal-600/70">
                     This annual-member bonus is included with Yearly and Lifetime WSF Circle memberships.
                   </p>
+                )}
+                {/* Recurring membership value signal for eligible premium /
+                    member resources (Lifetime satisfies every Circle scope).
+                    Hidden once the viewer already has access. */}
+                {resource.viewerCanAccess !== true && (
+                  <LifetimeValueNote className="mt-2" included={!!resource.circleInclusion?.included} viewerLabel={null} />
                 )}
               </>
             )

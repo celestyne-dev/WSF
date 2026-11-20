@@ -579,10 +579,10 @@ def _build_collection_items(entity, rows, limit):
         visible = [r for r in rows if r.is_publicly_visible()][:limit]
         products = prefetch_linked_products(visible)
         return [build_public_resource_payload(r, None, linked_products=products) for r in visible]
-    from app.schemas.learning import learning_program_summary_schema
+    from app.schemas.learning import summary_schema_for
     from app.services.public_visibility import public_learning_dump
 
-    schema = learning_program_summary_schema()
+    schema = summary_schema_for(rows[:limit])
     return [public_learning_dump(schema.dump(p), p) for p in rows[:limit]]
 
 

@@ -6,7 +6,7 @@ body/downloads, all left to Product/Event/Article/Resource).
 from flask import Blueprint, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from app.extensions import db
 from app.models.commerce import Product
@@ -25,7 +25,7 @@ from app.models.media import Media
 from app.models.opportunity import Event
 from app.models.people import Author, Organization
 from app.models.resource import Resource as ResourceModel
-from app.models.taxonomy import Topic
+from app.models.taxonomy import CAREER_GOALS, Topic
 from app.models.user import User
 from app.schemas.learning import (
     LearningCurriculumInputSchema,
@@ -35,7 +35,8 @@ from app.schemas.learning import (
     learning_program_summary_schema,
     public_learning_program_schema,
 )
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.learning_catalog import FORMAT_LABELS, catalog_stats, program_ids_with_format
+from app.services.content_blocks import MAX_ASSESSMENT_QUESTIONS, sanitize_questions, sanitize_content_blocks
 from app.services.homepage import validate_cta_url
 from app.services.video_embed import is_safe_video_url, resolve_video_provider
 from app.services.audit import log_action
@@ -45,6 +46,8 @@ from app.services.circle import circle_tier
 from app.services.learning_access import can_access_program_content, program_circle_inclusion
 from app.services.learning_certificates import program_issues_certificates
 from app.services.learning_enrollments import progress_summary
+from app.services.learning_assessments import check_knowledge_answers
+from app.services.learning_paths import paths_containing_program
 from app.services.public_visibility import public_learning_dump
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.pagination import paginate
@@ -53,7 +56,7 @@ from app.utils.responses import ApiError, success_response
 learning_bp = Blueprint("learning", __name__)
 api = Api(learning_bp)
 
-program_schema = LearningProgramSchema()
+program_schema = LearningProgramSchema(context={"include_answers": True})
 
 
 def _require_active_user():
@@ -76,6 +79,16 @@ def _current_user_or_none():
     if not current_user or not current_user.is_active:
         return None
     return current_user
+
+
+# /learning/paths is the Learning Paths index, so no Program may take it.
+RESERVED_LEARNING_SLUGS = ("paths",)
+
+
+def _learning_slug(slug):
+    if slug in RESERVED_LEARNING_SLUGS:
+        raise ApiError(f'"{slug}" is reserved in WSF Learning. Choose another slug.', 400, code="reserved_slug")
+    return slug
 
 
 def _require_manage():
@@ -138,7 +151,12 @@ def _apply_program_fields(program, data, relations):
     program.difficulty_level = data.get("difficulty_level")
     program.audience = data.get("audience", [])
     program.overview = sanitize_content_blocks(data.get("overview", []))
-    program.learning_outcomes = data.get("learning_outcomes", [])
+    program.learning_outcomes = [o.strip() for o in data.get("learning_outcomes", []) if o and o.strip()]
+    program.skills = [k.strip() for k in data.get("skills", []) if k and k.strip()]
+    program.lifetime_access = data.get("lifetime_access") or "default"
+    program.final_assessment = sanitize_questions(data.get("final_assessment") or [], MAX_ASSESSMENT_QUESTIONS)
+    program.final_assessment_required = bool(data.get("final_assessment_required")) and bool(program.final_assessment)
+    program.final_assessment_passing_score = data.get("final_assessment_passing_score") or 70
     program.prerequisites = data.get("prerequisites", [])
     program.duration_value = data.get("duration_value")
     program.duration_unit = data.get("duration_unit")
@@ -279,7 +297,24 @@ class LearningFacetsResource(Resource):
             t: db.session.query(published.filter(LearningProgram.id.in_(_programs_with_lesson_type(t))).exists()).scalar()
             for t in VIDEO_LESSON_TYPES
         }
-        return success_response({"lessonFormats": [t for t in VIDEO_LESSON_TYPES if formats[t]]})
+        # Career goals with at least one published course (via its published
+        # Topics), and the derived formats that actually exist — so the
+        # Learning page never offers a goal or format filter that is empty.
+        goal_rows = (
+            db.session.query(Topic.career_goal)
+            .join(LearningProgram.topics)
+            .filter(LearningProgram.status == "published", Topic.status == "published", Topic.career_goal.isnot(None))
+            .distinct()
+            .all()
+        )
+        goals = sorted({row[0] for row in goal_rows if row[0] in CAREER_GOALS}, key=CAREER_GOALS.index)
+        published_ids = [row[0] for row in published.with_entities(LearningProgram.id).all()]
+        derived = {stats["format"] for stats in catalog_stats(published_ids).values() if stats["format"]}
+        return success_response({
+            "lessonFormats": [t for t in VIDEO_LESSON_TYPES if formats[t]],
+            "careerGoals": goals,
+            "formats": [f for f in FORMAT_LABELS if f in derived],
+        })
 
 
 class LearningProgramPublicListResource(Resource):
@@ -305,12 +340,15 @@ class LearningProgramPublicListResource(Resource):
             query = query.filter(db.cast(LearningProgram.audience, db.Text).ilike(f'%"{request.args["audience"]}"%'))
         if request.args.get("featured") == "true":
             query = query.filter(LearningProgram.featured.is_(True))
+        if request.args.get("format") in FORMAT_LABELS:
+            query = query.filter(LearningProgram.id.in_(program_ids_with_format(request.args["format"])))
+        goal = (request.args.get("goal") or "").strip().lower().replace("-", "_")
+        if goal in CAREER_GOALS:
+            query = query.filter(LearningProgram.topics.any(and_(Topic.career_goal == goal, Topic.status == "published")))
         if request.args.get("lesson_format") in VIDEO_LESSON_TYPES:
             query = query.filter(LearningProgram.id.in_(_programs_with_lesson_type(request.args["lesson_format"])))
         if request.args.get("q"):
             like = f"%{request.args['q']}%"
-            from sqlalchemy import or_
-
             query = query.filter(
                 or_(
                     LearningProgram.title.ilike(like),
@@ -322,6 +360,7 @@ class LearningProgramPublicListResource(Resource):
         query = query.order_by(LearningProgram.featured.desc(), LearningProgram.created_at.desc())
         result = paginate(query, schema=None)
         summary_schema = learning_program_summary_schema()
+        summary_schema.context = {"catalog_stats": catalog_stats([p.id for p in result["items"]])}
         # Linked instructors/provider/topics only when each is itself public.
         items = [public_learning_dump(summary_schema.dump(p), p) for p in result["items"]]
         return success_response(items, meta=result["meta"])
@@ -340,6 +379,8 @@ def build_public_program_payload(program, viewer):
     # Only advertised when this program actually issues WSF certificates.
     payload["certificateAvailable"] = program_issues_certificates(program)
     payload["viewerCanAccess"] = can_access_program_content(program, viewer)
+    # Published Learning Paths that include this course (title/slug only).
+    payload["learningPaths"] = [{"slug": p.slug, "title": p.title} for p in paths_containing_program(program.id)]
     # Viewer-specific (null for anonymous / not covered): e.g. "Included
     # with your Lifetime membership" for an eligible product program —
     # UI guidance only; enrollment/curriculum endpoints stay authoritative.
@@ -348,6 +389,23 @@ def build_public_program_payload(program, viewer):
         free=program.access_type == "free",
     )
     return payload
+
+
+class LearningKnowledgeCheckResource(Resource):
+    """Immediate feedback for a lesson's knowledge-check questions. The
+    lesson's Program must be published and its content open to this viewer
+    (free: anyone; otherwise the same can_access_program_content rule as
+    the protected curriculum). Never blocks or records progress."""
+
+    def post(self, lesson_id):
+        lesson = db.session.get(LearningLesson, lesson_id)
+        program = lesson.module.program if lesson is not None and lesson.module is not None else None
+        if program is None or program.status != "published":
+            raise ApiError("Lesson not found.", 404, code="not_found")
+        if not can_access_program_content(program, _current_user_or_none()):
+            raise ApiError("You do not have access to this lesson.", 403, code="access_denied")
+        data = request.get_json(silent=True) or {}
+        return success_response({"results": check_knowledge_answers(lesson, data.get("answers"))})
 
 
 class LearningProgramPublicDetailResource(Resource):
@@ -384,8 +442,10 @@ class AdminLearningProgramListResource(Resource):
             query = query.filter(or_(LearningProgram.title.ilike(like), LearningProgram.subtitle.ilike(like)))
 
         query = query.order_by(LearningProgram.updated_at.desc())
-        result = paginate(query, admin_learning_program_summary_schema())
-        return success_response(result["items"], meta=result["meta"])
+        result = paginate(query, schema=None)
+        schema = admin_learning_program_summary_schema()
+        schema.context = {"catalog_stats": catalog_stats([p.id for p in result["items"]])}
+        return success_response(schema.dump(result["items"], many=True), meta=result["meta"])
 
     def post(self):
         user = _require_manage()
@@ -394,9 +454,11 @@ class AdminLearningProgramListResource(Resource):
 
         program = LearningProgram()
         if data.get("slug"):
-            program.slug = validate_explicit_slug(LearningProgram, data["slug"])
+            program.slug = _learning_slug(validate_explicit_slug(LearningProgram, data["slug"]))
         else:
             program.slug = generate_unique_slug(LearningProgram, data["title"])
+            if program.slug in RESERVED_LEARNING_SLUGS:
+                program.slug = generate_unique_slug(LearningProgram, f"{data['title']} course")
 
         _apply_program_fields(program, data, relations)
         program.status = data.get("status", "draft")
@@ -437,7 +499,7 @@ class AdminLearningProgramDetailResource(Resource):
 
         old_slug = program.slug
         if data.get("slug") and data["slug"] != old_slug:
-            program.slug = validate_explicit_slug(LearningProgram, data["slug"], current_id=program.id)
+            program.slug = _learning_slug(validate_explicit_slug(LearningProgram, data["slug"], current_id=program.id))
 
         old_status = program.status
         old_access_type = program.access_type
@@ -683,6 +745,7 @@ class LearningEnrollmentAdminListResource(Resource):
 
 api.add_resource(LearningProgramPublicListResource, "")
 api.add_resource(LearningFacetsResource, "/meta/facets")
+api.add_resource(LearningKnowledgeCheckResource, "/lessons/<int:lesson_id>/knowledge-check")
 api.add_resource(LearningProgramPublicDetailResource, "/<string:slug>")
 api.add_resource(AdminLearningProgramListResource, "/admin/programs")
 api.add_resource(AdminLearningProgramDetailResource, "/admin/programs/<int:program_id>")

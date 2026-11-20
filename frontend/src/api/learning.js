@@ -93,6 +93,18 @@ export function mapModule(m) {
   }
 }
 
+function mapStats(stats) {
+  const s = stats || {}
+  return {
+    moduleCount: s.moduleCount || 0,
+    lessonCount: s.lessonCount || 0,
+    videoLessonCount: s.videoLessonCount || 0,
+    totalMinutes: s.totalMinutes || null,
+    format: s.format || null,
+    formatLabel: s.formatLabel || null,
+  }
+}
+
 // Shared mapper for public list cards, public detail, and admin rows — the
 // backend excludes different subsets of fields per shape (see
 // schemas/learning.py's summary/admin-summary/full variants), so every
@@ -143,6 +155,19 @@ export function mapLearningProgram(p) {
     certificateTitle: p.certificate_title ?? p.certificateTitle ?? '',
     certificateSignatoryName: p.certificate_signatory_name ?? p.certificateSignatoryName ?? '',
     certificateSignatoryTitle: p.certificate_signatory_title ?? p.certificateSignatoryTitle ?? '',
+    // Text-first catalog facts (server-derived, display only): module/
+    // lesson counts, total minutes and Text-based/Mixed/Video-led.
+    skills: Array.isArray(p.skills) ? p.skills : [],
+    stats: mapStats(p.stats),
+    lifetimeIncluded: !!p.lifetimeIncluded,
+    lifetimeAccess: p.lifetime_access ?? p.lifetimeAccess ?? 'default',
+    // Public summary of the optional final assessment (no questions).
+    assessment: p.finalAssessment && typeof p.finalAssessment === 'object' && !Array.isArray(p.finalAssessment) ? p.finalAssessment : null,
+    // Studio only: the full question list (with answers).
+    finalAssessmentQuestions: Array.isArray(p.final_assessment) ? p.final_assessment : [],
+    finalAssessmentRequired: !!(p.final_assessment_required ?? p.finalAssessmentRequired),
+    finalAssessmentPassingScore: p.final_assessment_passing_score ?? p.finalAssessmentPassingScore ?? 70,
+    learningPaths: Array.isArray(p.learningPaths) ? p.learningPaths : [],
     featured: !!p.featured,
     status: p.status || 'published',
     publishedAt: p.published_at ?? p.publishedAt ?? null,
@@ -160,9 +185,13 @@ export function mapLearningProgram(p) {
 // Which optional filters have real published content behind them (e.g.
 // "Video lessons"), so the page never offers a filter that returns nothing.
 export async function fetchLearningFacets() {
-  if (USE_MOCK) return { lessonFormats: [] }
+  if (USE_MOCK) return { lessonFormats: [], careerGoals: [], formats: [] }
   const { data } = await apiClient.get('/learning/meta/facets')
-  return { lessonFormats: Array.isArray(data?.lessonFormats) ? data.lessonFormats : [] }
+  return {
+    lessonFormats: Array.isArray(data?.lessonFormats) ? data.lessonFormats : [],
+    careerGoals: Array.isArray(data?.careerGoals) ? data.careerGoals : [],
+    formats: Array.isArray(data?.formats) ? data.formats : [],
+  }
 }
 
 export async function fetchLearningPrograms(params = {}) {
@@ -177,6 +206,8 @@ export async function fetchLearningPrograms(params = {}) {
         audience: params.audience || undefined,
         featured: params.featured || undefined,
         lessonFormat: params.lessonFormat || undefined,
+        format: params.format || undefined,
+        goal: params.goal || undefined,
         q: params.q || undefined,
         page: params.page,
         pageSize: params.pageSize,
@@ -269,6 +300,15 @@ function toApiPayload(form) {
     externalUrl: form.externalUrl || undefined,
     relatedArticleSlugs: form.relatedArticleSlugs || [],
     relatedResourceSlugs: form.relatedResourceSlugs || [],
+    skills: (form.skills || []).filter((s) => s && s.trim()),
+    lifetimeAccess: form.lifetimeAccess || 'default',
+    finalAssessment: form.finalAssessmentQuestions || [],
+    finalAssessmentRequired: !!form.finalAssessmentRequired,
+    finalAssessmentPassingScore: Number(form.finalAssessmentPassingScore) || 70,
+    certificateEnabled: form.certificateEnabled,
+    certificateTitle: form.certificateTitle || null,
+    certificateSignatoryName: form.certificateSignatoryName || null,
+    certificateSignatoryTitle: form.certificateSignatoryTitle || null,
     featured: !!form.featured,
     status: form.status || 'draft',
     seo: form.seo || undefined,
@@ -318,4 +358,13 @@ function toCurriculumPayload(modules) {
 export async function updateAdminLearningCurriculum(id, modules) {
   const { data } = await apiClient.put(`/learning/admin/programs/${id}/curriculum`, toCurriculumPayload(modules))
   return mapLearningProgram(data)
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge checks (immediate feedback; never blocks progress)
+// ---------------------------------------------------------------------------
+
+export async function checkKnowledgeAnswers(lessonId, answers) {
+  const { data } = await apiClient.post(`/learning/lessons/${lessonId}/knowledge-check`, { answers })
+  return Array.isArray(data?.results) ? data.results : []
 }
