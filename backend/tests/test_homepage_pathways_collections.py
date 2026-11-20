@@ -148,7 +148,9 @@ def _person(app, slug, status="published", featured=False):
 
 def _card(title, **dest):
     card = {"title": title, "description": f"About {title}"}
-    card.update(dest or {"destinationType": "route", "url": f"/{title.lower().replace(' ', '-')}"})
+    # A real public route: route destinations are validated against the
+    # site's actual routes (spa_shell.known_internal_route).
+    card.update(dest or {"destinationType": "route", "url": "/learning"})
     return card
 
 
@@ -247,12 +249,12 @@ class TestPathwaysValidation:
     def test_stale_destination_fields_are_cleared(self, client, app, admin):
         page_id = _page(app)
         cards = [
-            {"title": "A", "destinationType": "route", "url": "/a", "pageId": page_id, "openNewTab": True},
+            {"title": "A", "destinationType": "route", "url": "/topics", "pageId": page_id, "openNewTab": True},
             {"title": "B", "destinationType": "page", "pageId": page_id, "url": "/stale"},
         ]
         assert _put(client, admin, _pathways(cards)).status_code == 200
         saved = _admin_modules(client, admin)[0]["config"]["cards"]
-        assert saved[0]["pageId"] is None and saved[0]["url"] == "/a" and saved[0]["openNewTab"] is False
+        assert saved[0]["pageId"] is None and saved[0]["url"] == "/topics" and saved[0]["openNewTab"] is False
         assert saved[1]["url"] is None and saved[1]["pageId"] == page_id
 
     @pytest.mark.parametrize("bad_card, message", [
@@ -263,11 +265,11 @@ class TestPathwaysValidation:
         ({"title": "Proto", "destinationType": "route", "url": "//evil.example"}, "real path"),
         ({"title": "JS", "destinationType": "external", "url": "javascript:alert(1)"}, "http"),
         ({"title": "Page", "destinationType": "page", "pageId": 999999}, "does not exist"),
-        ({"title": "Topic", "destinationType": "topic"}, "Topic must be selected"),
-        ({"title": "", "destinationType": "route", "url": "/x"}, "title is required"),
-        ({"title": "<b>x</b>", "destinationType": "route", "url": "/x"}, "plain text"),
-        ({"title": "Icon", "destinationType": "route", "url": "/x", "icon": "skull"}, "unknown icon"),
-        ({"title": "Extra", "destinationType": "route", "url": "/x", "onclick": "x"}, "unknown field"),
+        ({"title": "Topic", "destinationType": "topic"}, "choose a Topic."),
+        ({"title": "", "destinationType": "route", "url": "/resources"}, "title is required"),
+        ({"title": "<b>x</b>", "destinationType": "route", "url": "/resources"}, "plain text"),
+        ({"title": "Icon", "destinationType": "route", "url": "/resources", "icon": "skull"}, "unknown icon"),
+        ({"title": "Extra", "destinationType": "route", "url": "/resources", "onclick": "x"}, "unknown field"),
     ])
     def test_invalid_cards_rejected(self, client, app, admin, bad_card, message):
         resp = _put(client, admin, _pathways([_card("Good one"), bad_card]))
@@ -340,7 +342,7 @@ class TestPathwaysPublic:
 
     def test_media_card_exposes_only_public_image_fields(self, client, app, admin):
         media_id = _media(app)
-        assert _put(client, admin, _pathways([_card("A", destinationType="route", url="/a", mediaId=media_id), _card("B")])).status_code == 200
+        assert _put(client, admin, _pathways([_card("A", destinationType="route", url="/topics", mediaId=media_id), _card("B")])).status_code == 200
         image = _public(client)[0]["resolved"]["cards"][0]["image"]
         assert image["url"] == "https://cdn.example.com/p-stored.png" and image["alt"] == "Pathway image"
         assert "file_path" not in json.dumps(image)
@@ -515,7 +517,7 @@ class TestShellIntegration:
              _collection({"entityType": "events"}, heading="Nothing here"))
         html = client.get("/").get_data(as_text=True)
         modules = _bootstrap(html)["modules"]
-        assert [c["href"] for c in modules[0]["resolved"]["cards"]] == ["/guide-page", "/custom-path-two"]
+        assert [c["href"] for c in modules[0]["resolved"]["cards"]] == ["/guide-page", "/learning"]
         assert [i["slug"] for i in modules[1]["resolved"]["items"]] == ["shell-story"]
         assert modules == _public(client)
         prerender = html.split('data-wsf-prerender="home"', 1)[1]

@@ -18,7 +18,7 @@ from app.schemas.page import (
     PageUpdateSchema,
 )
 from app.services.audit import log_action
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -92,6 +92,10 @@ class PublicPageResource(Resource):
     def get(self, key):
         page = Page.query.filter_by(key=key, status="published").first()
         if page is None:
+            # A general Page is addressed publicly by its slug (/<slug>,
+            # the URL Navigation/Footer links and "View live" use).
+            page = Page.query.filter_by(slug=key, page_type="general", status="published").first()
+        if page is None:
             raise ApiError("Page not found.", 404, code="not_found")
         return success_response(page_public_schema.dump(page))
 
@@ -123,7 +127,7 @@ class PageListResource(Resource):
             title=data["title"],
             internal_name=data.get("internal_name"),
             subtitle=data.get("subtitle"),
-            content=sanitize_content_blocks(data.get("content") or []),
+            content=sanitize_editor_blocks(data.get("content") or [], "Content"),
             hero_media_id=data.get("hero_media_id"),
             seo=data.get("seo"),
             status=data.get("status", "draft"),
@@ -170,7 +174,7 @@ class PageDetailResource(Resource):
             if field in data:
                 setattr(page, field, data[field])
         if "content" in data:
-            page.content = sanitize_content_blocks(data["content"])
+            page.content = sanitize_editor_blocks(data["content"], "Content")
 
         page.updated_by_id = current_user.id if current_user else None
         db.session.commit()

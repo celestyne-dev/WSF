@@ -27,3 +27,20 @@ export function safeLinkUrl(value, { allowMailto = false } = {}) {
 export function isInternalPath(url) {
   return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')
 }
+
+// Turns what an editor types into the link prompt into a safe href, or an
+// explanation of why it can't be used (never a silently dropped link).
+const EMAIL_RE = /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/
+const BARE_DOMAIN_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s]*)?$/i
+
+export function normalizeEditorLink(raw) {
+  let url = typeof raw === 'string' ? raw.trim() : ''
+  if (!url) return { error: 'Enter a link address.' }
+  if (EMAIL_RE.test(url)) url = `mailto:${url}`
+  else if (/^www\./i.test(url) || BARE_DOMAIN_RE.test(url)) url = `https://${url}`
+  const safe = safeLinkUrl(url, { allowMailto: true })
+  if (!safe) {
+    return { error: 'That link can’t be used. Use a site path like /resources/salary-guide, a full https:// address, or an email address.' }
+  }
+  return { url: safe }
+}

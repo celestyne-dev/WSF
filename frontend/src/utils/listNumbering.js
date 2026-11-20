@@ -22,8 +22,23 @@
 
 export const NUMBERING_MODES = ['continue', 'restart', 'custom']
 
+// Reader-visible text of an inline-HTML list item: tags removed, the
+// common entities decoded, non-breaking spaces as spaces. Mirrors backend
+// content_blocks.visible_text so React, the prerender and numbering agree:
+// "<strong></strong>" and "<br>" are blank; "<a href=…>Source</a>" is not.
+const ENTITIES = { '&nbsp;': ' ', '&#160;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#x27;': "'" }
+
+export function visibleText(value) {
+  if (typeof value !== 'string') return ''
+  return value
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(nbsp|amp|lt|gt|quot|#160|#39|#x27);/g, (m) => ENTITIES[m] ?? m)
+    .replace(/\u00a0/g, ' ')
+    .trim()
+}
+
 export function isBlankItem(item) {
-  return typeof item !== 'string' || item.trim() === ''
+  return visibleText(item) === ''
 }
 
 export function visibleItems(items) {

@@ -1,8 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  Bold,
-  Italic,
-  Link as LinkIcon,
   Trash2,
   ChevronUp,
   ChevronDown,
@@ -31,71 +28,16 @@ import {
   Link2,
 } from 'lucide-react'
 import MediaPicker from './MediaPicker'
+import RichTextField from './RichTextField'
 import QuestionListEditor from './QuestionListEditor'
 import { fetchArticles } from '../../api/articles'
 import { CTA_PRESETS } from '../../constants/ctaPresets'
 import { DEFAULT_CONTENT_BLOCK_TYPES } from '../../constants/contentBlockTypes'
-import { NUMBERING_MODES, resolveListStarts } from '../../utils/listNumbering'
+import { NUMBERING_MODES, isBlankItem, resolveListStarts } from '../../utils/listNumbering'
 import { safeLinkUrl } from '../../utils/linkSafety'
 
-// No rich-text library dependency (Tiptap/Slate/Lexical, etc.) was added —
-// the only inline formatting this editor needs is bold/italic/links, which
-// the browser's native contentEditable + execCommand already does
-// reliably across evergreen browsers. Anything richer (marks, embeds,
-// collaborative editing) would justify a real editor framework; this
-// scope doesn't. Every field it produces is sanitized server-side
-// (backend/app/services/content_blocks.py) before it's ever persisted or
-// rendered back to a reader, so a11y/XSS risk from raw contentEditable
-// HTML is not a concern here.
-function RichTextField({ value, onChange, placeholder, className = '' }) {
-  const ref = useRef(null)
-
-  // Only sync the DOM from `value` when it actually changed out from under
-  // us (block reorder, external reset) — never on every keystroke, or the
-  // cursor jumps to the start on each character typed.
-  useEffect(() => {
-    if (ref.current && ref.current.innerHTML !== (value || '')) {
-      ref.current.innerHTML = value || ''
-    }
-  }, [value])
-
-  function exec(command, arg) {
-    ref.current?.focus()
-    document.execCommand(command, false, arg)
-    onChange(ref.current?.innerHTML || '')
-  }
-
-  function handleLink() {
-    const url = window.prompt('Link URL (https://…)')
-    if (!url) return
-    exec('createLink', url)
-  }
-
-  return (
-    <div>
-      <div className="flex gap-1 border border-b-0 border-taupe-300 bg-taupe-100 px-1.5 py-1">
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('bold')} aria-label="Bold" className="rounded p-1 text-charcoal-600 hover:bg-taupe-200 hover:text-charcoal">
-          <Bold size={14} />
-        </button>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('italic')} aria-label="Italic" className="rounded p-1 text-charcoal-600 hover:bg-taupe-200 hover:text-charcoal">
-          <Italic size={14} />
-        </button>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={handleLink} aria-label="Add link" className="rounded p-1 text-charcoal-600 hover:bg-taupe-200 hover:text-charcoal">
-          <LinkIcon size={14} />
-        </button>
-      </div>
-      <div
-        ref={ref}
-        contentEditable
-        suppressContentEditableWarning
-        data-placeholder={placeholder}
-        onInput={(e) => onChange(e.currentTarget.innerHTML)}
-        onBlur={(e) => onChange(e.currentTarget.innerHTML)}
-        className={`rich-text-input ${className}`}
-      />
-    </div>
-  )
-}
+// RichTextField (bold/italic/links, validated link entry) lives in
+// ./RichTextField.jsx and is shared by every inline-rich field below.
 
 // The header is `sticky` inside its own block: while a tall block is being
 // scrolled through, its type label and Move/Delete controls stay pinned to
@@ -252,6 +194,21 @@ function ParagraphBlock({ block, onChange }) {
 // A list saved before this existed (no numberingMode) shows as "Restart at
 // 1" — exactly how it has always been published — and is never changed
 // unless an editor picks a different option.
+// One list item = one inline rich-text line (bold, italic, links) — the
+// same field and sanitizer as a Paragraph, never a nested block. Enter
+// starts the next item.
+function RichItem({ value, onChange, onEnter, label }) {
+  return <RichTextField compact value={value} onChange={onChange} onEnter={onEnter} placeholder="List item" ariaLabel={label} />
+}
+
+function focusRichItem(index) {
+  // After React renders the new row, put the caret in it.
+  setTimeout(() => {
+    const active = document.activeElement?.closest('[data-rich-item]')?.parentElement
+    active?.querySelector(`[data-rich-item="${index}"] [contenteditable]`)?.focus()
+  }, 0)
+}
+
 const NUMBERING_LABELS = { continue: 'Continue previous', restart: 'Restart at 1', custom: 'Start at…' }
 
 function ListBlock({ block, onChange, listStart }) {
@@ -261,7 +218,7 @@ function ListBlock({ block, onChange, listStart }) {
   // Numbers shown only for non-blank items (blank ones are not published).
   const itemNumbers = items.reduce(
     (acc, item) => {
-      const blank = !item || !String(item).trim()
+      const blank = isBlankItem(item)
       acc.list.push(blank ? null : acc.next)
       if (!blank) acc.next += 1
       return acc
@@ -276,6 +233,12 @@ function ListBlock({ block, onChange, listStart }) {
   }
   function addItem() {
     onChange({ ...block, items: [...items, ''] })
+  }
+  function insertItemAfter(i) {
+    const next = [...items]
+    next.splice(i + 1, 0, '')
+    onChange({ ...block, items: next })
+    focusRichItem(i + 1)
   }
   function removeItem(i) {
     onChange({ ...block, items: items.filter((_, idx) => idx !== i) })
@@ -343,11 +306,11 @@ function ListBlock({ block, onChange, listStart }) {
         {items.map((item, i) => {
           const number = itemNumbers[i]
           return (
-            <div key={i} className="flex items-center gap-2">
-              <span className="w-10 shrink-0 text-right text-xs font-semibold tabular-nums text-charcoal-600/70" aria-hidden="true">
+            <div key={i} className="flex items-start gap-2" data-rich-item={i}>
+              <span className="mt-8 w-10 shrink-0 text-right text-xs font-semibold tabular-nums text-charcoal-600/70" aria-hidden="true">
                 {numbered ? (number === null ? '–' : `${number}.`) : '•'}
               </span>
-              <input value={item} onChange={(e) => updateItem(i, e.target.value)} className={inputClass} placeholder="List item" aria-label={`List item ${i + 1}`} />
+              <RichItem value={item} onChange={(v) => updateItem(i, v)} onEnter={() => insertItemAfter(i)} label={`List item ${i + 1}`} />
               <button type="button" onClick={() => removeItem(i)} disabled={items.length <= 1} aria-label={`Remove list item ${i + 1}`} className="p-1 text-charcoal-600 hover:text-rose-600 disabled:opacity-30">
                 <Trash2 size={14} />
               </button>
@@ -429,9 +392,9 @@ function HighlightBlock({ block, onChange }) {
         <div>
           <div className="space-y-2">
             {items.map((item, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="w-4 shrink-0 text-xs text-charcoal-600/60">{listStyle === 'number' ? `${i + 1}.` : '•'}</span>
-                <input value={item} onChange={(e) => updateItem(i, e.target.value)} className={inputClass} placeholder="List item" />
+              <div key={i} className="flex items-start gap-2" data-rich-item={i}>
+                <span className="mt-8 w-4 shrink-0 text-xs text-charcoal-600/60">{listStyle === 'number' ? `${i + 1}.` : '•'}</span>
+                <RichItem value={item} onChange={(v) => updateItem(i, v)} onEnter={addItem} label={`Callout list item ${i + 1}`} />
                 <button type="button" onClick={() => moveItem(i, -1)} disabled={i === 0} aria-label="Move item up" className="p-1 text-charcoal-600 hover:text-charcoal disabled:opacity-30">
                   <ChevronUp size={14} />
                 </button>
@@ -752,10 +715,21 @@ function LinesField({ value, onChange, placeholder, label, max }) {
 }
 
 function KeyTakeawaysBlock({ block, onChange }) {
+  const items = block.items?.length ? block.items : ['']
+  const set = (next) => onChange({ ...block, items: next })
   return (
     <div className="space-y-2">
       <input value={block.title || ''} onChange={(e) => onChange({ ...block, title: e.target.value })} maxLength={80} placeholder="Title (default: Key takeaways)" aria-label="Title" className={inputClass} />
-      <LinesField value={block.items} onChange={(items) => onChange({ ...block, items })} placeholder="One takeaway per line" label="Takeaways" max={12} />
+      {items.map((item, i) => (
+        <div key={i} className="flex items-start gap-2" data-rich-item={i}>
+          <span className="mt-8 w-4 shrink-0 text-xs text-charcoal-600/60" aria-hidden="true">•</span>
+          <RichItem value={item} onChange={(v) => set(items.map((x, idx) => (idx === i ? v : x)))} onEnter={() => { if (items.length < 12) { set([...items.slice(0, i + 1), '', ...items.slice(i + 1)]); focusRichItem(i + 1) } }} label={`Takeaway ${i + 1}`} />
+          <button type="button" onClick={() => set(items.filter((_, idx) => idx !== i))} disabled={items.length <= 1} aria-label={`Remove takeaway ${i + 1}`} className="mt-7 p-1 text-charcoal-600 hover:text-rose-600 disabled:opacity-30">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ))}
+      {items.length < 12 && <button type="button" onClick={() => set([...items, ''])} className="text-xs font-semibold text-burgundy-600">+ Add takeaway</button>}
     </div>
   )
 }

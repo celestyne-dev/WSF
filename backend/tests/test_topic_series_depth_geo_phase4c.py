@@ -160,15 +160,23 @@ def test_new_rows_default_to_empty_depth(app):
 
 
 @pytest.mark.parametrize("kind", KINDS)
-def test_supported_hostile_content_is_sanitized(client, token, kind):
-    entity = _create(client, token, kind, content=HOSTILE_CONTENT)
-    stored = json.dumps(entity["content"])
-    for unsafe in ("<script", "onclick", "javascript:", "onerror"):
-        assert unsafe not in stored, unsafe
-    paragraph, heading, items = entity["content"][0]["text"], entity["content"][1]["text"], entity["content"][2]["items"]
-    assert paragraph.startswith("Safe") and "<b>bold</b>" in paragraph and "<a>bad</a>" in paragraph
-    assert heading == "Head"  # headings are plain text
-    assert items == ["one", "two", "<a>three</a>"]
+def test_supported_hostile_content_is_sanitized(client, app, token, kind):
+    # Save time: unsafe inline content is refused with a message naming the
+    # block, never silently reduced to text (content_blocks.assert_safe_inline_content).
+    for index, block in enumerate(HOSTILE_CONTENT, start=1):
+        resp = client.post(KINDS[kind][0], json={"name": f"Hostile {kind} {index}", "status": "published", "content": [block]},
+                           headers=auth_headers(token))
+        assert resp.status_code == 422, block
+        assert "Content, block 1" in str(resp.get_json())
+    # Content already stored (older rows, imports) is still sanitized on render.
+    entity = _create(client, token, kind)
+    with app.app_context():
+        from app.extensions import db
+        from app.models.taxonomy import Series, Topic
+
+        row = db.session.get(Topic if kind == "topics" else Series, entity["id"])
+        row.content = HOSTILE_CONTENT
+        db.session.commit()
     root = _root(client.get(f"/{KINDS[kind][1]}/{entity['slug']}").get_data(as_text=True))
     assert "Safe" in root and "<b>bold</b>" in root
     for unsafe in ("<script", "onclick", "javascript:", "onerror"):

@@ -1,0 +1,11 @@
+{
+  "_comment": "Shared by backend tests (prerender.author_education) and frontend utils/authorAuthority.test.js (authorEducation): which credentials count as Education on an Author profile, and how they read.",
+  "cases": [
+    {"credentials": [{"name": "MBA", "category": "Degree", "issuer": "Strathmore University"}, {"name": "Digital Marketing Professional", "category": "Certification", "issuer": "DMI"}],
+     "expected": ["MBA, Strathmore University"]},
+    {"credentials": [{"name": "BSc Economics", "issuer": "University of Nairobi"}, {"name": "PhD in Sociology"}, {"name": "Master of Arts", "category": "Education"}],
+     "expected": ["BSc Economics, University of Nairobi", "PhD in Sociology"]},
+    {"credentials": [{"name": "Certified Coach", "category": "Certification"}], "expected": []},
+    {"credentials": [], "expected": []}
+  ]
+}

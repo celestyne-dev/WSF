@@ -116,7 +116,7 @@ class TestPublicNavigation:
     def test_returns_visible_items_in_order(self, client, admin_token):
         client.put(
             "/api/v1/admin/navigation",
-            json={"menus": [{"key": "primary", "items": [{"label": "A", "url": "/a"}, {"label": "B", "url": "/b"}]}]},
+            json={"menus": [{"key": "primary", "items": [{"label": "A", "url": "/topics"}, {"label": "B", "url": "/series"}]}]},
             headers=auth_headers(admin_token),
         )
         resp = client.get("/api/v1/public/navigation")
@@ -131,7 +131,7 @@ class TestPublicNavigation:
                 "menus": [
                     {
                         "key": "primary",
-                        "items": [{"label": "Visible", "url": "/v"}, {"label": "Hidden", "url": "/h", "visible": False}],
+                        "items": [{"label": "Visible", "url": "/shop"}, {"label": "Hidden", "url": "/resources", "visible": False}],
                     }
                 ]
             },
@@ -149,7 +149,7 @@ class TestPublicNavigation:
                     {
                         "key": "primary",
                         "items": [
-                            {"label": "Parent", "url": "/p", "visible": False, "children": [{"label": "Child", "url": "/c"}]}
+                            {"label": "Parent", "url": "/events", "visible": False, "children": [{"label": "Child", "url": "/people"}]}
                         ],
                     }
                 ]
@@ -163,7 +163,7 @@ class TestPublicNavigation:
     def test_public_response_omits_admin_only_fields(self, client, admin_token):
         client.put(
             "/api/v1/admin/navigation",
-            json={"menus": [{"key": "primary", "items": [{"label": "A", "url": "/a"}]}]},
+            json={"menus": [{"key": "primary", "items": [{"label": "A", "url": "/topics"}]}]},
             headers=auth_headers(admin_token),
         )
         resp = client.get("/api/v1/public/navigation")
@@ -333,7 +333,7 @@ class TestDepthAndHierarchy:
             "/api/v1/admin/navigation",
             json={
                 "menus": [
-                    {"key": "primary", "items": [{"label": "Parent", "url": "/p", "children": [{"label": "Child", "url": "/c"}]}]}
+                    {"key": "primary", "items": [{"label": "Parent", "url": "/events", "children": [{"label": "Child", "url": "/people"}]}]}
                 ]
             },
             headers=auth_headers(admin_token),
@@ -350,8 +350,8 @@ class TestDepthAndHierarchy:
                         "items": [
                             {
                                 "label": "A",
-                                "url": "/a",
-                                "children": [{"label": "B", "url": "/b", "children": [{"label": "C", "url": "/c"}]}],
+                                "url": "/topics",
+                                "children": [{"label": "B", "url": "/series", "children": [{"label": "C", "url": "/people"}]}],
                             }
                         ],
                     }
@@ -364,12 +364,12 @@ class TestDepthAndHierarchy:
     def test_reorder_persists(self, client, admin_token):
         client.put(
             "/api/v1/admin/navigation",
-            json={"menus": [{"key": "primary", "items": [{"label": "First", "url": "/1"}, {"label": "Second", "url": "/2"}]}]},
+            json={"menus": [{"key": "primary", "items": [{"label": "First", "url": "/authors"}, {"label": "Second", "url": "/directory"}]}]},
             headers=auth_headers(admin_token),
         )
         client.put(
             "/api/v1/admin/navigation",
-            json={"menus": [{"key": "primary", "items": [{"label": "Second", "url": "/2"}, {"label": "First", "url": "/1"}]}]},
+            json={"menus": [{"key": "primary", "items": [{"label": "Second", "url": "/directory"}, {"label": "First", "url": "/authors"}]}]},
             headers=auth_headers(admin_token),
         )
         resp = client.get("/api/v1/public/navigation")
@@ -381,7 +381,7 @@ class TestDepthAndHierarchy:
             "/api/v1/admin/navigation",
             json={
                 "menus": [
-                    {"key": "primary", "items": [{"label": "P", "url": "/p"}]},
+                    {"key": "primary", "items": [{"label": "P", "url": "/events"}]},
                     {"key": "footer_legal", "heading": "Legal", "items": [{"label": "Privacy", "url": "/privacy"}]},
                 ]
             },
@@ -389,7 +389,7 @@ class TestDepthAndHierarchy:
         )
         client.put(
             "/api/v1/admin/navigation",
-            json={"menus": [{"key": "primary", "items": [{"label": "P2", "url": "/p2"}]}]},
+            json={"menus": [{"key": "primary", "items": [{"label": "P2", "url": "/jobs"}]}]},
             headers=auth_headers(admin_token),
         )
         resp = client.get("/api/v1/public/navigation")
@@ -919,7 +919,7 @@ class TestFooterOwnershipBoundary:
     def test_navigation_manage_alone_cannot_mutate_a_footer_menu(self, client, navigation_manager_token):
         resp = client.put(
             "/api/v1/admin/navigation",
-            json={"menus": [{"key": "footer_legal", "heading": "Legal", "items": [{"label": "Hacked", "url": "/hacked"}]}]},
+            json={"menus": [{"key": "footer_legal", "heading": "Legal", "items": [{"label": "Hacked", "url": "/organizations"}]}]},
             headers=auth_headers(navigation_manager_token),
         )
         assert resp.status_code == 403
@@ -945,8 +945,8 @@ class TestFooterOwnershipBoundary:
             "/api/v1/admin/navigation",
             json={
                 "menus": [
-                    {"key": "primary", "items": [{"label": "Should Not Save", "url": "/nope"}]},
-                    {"key": "footer_legal", "heading": "Legal", "items": [{"label": "Hacked", "url": "/hacked"}]},
+                    {"key": "primary", "items": [{"label": "Should Not Save", "url": "/newsletter"}]},
+                    {"key": "footer_legal", "heading": "Legal", "items": [{"label": "Hacked", "url": "/organizations"}]},
                 ]
             },
             headers=auth_headers(navigation_manager_token),

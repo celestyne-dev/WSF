@@ -14,7 +14,7 @@ from app.models.people import Organization, Person
 from app.models.user import User
 from app.schemas.opportunity import EventInputSchema, EventSchema
 from app.services.audit import log_action
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.event_access import can_access_event
 from app.services.event_post_content import apply_post_event_fields, post_event_payload
@@ -147,7 +147,7 @@ def _resolve_sponsors(entries):
 def _apply_fields(event, data, organizer, speakers, sponsors):
     event.title = data["title"]
     event.short_description = data.get("short_description")
-    event.description = sanitize_content_blocks(data.get("description", []))
+    event.description = sanitize_editor_blocks(data.get("description", []), "Description")
     event.type = data.get("type")
     event.format = data.get("format")
     event.date = data["date"]

@@ -94,7 +94,7 @@ def test_stale_fields_from_a_previous_type_are_never_stored(client, app, admin_t
     page_id = _make_page(app, key="press")
     items = [
         {"label": "Group with stale url", "itemType": "group", "url": "/community", "pageId": page_id,
-         "children": [{"label": "Kid", "itemType": "route", "url": "/kid"}]},
+         "children": [{"label": "Kid", "itemType": "route", "url": "/community"}]},
         {"label": "Topic with stale url", "itemType": "topic", "topicId": topic_id, "url": "/", "pageId": page_id},
         {"label": "Route with stale ids", "itemType": "route", "url": "/events", "topicId": topic_id, "openNewTab": True},
     ]
@@ -236,7 +236,7 @@ def test_healing_never_overwrites_legitimate_admin_changes(client, app, admin_to
         {"label": "Home", "itemType": "route", "url": "/"},  # a real homepage link stays
         {"label": "Our Community", "itemType": "route", "url": "/community"},  # admin relabel stays
         {"label": "Store", "itemType": "external", "url": "https://store.example.org"},  # admin's own shop link
-        {"label": "Custom", "itemType": "route", "url": "/custom-page"},
+        {"label": "Custom", "itemType": "route", "url": "/mentorship"},
     ])
     _seed(app)
     dests = _primary_destinations(app)
@@ -244,5 +244,5 @@ def test_healing_never_overwrites_legitimate_admin_changes(client, app, admin_to
     assert ("Our Community", "route", "/community") in dests
     assert [d for _, _, d in dests].count("/community") == 1
     assert ("Store", "external", "https://store.example.org") in dests
-    assert ("Custom", "route", "/custom-page") in dests
+    assert ("Custom", "route", "/mentorship") in dests
     assert ("Shop", "route", "/shop") in dests  # missing canonical destination added

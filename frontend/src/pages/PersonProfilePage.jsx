@@ -19,6 +19,7 @@ import { buildPersonStructuredData } from '../utils/profileStructuredData'
 import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
+import { awardLine } from '../utils/personEvidence'
 
 // schema.org Person structured data — the data shape is the pure
 // buildPersonStructuredData() (utils/profileStructuredData.js, mirroring
@@ -45,6 +46,22 @@ function usePersonStructuredData(person, canonicalUrl) {
 // (e.g. both "Founder & CEO") is never shown twice in the header.
 function normalizeLabel(value) {
   return (value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+// A claim's own evidence, deliberately secondary: "Source →". Opens in a
+// new tab with rel="noopener noreferrer"; the accessible name says what it
+// is. Same markup/classes as the server prerender (_evidence_link).
+function EvidenceLink({ entry }) {
+  if (!entry?.sourceUrl) return null
+  const label = entry.sourceLabel || 'Source'
+  return (
+    <>
+      {' '}
+      <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-sm font-medium text-burgundy-600 hover:underline" aria-label={`Source: ${label} (opens in a new tab)`}>
+        Source →
+      </a>
+    </>
+  )
 }
 
 export default function PersonProfilePage() {
@@ -198,22 +215,22 @@ export default function PersonProfilePage() {
               </div>
               <div className="mt-5 flex items-center gap-4">
                 {person.website && (
-                  <a href={person.website} target="_blank" rel="noreferrer" aria-label="Website" className="text-charcoal-600 hover:text-burgundy-600">
+                  <a href={person.website} target="_blank" rel="noopener noreferrer" aria-label="Website (opens in a new tab)" className="text-charcoal-600 hover:text-burgundy-600">
                     <Globe size={18} />
                   </a>
                 )}
                 {person.social.linkedin && (
-                  <a href={`https://linkedin.com/in/${person.social.linkedin}`} target="_blank" rel="noreferrer" aria-label="LinkedIn" className="text-charcoal-600 hover:text-burgundy-600">
+                  <a href={`https://linkedin.com/in/${person.social.linkedin}`} target="_blank" rel="noopener noreferrer" aria-label="LinkedIn (opens in a new tab)" className="text-charcoal-600 hover:text-burgundy-600">
                     <SocialIcon name="linkedin" size={18} />
                   </a>
                 )}
                 {person.social.twitter && (
-                  <a href={`https://twitter.com/${person.social.twitter}`} target="_blank" rel="noreferrer" aria-label="Twitter" className="text-charcoal-600 hover:text-burgundy-600">
+                  <a href={`https://twitter.com/${person.social.twitter}`} target="_blank" rel="noopener noreferrer" aria-label="X / Twitter (opens in a new tab)" className="text-charcoal-600 hover:text-burgundy-600">
                     <SocialIcon name="twitter" size={18} />
                   </a>
                 )}
                 {person.social.instagram && (
-                  <a href={`https://instagram.com/${person.social.instagram}`} target="_blank" rel="noreferrer" aria-label="Instagram" className="text-charcoal-600 hover:text-burgundy-600">
+                  <a href={`https://instagram.com/${person.social.instagram}`} target="_blank" rel="noopener noreferrer" aria-label="Instagram (opens in a new tab)" className="text-charcoal-600 hover:text-burgundy-600">
                     <SocialIcon name="instagram" size={18} />
                   </a>
                 )}
@@ -243,11 +260,13 @@ export default function PersonProfilePage() {
             <div className="mt-10">
               <h2 className="font-serif text-2xl font-semibold text-charcoal">Career Timeline</h2>
               <ol className="mt-5 space-y-5 border-l border-taupe-300 pl-6">
-                {person.careerTimeline.map((item) => (
-                  <li key={item.year} className="relative">
-                    <span className="absolute -left-[29px] top-1.5 h-2.5 w-2.5 rounded-full bg-burgundy-500" />
-                    <p className="text-sm font-semibold uppercase tracking-wide text-burgundy-600">{item.year}</p>
+                {person.careerTimeline.map((item, i) => (
+                  <li key={`${item.year}-${i}`} className="relative">
+                    <span className="absolute -left-[29px] top-1.5 h-2.5 w-2.5 rounded-full bg-burgundy-500" aria-hidden="true" />
+                    {item.year && <p className="text-sm font-semibold uppercase tracking-wide text-burgundy-600">{item.year}</p>}
                     <p className="mt-0.5 text-base text-charcoal">{item.title}</p>
+                    {item.organization && <p className="text-sm text-charcoal-600">{item.organization}</p>}
+                    <EvidenceLink entry={item} />
                   </li>
                 ))}
               </ol>
@@ -260,8 +279,11 @@ export default function PersonProfilePage() {
             <div className="mt-10">
               <h2 className="font-serif text-2xl font-semibold text-charcoal">Achievements</h2>
               <ul className="mt-4 list-disc space-y-2 pl-5 text-base text-charcoal-600">
-                {person.achievements.map((a) => (
-                  <li key={a}>{a}</li>
+                {person.achievements.map((a, i) => (
+                  <li key={`${a.text}-${i}`}>
+                    {a.text}
+                    <EvidenceLink entry={a} />
+                  </li>
                 ))}
               </ul>
             </div>
@@ -271,8 +293,11 @@ export default function PersonProfilePage() {
             <div className="mt-10">
               <h2 className="font-serif text-2xl font-semibold text-charcoal">Awards</h2>
               <ul className="mt-4 list-disc space-y-2 pl-5 text-base text-charcoal-600">
-                {person.awards.map((a) => (
-                  <li key={a}>{a}</li>
+                {person.awards.map((a, i) => (
+                  <li key={`${a.name}-${i}`}>
+                    {awardLine(a)}
+                    <EvidenceLink entry={a} />
+                  </li>
                 ))}
               </ul>
             </div>

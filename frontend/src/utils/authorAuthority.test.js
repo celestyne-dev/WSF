@@ -92,27 +92,28 @@ test('case A: full authority profile renders every section in order', () => {
   const m = authorProfileModel(full, { articleCount: 9 })
   assert.equal(m.headline, 'Career, Leadership & Future of Work')
   assert.equal(m.roleLine, 'Founder & Editor · Nairobi, Kenya')
-  assert.deepEqual(m.sections, ['profile', 'learning', 'resources', 'articles', 'sources'])
-  assert.equal(m.sidebar, true)
-  assert.equal(m.stats.length, 3)
+  assert.deepEqual(m.sections, ['about', 'credentials', 'learning', 'resources', 'articles', 'sources'])
+  assert.equal(m.subtitle, 'Career, Leadership & Future of Work')
+  // Facts carry only real values; Role appears because the headline took the subtitle.
+  assert.deepEqual(m.facts.map((f) => f.label).slice(0, 2), ['Location', 'Role'])
+  assert.equal('stats' in m, false)
   assert.deepEqual(m.person, { slug: 'celestine' })
   assert.equal(m.hasPortrait, true)
 })
 
 test('case B: articles and resources but no courses', () => {
   const m = authorProfileModel({ ...full, authority: { counts: { articles: 4, resources: 2, courses: 0 }, learningPrograms: [], resources: [{ id: 2 }] } }, { articleCount: 4 })
-  assert.deepEqual(m.sections, ['profile', 'resources', 'articles', 'sources'])
-  assert.deepEqual(m.stats.map((s) => s.label), ['Articles', 'Career Tools'])
+  assert.deepEqual(m.sections, ['about', 'credentials', 'resources', 'articles', 'sources'])
 })
 
 test('case C: bio only renders just About, no sidebar, no empty headings', () => {
   const m = authorProfileModel({ name: 'Amara Diallo', bio: [{ type: 'paragraph', text: 'Bio.' }] }, { articleCount: 0 })
-  assert.deepEqual(m.sections, ['profile'])
-  assert.equal(m.sidebar, false)
+  assert.deepEqual(m.sections, ['about'])
+  assert.deepEqual(m.facts, [])
+  assert.equal(m.subtitle, '')
   assert.equal(m.headline, '')
   assert.equal(m.roleLine, '')
   assert.deepEqual(m.topics, [])
-  assert.deepEqual(m.stats, [])
   assert.deepEqual(m.links, [])
   assert.equal(m.person, null)
 })
@@ -124,12 +125,12 @@ test('case D/E: linked Person kept; no portrait uses the initials fallback', () 
   assert.equal(m.initials, 'WK')
 })
 
-test('nothing at all: no sections; credentials without a bio take the main column', () => {
+test('nothing at all: no sections; credentials alone get their own section', () => {
   assert.deepEqual(authorProfileModel({ name: 'X' }).sections, [])
   const m = authorProfileModel({ name: 'X', credentials: [{ name: 'MBA' }, { issuer: 'no name' }] })
-  assert.deepEqual(m.sections, ['profile'])
-  assert.equal(m.sidebar, false)
+  assert.deepEqual(m.sections, ['credentials'])
   assert.equal(m.credentials.length, 1)
+  assert.deepEqual(m.facts, [{ key: 'education', label: 'Education', values: ['MBA'] }])
   // Later archive pages keep the articles section even if a page is short.
   assert.deepEqual(authorProfileModel({ name: 'X' }, { articleCount: 0, page: 2 }).sections, ['articles'])
 })
@@ -165,4 +166,18 @@ test('missing or malformed bootstrap means fetch normally', () => {
   assert.deepEqual(noArticles.articles, [])
   assert.equal(noArticles.pagination, null)
   assert.equal(noArticles.author.authority, null)
+})
+
+import { readFileSync } from 'node:fs'
+import { authorEducation } from './authorAuthority.js'
+
+test('education is derived from degree-type credentials (shared fixture with the prerender)', () => {
+  const { cases } = JSON.parse(readFileSync(new URL('../../../backend/tests/fixtures/author_education_cases.json', import.meta.url), 'utf8'))
+  for (const c of cases) assert.deepEqual(authorEducation(c.credentials), c.expected)
+})
+
+test('role without a headline becomes the subtitle and is not repeated as a fact', () => {
+  const m = authorProfileModel({ name: 'A B', role: 'Editor', location: 'Accra' })
+  assert.equal(m.subtitle, 'Editor')
+  assert.deepEqual(m.facts.map((f) => f.key), ['location'])
 })

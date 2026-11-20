@@ -127,22 +127,28 @@ def validate_item_type_requirements(data):
     item_type = data.get("item_type", "route")
 
     if item_type == "route":
-        validate_route_url(data.get("url"))
+        url = validate_route_url(data.get("url"))
+        # Must be a page this site really serves (the same registry the
+        # server uses to render pages — never a second, stale allowlist).
+        from app.services.spa_shell import known_internal_route
+
+        if not known_internal_route(url):
+            raise ValidationError(f'"{url}" is not a valid internal route.', field_name="url")
     elif item_type == "external":
         validate_external_url(data.get("url"))
     elif item_type == "topic":
         if not data.get("topic_id"):
-            raise ValidationError("A Topic must be selected for this item type.", field_name="topic_id")
+            raise ValidationError("choose a Topic.", field_name="topic_id")
         if Topic.query.get(data["topic_id"]) is None:
             raise ValidationError("Selected Topic does not exist.", field_name="topic_id")
     elif item_type == "series":
         if not data.get("series_id"):
-            raise ValidationError("A Series must be selected for this item type.", field_name="series_id")
+            raise ValidationError("choose a Series.", field_name="series_id")
         if Series.query.get(data["series_id"]) is None:
             raise ValidationError("Selected Series does not exist.", field_name="series_id")
     elif item_type == "page":
         if not data.get("page_id"):
-            raise ValidationError("A Page must be selected for this item type.", field_name="page_id")
+            raise ValidationError("choose a Page.", field_name="page_id")
         if Page.query.get(data["page_id"]) is None:
             raise ValidationError("Selected Page does not exist.", field_name="page_id")
     elif item_type == "group":
@@ -608,3 +614,51 @@ def seed_default_navigation():
     # is still safe: this only flushes work that function has already
     # finished building by the time it gets here.
     db.session.commit()
+
+
+def describe_menu_errors(messages, payload, root_label, groups_key, group_label_key, item_word):
+    """Turns marshmallow's nested error dict for a Navigation/Footer save
+    into ONE readable, field-specific sentence, e.g.
+        "Footer > About > Link 3 (Press kit): choose a Page."
+        'Navigation > primary > Item 2: "/foo" is not a valid internal route.'
+    `payload` is the submitted JSON (for headings/labels)."""
+    if not isinstance(messages, dict):
+        return None
+    groups = messages.get(groups_key)
+    if not isinstance(groups, dict):
+        first = next(iter(messages.values()), None)
+        return f"{root_label}: {_first_text(first)}" if first else None
+    group_index, group_errors = next(iter(sorted(groups.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 0)))
+    group_payload = _at(payload.get(groups_key) if isinstance(payload, dict) else None, group_index)
+    group_name = (group_payload or {}).get(group_label_key) or f"group {int(group_index) + 1}"
+    path = [root_label, str(group_name)]
+    errors, items_payload = group_errors, (group_payload or {}).get("items")
+    while isinstance(errors, dict) and isinstance(errors.get("items") or errors.get("children"), dict):
+        key = "items" if isinstance(errors.get("items"), dict) else "children"
+        index, errors = next(iter(errors[key].items()))
+        item = _at(items_payload, index) or {}
+        label = (item.get("label") or "").strip()
+        path.append(f"{item_word} {int(index) + 1}" + (f" ({label})" if label else ""))
+        items_payload = item.get("children")
+    return f"{' > '.join(path)}: {_first_text(errors)}"
+
+
+def _at(values, index):
+    try:
+        return values[int(index)] if isinstance(values, list) else None
+    except (IndexError, ValueError, TypeError):
+        return None
+
+
+def _first_text(errors):
+    if isinstance(errors, str):
+        return errors
+    if isinstance(errors, list):
+        return _first_text(errors[0]) if errors else "invalid value."
+    if isinstance(errors, dict):
+        for field, value in errors.items():
+            text = _first_text(value)
+            if field in ("_schema", "url", "page_id", "topic_id", "series_id", "pageId", "topicId", "seriesId"):
+                return text
+            return f"{field}: {text}"
+    return "invalid value."

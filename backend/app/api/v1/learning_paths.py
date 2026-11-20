@@ -22,7 +22,7 @@ from app.schemas.media import MediaSchema
 from app.services.audit import log_action
 from app.services.circle import has_lifetime_circle_access
 from app.services.career_hub import GOAL_LABELS, url_value
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
 from app.services.learning_catalog import catalog_stats
 from app.services.learning_paths import (
     path_facts,
@@ -208,7 +208,7 @@ def _apply(path, data, is_new):
     path.title = data["title"].strip()
     path.subtitle = (data.get("subtitle") or "").strip() or None
     path.short_description = (data.get("short_description") or "").strip() or None
-    path.description = sanitize_content_blocks(data.get("description") or [])
+    path.description = sanitize_editor_blocks(data.get("description") or [], "Description")
     path.career_goal = data.get("career_goal") or None
     path.difficulty_level = data.get("difficulty_level") or None
     media_id = data.get("hero_media_id")

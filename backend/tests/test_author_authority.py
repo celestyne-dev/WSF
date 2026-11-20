@@ -176,11 +176,12 @@ class TestAuthorPrerender:
         html = client.get("/authors/celestine").get_data(as_text=True)
         root = html.split('data-wsf-prerender="author"', 1)[1]
         assert "Career, Leadership &amp; Future of Work" in root
-        for label, value in (("Articles", 9), ("Career Tool", 1), ("Course", 1)):
-            assert re.search(rf"<dt[^>]*>{label}</dt><dd[^>]*>{value}</dd>", root), label
+        # Redesign: no hero counters; the total is understated beside the archive heading.
+        assert "leading-none text-charcoal" not in root
+        assert "9 articles" in root
         assert "Learn with Celestine" in root and "/learning/pre-course" in root
         assert "Career tools by Celestine" in root and "/resources/pre-tool" in root
-        assert "Latest articles" in root
+        assert "Browse all of Celestine’s articles" in root
         assert len(re.findall(r'href="/pre\d"', root)) == 6  # bounded, not the archive
         assert "vault/secret.pdf" not in html
 
@@ -199,8 +200,8 @@ class TestAuthorPrerender:
         _article(app, aid, "order-1")
         html = client.get("/authors/celestine").get_data(as_text=True)
         root = html.split('data-wsf-prerender="author"', 1)[1]
-        positions = [root.index(s) for s in ("Celestine Nyamoita", "Future of Work", "Founder &amp; Editor", "Nairobi",
-                                              'href="/topics/leadership"', ">Article</dt>")]
+        positions = [root.index(s) for s in ("Celestine Nyamoita", "Future of Work", ">Location</dt>", "Nairobi",
+                                              ">Role</dt>", "Founder &amp; Editor", 'href="/topics/leadership"', 'id="author-articles"')]
         assert positions == sorted(positions), positions
         assert root.count('href="/topics/leadership"') == 1
 
@@ -306,6 +307,6 @@ class TestAuthorPrerenderParity:
         assert "<img" not in root
         assert 'class="border-b border-taupe-200 bg-cream"' in root
         assert 'aria-label="Breadcrumb"' in root and 'href="/authors"' in root
-        for heading in ("About ", "Credentials", "Learn with", "Career tools", "Latest articles", "Sources", "Areas of expertise"):
+        for heading in ("About ", "Credentials", "Learn with", "Career tools", "Browse all of", "Sources", "Areas of expertise"):
             assert heading not in root, heading
         assert "<dl" not in root

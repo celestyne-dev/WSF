@@ -166,14 +166,18 @@ def test_callout_list_round_trips_through_person_api(client, editor_token):
         "title": "Key lessons",
         "text": "What her journey teaches us:",
         "listStyle": "number",
-        "items": ["Start before you feel ready.", "<script>x</script>Build relationships."],
+        "items": ["Start before you feel ready.", '<strong>Build</strong> <a href="https://example.org/r">relationships</a>.'],
     }]
     resp = client.post("/api/v1/people", json=_payload(bio=bio), headers=auth_headers(editor_token))
     assert resp.status_code == 201
     [block] = resp.get_json()["data"]["bio"]
     assert block["listStyle"] == "number"
     assert block["items"][0] == "Start before you feel ready."
-    assert "<script" not in block["items"][1]
+    assert block["items"][1] == '<strong>Build</strong> <a href="https://example.org/r">relationships</a>.'
+    # An unsafe item is refused with the block named, not silently stripped.
+    bad = [dict(bio[0], items=["<script>x</script>Build relationships."])]
+    resp = client.post("/api/v1/people", json=_payload(bio=bad, slug="amina-two"), headers=auth_headers(editor_token))
+    assert resp.status_code == 422 and "Biography, block 1 (Callout)" in str(resp.get_json())
 
 
 # --- B. Person SEO image -------------------------------------------------

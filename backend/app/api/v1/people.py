@@ -9,7 +9,8 @@ from app.models.article import Article
 from app.models.people import Person
 from app.models.taxonomy import Series
 from app.schemas.people import PersonDetailSchema, PersonInputSchema, PersonSchema
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
+from app.services.person_evidence import clean_input as clean_evidence
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.public_visibility import public_person_dump
@@ -81,10 +82,10 @@ def _apply_fields(person, data, series):
     person.expertise = data.get("expertise", [])
     person.featured_quote = data.get("featured_quote")
     person.short_bio = data.get("short_bio")
-    person.bio = sanitize_content_blocks(data.get("bio", []))
-    person.achievements = data.get("achievements", [])
-    person.career_timeline = data.get("career_timeline", [])
-    person.awards = data.get("awards", [])
+    person.bio = sanitize_editor_blocks(data.get("bio", []), "Biography")
+    person.achievements = clean_evidence("achievements", data.get("achievements", []))
+    person.career_timeline = clean_evidence("career_timeline", data.get("career_timeline", []))
+    person.awards = clean_evidence("awards", data.get("awards", []))
     person.website = data.get("website")
     person.social = data.get("social")
     # Already validated/normalized by SourceSchema. Omitted from an update

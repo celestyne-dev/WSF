@@ -1,5 +1,6 @@
 import { ChevronUp, ChevronDown, Trash2, AlertTriangle } from 'lucide-react'
 import NavigationItemFields from './NavigationItemFields'
+import { changeNavItemType } from '../../utils/navigation'
 import { FOOTER_LINK_TYPES, FOOTER_LINK_TYPE_LABELS, LEGAL_LINK_PATHS } from '../../constants/footerItems'
 
 /** One footer link — flat, never recursive (a footer group is Group ->
@@ -32,7 +33,8 @@ export default function FooterLinkRow({ item, index, siblingCount, onChange, onR
 
         <select
           value={item.itemType}
-          onChange={(e) => onChange({ ...item, itemType: e.target.value, url: e.target.value === 'route' || e.target.value === 'external' ? item.url : null })}
+          onChange={(e) => onChange(changeNavItemType(item, e.target.value))}
+          aria-label="Link type"
           className="border border-taupe-300 bg-white px-2 py-1.5 text-xs focus:border-burgundy-500 focus:outline-none"
         >
           {FOOTER_LINK_TYPES.map((t) => (

@@ -77,34 +77,67 @@ const hasBio = (author) => Array.isArray(author?.bio) && author.bio.length > 0
 
 // The whole page composition, in document order. Each section appears only
 // when it has real content, so no empty heading can ever render.
+// Education for the profile facts, derived from credentials an editor
+// already entered (no separate field): degree-type categories or degree
+// names. At most two, "Name, Issuer". Mirrors backend prerender
+// author_education(); both are tested against tests/fixtures/
+// author_education_cases.json.
+const EDUCATION_CATEGORY = /\b(degree|education|academic|diploma)\b/i
+const EDUCATION_NAME = /^(b\.?a\b|b\.?sc|ba\b|bsc|ma\b|msc|mba|phd|ph\.d|llb|llm|bachelor|master|doctor|doctorate)/i
+
+export function authorEducation(credentials) {
+  return (Array.isArray(credentials) ? credentials : [])
+    .filter((c) => c && clean(c.name) && (EDUCATION_CATEGORY.test(c.category || '') || EDUCATION_NAME.test(clean(c.name))))
+    .slice(0, 2)
+    .map((c) => [clean(c.name), clean(c.issuer)].filter(Boolean).join(', '))
+}
+
 export function authorProfileModel(author, { articleCount = 0, page = 1 } = {}) {
   const firstName = authorFirstName(author?.name)
   const credentials = validCredentials(author)
   const programs = author?.authority?.learningPrograms || []
   const resources = author?.authority?.resources || []
   const about = hasBio(author)
-  // Credentials sit beside About on wide screens; with no About they take
-  // the main column instead, and with neither the profile band is skipped.
-  const sidebar = about && credentials.length > 0
+  // Profile order (Author redesign): About, then Credentials as their own
+  // section, Learn with, Career tools, the article archive, Sources.
   const sections = []
-  if (about || credentials.length) sections.push('profile')
+  if (about) sections.push('about')
+  if (credentials.length) sections.push('credentials')
   if (hasItems(programs)) sections.push('learning')
   if (hasItems(resources)) sections.push('resources')
   if (articleCount > 0 || page > 1) sections.push('articles')
   if (hasItems((author?.sources || []).filter((s) => s?.title))) sections.push('sources')
+  const headline = clean(author?.headline)
+  const role = clean(author?.role)
+  const topics = (author?.topics || []).filter((t) => t?.slug && t?.name)
+  const education = authorEducation(credentials)
+  // Hero facts: only labels with a value. Role is a fact only when the
+  // headline already took the line under the name (otherwise the role is
+  // that line, and repeating it would duplicate it).
+  const facts = []
+  const place = authorPlace(author)
+  if (place) facts.push({ key: 'location', label: 'Location', values: [place] })
+  if (headline && role) facts.push({ key: 'role', label: 'Role', values: [role] })
+  if (education.length) facts.push({ key: 'education', label: 'Education', values: education })
+  if (topics.length) facts.push({ key: 'topics', label: 'Areas of expertise', topics })
   return {
     firstName,
-    headline: clean(author?.headline),
+    headline,
+    // The line under the name: the headline, else the role.
+    subtitle: headline || role,
     roleLine: authorRoleLine(author),
-    topics: (author?.topics || []).filter((t) => t?.slug && t?.name),
-    stats: authorStatItems(author?.authority?.counts),
+    role,
+    place,
+    intro: clean(author?.shortBio),
+    education,
+    topics,
+    facts,
     links: authorExternalLinks(author),
     person: author?.person?.slug ? { slug: author.person.slug } : null,
     initials: authorInitials(author?.name),
     hasPortrait: Boolean(author?.photoMedia || author?.photo),
     about,
     credentials,
-    sidebar,
     sections,
   }
 }

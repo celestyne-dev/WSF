@@ -12,7 +12,7 @@ from app.models.taxonomy import Topic
 from app.schemas.article import PublicArticleSchema, article_summary_schema
 from app.schemas.people import AuthorDetailSchema, AuthorInputSchema, AuthorSchema
 from app.services.author_authority import author_authority
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.public_visibility import public_author_dump
@@ -85,7 +85,7 @@ def _apply_fields(author, data, topics, person):
     if "headline" in data:
         author.headline = (data["headline"] or "").strip() or None
     author.photo_media_id = data.get("photo_media_id")
-    author.bio = sanitize_content_blocks(data.get("bio", []))
+    author.bio = sanitize_editor_blocks(data.get("bio", []), "Biography")
     author.short_bio = data.get("short_bio")
     if "expertise" in data:
         author.expertise = data["expertise"]

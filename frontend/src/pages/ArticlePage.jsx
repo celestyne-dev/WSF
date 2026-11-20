@@ -25,7 +25,7 @@ import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
 import ArticleCard from '../components/cards/ArticleCard'
 import SaveButton from '../components/account/SaveButton'
 import PersonCard from '../components/cards/PersonCard'
-import NotFoundPage from './NotFoundPage'
+import GeneralPage from './GeneralPage'
 
 const SITE_ORIGIN = 'https://womenshapingfutures.org'
 
@@ -304,7 +304,8 @@ export default function ArticlePage() {
   }, [article])
 
   if (article === undefined) return <PageLoader />
-  if (article === null) return <NotFoundPage />
+  // No Article at this slug: a published general Page may live here.
+  if (article === null) return <GeneralPage slug={slug} />
 
   const author = article.author
   const coAuthors = article.coAuthors || []

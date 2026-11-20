@@ -252,7 +252,7 @@ function ListBlock({ block, variant, listStart }) {
 // HTML as a regular List block's items.
 function CalloutList({ block, className = '' }) {
   if (block.listStyle !== 'bullet' && block.listStyle !== 'number') return null
-  const items = (Array.isArray(block.items) ? block.items : []).filter((item) => typeof item === 'string' && item.trim())
+  const items = visibleItems(block.items)
   if (!items.length) return null
   const Tag = block.listStyle === 'number' ? 'ol' : 'ul'
   return (

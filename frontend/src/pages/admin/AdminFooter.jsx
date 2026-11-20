@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
 import { Plus, Save, ExternalLink, ChevronUp, ChevronDown, Trash2 } from 'lucide-react'
 import { fetchAdminFooter, saveAdminFooter } from '../../api/footer'
+import { validateNavItem } from '../../utils/navigation'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import FooterLinkRow from '../../components/cms/FooterLinkRow'
 import FooterSocialLinkRow from '../../components/cms/FooterSocialLinkRow'
@@ -34,6 +35,22 @@ function labeledInput(label, value, onChange, { textarea = false, maxLength, pla
       />
     </div>
   )
+}
+
+// "Footer > About > Link 3 (Press kit): needs a Page selected." — the
+// shared Navigation item rules (utils/navigation.validateNavItem), located.
+function footerValidationError(groups) {
+  for (const group of groups || []) {
+    const items = group.items || []
+    for (let i = 0; i < items.length; i += 1) {
+      const error = validateNavItem(items[i])
+      if (error) {
+        const label = items[i].label?.trim()
+        return `Footer > ${group.heading || 'Untitled group'} > Link ${i + 1}${label ? ` (${label})` : ''}: ${error}`
+      }
+    }
+  }
+  return null
 }
 
 export default function AdminFooter() {
@@ -130,6 +147,12 @@ export default function AdminFooter() {
   }
 
   async function handleSave() {
+    // Same checks as the server, but naming the exact group and link.
+    const problem = footerValidationError(footer.groups)
+    if (problem) {
+      toast.error(problem)
+      return
+    }
     setSaving(true)
     try {
       const saved = await saveAdminFooter(footer)

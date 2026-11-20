@@ -148,73 +148,70 @@ export default function AuthorProfilePage() {
 
   return (
     <div>
-      {/* Hero: identity and authority signals. */}
+      {/* Hero: portrait left, identity right (stacks on mobile). Facts carry
+          only real values; no headline counters. Mirrored by the server
+          prerender (backend prerender.render_author_prerender). */}
       <header className="border-b border-taupe-200 bg-cream">
-        <div className="container-editorial max-w-[1240px] pb-8 pt-5">
+        <div className="container-editorial max-w-[1240px] pb-10 pt-5 lg:pb-14">
           <div className="opacity-80">
             <Breadcrumb items={[{ label: 'Authors', to: '/authors' }, { label: author.name }]} />
           </div>
-          <div
-            className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center sm:gap-8 md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14"
-          >
+          <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-10 lg:mt-8 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-16">
             {model.hasPortrait ? (
               <MediaImage
                 media={author.photoMedia}
                 variant="card"
                 mediaPath={author.photo}
                 alt={resolveAltText(author.photoMedia, `Portrait of ${author.name}`)}
-                width={520}
-                height={650}
+                width={600}
+                height={750}
                 aspect={4 / 5}
-                sizes="(min-width: 1024px) 260px, (min-width: 768px) 200px, (min-width: 640px) 180px, 130px"
+                sizes="(min-width: 1024px) 300px, (min-width: 640px) 200px, 160px"
                 priority
-                className="aspect-[4/5] w-[130px] rounded-media border border-taupe-200 object-cover sm:w-full"
+                className="aspect-[4/5] w-[160px] rounded-media border border-taupe-200 object-cover sm:w-full"
               />
             ) : (
               <div
                 aria-hidden="true"
-                className="flex aspect-[4/5] w-[130px] items-center justify-center rounded-media border border-taupe-200 bg-ivory-200 font-serif text-4xl text-burgundy-600 sm:w-full md:text-5xl lg:text-6xl"
+                className="flex aspect-[4/5] w-[160px] items-center justify-center rounded-media border border-taupe-200 bg-ivory-200 font-serif text-5xl text-burgundy-600 sm:w-full lg:text-7xl"
               >
                 {model.initials}
               </div>
             )}
 
-            <div className="min-w-0">
-              <h1 className="font-serif text-[32px] font-semibold leading-[1.1] text-charcoal sm:text-4xl lg:text-[46px]">{author.name}</h1>
-              {model.headline && <p className="mt-2 font-serif text-lg leading-snug text-burgundy-700 sm:text-xl">{model.headline}</p>}
-              {model.roleLine && <p className="mt-2 text-sm text-charcoal-600 sm:text-base">{model.roleLine}</p>}
+            <div className="min-w-0 self-center">
+              <h1 className="font-serif text-[36px] font-semibold leading-[1.05] text-charcoal sm:text-5xl lg:text-[60px]">{author.name}</h1>
+              {model.subtitle && <p className="mt-3 font-serif text-lg leading-snug text-burgundy-700 sm:text-xl">{model.subtitle}</p>}
+              {model.intro && <p className="mt-5 max-w-reading text-base leading-relaxed text-charcoal-700 sm:text-[17px]">{model.intro}</p>}
 
-              {model.topics.length > 0 && (
-                <div className="mt-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-widest2 text-charcoal-600/80">Areas of expertise</p>
-                  <ul aria-label="Areas of expertise" className="mt-2 flex flex-wrap gap-2">
-                    {model.topics.map((t) => (
-                      <li key={t.slug}>
-                        <Link
-                          to={`/topics/${t.slug}`}
-                          className="inline-block rounded-full border border-taupe-300 bg-ivory px-3 py-1 text-xs font-medium text-charcoal-600 transition-colors hover:border-burgundy-500 hover:text-burgundy-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-burgundy-600"
-                        >
-                          {t.name}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {model.stats.length > 0 && (
-                <dl className="mt-5 inline-flex max-w-full flex-wrap border-y border-taupe-200">
-                  {model.stats.map((stat, i) => (
-                    <div key={stat.label} className={`flex flex-col-reverse py-2.5 pr-6 sm:pr-8 ${i > 0 ? 'border-l border-taupe-200 pl-6 sm:pl-8' : ''}`}>
-                      <dt className="text-[11px] font-semibold uppercase tracking-wider text-charcoal-600">{stat.label}</dt>
-                      <dd className="font-serif text-3xl font-semibold leading-none text-charcoal">{stat.value}</dd>
+              {model.facts.length > 0 && (
+                <dl className="mt-6 grid max-w-reading grid-cols-1 gap-x-8 gap-y-4 border-t border-taupe-200 pt-5 sm:grid-cols-2">
+                  {model.facts.map((fact) => (
+                    <div key={fact.key} className={fact.key === 'topics' ? 'sm:col-span-2' : ''}>
+                      <dt className="text-[11px] font-semibold uppercase tracking-widest2 text-charcoal-600">{fact.label}</dt>
+                      {fact.topics ? (
+                        <dd className="mt-1 text-sm text-charcoal-700">
+                          {fact.topics.map((t, i) => (
+                            <span key={t.slug}>
+                              {i > 0 && ', '}
+                              <Link to={`/topics/${t.slug}`} className="font-medium text-charcoal underline decoration-taupe-300 underline-offset-4 hover:text-burgundy-600 hover:decoration-burgundy-600">
+                                {t.name}
+                              </Link>
+                            </span>
+                          ))}
+                        </dd>
+                      ) : (
+                        fact.values.map((value) => (
+                          <dd key={value} className="mt-1 text-sm text-charcoal-700">{value}</dd>
+                        ))
+                      )}
                     </div>
                   ))}
                 </dl>
               )}
 
               {(model.links.length > 0 || model.person) && (
-                <ul className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+                <ul className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
                   {model.links.map((link) => (
                     <li key={link.kind}>
                       <a
@@ -245,27 +242,22 @@ export default function AuthorProfilePage() {
       </header>
 
       <div className="container-editorial max-w-[1240px]">
-        {show('profile') && (
-          <div
-            className={
-              model.sidebar
-                ? 'grid grid-cols-1 gap-12 pb-14 pt-10 lg:grid-cols-12 lg:gap-16 lg:pb-16 lg:pt-12'
-                : 'pb-14 pt-10 md:grid md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14 lg:pb-16 lg:pt-12'
-            }
-          >
-            {model.about && (
-              <section aria-labelledby="author-about" className={model.sidebar ? 'max-w-reading lg:col-span-8' : 'max-w-reading md:col-start-2'}>
-                <h2 id="author-about" className="font-serif text-2xl font-semibold text-charcoal sm:text-3xl">About {firstName}</h2>
-                <div className="mt-6 text-[17px] leading-[1.75] text-charcoal-700 sm:text-lg">
-                  <ArticleContent blocks={author.bio} variant="profile" />
-                </div>
-              </section>
-            )}
-            {model.credentials.length > 0 && (
-              <aside className={model.sidebar ? 'lg:col-span-4' : `max-w-reading md:col-start-2 ${model.about ? 'mt-12' : ''}`}>
-                <CredentialsList credentials={model.credentials} id="author-credentials" compact={model.sidebar} />
-              </aside>
-            )}
+        {show('about') && (
+          <section aria-labelledby="author-about" className="py-14 lg:py-16">
+            <div className="max-w-reading">
+              <h2 id="author-about" className="font-serif text-2xl font-semibold text-charcoal sm:text-3xl">About {firstName}</h2>
+              <div className="mt-6 text-[17px] leading-[1.75] text-charcoal-700 sm:text-lg [&_li_a]:text-burgundy-600 [&_li_a]:underline [&_li_a]:underline-offset-2 [&_p_a]:text-burgundy-600 [&_p_a]:underline [&_p_a]:underline-offset-2">
+                <ArticleContent blocks={author.bio} variant="profile" />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {show('credentials') && (
+          <div className={`pb-14 pt-4 lg:pb-16 ${show('about') ? 'border-t border-taupe-200' : ''}`}>
+            <div className="max-w-reading">
+              <CredentialsList credentials={model.credentials} id="author-credentials" />
+            </div>
           </div>
         )}
 
@@ -301,9 +293,9 @@ export default function AuthorProfilePage() {
           <section aria-labelledby="author-articles" className="border-t border-taupe-200 py-14 lg:py-16">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 id="author-articles" className="font-serif text-2xl font-semibold text-charcoal sm:text-3xl">
-                {page > 1 ? `Articles by ${firstName}` : 'Latest articles'}
+                Browse all of {firstName}&rsquo;s articles
               </h2>
-              <p className="text-xs font-semibold uppercase tracking-wider text-charcoal-600">
+              <p className="text-sm text-charcoal-600">
                 {totalArticles} {totalArticles === 1 ? 'article' : 'articles'}
               </p>
             </div>

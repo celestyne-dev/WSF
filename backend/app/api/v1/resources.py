@@ -39,7 +39,7 @@ from app.schemas.media import MediaSchema
 from app.schemas.people import AuthorSchema, OrganizationSchema
 from app.schemas.resource import ResourceInputSchema, ResourceLeadInputSchema, ResourceSchema
 from app.schemas.taxonomy import TagSchema, TopicSchema
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.newsletter import upsert_subscriber
@@ -296,7 +296,7 @@ def _apply_fields(resource, data, topics, tags, author, sponsor, gallery_images)
     resource.name = data["name"]
     resource.subtitle = data.get("subtitle")
     resource.short_description = data.get("short_description")
-    resource.description = sanitize_content_blocks(data.get("description", []))
+    resource.description = sanitize_editor_blocks(data.get("description", []), "Description")
     resource.cover_media_id = data.get("cover_media_id")
     resource.images = gallery_images
     resource.type = data.get("type")

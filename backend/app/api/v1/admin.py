@@ -41,7 +41,10 @@ from app.services.cms import (
 from app.services.footer import FOOTER_MENU_KEY_PREFIX, FOOTER_SETTINGS_KEY, get_footer_menus, get_footer_settings
 from app.services.homepage import modules_with_warnings
 from app.services.indexnow import submit_indexnow_urls
-from app.services.navigation import find_duplicate_top_level_destinations
+from marshmallow import ValidationError
+from sqlalchemy import or_
+from app.models.page import Page
+from app.services.navigation import describe_menu_errors, find_duplicate_top_level_destinations
 from app.services.site_settings import SITE_IDENTITY_KEY, get_site_identity_resolved, save_site_identity
 from app.services.payment_settings import (
     PAYMENT_SETTINGS_KEY,
@@ -257,7 +260,8 @@ class AdminNavigationResource(Resource):
 
     @permission_required("navigation.publish", "navigation.manage")
     def put(self):
-        data = NavigationInputSchema().load(request.get_json(silent=True) or {})
+        payload = request.get_json(silent=True) or {}
+        data = _load_menus(NavigationInputSchema(), payload, "Navigation", "menus", "key", "Item")
         footer_keys = [m["key"] for m in data["menus"] if m["key"].startswith(FOOTER_MENU_KEY_PREFIX)]
         if footer_keys and not current_user.has_permission("footer.manage", "footer.publish"):
             raise ApiError(
@@ -299,6 +303,39 @@ def _dump_footer():
     }
 
 
+def _load_menus(schema, payload, root_label, groups_key, label_key, item_word):
+    """Loads a Navigation/Footer payload; on failure answers with ONE
+    field-specific sentence ("Footer > About > Link 3 (Press kit): choose a
+    Page.") instead of a bare "Validation failed.", keeping the full
+    structured errors in `details` for the editor."""
+    try:
+        return schema.load(payload)
+    except ValidationError as exc:
+        message = describe_menu_errors(exc.messages, payload, root_label, groups_key, label_key, item_word)
+        raise ApiError(message or "Validation failed.", 422, code="validation_error", errors=exc.messages)
+
+
+class AdminDestinationPagesResource(Resource):
+    """Page search for destination pickers (Navigation, Footer, Homepage
+    career pathways). Anyone who may manage one of those can find Pages to
+    link — previously the picker used the Pages-admin list, so a Footer or
+    Navigation manager without pages.manage got nothing back, could never
+    select a Page, and every Page link failed to save. Title/slug/status
+    and public path only."""
+
+    @permission_required("pages.manage", "navigation.manage", "footer.manage", "homepage.manage")
+    def get(self):
+        query = (request.args.get("q") or "").strip()
+        rows = Page.query
+        if query:
+            like = f"%{query}%"
+            rows = rows.filter(or_(Page.title.ilike(like), Page.slug.ilike(like)))
+        rows = rows.order_by(Page.title).limit(20).all()
+        return success_response([
+            {"id": p.id, "title": p.title, "slug": p.slug, "status": p.status, "path": f"/{p.slug}"} for p in rows
+        ])
+
+
 class AdminFooterResource(Resource):
     """Footer CMS's own dedicated endpoint — gated by footer.manage/
     footer.publish (not settings.manage, which global Site Settings keeps
@@ -317,7 +354,8 @@ class AdminFooterResource(Resource):
 
     @permission_required("footer.publish", "footer.manage")
     def put(self):
-        data = FooterInputSchema().load(request.get_json(silent=True) or {})
+        payload = request.get_json(silent=True) or {}
+        data = _load_menus(FooterInputSchema(), payload, "Footer", "groups", "heading", "Link")
         replace_footer_groups(data["groups"])
         replace_social_links(data["social_links"])
         # FooterSettingsInputSchema.load() returns snake_case keys (its
@@ -454,6 +492,7 @@ class AdminSponsorListResource(Resource):
 api.add_resource(AdminHomepageResource, "/homepage")
 api.add_resource(AdminNavigationResource, "/navigation")
 api.add_resource(AdminFooterResource, "/footer")
+api.add_resource(AdminDestinationPagesResource, "/destinations/pages")
 api.add_resource(AdminSettingsResource, "/settings")
 api.add_resource(AdminArticleListResource, "/articles")
 api.add_resource(AdminDashboardResource, "/dashboard")

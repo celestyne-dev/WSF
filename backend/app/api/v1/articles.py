@@ -20,7 +20,7 @@ from app.schemas.article import (
 from app.services import articles_workflow
 from app.services.audit import log_action
 from app.services.notifications import notify_article_approved, notify_article_review_requested
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import create_redirect_for_slug_change, generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_search
@@ -225,7 +225,7 @@ def _apply_fields(article, data, relations):
     # immutable via ordinary save; see the dedicated workflow action
     # endpoints below for every real transition).
     article.seo = data.get("seo")
-    article.content = sanitize_content_blocks(data.get("content", []))
+    article.content = sanitize_editor_blocks(data.get("content", []), "Content")
     # Already validated/normalized by ArticleSourceSchema. Omitted from an
     # update payload -> left as stored; a new article starts with [].
     if "sources" in data:

@@ -155,8 +155,8 @@ class TestGroupVisibilityAndOrdering:
             client,
             admin_token,
             groups=[
-                {"heading": "First", "items": [{"label": "A", "itemType": "route", "url": "/a"}]},
-                {"heading": "Second", "items": [{"label": "B", "itemType": "route", "url": "/b"}]},
+                {"heading": "First", "items": [{"label": "A", "itemType": "route", "url": "/topics"}]},
+                {"heading": "Second", "items": [{"label": "B", "itemType": "route", "url": "/series"}]},
             ],
         )
         public = client.get("/api/v1/public/footer").get_json()["data"]
@@ -167,8 +167,8 @@ class TestGroupVisibilityAndOrdering:
             client,
             admin_token,
             groups=[
-                {"heading": "Second", "items": [{"label": "B", "itemType": "route", "url": "/b"}]},
-                {"heading": "First", "items": [{"label": "A", "itemType": "route", "url": "/a"}]},
+                {"heading": "Second", "items": [{"label": "B", "itemType": "route", "url": "/series"}]},
+                {"heading": "First", "items": [{"label": "A", "itemType": "route", "url": "/topics"}]},
             ],
         )
         public2 = client.get("/api/v1/public/footer").get_json()["data"]
@@ -202,8 +202,8 @@ class TestLinkVisibilityAndOrdering:
                 {
                     "heading": "Explore",
                     "items": [
-                        {"label": "Second", "itemType": "route", "url": "/b"},
-                        {"label": "First", "itemType": "route", "url": "/a"},
+                        {"label": "Second", "itemType": "route", "url": "/series"},
+                        {"label": "First", "itemType": "route", "url": "/topics"},
                     ],
                 }
             ],

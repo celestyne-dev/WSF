@@ -3,6 +3,7 @@ import { delay, paginate } from './mockUtils'
 import { regionFilterOptions, matchesRegion, matchesCountry } from '../mock/geography'
 import { attachMockCountry, countryOptionsFromItems } from './geography'
 import { mapMediaRef } from '../utils/media'
+import { normalizeAchievements, normalizeAwards, normalizeTimeline } from '../utils/personEvidence'
 
 // The mock people dataset is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -46,9 +47,11 @@ export function mapPerson(p) {
     // ArticleBlockEditor. Mock-mode demo data still carries a plain string,
     // wrapped into a single paragraph block so both modes share one shape.
     bio: Array.isArray(p.bio) ? p.bio : p.bio ? [{ type: 'paragraph', text: p.bio }] : [],
-    achievements: p.achievements || [],
-    careerTimeline: p.career_timeline || [],
-    awards: p.awards || [],
+    // Claim evidence: legacy strings and new objects, one shape
+    // (utils/personEvidence.js — mirrors backend person_evidence.py).
+    achievements: normalizeAchievements(p.achievements),
+    careerTimeline: normalizeTimeline(p.career_timeline),
+    awards: normalizeAwards(p.awards),
     website: p.website,
     social: p.social || {},
     // GEO Phase 4A — editorial sources & references (PersonDetailSchema);

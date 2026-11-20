@@ -239,11 +239,20 @@ def test_article_content_is_sanitized(client, editor_token, author_slug):
         json={"title": "Sanitize Check", "authorSlug": author_slug, "content": blocks},
         headers=auth_headers(editor_token),
     )
-    assert create.status_code == 201
-    text = create.get_json()["data"]["content"][0]["text"]
-    assert "<script>" not in text
-    assert "javascript:" not in text
-    assert "Hello" in text
+    # Unsafe content is refused at save time with a message naming the
+    # block, never silently reduced to its text.
+    assert create.status_code == 422
+    assert "block 1 (Paragraph)" in str(create.get_json())
+    # Safe inline formatting still saves and stray markup is sanitized.
+    ok = client.post(
+        "/api/v1/articles",
+        json={"title": "Sanitize Check 2", "authorSlug": author_slug,
+              "content": [{"type": "paragraph", "text": '<span class="x">Hello</span> <a href="https://example.org">link</a>'}]},
+        headers=auth_headers(editor_token),
+    )
+    assert ok.status_code == 201
+    text = ok.get_json()["data"]["content"][0]["text"]
+    assert "<span" not in text and '<a href="https://example.org">link</a>' in text and "Hello" in text
 
 
 def test_article_revision_captures_content_changes(client, editor_token, author_slug):
@@ -528,7 +537,7 @@ def test_callout_list_persists_and_sanitizes_in_article_content(client, editor_t
                     "title": "Key lessons",
                     "text": "What we learned:",
                     "listStyle": "bullet",
-                    "items": ["<b>One</b>", '<a href="javascript:alert(1)">Two</a><script>x</script>'],
+                    "items": ["<b>One</b>", '<a href="https://example.org/two">Two</a><span>x</span>'],
                 },
             ],
         },
@@ -540,7 +549,7 @@ def test_callout_list_persists_and_sanitizes_in_article_content(client, editor_t
     assert old == {"type": "highlight", "title": "Old style", "text": "Text only"}
     assert listed["listStyle"] == "bullet"
     assert listed["items"][0] == "<b>One</b>"
-    assert "javascript:" not in listed["items"][1] and "<script" not in listed["items"][1]
+    assert listed["items"][1] == '<a href="https://example.org/two">Two</a>x'
 
 
 def test_caption_or_credit_alone_never_satisfies_informative_alt_rule(client, editor_token, author_slug):

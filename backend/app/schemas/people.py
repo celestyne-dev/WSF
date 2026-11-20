@@ -61,6 +61,11 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
     # column whose ogImageMediaId has no FK for the auto schema to follow,
     # so the picked image's public URL/alt are injected alongside the id.
     seo = fields.Method("get_seo", dump_only=True)
+    # Claim evidence, always in the normalized shape (old plain-string rows
+    # included) — see app/services/person_evidence.py.
+    achievements = fields.Method("get_achievements", dump_only=True)
+    awards = fields.Method("get_awards", dump_only=True)
+    career_timeline = fields.Method("get_career_timeline", dump_only=True)
 
     class Meta:
         model = Person
@@ -83,6 +88,21 @@ class PersonSchema(ma.SQLAlchemyAutoSchema):
                 if media.alt_text:
                     seo["ogImageAlt"] = media.alt_text
         return seo
+
+    def get_achievements(self, obj):
+        from app.services.person_evidence import public_entries
+
+        return public_entries("achievements", obj.achievements)
+
+    def get_awards(self, obj):
+        from app.services.person_evidence import public_entries
+
+        return public_entries("awards", obj.awards)
+
+    def get_career_timeline(self, obj):
+        from app.services.person_evidence import public_entries
+
+        return public_entries("career_timeline", obj.career_timeline)
 
     def get_organization(self, obj):
         if not obj.organization or obj.organization.status != "published":
@@ -214,9 +234,11 @@ class PersonInputSchema(ma.Schema):
     # Ordered content-block list — same shape as Article.content, sanitized
     # through the same sanitize_content_blocks() service before persisting.
     bio = fields.List(fields.Dict(), required=False, load_default=list)
-    achievements = fields.List(fields.String(), required=False, load_default=list)
+    # Strings (legacy) or evidence objects — validated/normalized by
+    # app/services/person_evidence.clean_input in the API layer.
+    achievements = fields.List(fields.Raw(), required=False, load_default=list)
     career_timeline = fields.List(fields.Dict(), required=False, load_default=list, data_key="careerTimeline")
-    awards = fields.List(fields.String(), required=False, load_default=list)
+    awards = fields.List(fields.Raw(), required=False, load_default=list)
     website = fields.String(required=False, allow_none=True, validate=validate.URL(require_tld=True))
     social = fields.Dict(required=False, allow_none=True)
     series_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="seriesSlugs")

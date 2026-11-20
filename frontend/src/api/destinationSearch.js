@@ -2,7 +2,7 @@
 // editor and Homepage Builder's Career Pathways cards). Values are ids —
 // destinations link by id so a renamed slug never breaks a link.
 import { fetchTopics, fetchSeries } from './taxonomies'
-import { fetchPagesAdmin } from './pages'
+import { apiClient } from './client'
 import { fetchArticles } from './articles'
 import { fetchPeople } from './people'
 import { fetchOpportunities } from './opportunities'
@@ -23,9 +23,13 @@ export async function searchSeriesIds(query) {
   return all.filter((s) => !q || s.name.toLowerCase().includes(q)).slice(0, 12).map((s) => ({ value: s.id, label: s.name }))
 }
 
+// Destination-picker search (Navigation, Footer, Homepage): its own
+// endpoint, open to navigation/footer/homepage managers too — the Pages
+// admin list is pages.manage-only, so those editors used to get no results
+// and could never save a Page link.
 export async function searchPageIds(query) {
-  const res = await fetchPagesAdmin({ q: query, per_page: 10 })
-  return res.items.map((p) => ({ value: p.id, label: p.title, sublabel: `/${p.slug}` }))
+  const { data } = await apiClient.get('/admin/destinations/pages', { params: { q: query || undefined } })
+  return (Array.isArray(data) ? data : data?.items || []).map((p) => ({ value: p.id, label: p.title, sublabel: `${p.path}${p.status !== 'published' ? ` · ${p.status}` : ''}` }))
 }
 
 // --- slug-valued loaders (Homepage Content Collection) ---------------------

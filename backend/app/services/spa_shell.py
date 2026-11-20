@@ -458,7 +458,7 @@ def _safe_public_person_payload(person):
 # AuthorProfilePage renders its portrait with MediaImage variant="card" and
 # these `sizes`; the prerender <img> and the LCP preload use the same values
 # so the browser fetches one file that React then reuses.
-_AUTHOR_PORTRAIT_SIZES = "(min-width: 1024px) 260px, (min-width: 768px) 200px, (min-width: 640px) 180px, 130px"
+_AUTHOR_PORTRAIT_SIZES = "(min-width: 1024px) 300px, (min-width: 640px) 200px, 160px"
 
 
 def _safe_public_author_payload(author):
@@ -1730,7 +1730,9 @@ def _build_person_json_ld(person, canonical_url, public_site_url, site_name):
     knows_about = _clean_strings(person.expertise)
     if knows_about:
         data["knowsAbout"] = knows_about
-    awards = _clean_strings(person.awards)
+    from app.services.person_evidence import public_entries
+
+    awards = [a["name"] for a in public_entries("awards", person.awards)]
     if awards:
         data["award"] = awards
     credentials = _profile_credentials(person.credentials)
@@ -2266,6 +2268,35 @@ def _render_system_page_shell(page_key, public_site_url, site_identity, site_nam
     # that case, never a fabricated one.
     breadcrumb_name = page.title if page is not None else title
     breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(breadcrumb_name, canonical)])
+    html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
+    return _html_response(html_doc)
+
+
+def _render_general_page_shell(page):
+    """A published general (Studio-created) Page at /<slug>: the same SEO
+    rules as the system pages (seo.title, else the Page title; seo.
+    description, else its subtitle) so Navigation/Footer links to it are a
+    real 200, never the 404 shell. React (GeneralPage via ArticlePage's
+    fallback) renders the body."""
+    public_site_url = current_app.config["PUBLIC_SITE_URL"]
+    site_identity = get_site_identity_resolved()
+    site_name = site_identity.get("site_name") or "Women Shaping Futures"
+    seo = page.seo or {}
+    canonical = seo.get("canonical") or f"{public_site_url.rstrip('/')}/{page.slug}"
+    image_url, image_alt = _resolve_social_image(None, page.hero_media, site_identity, public_site_url)
+    html_doc = _apply_base_seo(
+        _read_index_html(),
+        title=seo.get("title") or page.title,
+        description=seo.get("description") or page.subtitle or site_identity.get("seo_default_description"),
+        canonical=canonical,
+        robots=seo.get("robots") or "index, follow",
+        og_type="website",
+        image_url=image_url,
+        image_alt=image_alt,
+        site_name=site_name,
+    )
+    html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
+    breadcrumb = _build_breadcrumb_json_ld(public_site_url, [(page.title, canonical)])
     html_doc = _set_structured_data(html_doc, "data-breadcrumb-structured-data", breadcrumb)
     return _html_response(html_doc)
 
@@ -2909,6 +2940,45 @@ def _render_learning_path_shell(slug):
     return _html_response(html_doc)
 
 
+def known_internal_route(url):
+    """Whether an internal URL (path, optional ?query/#fragment) resolves
+    to a real public page of this site — the SAME route registry
+    resolve_spa_response() below dispatches on, so Navigation/Footer route
+    validation never drifts from what the server actually serves:
+      * "/" and every _STATIC_ROUTES entry (/learning, /learning/paths,
+        /lifetime, /submit, /career-hub, legal pages, account pages, ...);
+      * /<entity prefix>/<slug> (people, authors, learning, events, ...);
+      * /learning/paths/<slug>, /learning/<slug>/lessons/<id>;
+      * a single segment that is a Page slug, a published Article, or an
+        Article redirect.
+    Shape-only for multi-segment entity URLs (a staged link to a course
+    that is published later is allowed); everything else is unknown."""
+    if not isinstance(url, str) or not url.startswith("/"):
+        return False
+    path = url.split("#", 1)[0].split("?", 1)[0].strip("/")
+    if not path:
+        return True
+    if path in _STATIC_ROUTES:
+        return True
+    segments = path.split("/")
+    if any(not seg for seg in segments):
+        return False
+    if len(segments) == 2 and segments[0] in _ENTITY_DETAIL_PREFIXES:
+        return True
+    if len(segments) == 3 and segments[:2] == ["learning", "paths"]:
+        return True
+    if len(segments) == 4 and segments[0] == "learning" and segments[2] == "lessons" and segments[3].isdigit():
+        return True
+    if len(segments) == 1:
+        slug = segments[0]
+        if db.session.query(Page.query.filter_by(slug=slug).exists()).scalar():
+            return True
+        if Article.query.filter_by(slug=slug, status="published").first() is not None:
+            return True
+        return Redirect.query.filter_by(from_slug=slug).first() is not None
+    return False
+
+
 def resolve_spa_response(subpath):
     """The one entry point app/__init__.py's catch-all route calls for
     any path Nginx's own static-file try_files would have missed in
@@ -2994,6 +3064,10 @@ def resolve_spa_response(subpath):
         redirect_row = Redirect.query.filter_by(from_slug=slug).first()
         if redirect_row is not None:
             return redirect(f"/{redirect_row.to_slug}", code=301)
+
+        general_page = Page.query.filter_by(slug=slug, page_type="general", status="published").first()
+        if general_page is not None:
+            return _render_general_page_shell(general_page)
 
         return _render_404_shell()
 

@@ -217,10 +217,16 @@ class TestAdminPageCRUD:
             },
             headers=auth_headers(editor_token),
         )
-        assert resp.status_code == 201
-        text = resp.get_json()["data"]["content"][0]["text"]
-        assert "<script>" not in text
-        assert "Hello" in text
+        # Refused clearly at save time rather than silently stripped.
+        assert resp.status_code == 422
+        assert "Content, block 1 (Paragraph)" in str(resp.get_json())
+        ok = client.post(
+            "/api/v1/pages",
+            json={"title": "Sanitize Test 2", "content": [{"type": "paragraph", "text": '<span>Hello</span> <b>world</b>'}]},
+            headers=auth_headers(editor_token),
+        )
+        assert ok.status_code == 201
+        assert ok.get_json()["data"]["content"][0]["text"] == "Hello <b>world</b>"
 
     def test_update_general_page_content_seo_effective_date(self, client, editor_token):
         create = client.post(

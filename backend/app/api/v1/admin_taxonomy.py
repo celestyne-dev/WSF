@@ -25,7 +25,7 @@ from app.schemas.taxonomy import (
     TopicUpdateSchema,
 )
 from app.services.audit import log_action
-from app.services.content_blocks import sanitize_content_blocks
+from app.services.content_blocks import sanitize_editor_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
@@ -67,7 +67,7 @@ def _apply_editorial(instance, data):
     exist (any status — the public serializer independently hides a
     non-published one); it need not belong to this Topic/Series."""
     if "content" in data:
-        instance.content = sanitize_content_blocks(data["content"])
+        instance.content = sanitize_editor_blocks(data["content"], "Content")
     elif instance.content is None:
         instance.content = []
     if "sources" in data:

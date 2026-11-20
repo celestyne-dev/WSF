@@ -36,7 +36,7 @@ from app.schemas.learning import (
     public_learning_program_schema,
 )
 from app.services.learning_catalog import FORMAT_LABELS, catalog_stats, program_ids_with_format
-from app.services.content_blocks import MAX_ASSESSMENT_QUESTIONS, sanitize_questions, sanitize_content_blocks
+from app.services.content_blocks import MAX_ASSESSMENT_QUESTIONS, sanitize_questions, sanitize_editor_blocks
 from app.services.homepage import validate_cta_url
 from app.services.video_embed import is_safe_video_url, resolve_video_provider
 from app.services.audit import log_action
@@ -150,7 +150,7 @@ def _apply_program_fields(program, data, relations):
     program.program_type = data.get("program_type", "course")
     program.difficulty_level = data.get("difficulty_level")
     program.audience = data.get("audience", [])
-    program.overview = sanitize_content_blocks(data.get("overview", []))
+    program.overview = sanitize_editor_blocks(data.get("overview", []), "Overview")
     program.learning_outcomes = [o.strip() for o in data.get("learning_outcomes", []) if o and o.strip()]
     program.skills = [k.strip() for k in data.get("skills", []) if k and k.strip()]
     program.lifetime_access = data.get("lifetime_access") or "default"
@@ -631,7 +631,7 @@ class AdminLearningCurriculumResource(Resource):
                 lesson.title = lesson_data["title"]
                 lesson.lesson_type = lesson_type
                 lesson.summary = lesson_data.get("summary")
-                lesson.content = sanitize_content_blocks(lesson_data.get("content", []))
+                lesson.content = sanitize_editor_blocks(lesson_data.get("content", []), "Lesson content")
                 lesson.article_id = article.id if article else None
                 lesson.resource_id = resource.id if resource else None
                 lesson.external_url = external_url

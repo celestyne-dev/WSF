@@ -135,8 +135,22 @@ NUMBERING_MODES = ("continue", "restart", "custom")
 _MAX_START_NUMBER = 100000
 
 
+_TAG_RE = re.compile(r"<[^>]*>")
+
+
+def visible_text(value):
+    """The reader-visible text of an inline-HTML field: tags removed,
+    entities decoded, non-breaking spaces treated as spaces. Mirrors
+    visibleText() in frontend/src/utils/listNumbering.js."""
+    if not isinstance(value, str):
+        return ""
+    return html.unescape(_TAG_RE.sub("", value)).replace("\xa0", " ").strip()
+
+
 def _is_blank_item(item):
-    return not isinstance(item, str) or not item.strip()
+    # Rich list items carry inline markup: "<strong></strong>" or "<br>" is
+    # blank, "<a href=...>Source</a>" is not. Tags never count as content.
+    return not visible_text(item)
 
 
 _ASCII_DIGITS_RE = re.compile(r"^[0-9]+$")
@@ -203,6 +217,73 @@ _RESERVED_INTERNAL = ("/admin", "/api")
 
 
 _MAILTO_RE = re.compile(r"^mailto:[^\s<>\"']+@[^\s<>\"']+$", re.IGNORECASE)
+
+
+_A_TAG_RE = re.compile(r"<a\b([^>]*)>", re.IGNORECASE)
+_HREF_RE = re.compile(r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", re.IGNORECASE)
+_EVENT_ATTR_RE = re.compile(r"<[a-z][^>]*\son[a-z]+\s*=", re.IGNORECASE)
+_DANGEROUS_TAG_RE = re.compile(r"<\s*(script|iframe|object|embed|style)\b", re.IGNORECASE)
+_BLOCK_NAMES = {"paragraph": "Paragraph", "list": "List", "blockquote": "Quote", "pullquote": "Pull quote",
+                "highlight": "Callout", "faq": "FAQ", "keyTakeaways": "Key takeaways", "cta": "Call to action"}
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _strings(v)
+
+
+def unsafe_inline_problem(text):
+    """Why an inline-HTML string would lose something on save, or None.
+    The sanitizer strips unsafe parts as a last line of defence; at save
+    time the editor gets a clear error instead, so a link is never silently
+    reduced to its text."""
+    if "<" not in text:
+        return None
+    if _DANGEROUS_TAG_RE.search(text):
+        return "contains a script or embedded element, which is not allowed."
+    if _EVENT_ATTR_RE.search(text):
+        return "contains an event attribute (on...=), which is not allowed."
+    for attrs in _A_TAG_RE.findall(text):
+        match = _HREF_RE.search(attrs)
+        if not match:
+            continue
+        href = html.unescape(next(g for g in match.groups() if g is not None)).strip()
+        if href.startswith("#") or safe_link_url(href, allow_mailto=True):
+            continue
+        shown = href if len(href) <= 60 else href[:57] + "..."
+        return (f'has a link to "{shown}" that can\'t be published. Use a full https:// address, '
+                "a mailto: address, or an internal path starting with /.")
+    return None
+
+
+def assert_safe_inline_content(blocks, label="Content"):
+    """Save-time check for editor content blocks: raises a 422 naming the
+    block (e.g. "Bio, block 2 (List): has a link to ...") instead of letting
+    sanitize_content_blocks() silently drop an unsafe link or attribute."""
+    from app.utils.responses import ApiError
+
+    if not isinstance(blocks, list):
+        return
+    for index, block in enumerate(blocks, start=1):
+        if not isinstance(block, dict):
+            continue
+        for text in _strings(block):
+            problem = unsafe_inline_problem(text)
+            if problem:
+                kind = _BLOCK_NAMES.get(block.get("type"), str(block.get("type") or "block").title())
+                raise ApiError(f"{label}, block {index} ({kind}): {problem}", 422, code="validation_error")
+
+
+def sanitize_editor_blocks(blocks, label="Content"):
+    """Editor save path: reject unsafe inline content clearly, then sanitize."""
+    assert_safe_inline_content(blocks, label)
+    return sanitize_content_blocks(blocks)
 
 
 def safe_link_url(value, allow_mailto=False):

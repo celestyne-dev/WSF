@@ -20,10 +20,11 @@ CSS classes are copied verbatim from existing React source
 generated them; a class only ever written in this Python file would not
 exist in the build.
 """
+import re
 from datetime import datetime
 from html import escape
 
-from app.services.content_blocks import resolve_list_starts, sanitize_content_blocks
+from app.services.content_blocks import resolve_list_starts, sanitize_content_blocks, visible_text
 
 # --- class names (each one already present in the React source) ---------
 _MAIN_CLASS = "container-editorial py-10"
@@ -93,7 +94,9 @@ def _inline(value):
 
 
 def _list_html(tag, items, list_class, start=None):
-    rows = "".join(f"<li>{_inline(item)}</li>" for item in items if _is_nonblank(item))
+    # Same visible-item rule as numbering (content_blocks.visible_text), so
+    # a markup-only item is skipped here and in React alike.
+    rows = "".join(f"<li>{_inline(item)}</li>" for item in items if visible_text(item))
     if not rows:
         return ""
     marker = "list-decimal" if tag == "ol" else "list-disc"
@@ -394,6 +397,29 @@ def _normalize_label(value):
     return " ".join((value or "").split()).lower()
 
 
+_EVIDENCE_META_CLASS = "text-sm text-charcoal-600"
+_EVIDENCE_LINK_CLASS = "ml-2 text-sm font-medium text-burgundy-600 hover:underline"
+
+
+def _award_line(award):
+    """ "Award Name — Issuer, 2024" (only the parts that exist)."""
+    detail = ", ".join(x for x in (award.get("issuer"), award.get("date")) if x)
+    return f"{award['name']} — {detail}" if detail else award["name"]
+
+
+def _evidence_link(entry):
+    """A claim's own source, kept visually secondary ("Source →"). External
+    sources open in a new tab with rel="noopener noreferrer"."""
+    url = entry.get("sourceUrl")
+    if not url:
+        return ""
+    label = entry.get("sourceLabel") or "Source"
+    return (
+        f' <a href="{_attr(url)}" target="_blank" rel="noopener noreferrer" class="{_EVIDENCE_LINK_CLASS}" '
+        f'aria-label="{_attr("Source: " + label + " (opens in a new tab)")}">Source →</a>'
+    )
+
+
 def render_person_prerender(person):
     """`person` is the published Person ORM row; only fields
     PersonProfilePage.jsx shows publicly are read, and its Organization
@@ -431,20 +457,26 @@ def render_person_prerender(person):
     bio = render_content_blocks(person.bio or [])
     if bio:
         sections.append(f'<section><h2 class="{_SECTION_H2_CLASS}">About</h2>{bio}</section>')
-    timeline = [t for t in (person.career_timeline or []) if isinstance(t, dict) and (t.get("year") or t.get("title"))]
+    from app.services.person_evidence import public_entries
+
+    timeline = public_entries("career_timeline", person.career_timeline)
     if timeline:
         rows = "".join(
-            f'<li><p class="{_TIMELINE_YEAR_CLASS}">{_text(t.get("year"))}</p><p class="{_TIMELINE_TITLE_CLASS}">{_text(t.get("title"))}</p></li>'
+            f'<li><p class="{_TIMELINE_YEAR_CLASS}">{_text(t["year"])}</p><p class="{_TIMELINE_TITLE_CLASS}">{_text(t["title"])}</p>'
+            f'{_paragraph(t["organization"], _EVIDENCE_META_CLASS)}{_evidence_link(t)}</li>'
             for t in timeline
         )
         sections.append(f'<section><h2 class="{_SECTION_H2_CLASS}">Career Timeline</h2><ol class="{_TIMELINE_CLASS}">{rows}</ol></section>')
     # GEO Phase 4B — after the Career Timeline, before Achievements/Awards.
     sections.append(render_credentials(person.credentials or [], "person-credentials"))
-    for heading, values in (("Achievements", person.achievements), ("Awards", person.awards)):
-        items = [v for v in (values or []) if _is_nonblank(v)]
-        if items:
-            rows = "".join(f"<li>{_text(v)}</li>" for v in items)
-            sections.append(f'<section><h2 class="{_SECTION_H2_CLASS}">{heading}</h2><ul class="{_PLAIN_LIST_CLASS}">{rows}</ul></section>')
+    achievements = public_entries("achievements", person.achievements)
+    if achievements:
+        rows = "".join(f"<li>{_text(a['text'])}{_evidence_link(a)}</li>" for a in achievements)
+        sections.append(f'<section><h2 class="{_SECTION_H2_CLASS}">Achievements</h2><ul class="{_PLAIN_LIST_CLASS}">{rows}</ul></section>')
+    awards = public_entries("awards", person.awards)
+    if awards:
+        rows = "".join(f"<li>{_text(_award_line(a))}{_evidence_link(a)}</li>" for a in awards)
+        sections.append(f'<section><h2 class="{_SECTION_H2_CLASS}">Awards</h2><ul class="{_PLAIN_LIST_CLASS}">{rows}</ul></section>')
     # GEO Phase 4A — after the biography/achievements/awards, as on the page.
     sections.append(render_source_references(person.sources or [], "person-sources"))
 
@@ -834,32 +866,34 @@ def _link_list(links):
 
 # --- Author authority profile -------------------------------------------------------
 # A dedicated first paint that mirrors frontend/src/pages/AuthorProfilePage.jsx
-# (cream hero band, 4:5 portrait beside the identity block, ruled stats, then the
-# About / credentials band and the section rhythm below), so React's first
-# commit replaces it with a near-identical page instead of a different layout.
-# Every class string below is copied from that React source (or Breadcrumb.jsx /
-# CredentialsList.jsx), so it is guaranteed to exist in the built Tailwind CSS.
+# (cream hero band: 4:5 portrait left, name, subtitle, short intro, facts and
+# links right; then About, Credentials, Learn with, Career tools, the article
+# archive and Sources), so React's first commit replaces it with a
+# near-identical page. Every class string below is copied from that React
+# source (or Breadcrumb.jsx / CredentialsList.jsx), so it exists in the built
+# Tailwind CSS.
 _AUTHOR_HERO_BAND = "border-b border-taupe-200 bg-cream"
-_AUTHOR_HERO_INNER = "container-editorial max-w-[1240px] pb-8 pt-5"
+_AUTHOR_HERO_INNER = "container-editorial max-w-[1240px] pb-10 pt-5 lg:pb-14"
 _AUTHOR_HERO_GRID = (
-    "mt-6 grid grid-cols-1 gap-6 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center sm:gap-8 "
-    "md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14"
+    "mt-6 grid grid-cols-1 gap-6 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-10 lg:mt-8 "
+    "lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-16"
 )
-_AUTHOR_PORTRAIT = "aspect-[4/5] w-[130px] rounded-lg border border-taupe-200 object-cover sm:w-full"
+_AUTHOR_PORTRAIT = "aspect-[4/5] w-[160px] rounded-media border border-taupe-200 object-cover sm:w-full"
 _AUTHOR_INITIALS = (
-    "flex aspect-[4/5] w-[130px] items-center justify-center rounded-lg border border-taupe-200 bg-ivory-200 "
-    "font-serif text-4xl text-burgundy-600 sm:w-full md:text-5xl lg:text-6xl"
+    "flex aspect-[4/5] w-[160px] items-center justify-center rounded-media border border-taupe-200 bg-ivory-200 "
+    "font-serif text-5xl text-burgundy-600 sm:w-full lg:text-7xl"
 )
-_AUTHOR_H1 = "font-serif text-[32px] font-semibold leading-[1.1] text-charcoal sm:text-4xl lg:text-[46px]"
-_AUTHOR_HEADLINE = "mt-2 font-serif text-lg leading-snug text-burgundy-700 sm:text-xl"
-_AUTHOR_ROLE = "mt-2 text-sm text-charcoal-600 sm:text-base"
-_AUTHOR_LABEL = "text-[11px] font-semibold uppercase tracking-widest2 text-charcoal-600/80"
-_AUTHOR_CHIP = (
-    "inline-block rounded-full border border-taupe-300 bg-ivory px-3 py-1 text-xs font-medium text-charcoal-600 "
-    "transition-colors hover:border-burgundy-500 hover:text-burgundy-600"
+_AUTHOR_IDENTITY = "min-w-0 self-center"
+_AUTHOR_H1 = "font-serif text-[36px] font-semibold leading-[1.05] text-charcoal sm:text-5xl lg:text-[60px]"
+_AUTHOR_SUBTITLE_LINE = "mt-3 font-serif text-lg leading-snug text-burgundy-700 sm:text-xl"
+_AUTHOR_INTRO = "mt-5 max-w-reading text-base leading-relaxed text-charcoal-700 sm:text-[17px]"
+_AUTHOR_FACTS = "mt-6 grid max-w-reading grid-cols-1 gap-x-8 gap-y-4 border-t border-taupe-200 pt-5 sm:grid-cols-2"
+_AUTHOR_FACT_LABEL = "text-[11px] font-semibold uppercase tracking-widest2 text-charcoal-600"
+_AUTHOR_FACT_VALUE = "mt-1 text-sm text-charcoal-700"
+_AUTHOR_TOPIC_LINK = (
+    "font-medium text-charcoal underline decoration-taupe-300 underline-offset-4 "
+    "hover:text-burgundy-600 hover:decoration-burgundy-600"
 )
-_AUTHOR_STAT = "flex flex-col-reverse py-2.5 pr-6 sm:pr-8"
-_AUTHOR_STAT_DIVIDER = "border-l border-taupe-200 pl-6 sm:pl-8"
 _AUTHOR_LINK = (
     "inline-flex items-center gap-1.5 border-b border-taupe-300 pb-0.5 font-semibold text-charcoal "
     "transition-colors hover:border-burgundy-600 hover:text-burgundy-600"
@@ -868,6 +902,27 @@ _AUTHOR_SECTION = "border-t border-taupe-200 py-14 lg:py-16"
 _AUTHOR_H2 = "font-serif text-2xl font-semibold text-charcoal sm:text-3xl"
 _AUTHOR_SUBTITLE = "mt-2 text-sm text-charcoal-600"
 _AUTHOR_SOCIAL_LABELS = {"Twitter": "X (Twitter)"}
+_AUTHOR_BIO = "mt-6 text-[17px] leading-[1.75] text-charcoal-700 sm:text-lg [&_li_a]:text-burgundy-600 [&_li_a]:underline [&_li_a]:underline-offset-2 [&_p_a]:text-burgundy-600 [&_p_a]:underline [&_p_a]:underline-offset-2"
+
+# Education facts derived from credentials (no separate field). Same rule as
+# authorEducation() in utils/authorAuthority.js; both are tested against
+# tests/fixtures/author_education_cases.json.
+_EDUCATION_CATEGORY = re.compile(r"\b(degree|education|academic|diploma)\b", re.I)
+_EDUCATION_NAME = re.compile(r"^(b\.?a\b|b\.?sc|ba\b|bsc|ma\b|msc|mba|phd|ph\.d|llb|llm|bachelor|master|doctor|doctorate)", re.I)
+
+
+def author_education(credentials):
+    out = []
+    for c in credentials or []:
+        if not isinstance(c, dict):
+            continue
+        name = (c.get("name") or "").strip()
+        if not name or not (_EDUCATION_CATEGORY.search(c.get("category") or "") or _EDUCATION_NAME.match(name)):
+            continue
+        out.append(", ".join(v for v in (name, (c.get("issuer") or "").strip()) if v))
+        if len(out) == 2:
+            break
+    return out
 
 
 def author_place(payload):
@@ -905,22 +960,10 @@ def _author_portrait(name, portrait):
         srcset = f' srcset="{_attr(portrait["srcset"])}" sizes="{_attr(portrait.get("sizes") or "")}"' if portrait.get("srcset") else ""
         return (
             f'<img src="{_attr(portrait["src"])}"{srcset} alt="{_attr(portrait.get("alt") or f"Portrait of {name}")}" '
-            f'width="520" height="650" fetchpriority="high" class="{_AUTHOR_PORTRAIT}">'
+            f'width="600" height="750" fetchpriority="high" class="{_AUTHOR_PORTRAIT}">'
         )
     initials = author_initials(name)
     return f'<div role="img" aria-label="{_attr(f"Portrait placeholder for {name}")}" class="{_AUTHOR_INITIALS}">{_text(initials)}</div>'
-
-
-def _author_stats(counts):
-    stats = [(counts.get("articles"), "Article", "Articles"), (counts.get("resources"), "Career Tool", "Career Tools"),
-             (counts.get("courses"), "Course", "Courses")]
-    cells = [
-        f'<div class="{_AUTHOR_STAT}{" " + _AUTHOR_STAT_DIVIDER if i else ""}">'
-        f'<dt class="text-[11px] font-semibold uppercase tracking-wider text-charcoal-600">{one if n == 1 else many}</dt>'
-        f'<dd class="font-serif text-3xl font-semibold leading-none text-charcoal">{n}</dd></div>'
-        for i, (n, one, many) in enumerate((s for s in stats if isinstance(s[0], int) and s[0] > 0))
-    ]
-    return f'<dl class="mt-5 inline-flex max-w-full flex-wrap border-y border-taupe-200">{"".join(cells)}</dl>' if cells else ""
 
 
 def _author_section(section_id, heading, subtitle, inner):
@@ -941,30 +984,48 @@ def render_author_prerender(payload, authority=None, portrait=None):
     {src, srcset, sizes, alt} built from the public Media variants (the same
     file AuthorProfilePage's MediaImage will request), or None.
 
-    Semantic order: name, headline, role · place, expertise, counts, links,
-    then About, credentials, Learning, Resources, Articles, Sources."""
+    Semantic order: name, subtitle (headline, else role), short intro,
+    facts (Location, Role, Education, Areas of expertise), links; then
+    About, Credentials, Learning, Resources, Articles, Sources. No counters."""
     authority = authority or {}
     name = payload.get("name") or ""
     first_name = name.split(" ")[0]
+    headline = (payload.get("headline") or "").strip()
+    role = (payload.get("role") or "").strip()
 
     identity = [f'<h1 class="{_AUTHOR_H1}">{_text(name)}</h1>']
-    if _is_nonblank(payload.get("headline")):
-        identity.append(f'<p class="{_AUTHOR_HEADLINE}">{_text(payload["headline"])}</p>')
-    role_line = " · ".join(v for v in ((payload.get("role") or "").strip(), author_place(payload)) if v)
-    if role_line:
-        identity.append(f'<p class="{_AUTHOR_ROLE}">{_text(role_line)}</p>')
+    if headline or role:
+        identity.append(f'<p class="{_AUTHOR_SUBTITLE_LINE}">{_text(headline or role)}</p>')
+    if _is_nonblank(payload.get("short_bio")):
+        identity.append(f'<p class="{_AUTHOR_INTRO}">{_text(payload["short_bio"].strip())}</p>')
+
+    facts = []
+    place = author_place(payload)
+    if place:
+        facts.append(("location", "Location", f'<dd class="{_AUTHOR_FACT_VALUE}">{_text(place)}</dd>'))
+    if headline and role:
+        facts.append(("role", "Role", f'<dd class="{_AUTHOR_FACT_VALUE}">{_text(role)}</dd>'))
+    education = author_education([c for c in payload.get("credentials") or [] if isinstance(c, dict)])
+    if education:
+        facts.append(("education", "Education", "".join(f'<dd class="{_AUTHOR_FACT_VALUE}">{_text(e)}</dd>' for e in education)))
     topics = [t for t in (payload.get("topics") or []) if isinstance(t, dict) and _is_nonblank(t.get("slug")) and _is_nonblank(t.get("name"))]
     if topics:
-        chips = "".join(f'<li><a href="/topics/{_attr(t["slug"])}" class="{_AUTHOR_CHIP}">{_text(t["name"])}</a></li>' for t in topics)
-        identity.append(
-            f'<div class="mt-5"><p class="{_AUTHOR_LABEL}">Areas of expertise</p>'
-            f'<ul aria-label="Areas of expertise" class="mt-2 flex flex-wrap gap-2">{chips}</ul></div>'
+        links_html = ", ".join(
+            f'<span><a href="/topics/{_attr(t["slug"])}" class="{_AUTHOR_TOPIC_LINK}">{_text(t["name"])}</a></span>' for t in topics
         )
-    identity.append(_author_stats(authority.get("counts") or {}))
+        facts.append(("topics", "Areas of expertise", f'<dd class="{_AUTHOR_FACT_VALUE}">{links_html}</dd>'))
+    if facts:
+        cells = "".join(
+            f'<div{" class=" + chr(34) + "sm:col-span-2" + chr(34) if key == "topics" else ""}>'
+            f'<dt class="{_AUTHOR_FACT_LABEL}">{label}</dt>{value}</div>'
+            for key, label, value in facts
+        )
+        identity.append(f'<dl class="{_AUTHOR_FACTS}">{cells}</dl>')
+
     links = ([("Website", payload.get("website"))] if _http_url(payload.get("website")) else []) + _social_links(payload.get("social"))
     link_items = [
         f'<li><a href="{_attr(url)}" target="_blank" rel="noopener noreferrer" class="{_AUTHOR_LINK}">'
-        f'{_text(_AUTHOR_SOCIAL_LABELS.get(label, label))}</a></li>'
+        f'{_text(_AUTHOR_SOCIAL_LABELS.get(label, label))}<span class="sr-only"> (opens in a new tab)</span></a></li>'
         for label, url in links if _http_url(url)
     ]
     person = payload.get("person") if isinstance(payload.get("person"), dict) else None
@@ -974,34 +1035,26 @@ def render_author_prerender(payload, authority=None, portrait=None):
             "View full profile →</a></li>"
         )
     if link_items:
-        identity.append(f'<ul class="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">{"".join(link_items)}</ul>')
+        identity.append(f'<ul class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">{"".join(link_items)}</ul>')
 
     hero = (
         f'<header class="{_AUTHOR_HERO_BAND}"><div class="{_AUTHOR_HERO_INNER}">{_author_breadcrumbs(name)}'
-        f'<div class="{_AUTHOR_HERO_GRID}">{_author_portrait(name, portrait)}<div class="min-w-0">{"".join(identity)}</div></div>'
+        f'<div class="{_AUTHOR_HERO_GRID}">{_author_portrait(name, portrait)}<div class="{_AUTHOR_IDENTITY}">{"".join(identity)}</div></div>'
         "</div></header>"
     )
 
     body = []
     bio = render_content_blocks(payload.get("bio") or [])
-    credentials = render_credentials(payload.get("credentials") or [], "author-credentials", compact=True)
-    if bio or credentials:
-        sidebar = bool(bio and credentials)
-        wrapper = (
-            "grid grid-cols-1 gap-12 pb-14 pt-10 lg:grid-cols-12 lg:gap-16 lg:pb-16 lg:pt-12" if sidebar
-            else "pb-14 pt-10 md:grid md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14 lg:pb-16 lg:pt-12"
+    if bio:
+        body.append(
+            '<section aria-labelledby="author-about" class="py-14 lg:py-16"><div class="max-w-reading">'
+            f'<h2 id="author-about" class="{_AUTHOR_H2}">About {_text(first_name)}</h2>'
+            f'<div class="{_attr(_AUTHOR_BIO)}">{bio}</div></div></section>'
         )
-        inner = ""
-        if bio:
-            inner += (
-                f'<section aria-labelledby="author-about" class="{"max-w-reading lg:col-span-8" if sidebar else "max-w-reading md:col-start-2"}">'
-                f'<h2 id="author-about" class="{_AUTHOR_H2}">About {_text(first_name)}</h2>'
-                f'<div class="mt-6 text-[17px] leading-[1.75] text-charcoal-700 sm:text-lg">{bio}</div></section>'
-            )
-        if credentials:
-            aside_class = "lg:col-span-4" if sidebar else f"max-w-reading md:col-start-2{' mt-12' if bio else ''}"
-            inner += f'<aside class="{aside_class}">{credentials}</aside>'
-        body.append(f'<div class="{wrapper}">{inner}</div>')
+    credentials = render_credentials(payload.get("credentials") or [], "author-credentials")
+    if credentials:
+        wrapper = "pb-14 pt-4 lg:pb-16 " + ("border-t border-taupe-200" if bio else "")
+        body.append(f'<div class="{wrapper.strip()}"><div class="max-w-reading">{credentials}</div></div>')
 
     programs = [p for p in authority.get("learningPrograms") or [] if isinstance(p, dict) and _is_nonblank(p.get("slug"))]
     if programs:
@@ -1014,7 +1067,15 @@ def render_author_prerender(payload, authority=None, portrait=None):
                                     _item_list(_resource_card(r) for r in resources)))
     articles = [a for a in authority.get("latestArticles") or [] if isinstance(a, dict) and _is_nonblank(a.get("slug"))]
     if articles:
-        body.append(_author_section("author-articles", "Latest articles", None, _item_list(_article_card(a) for a in articles)))
+        total = (authority.get("counts") or {}).get("articles")
+        count = (f'<p class="text-sm text-charcoal-600">{total} {"article" if total == 1 else "articles"}</p>'
+                 if isinstance(total, int) and total > 0 else "")
+        body.append(
+            '<section aria-labelledby="author-articles" class="border-t border-taupe-200 py-14 lg:py-16">'
+            '<div class="flex flex-wrap items-baseline justify-between gap-2">'
+            f'<h2 id="author-articles" class="{_AUTHOR_H2}">Browse all of {_text(first_name)}’s articles</h2>{count}</div>'
+            f'{_item_list(_article_card(a) for a in articles)}</section>'
+        )
     sources = render_source_references(payload.get("sources") or [], "author-sources")
     if sources:
         body.append(f'<div class="max-w-reading pb-14 text-sm">{sources}</div>')

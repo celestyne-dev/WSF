@@ -16,6 +16,19 @@ import { blankCredential, credentialsToPayload, describeCredentialErrors, valida
 import { blankSource, describeSourceErrors, sourcesToPayload, validateSources } from '../../utils/sources'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
+import PersonEvidenceEditor from '../../components/cms/PersonEvidenceEditor'
+import { isPublicHttpUrl } from '../../utils/personEvidence'
+
+// First evidence row whose source link the server would refuse, as the
+// same "Awards, item 2: ..." message, so the editor sees it before saving.
+function evidenceLinkError(form) {
+  const groups = [['Achievements', form.achievements], ['Awards', form.awards], ['Career Timeline', form.careerTimeline]]
+  for (const [label, items] of groups) {
+    const index = (items || []).findIndex((item) => item?.sourceUrl && !isPublicHttpUrl(item.sourceUrl))
+    if (index >= 0) return `${label}, item ${index + 1}: the source link must be a full public https:// address.`
+  }
+  return null
+}
 
 function slugify(text) {
   return text
@@ -163,38 +176,6 @@ function ListEditor({ value, onChange, placeholder = 'Add an item and press Ente
   )
 }
 
-function TimelineEditor({ value, onChange }) {
-  function update(i, field, val) {
-    onChange(value.map((item, idx) => (idx === i ? { ...item, [field]: val } : item)))
-  }
-  return (
-    <div className="space-y-2">
-      {value.map((item, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <input
-            value={item.year || ''}
-            onChange={(e) => update(i, 'year', e.target.value)}
-            placeholder="Year"
-            className="w-24 border border-taupe-300 px-2 py-1.5 text-xs focus:border-burgundy-500 focus:outline-none"
-          />
-          <input
-            value={item.title || ''}
-            onChange={(e) => update(i, 'title', e.target.value)}
-            placeholder="Role or milestone"
-            className="flex-1 border border-taupe-300 px-2 py-1.5 text-xs focus:border-burgundy-500 focus:outline-none"
-          />
-          <button type="button" onClick={() => onChange(value.filter((_, idx) => idx !== i))} aria-label="Remove" className="text-charcoal-600 hover:text-rose-600">
-            <X size={13} />
-          </button>
-        </div>
-      ))}
-      <button type="button" onClick={() => onChange([...value, { year: '', title: '' }])} className="btn-secondary !px-3 !py-1.5 text-xs">
-        + Add milestone
-      </button>
-    </div>
-  )
-}
-
 export default function AdminPersonEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -277,6 +258,16 @@ export default function AdminPersonEditor() {
     const credentialsError = validateCredentials(form.credentials, 'A profile')
     if (credentialsError) {
       toast.error(credentialsError)
+      return
+    }
+    const evidenceError = evidenceLinkError(form)
+    if (evidenceError) {
+      toast.error(evidenceError)
+      return
+    }
+    if (form.website && !isPublicHttpUrl(form.website)) {
+      setErrors({ website: 'Use a full https:// address.' })
+      toast.error('Website: use a full https:// address.')
       return
     }
     setErrors({})
@@ -433,23 +424,6 @@ export default function AdminPersonEditor() {
             <Field label="Areas of expertise">
               <ListEditor value={form.expertise} onChange={(v) => updateField('expertise', v)} />
             </Field>
-            <Field label="Achievements">
-              <ListEditor value={form.achievements} onChange={(v) => updateField('achievements', v)} />
-            </Field>
-            <Field label="Awards">
-              <ListEditor value={form.awards} onChange={(v) => updateField('awards', v)} />
-            </Field>
-            <Field label="Career timeline">
-              <TimelineEditor value={form.careerTimeline} onChange={(v) => updateField('careerTimeline', v)} />
-            </Field>
-          </Section>
-
-          <Section
-            title="Credentials & qualifications"
-            description="Optional degrees, certifications, licences, fellowships or other qualifications this person holds. Shown publicly as stated — never presented as verified."
-          >
-            <p className="text-xs text-charcoal-600/70">Add only credentials that the profile or reliable public references support.</p>
-            <CredentialsEditor credentials={form.credentials} onChange={(credentials) => updateField('credentials', credentials)} />
           </Section>
 
           <Section
@@ -460,6 +434,29 @@ export default function AdminPersonEditor() {
               <p className="text-xs text-charcoal-600/70">Adding independent references can strengthen this profile&apos;s credibility.</p>
             )}
             <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />
+          </Section>
+
+          <Section
+            title="Evidence: achievements, awards & career"
+            description="Factual claims about this person. Attach a source to any claim — it shows as a small “Source →” link on the profile. Sources are optional but strongly recommended for firsts, appointments and awards."
+          >
+            <Field label="Achievements">
+              <PersonEvidenceEditor kind="achievements" items={form.achievements} onChange={(v) => updateField('achievements', v)} sources={form.sources} />
+            </Field>
+            <Field label="Awards">
+              <PersonEvidenceEditor kind="awards" items={form.awards} onChange={(v) => updateField('awards', v)} sources={form.sources} />
+            </Field>
+            <Field label="Career timeline">
+              <PersonEvidenceEditor kind="career_timeline" items={form.careerTimeline} onChange={(v) => updateField('careerTimeline', v)} sources={form.sources} />
+            </Field>
+          </Section>
+
+          <Section
+            title="Credentials & qualifications"
+            description="Optional degrees, certifications, licences, fellowships or other qualifications this person holds. Shown publicly as stated — never presented as verified."
+          >
+            <p className="text-xs text-charcoal-600/70">Add only credentials that the profile or reliable public references support.</p>
+            <CredentialsEditor credentials={form.credentials} onChange={(credentials) => updateField('credentials', credentials)} />
           </Section>
 
           <Section title="Geography" description="Women Shaping Futures profiles women from every region — search any country.">
@@ -498,7 +495,23 @@ export default function AdminPersonEditor() {
 
           <Section title="Social / links">
             <Field label="Website" hint="optional">
-              <input value={form.website} onChange={(e) => updateField('website', e.target.value)} placeholder="https://…" className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
+              <div className="flex items-center gap-3">
+                <input
+                  value={form.website}
+                  onChange={(e) => updateField('website', e.target.value)}
+                  placeholder="https://…"
+                  aria-invalid={Boolean(form.website && !isPublicHttpUrl(form.website))}
+                  className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+                {isPublicHttpUrl(form.website) && (
+                  <a href={form.website} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-semibold text-burgundy-600 hover:underline" aria-label="Open website (opens in a new tab)">
+                    Open ↗
+                  </a>
+                )}
+              </div>
+              {(errors.website || (form.website && !isPublicHttpUrl(form.website))) && (
+                <p className="mt-1 text-xs text-rose-600">Use a full https:// address.</p>
+              )}
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="LinkedIn" hint="username">
