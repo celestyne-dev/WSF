@@ -30,7 +30,7 @@ export default function MegaMenuPanel({ entry, id, open, onNavigate, onPointerEn
       onPointerLeave={onPointerLeave}
     >
       <div
-        className={`pointer-events-auto mx-auto grid ${WIDTH_BY_COLUMNS[count]} grid-cols-[minmax(0,32%)_minmax(0,1fr)] overflow-hidden rounded-[18px] border border-taupe-200 bg-white shadow-[0_24px_48px_-16px_rgba(36,31,33,0.22)]`}
+        className={`pointer-events-auto mx-auto grid ${WIDTH_BY_COLUMNS[count]} grid-cols-[minmax(0,32%)_minmax(0,1fr)] overflow-hidden rounded-surface border border-taupe-200 bg-white shadow-[0_24px_48px_-16px_rgba(36,31,33,0.22)]`}
       >
         <div className="flex flex-col bg-cream p-8">
           {Icon && (
@@ -66,7 +66,7 @@ export default function MegaMenuPanel({ entry, id, open, onNavigate, onPointerEn
                           <NavDestination
                             link={item.link}
                             onClick={onNavigate}
-                            className="group -mx-3 flex gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-cream focus-visible:bg-cream"
+                            className="group -mx-3 flex gap-3 rounded-control px-3 py-2.5 transition-colors hover:bg-cream focus-visible:bg-cream"
                           >
                             {LinkIcon && <LinkIcon size={17} aria-hidden="true" className="mt-0.5 shrink-0 text-burgundy-500" />}
                             <span className="min-w-0">

@@ -225,8 +225,13 @@ def _render_block(block, list_start=None):
     if kind == "cta":
         return _render_cta(block)
     if kind == "button":
+        # Simple CTA: the sanitizer (safe_link_url(..., allow_mailto=True))
+        # has already reduced the URL to an internal path, an http(s) URL,
+        # a well-formed mailto: or "" — the same set ArticleContent's
+        # ButtonBlock renders. The rich "cta" block above never allows mailto.
         url = block.get("url")
-        if not (_is_nonblank(block.get("label")) and _internal_or_http(url)):
+        renderable = _internal_or_http(url) or (isinstance(url, str) and url.lower().startswith("mailto:"))
+        if not (_is_nonblank(block.get("label")) and renderable):
             return ""
         return f'<p class="my-8"><a {_cta_link_attrs(url)} class="btn-primary">{_text(block["label"])}</a></p>'
     # newsletterCta / ad / sponsorBlock / relatedBlock /

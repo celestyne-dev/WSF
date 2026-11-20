@@ -1,0 +1,24 @@
+{
+  "_comment": "Shared by backend/tests/test_list_numbering_and_cta.py (content_blocks.safe_link_url) and frontend/src/utils/linkSafety.test.js (safeLinkUrl). `simple` = Simple CTA / button (allowMailto), `rich` = rich CTA block. Expected value is the kept URL, or \"\" when rejected.",
+  "cases": [
+    {"url": "/career-hub", "simple": "/career-hub", "rich": "/career-hub"},
+    {"url": "https://example.org/a?b=1", "simple": "https://example.org/a?b=1", "rich": "https://example.org/a?b=1"},
+    {"url": "http://example.org", "simple": "http://example.org", "rich": "http://example.org"},
+    {"url": "mailto:hello@example.org", "simple": "mailto:hello@example.org", "rich": ""},
+    {"url": "MAILTO:Hello@Example.org", "simple": "MAILTO:Hello@Example.org", "rich": ""},
+    {"url": "mailto:hello@example.org?subject=Hi", "simple": "mailto:hello@example.org?subject=Hi", "rich": ""},
+    {"url": "mailto:", "simple": "", "rich": ""},
+    {"url": "mailto:not-an-address", "simple": "", "rich": ""},
+    {"url": "mailto:a b@example.org", "simple": "", "rich": ""},
+    {"url": "mailto:\"x\"@example.org", "simple": "", "rich": ""},
+    {"url": "mailto:<x>@example.org", "simple": "", "rich": ""},
+    {"url": "mailto:hello@example.org\njavascript:alert(1)", "simple": "", "rich": ""},
+    {"url": "javascript:alert(1)", "simple": "", "rich": ""},
+    {"url": "JaVaScRiPt:alert(1)", "simple": "", "rich": ""},
+    {"url": "data:text/html,<script>alert(1)</script>", "simple": "", "rich": ""},
+    {"url": "//evil.example", "simple": "", "rich": ""},
+    {"url": "/admin/articles", "simple": "", "rich": ""},
+    {"url": "/api/v1/x", "simple": "", "rich": ""},
+    {"url": "", "simple": "", "rich": ""}
+  ]
+}

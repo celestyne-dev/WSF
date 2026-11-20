@@ -137,12 +137,20 @@ def _is_blank_item(item):
     return not isinstance(item, str) or not item.strip()
 
 
+_ASCII_DIGITS_RE = re.compile(r"^[0-9]+$")
+
+
 def _custom_start(value):
+    # Mirrors customStart() in frontend/src/utils/listNumbering.js: a whole
+    # number (an integral float like 25.0 too — JSON can't tell them apart
+    # in JS) or an ASCII digit string, within 1..100000; anything else is 1.
     if isinstance(value, bool):
         return 1
     if isinstance(value, int):
         number = value
-    elif isinstance(value, str) and value.strip().isdigit():
+    elif isinstance(value, float) and value.is_integer():
+        number = int(value)
+    elif isinstance(value, str) and _ASCII_DIGITS_RE.match(value.strip()):
         number = int(value.strip())
     else:
         return 1

@@ -5,7 +5,7 @@ import { User } from 'lucide-react'
 import { logoutUser } from '../../features/auth/authSlice'
 import { hasCmsAccess, getDefaultCmsRoute } from '../../utils/permissions'
 
-const itemClass = 'block rounded-lg px-3 py-2 text-sm text-charcoal transition-colors hover:bg-cream hover:text-burgundy-600 focus-visible:bg-cream'
+const itemClass = 'block rounded-control px-3 py-2 text-sm text-charcoal transition-colors hover:bg-cream hover:text-burgundy-600 focus-visible:bg-cream'
 
 // The header's account control: a small disclosure menu (not an ARIA
 // `menu`). Signed out: Sign in / Create account. Signed in: account
@@ -84,7 +84,7 @@ export default function AccountMenu() {
       <div
         id="account-menu"
         hidden={!open}
-        className="absolute right-0 top-full z-50 mt-2 w-60 rounded-2xl border border-taupe-200 bg-white p-2 shadow-[0_24px_48px_-16px_rgba(36,31,33,0.22)]"
+        className="absolute right-0 top-full z-50 mt-2 w-60 rounded-surface border border-taupe-200 bg-white p-2 shadow-[0_24px_48px_-16px_rgba(36,31,33,0.22)]"
       >
         {isAuthenticated ? (
           <>

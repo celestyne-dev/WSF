@@ -155,3 +155,29 @@ def test_prerender_renders_visible_crawlable_ctas():
     assert "text-center" in html
     for hidden in ("hidden", "aria-hidden", "display:none"):
         assert hidden not in html
+
+
+LINK_CASES = json.load(open(os.path.join(os.path.dirname(__file__), "fixtures", "link_url_cases.json"), encoding="utf-8"))["cases"]
+
+
+@pytest.mark.parametrize("case", LINK_CASES, ids=[repr(c["url"]) for c in LINK_CASES])
+def test_shared_link_cases_match_the_frontend_rule(case):
+    assert safe_link_url(case["url"], allow_mailto=True) == case["simple"]
+    assert safe_link_url(case["url"]) == case["rich"]
+
+
+def test_simple_cta_mailto_renders_in_prerender_like_react():
+    html = render_content_blocks([{"type": "button", "label": "Email the editors", "url": "mailto:hello@example.org"}])
+    # Same element ArticleContent's ButtonBlock/SmartLink renders for a
+    # non-internal link: <a href rel="noopener noreferrer" class="btn-primary">.
+    assert html == '<p class="my-8"><a href="mailto:hello@example.org" rel="noopener noreferrer" class="btn-primary">Email the editors</a></p>'
+
+
+@pytest.mark.parametrize("url", ["mailto:", "mailto:not-an-address", "mailto:a b@example.org", "javascript:alert(1)", "data:text/html,x"])
+def test_simple_cta_with_unsafe_or_malformed_link_renders_nothing(url):
+    assert render_content_blocks([{"type": "button", "label": "Click", "url": url}]) == ""
+
+
+def test_rich_cta_never_renders_a_mailto_button():
+    html = render_content_blocks([{"type": "cta", "title": "Write to us", "buttonLabel": "Email", "buttonUrl": "mailto:hello@example.org"}])
+    assert "Write to us" in html and "mailto:" not in html and "Email</a>" not in html

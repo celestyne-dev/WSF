@@ -54,8 +54,8 @@ export default function AppearanceSettingsPanel() {
       <section>
         <h2 className="font-serif text-xl font-semibold text-charcoal">Corner style</h2>
         <p className="mt-1 text-sm text-charcoal-600">
-          Sets how rounded cards, buttons, images, callouts and in-article CTAs look across the public site. Avatars, icons and pills
-          always stay circular.
+          Sets how rounded the public site looks: cards, buttons, images (including author portraits), callouts, in-article CTAs and
+          the header&apos;s dropdown menus. Avatars, icon circles, status dots and pills always stay circular.
         </p>
         <div role="radiogroup" aria-label="Corner style" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {CORNER_STYLES.map((option) => {

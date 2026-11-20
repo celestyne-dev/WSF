@@ -16,7 +16,8 @@ html {
      card     cards, callouts, CTA panels
      media    article/card images
      surface  floating panels (mega menu, account menu)
-   Square (all 0) preserves the site as it was before this setting.
+   Square (all 0) keeps cards, buttons and images as they were; since
+   the header menus follow `surface` too, Square makes them rectangular.
    The selectors are not limited to :root so Studio's Appearance preview
    can scope a preset to its own box. */
 :root,

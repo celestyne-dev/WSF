@@ -168,12 +168,12 @@ export default function AuthorProfilePage() {
                 aspect={4 / 5}
                 sizes="(min-width: 1024px) 260px, (min-width: 768px) 200px, (min-width: 640px) 180px, 130px"
                 priority
-                className="aspect-[4/5] w-[130px] rounded-lg border border-taupe-200 object-cover sm:w-full"
+                className="aspect-[4/5] w-[130px] rounded-media border border-taupe-200 object-cover sm:w-full"
               />
             ) : (
               <div
                 aria-hidden="true"
-                className="flex aspect-[4/5] w-[130px] items-center justify-center rounded-lg border border-taupe-200 bg-ivory-200 font-serif text-4xl text-burgundy-600 sm:w-full md:text-5xl lg:text-6xl"
+                className="flex aspect-[4/5] w-[130px] items-center justify-center rounded-media border border-taupe-200 bg-ivory-200 font-serif text-4xl text-burgundy-600 sm:w-full md:text-5xl lg:text-6xl"
               >
                 {model.initials}
               </div>

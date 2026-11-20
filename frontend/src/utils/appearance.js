@@ -5,7 +5,7 @@
 // after a Studio save or when index.html was served without the server.
 // Only the four controlled presets ever reach the DOM.
 export const CORNER_STYLES = [
-  { value: 'square', label: 'Square', radius: '0px', description: 'Crisp, editorial edges. How the site has always looked.' },
+  { value: 'square', label: 'Square', radius: '0px', description: 'Crisp, editorial edges on every card, button and menu.' },
   { value: 'subtle', label: 'Subtle', radius: '~6px', description: 'A barely-there softening of cards and buttons.' },
   { value: 'soft', label: 'Soft', radius: '~12px', description: 'Friendly, modern rounding on cards and panels.' },
   { value: 'rounded', label: 'Rounded', radius: '~18px', description: 'Generous rounding for a warmer, app-like feel.' },

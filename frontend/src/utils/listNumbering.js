@@ -9,7 +9,9 @@
 //                article (non-list blocks in between do not reset it);
 //                resolves to 1 when there is no earlier numbered list.
 //   "restart"  — start at 1.
-//   "custom"   — start at `startNumber` (a positive integer; otherwise 1).
+//   "custom"   — start at `startNumber` (an integer 1–100000, also as a
+//                digit string; anything else resolves to 1, exactly like
+//                backend content_blocks._custom_start).
 // A block WITHOUT numberingMode (every list published before this existed)
 // starts at 1 exactly as before — existing articles are never renumbered.
 // Continue is always derived from the content, never stored as a number,
@@ -28,9 +30,12 @@ export function visibleItems(items) {
   return (Array.isArray(items) ? items : []).filter((item) => !isBlankItem(item))
 }
 
+// Same ceiling as the backend sanitizer and the CMS number input.
+export const MAX_START_NUMBER = 100000
+
 function customStart(value) {
-  const n = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value) : NaN
-  return Number.isInteger(n) && n >= 1 ? n : 1
+  const n = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value.trim()) : NaN
+  return Number.isInteger(n) && n >= 1 && n <= MAX_START_NUMBER ? n : 1
 }
 
 // -> array (same length as blocks): the resolved start number for each

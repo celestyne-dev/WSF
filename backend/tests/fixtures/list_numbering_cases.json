@@ -53,6 +53,61 @@
        {"type": "list", "style": "number", "items": ["a", "b"]},
        {"type": "highlight", "text": "t", "listStyle": "number", "items": ["x", "y", "z"]},
        {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
-     "expected": [1, null, 3]}
+     "expected": [1, null, 3]},
+    {"name": "custom 100000 is the maximum valid start",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": 100000, "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [100000, 100002]},
+    {"name": "custom 100001 is out of range and falls back to 1",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": 100001, "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [1, 3]},
+    {"name": "an extremely large custom start falls back to 1",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": 100000000000000000000, "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [1, 3]},
+    {"name": "numeric string 100000 is valid",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": "100000", "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [100000, 100002]},
+    {"name": "numeric string 100001 falls back to 1",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": "100001", "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [1, 3]},
+    {"name": "numeric string with surrounding spaces is trimmed",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": " 42 ", "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [42, 44]},
+    {"name": "integral float start is accepted like JS numbers",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": 25.0, "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [25, 27]},
+    {"name": "fractional start falls back to 1",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": 2.5, "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [1, 3]},
+    {"name": "non-ASCII digit string falls back to 1",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": "\u00b2", "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [1, 3]},
+    {"name": "zero falls back to 1",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": 0, "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [1, 3]},
+    {"name": "boolean start falls back to 1",
+     "blocks": [
+       {"type": "list", "style": "number", "numberingMode": "custom", "startNumber": true, "items": ["a", "b"]},
+       {"type": "list", "style": "number", "numberingMode": "continue", "items": ["c"]}],
+     "expected": [1, 3]}
   ]
 }
