@@ -182,7 +182,7 @@ LIST_PAGES = [
     ("/shop", "Shop | Women Shaping Futures",
      "Digital products, guides, templates, and workbooks from Women Shaping Futures.", "Shop"),
     ("/newsletter", "WSF Weekly Newsletter | Women Shaping Futures",
-     "Subscribe to WSF Weekly for stories, jobs, and opportunities delivered every Thursday.", "Newsletter"),
+     "WSF Weekly: Your career briefing for women who want to move forward.", "Newsletter"),
 ]
 
 

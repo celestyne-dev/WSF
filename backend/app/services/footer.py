@@ -311,7 +311,7 @@ def serialize_public_social_links():
 DEFAULT_FOOTER_SETTINGS = {
     "brandDescription": "",
     "newsletterHeading": "WSF Weekly",
-    "newsletterDescription": "Stories, jobs, and opportunities — every Thursday.",
+    "newsletterDescription": "Career guidance, stories and opportunities in one email.",
     "newsletterVisible": True,
     "contactEmail": "",
     "copyrightText": "Women Shaping Futures. All rights reserved.",

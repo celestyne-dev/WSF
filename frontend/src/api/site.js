@@ -115,6 +115,7 @@ export function mapSiteSettings(data) {
     appearance: { cornerStyle: data.appearance?.cornerStyle || null },
     // Plain-text, server-validated settings (backend engagement_settings.py).
     newsletterPopup: data.newsletterPopup || null,
+    newsletterPage: data.newsletterPage || null,
     cookieConsent: data.cookieConsent || null,
   }
 }
@@ -137,6 +138,14 @@ export async function fetchHomepageModules() {
   if (!USE_MOCK) return (await apiClient.get('/public/homepage')).data.items.map(mapHomepageModule)
   const { homepageModules } = await loadMockHomepageModules()
   return delay([...homepageModules].filter((m) => m.enabled).sort((a, b) => a.order - b.order))
+}
+
+// GET /public/homepage/handpicked — goal-based Handpicked for a signed-in
+// reader (never cached, never a page URL). `personalized: false` means keep
+// the editorial selection already on the page.
+export async function fetchPersonalizedHandpicked() {
+  if (USE_MOCK) return { personalized: false }
+  return (await apiClient.get('/public/homepage/handpicked')).data
 }
 
 // Newsletter archive/subscribe/unsubscribe live in api/newsletter.js —

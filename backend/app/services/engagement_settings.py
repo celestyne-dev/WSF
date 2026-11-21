@@ -41,6 +41,26 @@ POPUP_DEFAULTS = {
 _POPUP_RANGES = {"delaySeconds": (0, 600), "scrollPercent": (0, 100), "dismissDays": (1, 365), "successDays": (1, 3650)}
 _POPUP_TEXT = {"title": 80, "body": 240, "ctaLabel": 40}
 
+NEWSLETTER_PAGE_KEY = "newsletter_page"
+# WSF Weekly's own page (/newsletter): what a reader gets. `cadence` is empty
+# by default so the page never promises a sending frequency nobody set.
+NEWSLETTER_PAGE_DEFAULTS = {
+    "title": "WSF Weekly",
+    "tagline": "Your career briefing for women who want to move forward.",
+    "intro": "",
+    "cadence": "",
+    "benefits": [
+        "Career moves worth knowing",
+        "Jobs and opportunities",
+        "Women making moves",
+        "Practical career guidance",
+        "One useful tool or resource",
+    ],
+}
+_PAGE_TEXT = {"title": 60, "tagline": 160, "intro": 400, "cadence": 80}
+_PAGE_OPTIONAL = ("intro", "cadence")
+MAX_PAGE_BENEFITS = 8
+
 CONSENT_DEFAULTS = {
     "bannerEnabled": True,
     "version": "1",
@@ -142,4 +162,32 @@ def save_cookie_consent(data):
         if field in data:
             value[field] = _plain(data[field], labels[field], limit)
     _save(COOKIE_CONSENT_KEY, value)
+    return value
+
+
+def get_newsletter_page():
+    return _merge(NEWSLETTER_PAGE_DEFAULTS, _stored(NEWSLETTER_PAGE_KEY))
+
+
+def save_newsletter_page(data):
+    if not isinstance(data, dict):
+        raise EngagementSettingsError("newsletterPage must be an object.")
+    unknown = set(data) - set(NEWSLETTER_PAGE_DEFAULTS)
+    if unknown:
+        raise EngagementSettingsError(f"Unknown newsletter page setting(s): {', '.join(sorted(unknown))}.")
+    value = get_newsletter_page()
+    labels = {"title": "Title", "tagline": "Tagline", "intro": "Introduction", "cadence": "Sending schedule"}
+    for field, limit in _PAGE_TEXT.items():
+        if field not in data:
+            continue
+        if field in _PAGE_OPTIONAL and (data[field] is None or (isinstance(data[field], str) and not data[field].strip())):
+            value[field] = ""
+        else:
+            value[field] = _plain(data[field], labels[field], limit)
+    if "benefits" in data:
+        benefits = data["benefits"]
+        if not isinstance(benefits, list) or len(benefits) > MAX_PAGE_BENEFITS:
+            raise EngagementSettingsError(f"List at most {MAX_PAGE_BENEFITS} reader benefits.")
+        value["benefits"] = [_plain(b, "Benefit", 90) for b in benefits if isinstance(b, str) and b.strip()]
+    _save(NEWSLETTER_PAGE_KEY, value)
     return value

@@ -389,7 +389,7 @@ def render_credentials(credentials, section_id, compact=False):
     )
 
 
-def render_article_prerender(payload):
+def render_article_prerender(payload, recommendations=None):
     """`payload` is the same public_article_schema() dump the Article
     bootstrap embeds — so the prerender can only ever show what the
     public Article API already exposes. Layout: ArticlePage.jsx's first
@@ -398,7 +398,7 @@ def render_article_prerender(payload):
 
     body = render_content_blocks(payload.get("content") or [], variant="article")
     sources = render_article_sources(payload.get("sources") or [])
-    return render_article(payload, body + sources, sponsor_html=_sponsor_disclosure(payload))
+    return render_article(payload, body + sources, sponsor_html=_sponsor_disclosure(payload), recommendations=recommendations)
 
 
 def _normalize_label(value):

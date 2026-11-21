@@ -9,7 +9,7 @@ from app.services.footer import build_public_footer
 from app.services.homepage import get_enabled_homepage_modules, public_homepage_modules_payload
 from app.services.navigation import serialize_public_menu
 from app.services.appearance import public_appearance_payload
-from app.services.engagement_settings import get_cookie_consent, get_newsletter_popup
+from app.services.engagement_settings import get_cookie_consent, get_newsletter_page, get_newsletter_popup
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 from app.utils.responses import success_response
 
@@ -65,6 +65,33 @@ class HomepageResource(Resource):
         return success_response(public_homepage_modules_payload(modules), meta=meta)
 
 
+class HandpickedResource(Resource):
+    """GET /public/homepage/handpicked — the Handpicked section for the
+    signed-in reader, from their Career Goals (deterministic; no tracking).
+    Anonymous readers, or readers without goals, get `personalized: false`
+    and keep the editorial selection already on the page. Never cached
+    publicly and never a crawlable page."""
+
+    def get(self):
+        from flask_jwt_extended import current_user, verify_jwt_in_request
+
+        from app.services.homepage_editorial import personalized_handpicked
+        from app.services.spa_shell import _redact_internal_media_fields
+
+        user = None
+        try:
+            verify_jwt_in_request(optional=True)
+            user = current_user if current_user and current_user.is_active else None
+        except Exception:
+            user = None
+        result = personalized_handpicked(user) if user is not None else None
+        body = {"personalized": result is not None}
+        if result is not None:
+            body.update(_redact_internal_media_fields(result))
+        payload, status = success_response(body)
+        return payload, status, {"Cache-Control": "private, no-store"}
+
+
 def public_navigation_payload():
     """GET /public/navigation's body; also embedded once in every server
     HTML page (spa_shell shell bootstrap) so the header's first frame
@@ -107,6 +134,7 @@ def public_settings_payload():
             # Plain-text, validated engagement settings
             # (app/services/engagement_settings.py). No scripts or IDs.
             "newsletterPopup": get_newsletter_popup(),
+            "newsletterPage": get_newsletter_page(),
             "cookieConsent": get_cookie_consent(),
             "seo": {
                 "defaultTitle": identity["seo_default_title"],
@@ -150,6 +178,7 @@ class FooterResource(Resource):
 
 api.add_resource(CountriesResource, "/countries")
 api.add_resource(HomepageResource, "/homepage")
+api.add_resource(HandpickedResource, "/homepage/handpicked")
 api.add_resource(NavigationResource, "/navigation")
 api.add_resource(FooterResource, "/footer")
 api.add_resource(SiteSettingsResource, "/settings")

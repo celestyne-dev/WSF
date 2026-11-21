@@ -3,6 +3,9 @@ import { delay } from './mockUtils'
 import { attachMockCountry } from './geography'
 import { mapMediaRef } from '../utils/media'
 import { mapArticle } from './articles'
+import { mapLearningProgram } from './learning'
+import { mapResource } from './resources'
+import { mapOpportunity } from './opportunities'
 
 // Each mock dataset here is only needed when VITE_USE_MOCK=true —
 // dynamic-imported per module so a real-mode production build never
@@ -503,4 +506,32 @@ export async function deleteOrganization(slug) {
     return
   }
   return delay(undefined)
+}
+
+// GET /topics/{slug}/hub — the Topic page's de-duplicated sections (backend
+// services/topic_hub.py); also embedded in the hard-load Topic bootstrap.
+export function mapTopicHub(h) {
+  return {
+    relatedTopics: (h?.relatedTopics || []).map((t) => ({ slug: t.slug, name: t.name, description: t.description || '' })),
+    startHere: (h?.startHere || []).map(mapArticle),
+    latest: (h?.latest || []).map(mapArticle),
+    editorsPicks: (h?.editorsPicks || []).map(mapArticle),
+    learning: (h?.learning || []).map(mapLearningProgram),
+    resources: (h?.resources || []).map(mapResource),
+    opportunities: (h?.opportunities || []).map(mapOpportunity),
+  }
+}
+
+export async function fetchTopicHub(slug) {
+  if (USE_MOCK) return mapTopicHub({})
+  return mapTopicHub((await apiClient.get(`/topics/${slug}/hub`)).data)
+}
+
+// Studio: Topic hub curation (Start here / Editor's picks / related topics).
+export async function fetchAdminTopicHub(topicId) {
+  return (await apiClient.get(`/admin/taxonomy/topics/${topicId}/hub`)).data
+}
+
+export async function saveAdminTopicHub(topicId, hub) {
+  return (await apiClient.put(`/admin/taxonomy/topics/${topicId}/hub`, hub)).data
 }

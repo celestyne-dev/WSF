@@ -69,10 +69,19 @@ class ArticleSchema(ma.SQLAlchemyAutoSchema):
     # never a usable image URL). Declared explicitly to override that
     # auto field and inject the resolved image alongside it.
     seo = fields.Method("get_seo", dump_only=True)
+    # Editorial provenance (app/services/article_experts.py). The editor
+    # view gets the stored references; PublicArticleSchema overrides this
+    # with public profiles only.
+    experts = fields.Method("get_experts", dump_only=True)
 
     class Meta:
         model = Article
         load_instance = False
+
+    def get_experts(self, obj):
+        from app.services.article_experts import admin_experts
+
+        return admin_experts(obj)
 
     def get_seo(self, obj):
         seo = dict(obj.seo or {})
@@ -103,6 +112,11 @@ class PublicArticleSchema(ArticleSchema):
     app/services/public_visibility.py). The staff editor keeps using the
     plain ArticleSchema, so draft relationships stay editable.
     """
+
+    def get_experts(self, obj):
+        from app.services.article_experts import public_experts
+
+        return public_experts(obj)
 
     @post_dump(pass_original=True)
     def _drop_nonpublic_relations(self, data, original, **kwargs):
@@ -144,6 +158,7 @@ def article_summary_schema(many=False):
             "related_articles",
             "co_authors",
             "ai_editorial_notes",
+            "experts",
         )
         + _WORKFLOW_FIELDS,
     )
@@ -165,6 +180,7 @@ def admin_article_summary_schema(many=False):
             "related_articles",
             "co_authors",
             "ai_editorial_notes",
+            "experts",
         ),
     )
 
@@ -240,6 +256,11 @@ class ArticleInputSchema(ma.Schema):
     ai_disclosure_required = fields.Boolean(required=False, load_default=False, data_key="aiDisclosureRequired")
     ai_disclosure_text = fields.String(required=False, allow_none=True, data_key="aiDisclosureText")
     ai_editorial_notes = fields.String(required=False, allow_none=True, data_key="aiEditorialNotes")
+
+    # Editorial provenance. Both are optional and left untouched when an
+    # update payload omits them (articles.py _apply_fields).
+    experts = fields.List(fields.Dict(), required=False)
+    editorial_updated_at = fields.DateTime(required=False, allow_none=True, data_key="editorialUpdatedAt")
 
 
 # ---------------------------------------------------------------------------

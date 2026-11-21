@@ -27,6 +27,19 @@ HOMEPAGE_MODULE_TYPES = (
     # item/card limits are validated there, not via itemCount bounds below.
     "career_pathways",
     "content_collection",
+    # Editorial-platform phase (app/services/homepage_editorial.py): Article
+    # collections with an explicit source mode, a People spotlight, a
+    # Learning shelf and a Mission statement. Every Article-producing type
+    # takes part in the page-level first-placement-wins selection
+    # (app/services/editorial_selection.py).
+    "career_moves",
+    "right_now",
+    "expert_guidance",
+    "community_stories",
+    "handpicked",
+    "people_spotlight",
+    "learning",
+    "mission",
 )
 _HOMEPAGE_MODULE_TYPE_CHECK_SQL = "type IN (" + ", ".join(f"'{t}'" for t in HOMEPAGE_MODULE_TYPES) + ")"
 

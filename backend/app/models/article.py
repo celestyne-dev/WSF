@@ -151,6 +151,11 @@ class Article(db.Model):
     # exposed on the public article schema. Article content stays
     # independent of the Submission after creation; this is a pointer for
     # navigation, not a live sync.
+    # The date an editor marked a substantive update to the story. Never
+    # derived from updated_at (any save touches that), so "Updated" is only
+    # ever shown when an editor recorded it.
+    editorial_updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     source_submission_id = db.Column(db.Integer, db.ForeignKey("story_submissions.id"), nullable=True)
 
     # Same minimal handoff compatibility for the Nominations CMS (see
@@ -235,3 +240,31 @@ class Redirect(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
 
     article = db.relationship("Article")
+
+
+# Structured editorial provenance: who reviewed, fact-checked or contributed
+# expertise to an Article. Each row references an existing Author OR Person
+# (never free text), so the public label always resolves to a real profile
+# and its real credentials. Nothing is ever inferred: no row, no label.
+ARTICLE_EXPERT_ROLES = ("reviewed_by", "fact_checked_by", "expert_contributor")
+_EXPERT_ROLE_CHECK_SQL = "role IN (" + ", ".join(f"'{r}'" for r in ARTICLE_EXPERT_ROLES) + ")"
+
+
+class ArticleExpert(db.Model):
+    __tablename__ = "article_experts"
+    __table_args__ = (
+        db.CheckConstraint(_EXPERT_ROLE_CHECK_SQL, name="ck_article_experts_role"),
+        db.CheckConstraint("(author_id IS NULL) <> (person_id IS NULL)", name="ck_article_experts_one_profile"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    article_id = db.Column(db.Integer, db.ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = db.Column(db.String(30), nullable=False)
+    author_id = db.Column(db.Integer, db.ForeignKey("authors.id", ondelete="CASCADE"), nullable=True)
+    person_id = db.Column(db.Integer, db.ForeignKey("people.id", ondelete="CASCADE"), nullable=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+
+    article = db.relationship("Article", backref=db.backref(
+        "experts", cascade="all, delete-orphan", order_by="ArticleExpert.position"))
+    author = db.relationship("Author")
+    person = db.relationship("Person")

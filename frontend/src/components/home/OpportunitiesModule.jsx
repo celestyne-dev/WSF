@@ -33,7 +33,7 @@ export default function OpportunitiesModule({ module }) {
   return (
     <section className="py-14 sm:py-16">
       <div className="container-editorial">
-        <SectionHeading eyebrow="Opportunity" heading={module.heading} subheading={module.subheading} viewAllHref="/opportunities" />
+        <SectionHeading eyebrow={module.sort === 'upcoming' ? 'Opening soon' : 'Funding & opportunities'} heading={module.heading} subheading={module.subheading} viewAllHref="/opportunities" />
         <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
           {items.map((o) => (
             <OpportunityCard key={o.id} opportunity={o} />

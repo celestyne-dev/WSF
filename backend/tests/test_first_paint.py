@@ -52,6 +52,12 @@ COPIED_CLASSES = {
     "components/home/CareerPathwaysModule.jsx": [fp.PATHWAY_TILE],
     "components/home/NewsletterModule.jsx": ["border-t border-taupe-200 bg-charcoal py-16 text-ivory sm:py-20"],
     "components/home/FeaturedWomanModule.jsx": ["bg-plum-600 py-16 text-ivory sm:py-20", "aspect-[5/6] w-full max-w-md object-cover"],
+    "components/home/ArticleCollectionModule.jsx": [layout[0] for layout in fp.COLLECTION_LAYOUT.values()]
+    + [layout[1] for layout in fp.COLLECTION_LAYOUT.values()],
+    "components/home/MissionModule.jsx": ["border-t border-taupe-200 bg-ivory py-16 sm:py-20"],
+    "components/home/PeopleSpotlightModule.jsx": ["mt-8 grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-4"],
+    "pages/TopicDetailPage.jsx": ["mt-3 max-w-3xl font-serif text-4xl font-semibold leading-tight text-charcoal sm:text-5xl"],
+    "pages/ArticlePage.jsx": [fp.ARTICLE_H1, fp.ARTICLE_BYLINE_ROW, fp.ARTICLE_WITH_SIDEBAR],
 }
 
 
@@ -96,6 +102,18 @@ def _sample_homepage_modules():
          "resolved": {"cards": [{"title": "Jobs", "href": "/jobs", "linkType": "internal", "icon": "briefcase"}]}},
         {"id": 13, "type": "content_collection", "heading": "C", "config": {"entityType": "people"},
          "resolved": {"entityType": "people", "items": [{"slug": "p", "name": "P", "title": "T"}]}},
+        # Editorial-platform modules (ArticleCollectionModule & co).
+        {"id": 14, "type": "career_moves", "heading": "Career Moves", "config": {}, "initial_data": {"articles": [article]}},
+        {"id": 15, "type": "right_now", "heading": "Right now", "config": {}, "initial_data": {"articles": [article]}},
+        {"id": 16, "type": "community_stories", "heading": "Her Career Story", "config": {}, "initial_data": {"articles": [article]}},
+        {"id": 17, "type": "expert_guidance", "heading": "Expert", "config": {}, "initial_data": {"articles": [
+            {**article, "experts": [{"label": "Reviewed by", "name": "R", "href": "/people/r", "line": "HR Director"}]}]}},
+        {"id": 18, "type": "handpicked", "heading": "Handpicked", "config": {}, "initial_data": {"articles": [article]}},
+        {"id": 19, "type": "people_spotlight", "heading": "Women", "config": {}, "initial_data": {"items": [{"slug": "p", "name": "P"}]}},
+        {"id": 20, "type": "learning", "heading": "Learn", "config": {}, "initial_data": {"items": [{"slug": "l", "title": "L"}]}},
+        {"id": 21, "type": "mission", "heading": "Mission", "config": {"eyebrow": "Our mission", "body": "One.\n\nTwo."},
+         "cta_label": "About WSF", "cta_url": "/about"},
+        {"id": 22, "type": "newsletter", "heading": "Weekly", "subheading": "Sub", "config": {"benefits": ["Jobs"]}},
     ]
 
 
@@ -107,6 +125,10 @@ def test_every_rendered_class_token_exists_in_the_react_sources():
     corpus += " ".join(p.read_text() for p in FRONTEND_SRC.rglob("*.js"))
     lead = _sample_homepage_modules()[0]["initial_data"]["secondary"][0]
     html = fp.render_homepage(_sample_homepage_modules(), lead) + fp.render_header({"menus": {}}, pathname="/")
+    html += fp.render_topic_hub({"name": "Career Growth", "description": "D", "slug": "career-growth"}, {
+        "relatedTopics": [{"slug": "job-search", "name": "Job Search"}], "startHere": [lead], "latest": [lead],
+        "editorsPicks": [lead], "learning": [{"slug": "l", "title": "L"}], "resources": [{"slug": "r", "name": "R"}],
+        "opportunities": [{"slug": "o", "title": "O"}]})
     tokens = {t for value in re.findall(r'class="([^"]*)"', html) for t in value.split()}
     lucide = {t for t in tokens if t.startswith("lucide")}  # lucide-react's own icon classes
     missing = sorted(t for t in tokens - lucide if not re.search(r"(?<![\w-])" + re.escape(t) + r"(?![\w-])", corpus))
@@ -255,7 +277,9 @@ def test_hard_load_homepage_matches_the_react_layout(client, app):
     assert preload and preload.group(1).endswith("/media/a-large.webp")
     # Secondary story as a horizontal card, latest stories as the 4-column grid.
     assert '<article class="group flex gap-4 sm:gap-5">' in root and 'href="/second-story"' in root
-    assert f'<div class="{fp.ARTICLE_GRID_4}">' in root and root.count('<article class="group flex flex-col">') == 3
+    # First placement wins: Latest never repeats the hero's lead or supporting story.
+    assert f'<div class="{fp.ARTICLE_GRID_4}">' in root and root.count('<article class="group flex flex-col">') == 1
+    assert root.count('href="/lead-story"') == 2 and root.count('href="/second-story"') == 2  # image + title links, once each
     # A featured woman whose person is not public renders nothing, as in React.
     assert "Woman" not in root
 
@@ -265,7 +289,10 @@ def test_homepage_modules_start_from_the_public_api_answer(client, app):
     html = client.get("/").get_data(as_text=True)
     modules = {m["type"]: m for m in _bootstrap(html, "homepage")["modules"]}
     api = client.get("/api/v1/articles?per_page=4").get_json()["data"]
-    assert [a["slug"] for a in modules["latest_stories"]["initial_data"]["articles"]] == [a["slug"] for a in api]
+    # Latest = the public list, minus what the hero already placed (first placement wins).
+    hero = {"lead-story", "second-story"}
+    assert [a["slug"] for a in modules["latest_stories"]["initial_data"]["articles"]] == [a["slug"] for a in api if a["slug"] not in hero]
+    assert modules["hero"]["initial_data"]["lead"]["slug"] == "lead-story"
     assert [a["slug"] for a in modules["hero"]["initial_data"]["secondary"]] == ["second-story"]
     # A 404 is passed on as "nothing to show" so the component does not refetch.
     assert modules["featured_woman"]["initial_data"] == {"person": None}

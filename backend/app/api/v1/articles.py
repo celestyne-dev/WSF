@@ -238,6 +238,12 @@ def _apply_fields(article, data, relations):
     article.ai_disclosure_required = data.get("ai_disclosure_required", False)
     article.ai_disclosure_text = data.get("ai_disclosure_text")
     article.ai_editorial_notes = data.get("ai_editorial_notes")
+    if "experts" in data:
+        from app.services.article_experts import set_article_experts
+
+        set_article_experts(article, data["experts"])
+    if "editorial_updated_at" in data:
+        article.editorial_updated_at = data["editorial_updated_at"]
 
 
 def _validate_for_publish(article):
@@ -286,6 +292,19 @@ def _snapshot(article, user, note=None):
             created_by_id=user.id if user else None,
         )
     )
+
+
+class ArticleRecommendationsResource(Resource):
+    """GET /articles/<slug>/recommendations — the page's de-duplicated
+    recommendation blocks (app/services/article_recommendations.py)."""
+
+    def get(self, slug):
+        from app.services.article_recommendations import article_recommendations
+
+        article = Article.query.filter_by(slug=slug, status="published").first()
+        if article is None:
+            raise ApiError("Article not found.", 404, code="not_found")
+        return success_response(article_recommendations(article))
 
 
 class ArticleListResource(Resource):
@@ -739,6 +758,7 @@ api.add_resource(ArticleListResource, "")
 api.add_resource(ArticleRelatedResource, "/related")
 api.add_resource(ArticleCalendarResource, "/calendar")
 api.add_resource(ArticleDetailResource, "/<string:slug>")
+api.add_resource(ArticleRecommendationsResource, "/<string:slug>/recommendations")
 api.add_resource(ArticlePublishResource, "/<string:slug>/publish")
 api.add_resource(ArticleRevisionsResource, "/<string:slug>/revisions")
 api.add_resource(ArticleSubmitReviewResource, "/<string:slug>/submit-review")

@@ -56,6 +56,18 @@ class TopicDetailResource(Resource):
         return success_response({"topic": topic_detail_schema.dump(topic), "articles": articles}, meta=result["meta"])
 
 
+class TopicHubResource(Resource):
+    """GET /topics/<slug>/hub — the Topic page's de-duplicated sections."""
+
+    def get(self, slug):
+        from app.services.topic_hub import topic_hub
+
+        topic = Topic.query.filter_by(slug=slug, status="published").first()
+        if topic is None:
+            raise ApiError("Topic not found.", 404, code="not_found")
+        return success_response(topic_hub(topic))
+
+
 class CategoryListResource(Resource):
     def get(self):
         categories = Category.query.filter_by(status="published").order_by(Category.sort_order, Category.name).all()
@@ -92,6 +104,7 @@ class SeriesDetailResource(Resource):
 
 topics_api.add_resource(TopicListResource, "")
 topics_api.add_resource(TopicDetailResource, "/<string:slug>")
+topics_api.add_resource(TopicHubResource, "/<string:slug>/hub")
 
 categories_api.add_resource(CategoryListResource, "")
 categories_api.add_resource(CategoryDetailResource, "/<string:slug>")

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { ArrowRight, ChevronDown, Clock, Sparkles } from 'lucide-react'
-import { fetchArticleBySlug, fetchArticles, fetchRelatedArticles, mapArticle } from '../api/articles'
+import { fetchArticleBySlug, fetchArticleRecommendations, mapArticle, mapArticleRecommendations } from '../api/articles'
 import { fetchPersonBySlug } from '../api/people'
 import { readBootstrap, consumeBootstrap } from '../utils/bootstrap'
-import { resolveImage, resolveMediaImage, resolveAltText } from '../utils/media'
+import { resolveImage, resolveMediaImage, resolveAltText, mapMediaRef } from '../utils/media'
 import { buildArticleStructuredData } from '../utils/articleStructuredData'
 import { formatDate } from '../utils/format'
 import { resolveReadingTime } from '../utils/readingTime'
@@ -25,6 +25,8 @@ import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
 import ArticleCard from '../components/cards/ArticleCard'
 import SaveButton from '../components/account/SaveButton'
 import PersonCard from '../components/cards/PersonCard'
+import LearningProgramCard from '../components/cards/LearningProgramCard'
+import ResourceCard from '../components/cards/ResourceCard'
 import GeneralPage from './GeneralPage'
 
 const SITE_ORIGIN = 'https://womenshapingfutures.org'
@@ -90,10 +92,17 @@ function AuthorCard({ author }) {
             {author.name}
           </Link>
         </p>
-        {author.role && <p className="text-sm text-charcoal-600">{author.role}</p>}
+        {(author.headline || author.role) && <p className="text-sm text-charcoal-600">{author.headline || author.role}</p>}
         {author.shortBio && <p className="mt-3 text-[15px] leading-relaxed text-charcoal-600">{author.shortBio}</p>}
+        {author.expertise?.length > 0 && (
+          <ul aria-label="Areas of expertise" className="mt-3 flex flex-wrap gap-2">
+            {author.expertise.slice(0, 4).map((area) => (
+              <li key={area} className="bg-taupe-100 px-2.5 py-1 text-xs font-medium text-charcoal-600">{area}</li>
+            ))}
+          </ul>
+        )}
         <Link to={`/authors/${author.slug}`} className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-burgundy-600 hover:text-burgundy-700">
-          More from {author.name} <ArrowRight size={14} aria-hidden="true" />
+          View full profile <ArrowRight size={14} aria-hidden="true" />
         </Link>
       </div>
     </section>
@@ -102,6 +111,52 @@ function AuthorCard({ author }) {
 
 // One closing CTA, only when the editor hasn't already placed one in the
 // body (a cta / Simple CTA block), so a reader is never asked twice.
+// Reviewed by / Fact checked by / Expert contribution: only structured,
+// recorded relationships to public profiles (never inferred, never free text).
+function ExpertProvenance({ experts }) {
+  if (!experts?.length) return null
+  return (
+    <ul aria-label="Editorial review" className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {experts.map((e) => (
+        <li key={`${e.role}-${e.kind}-${e.slug}`} className="flex items-start gap-3">
+          <MediaImage media={mapMediaRef(e.photo)} variant="thumbnail" alt="" width={80} height={80} aspect={1} sizes="40px" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+          <div className="min-w-0 text-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">{e.label}</p>
+            <p className="font-semibold text-charcoal">
+              <Link to={e.href} className="hover:text-burgundy-600">{e.name}</Link>
+            </p>
+            {e.line && <p className="text-xs text-charcoal-600">{e.line}</p>}
+            {e.credentials?.[0] && (
+              <p className="text-xs text-charcoal-600/80">
+                {e.credentials[0].name}
+                {e.credentials[0].issuer ? `, ${e.credentials[0].issuer}` : ''}
+              </p>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// Relevant Learning and career tools for this story's Topics (server-chosen).
+function KeepBuilding({ learning, resources }) {
+  if (!learning?.length && !resources?.length) return null
+  return (
+    <section aria-labelledby="keep-building" className="mt-14 border-t border-taupe-200 pt-8">
+      <p id="keep-building" className="eyebrow mb-5">Keep building</p>
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        {learning.map((program) => (
+          <LearningProgramCard key={`l-${program.id}`} program={program} />
+        ))}
+        {resources.map((resource) => (
+          <ResourceCard key={`r-${resource.id}`} resource={resource} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 const END_OF_ARTICLE_CTA = { type: 'cta', style: 'soft', align: 'left', ...CTA_PRESETS.find((p) => p.key === 'career-hub').fields }
 
 
@@ -170,10 +225,22 @@ export default function ArticlePage() {
     return bootstrap ? mapArticle(bootstrap.data) : undefined
   })
   const [relatedPerson, setRelatedPerson] = useState(null)
-  const [related, setRelated] = useState([])
-  const [relatedArticlesBySlug, setRelatedArticlesBySlug] = useState({})
-  const [nextArticle, setNextArticle] = useState(null)
-  const [popular, setPopular] = useState([])
+  // Every recommendation block on this page comes from ONE server selection
+  // (backend services/article_recommendations.py): this Article is never
+  // recommended to itself, and no story appears twice on the page. On a
+  // hard load it arrives with the Article bootstrap; otherwise one request.
+  const [recs, setRecs] = useState(() => {
+    const bootstrap = readBootstrap('article', slug)
+    return bootstrap?.recommendations ? mapArticleRecommendations(bootstrap.recommendations) : null
+  })
+  const related = recs?.related || []
+  const moreFromAuthor = recs?.moreFromAuthor || []
+  const nextArticle = recs?.upNext || null
+  const popular = recs?.sidebar || []
+  const relatedArticlesBySlug = useMemo(
+    () => Object.fromEntries((recs?.bodyArticles || []).map((a) => [a.slug, a])),
+    [recs],
+  )
   // Reported by SponsorPlacementStrip itself (see its own
   // onAvailabilityChange docstring) — never independently re-fetched or
   // re-derived here. Used only to decide whether the sidebar column is
@@ -183,10 +250,6 @@ export default function ArticlePage() {
   useEffect(() => {
     let active = true
     setRelatedPerson(null)
-    setRelated([])
-    setRelatedArticlesBySlug({})
-    setNextArticle(null)
-    setPopular([])
 
     // Secondary requests (related person, related/content-block articles,
     // next/popular) stay exactly as they were — non-critical, always
@@ -201,29 +264,9 @@ export default function ArticlePage() {
           .catch(() => {})
       }
 
-      const contentBlockSlugs = (data.content || [])
-        .filter((b) => b.type === 'relatedBlock')
-        .flatMap((b) => b.articleSlugs || [])
-      const allSlugs = [...new Set([...(data.relatedArticleSlugs || []), ...contentBlockSlugs])]
-      if (allSlugs.length) {
-        fetchRelatedArticles(allSlugs)
-          .then((items) => {
-            if (!active) return
-            setRelated(items.filter((a) => data.relatedArticleSlugs?.includes(a.slug)))
-            setRelatedArticlesBySlug(Object.fromEntries(items.map((a) => [a.slug, a])))
-          })
-          .catch(() => {})
-      }
-
-      // No dedicated "next"/"popular" endpoint exists yet, so both are
-      // derived client-side from the already-supported recent-articles list.
-      fetchArticles({ pageSize: 8 })
-        .then((res) => {
-          if (!active) return
-          const others = res.items.filter((a) => a.slug !== data.slug)
-          if (others.length) setNextArticle(others[0])
-          setPopular(others.slice(0, 5))
-        })
+      if (data.skipRecommendations) return
+      fetchArticleRecommendations(data.slug)
+        .then((r) => active && setRecs(r))
         .catch(() => {})
     }
 
@@ -239,13 +282,19 @@ export default function ArticlePage() {
       consumeBootstrap('article')
       const data = mapArticle(bootstrap.data)
       setArticle(data)
-      loadSecondary(data)
+      if (bootstrap.recommendations) {
+        setRecs(mapArticleRecommendations(bootstrap.recommendations))
+        loadSecondary({ ...data, skipRecommendations: true })
+      } else {
+        loadSecondary(data)
+      }
       return () => {
         active = false
       }
     }
 
     setArticle(undefined)
+    setRecs(null)
     fetchArticleBySlug(slug).then((data) => {
       if (!active) return
       setArticle(data)
@@ -311,6 +360,8 @@ export default function ArticlePage() {
   const coAuthors = article.coAuthors || []
   const topic = article.topic
   const heroAspect = getMediaAspect(article.heroMedia)
+  // Shown only when an editor recorded a substantive update after publishing.
+  const showUpdated = Boolean(article.editorialUpdatedAt) && (!article.publishDate || new Date(article.editorialUpdatedAt) > new Date(article.publishDate))
   const tocEntries = toc.entries
   const hasToc = tocEntries.length > 0
   const hasSidebarContent = popular.length > 0 || hasSponsorSidebar || hasToc
@@ -387,6 +438,12 @@ export default function ArticlePage() {
                   {author?.role && <p className="text-xs text-charcoal-600/70">{author.role}</p>}
                   <p className="mt-0.5 flex items-center gap-2 text-charcoal-600">
                     <span>{formatDate(article.publishDate)}</span>
+                    {showUpdated && (
+                      <>
+                        <span aria-hidden="true">&middot;</span>
+                        <span>Updated {formatDate(article.editorialUpdatedAt)}</span>
+                      </>
+                    )}
                     <span aria-hidden="true">&middot;</span>
                     <span className="inline-flex items-center gap-1">
                       <Clock size={13} /> {resolveReadingTime(article)} min read
@@ -401,6 +458,7 @@ export default function ArticlePage() {
               </div>
             </div>
 
+            <ExpertProvenance experts={article.experts} />
             {article.aiDisclosureRequired && <AiDisclosureNotice text={article.aiDisclosureText} />}
           </div>
         </div>
@@ -472,6 +530,7 @@ export default function ArticlePage() {
               </div>
             )}
             <AuthorCard author={author} />
+            <KeepBuilding learning={recs?.learning || []} resources={recs?.resources || []} />
             {!hasInlineCta && <CtaBlock block={END_OF_ARTICLE_CTA} />}
 
             {nextArticle && (
@@ -519,9 +578,20 @@ export default function ArticlePage() {
 
       {related.length > 0 && (
         <div className="container-editorial mt-20 border-t border-taupe-200 py-16">
-          <p className="eyebrow mb-6">More stories you’ll like</p>
+          <p className="eyebrow mb-6">Related reading</p>
           <div className="grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-3">
             {related.map((a) => (
+              <ArticleCard key={a.id} article={a} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {moreFromAuthor.length > 0 && (
+        <div className="container-editorial border-t border-taupe-200 py-16">
+          <p className="eyebrow mb-6">More from {author?.name}</p>
+          <div className="grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-3">
+            {moreFromAuthor.map((a) => (
               <ArticleCard key={a.id} article={a} />
             ))}
           </div>

@@ -5,6 +5,7 @@ import MediaPicker from './MediaPicker'
 import { fetchArticles } from '../../api/articles'
 import { fetchPeople } from '../../api/people'
 import { fetchOrganizations, fetchSeries, fetchTopics } from '../../api/taxonomies'
+import { fetchLearningPrograms } from '../../api/learning'
 import { HOMEPAGE_MODULE_REGISTRY, HOMEPAGE_SPONSOR_PLACEMENT_KEYS } from '../../constants/homepageModules'
 
 async function searchArticles(query) {
@@ -42,6 +43,22 @@ async function searchTopics(query) {
     .filter((t) => !q || t.name.toLowerCase().includes(q))
     .slice(0, 12)
     .map((t) => ({ value: t.slug, label: t.name }))
+}
+
+async function searchPrograms(query) {
+  const res = await fetchLearningPrograms({ query, pageSize: 8 })
+  return (res.items || []).map((p) => ({ value: p.slug, label: p.title }))
+}
+
+function SelectField({ label, value, options, onChange }) {
+  return field(
+    label,
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full border border-taupe-300 bg-white px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none">
+      {options.map(([v, text]) => (
+        <option key={v} value={v}>{text}</option>
+      ))}
+    </select>,
+  )
 }
 
 function field(label, input) {
@@ -157,6 +174,72 @@ export default function HomepageModuleFields({ module, onChange }) {
           {field(
             'Partner organizations',
             <EntitySelect multiple value={module.config.partnerSlugs || []} onChange={(v) => patchConfig({ partnerSlugs: v })} loadOptions={searchOrganizations} placeholder="Add an organization…" />
+          )}
+        </div>
+      )}
+
+      {['editorial-articles', 'people-spotlight', 'learning'].includes(spec.contentSource) && (
+        <>
+          <SelectField label="Source" value={module.config.source || spec.sources[0][0]} options={spec.sources} onChange={(v) => patchConfig({ source: v })} />
+          <TextField label="Eyebrow (optional)" value={module.config.eyebrow} onChange={(v) => patchConfig({ eyebrow: v })} placeholder="Small label above the heading" />
+        </>
+      )}
+
+      {spec.contentSource === 'editorial-articles' && ['manual', 'editorial'].includes(module.config.source || spec.sources[0][0]) && (
+        <div className="sm:col-span-2">
+          {field(
+            module.config.source === 'editorial' || spec.personalized ? 'Editor picks (shown first; the rest backfills)' : 'Selected articles',
+            <EntitySelect multiple value={module.config.articleSlugs || []} onChange={(v) => patchConfig({ articleSlugs: v })} loadOptions={searchArticles} placeholder="Add an article…" />,
+          )}
+          <p className="mt-1 text-xs text-charcoal-600">A story already placed by an earlier homepage section is skipped here; it is never shown twice.</p>
+        </div>
+      )}
+      {spec.contentSource === 'editorial-articles' && module.config.source === 'topic' && (
+        <div className="sm:col-span-2">
+          {field('Topics', <EntitySelect multiple value={module.config.topicSlugs || []} onChange={(v) => patchConfig({ topicSlugs: v })} loadOptions={searchTopics} placeholder="Add a topic…" />)}
+        </div>
+      )}
+      {spec.contentSource === 'editorial-articles' && module.config.source === 'series' &&
+        field('Series', <EntitySelect value={module.config.seriesSlug || null} onChange={(v) => patchConfig({ seriesSlug: v })} loadOptions={searchSeries} placeholder="Search series…" />)}
+      {spec.personalized && (
+        <TextField label="Heading for signed-in readers with Career Goals (optional)" value={module.config.personalizedHeading} onChange={(v) => patchConfig({ personalizedHeading: v })} placeholder="e.g. Picked for your goals" />
+      )}
+
+      {spec.contentSource === 'people-spotlight' && module.config.source === 'manual' && (
+        <div className="sm:col-span-2">
+          {field('People', <EntitySelect multiple value={module.config.personSlugs || []} onChange={(v) => patchConfig({ personSlugs: v })} loadOptions={searchPeople} placeholder="Add a person…" />)}
+        </div>
+      )}
+      {spec.contentSource === 'learning' && module.config.source === 'manual' && (
+        <div className="sm:col-span-2">
+          {field('Programs', <EntitySelect multiple value={module.config.programSlugs || []} onChange={(v) => patchConfig({ programSlugs: v })} loadOptions={searchPrograms} placeholder="Add a program…" />)}
+        </div>
+      )}
+
+      {spec.contentSource === 'mission' && (
+        <>
+          <TextField label="Eyebrow (optional)" value={module.config.eyebrow} onChange={(v) => patchConfig({ eyebrow: v })} placeholder="e.g. Our mission" />
+          <div className="sm:col-span-2">
+            {field(
+              'Supporting copy (plain text; blank line between paragraphs)',
+              <textarea rows={5} value={module.config.body || ''} onChange={(e) => patchConfig({ body: e.target.value || null })} className="w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none" />,
+            )}
+          </div>
+        </>
+      )}
+
+      {spec.sorts && <SelectField label="Show" value={module.config.sort || spec.sorts[0][0]} options={spec.sorts} onChange={(v) => patchConfig({ sort: v })} />}
+
+      {spec.hasBenefits && (
+        <div className="sm:col-span-2">
+          {field(
+            'What readers get (optional, one per line, up to 6)',
+            <textarea
+              rows={4}
+              value={(module.config.benefits || []).join('\n')}
+              onChange={(e) => patchConfig({ benefits: e.target.value.split('\n').slice(0, 6) })}
+              className="w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none"
+            />,
           )}
         </div>
       )}

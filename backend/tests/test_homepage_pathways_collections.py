@@ -196,7 +196,8 @@ class TestRegistry:
         from app.models.cms import HOMEPAGE_MODULE_TYPES
 
         assert "career_pathways" in HOMEPAGE_MODULE_TYPES and "content_collection" in HOMEPAGE_MODULE_TYPES
-        assert len(HOMEPAGE_MODULE_TYPES) == 18
+        # 16 legacy + 2 (this phase) + 8 editorial-platform types.
+        assert len(HOMEPAGE_MODULE_TYPES) == 26
         for legacy in ("hero", "featured_stories", "latest_stories", "featured_woman", "series_feature",
                        "topic_collection", "opportunities", "jobs", "events", "resources", "newsletter",
                        "partners", "community_cta", "mentorship_cta", "editorial_callout", "sponsor_placement"):

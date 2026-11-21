@@ -41,7 +41,7 @@ function adaptMockFooter({ footerNavigation, socialLinks }) {
   return {
     brandDescription: 'A global media, opportunity, and community platform for ambitious women.',
     newsletterHeading: 'WSF Weekly',
-    newsletterDescription: 'Stories, jobs, and opportunities — every Thursday.',
+    newsletterDescription: 'Career guidance, stories and opportunities in one email.',
     newsletterVisible: true,
     contactEmail: 'hello@womenshapingfutures.org',
     copyrightText: 'Women Shaping Futures. All rights reserved.',

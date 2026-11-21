@@ -21,6 +21,10 @@ import EditorialCalloutModule from '../components/home/EditorialCalloutModule'
 import SponsorPlacementModule from '../components/home/SponsorPlacementModule'
 import CareerPathwaysModule from '../components/home/CareerPathwaysModule'
 import ContentCollectionModule from '../components/home/ContentCollectionModule'
+import ArticleCollectionModule from '../components/home/ArticleCollectionModule'
+import PeopleSpotlightModule from '../components/home/PeopleSpotlightModule'
+import LearningModule from '../components/home/LearningModule'
+import MissionModule from '../components/home/MissionModule'
 
 // Maps each CMS module `type` to its renderer. Adding a new homepage block
 // type in the CMS only requires registering it here (and in the shared
@@ -46,6 +50,14 @@ const MODULE_COMPONENTS = {
   sponsor_placement: SponsorPlacementModule,
   career_pathways: CareerPathwaysModule,
   content_collection: ContentCollectionModule,
+  career_moves: ArticleCollectionModule,
+  right_now: ArticleCollectionModule,
+  expert_guidance: ArticleCollectionModule,
+  community_stories: ArticleCollectionModule,
+  handpicked: ArticleCollectionModule,
+  people_spotlight: PeopleSpotlightModule,
+  learning: LearningModule,
+  mission: MissionModule,
 }
 
 export default function HomePage() {

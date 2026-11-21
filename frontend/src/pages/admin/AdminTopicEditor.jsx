@@ -11,6 +11,7 @@ import ArticleBlockEditor from '../../components/cms/ArticleBlockEditor'
 import { CAREER_GOAL_OPTIONS } from '../../constants/careerMetadata'
 import SourcesEditor from '../../components/cms/SourcesEditor'
 import FeaturedArticlePicker from '../../components/cms/FeaturedArticlePicker'
+import TopicHubFields from '../../components/cms/TopicHubFields'
 import { describeSourceErrors, validateSources } from '../../utils/sources'
 import { blankEditorialForm, editorialToForm, editorialToPayload } from '../../utils/taxonomyEditorial'
 import PageLoader from '../../components/ui/PageLoader'
@@ -282,6 +283,12 @@ export default function AdminTopicEditor() {
               onChange={(articleId) => updateField('featuredArticleId', articleId)}
             />
           </Section>
+
+          {!isNew && (
+            <Section title="Topic hub" description="Related topics, more Start here stories and Editor's picks for the public topic page.">
+              <TopicHubFields topicId={id} topicSlug={form.slug} />
+            </Section>
+          )}
 
           <Section title="Sources & references" description="Optional reports, studies or official pages supporting this topic's editorial content. Shown publicly.">
             <SourcesEditor sources={form.sources} onChange={(sources) => updateField('sources', sources)} />

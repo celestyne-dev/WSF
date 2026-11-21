@@ -161,6 +161,21 @@ def compute_module_warnings(module):
 
         warnings.extend(extra_module_warnings(module))
 
+    elif mtype in ("career_moves", "right_now", "community_stories", "expert_guidance", "handpicked"):
+        if config.get("source") in ("manual",) and not _slug_list(config.get("articleSlugs")):
+            warnings.append("No articles selected yet.")
+        for slug in _slug_list(config.get("articleSlugs")):
+            if _article_missing(slug):
+                warnings.append(f'Article "{slug}" is no longer published.')
+        if config.get("source") == "topic":
+            live = Topic.query.filter(Topic.slug.in_(_slug_list(config.get("topicSlugs"))), Topic.status == "published").count()
+            if not live:
+                warnings.append("None of the selected topics is published — the section is hidden.")
+
+    elif mtype == "mission":
+        if not module.heading:
+            warnings.append("No mission statement (heading) set yet — the section is hidden.")
+
     return warnings
 
 
@@ -171,13 +186,16 @@ def public_homepage_modules_payload(modules, resolved=None):
     (resolved ONCE here so the browser makes no extra request per section).
     Pass `resolved` when the caller already has it (the SPA shell reuses it
     for the prerender)."""
-    from app.schemas.cms import HomepageModuleSchema
-    from app.services.homepage_collections import attach_public_extras, resolve_homepage_extras
+    from app.services.homepage_editorial import public_homepage_payload
 
-    if resolved is None:
-        resolved = resolve_homepage_extras(modules)
-    return attach_public_extras(HomepageModuleSchema(many=True).dump(modules), modules, resolved)
+    return public_homepage_payload(modules)[0]
 
 
 def modules_with_warnings(modules):
-    return {m.id: compute_module_warnings(m) for m in modules}
+    """Per-module configuration warnings plus the cross-module one: an
+    Article explicitly picked in more than one module (it will be skipped
+    after its first placement on the public page)."""
+    from app.services.homepage_editorial import duplicate_selection_warnings
+
+    duplicates = duplicate_selection_warnings(modules)
+    return {m.id: compute_module_warnings(m) + duplicates.get(m.id, []) for m in modules}

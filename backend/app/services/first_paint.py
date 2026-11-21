@@ -887,8 +887,17 @@ def _item_count(module, default):
 
 
 def _hero(module, lead):
+    """HeroModule.jsx. The lead is the page selection's (`initial_data.lead`,
+    null when unpublished or placed earlier); without initial data, the
+    bootstrap lead when it matches the configured slug."""
     cfg = _cfg(module)
-    if cfg.get("leadArticleSlug") and lead is not None and lead.get("slug") == cfg.get("leadArticleSlug"):
+    data = module.get("initial_data")
+    decided = isinstance(data, dict) and "lead" in data
+    if decided:
+        lead = data["lead"]
+    elif lead is not None and lead.get("slug") != cfg.get("leadArticleSlug"):
+        lead = None
+    if lead is not None:
         card = article_card({**lead, "title": module["heading"]} if module.get("heading") else lead, "lead", heading_level=1)
         cta = (cta_link(module["cta_url"], "btn-outline mt-4 inline-flex", module["cta_label"])
                if module.get("cta_label") and module.get("cta_url") else "")
@@ -899,7 +908,7 @@ def _hero(module, lead):
             f'<div class="lg:col-span-2">{card}{cta}</div>'
             f'<div class="flex flex-col gap-6 lg:border-l lg:border-taupe-200 lg:pl-10">{secondary}</div></div></section>'
         )
-    if cfg.get("leadArticleSlug"):
+    if cfg.get("leadArticleSlug") and not decided:
         return ""  # React waits on the lead Article (renders nothing yet)
     if not module.get("heading"):
         return ""
@@ -984,8 +993,16 @@ def _newsletter(module):
         '<section class="border-t border-taupe-200 bg-charcoal py-16 text-ivory sm:py-20"><div class="container-editorial flex flex-col items-center text-center">'
         f'<p class="eyebrow !text-blush-200">{_t(module.get("heading"))}</p>'
         f'<h2 class="mt-3 max-w-xl font-serif text-3xl font-semibold sm:text-4xl">{_t(module.get("subheading"))}</h2>'
-        f'{line}<div class="mt-7">{form}</div></div></section>'
+        f'{line}{_benefits(_cfg(module).get("benefits"))}<div class="mt-7">{form}</div></div></section>'
     )
+
+
+def _benefits(benefits):
+    if not benefits:
+        return ""
+    items = "".join(f'<li class="flex items-start gap-2"><span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 bg-blush-200"></span>{_t(b)}</li>'
+                    for b in benefits)
+    return f'<ul class="mt-6 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-2 text-left text-sm text-ivory/85 sm:grid-cols-2">{items}</ul>'
 
 
 _CALLOUTS = {
@@ -1088,6 +1105,94 @@ def _content_collection(module):
                     + section_cta_link(module.get("cta_label"), module.get("cta_url")))
 
 
+# --- editorial modules (ArticleCollectionModule / PeopleSpotlightModule /
+# LearningModule / MissionModule) --------------------------------------------------------
+COLLECTION_LAYOUT = {
+    "career_moves": ("border-t border-taupe-200 bg-cream py-14 sm:py-16", "mt-8 grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4", "grid"),
+    "right_now": ("border-t border-taupe-200 py-14 sm:py-16", "mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2", "horizontal"),
+    "community_stories": ("border-t border-taupe-200 bg-blush-50 py-14 sm:py-16", "mt-8 grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-3", "grid"),
+    "expert_guidance": ("border-t border-taupe-200 py-14 sm:py-16", "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3", "expert"),
+    "handpicked": ("border-t border-taupe-200 py-14 sm:py-16", "mt-8 grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4", "grid"),
+}
+COLLECTION_EYEBROWS = {
+    "career_moves": "Career moves", "right_now": "Right now", "community_stories": "Community stories",
+    "expert_guidance": "Expert-backed guidance", "handpicked": "Handpicked by WSF",
+}
+
+
+def expert_article_card(article):
+    href = f"/{article.get('slug')}"
+    topics = article.get("topics") or []
+    topic = topics[0] if topics else None
+    experts = article.get("experts") or []
+    expert = experts[0] if experts else None
+    eyebrow = f'<a href="/topics/{_a(topic["slug"])}" class="eyebrow">{_t(topic["name"])}</a>' if topic else ""
+    expert_html = ""
+    if expert:
+        expert_html = (
+            '<p class="mt-auto border-t border-taupe-200 pt-4 text-xs text-charcoal-600">'
+            f'<span class="font-semibold uppercase tracking-wide text-burgundy-600">{_t(expert["label"])}</span> '
+            f'<a href="{_a(expert["href"])}" class="font-semibold text-charcoal hover:text-burgundy-600">{_t(expert["name"])}</a>'
+            + (f'<span class="block pt-0.5">{_t(expert["line"])}</span>' if expert.get("line") else "") + "</p>"
+        )
+    return (
+        f'<article class="flex h-full flex-col rounded-card border border-taupe-200 bg-white p-6">{eyebrow}'
+        f'<h3 class="mt-2 font-serif text-xl font-semibold leading-snug text-charcoal"><a href="{_a(href)}" class="{TITLE_LINK}">{_t(article.get("title"))}</a></h3>'
+        + (f'<p class="mt-2 line-clamp-3 text-sm text-charcoal-600">{_t(article["excerpt"])}</p>' if article.get("excerpt") else "")
+        + f"{expert_html}</article>"
+    )
+
+
+def _article_collection(module):
+    articles = _init(module, "articles") or []
+    if not articles:
+        return ""
+    section, grid, card = COLLECTION_LAYOUT[module["type"]]
+    cfg = _cfg(module)
+    heading = section_heading(cfg.get("eyebrow") or COLLECTION_EYEBROWS[module["type"]], module.get("heading"), module.get("subheading"))
+    render = expert_article_card if card == "expert" else (lambda a: article_card(a, card))
+    return _section(section, f'{heading}<div class="{grid}">{"".join(render(a) for a in articles)}</div>'
+                    + section_cta_link(module.get("cta_label"), module.get("cta_url")))
+
+
+def _people_spotlight(module):
+    people = _init(module, "items") or []
+    if not people:
+        return ""
+    heading = section_heading(_cfg(module).get("eyebrow") or "Women moving industries", module.get("heading"), module.get("subheading"))
+    return _section("border-t border-taupe-200 py-14 sm:py-16",
+                    f'{heading}<div class="mt-8 grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-4">{"".join(person_card(p) for p in people)}</div>'
+                    + section_cta_link(module.get("cta_label"), module.get("cta_url")))
+
+
+def _learning(module):
+    programs = _init(module, "items") or []
+    if not programs:
+        return ""
+    heading = section_heading(_cfg(module).get("eyebrow") or "From WSF Learning", module.get("heading"), module.get("subheading"), "/learning")
+    return _section(CREAM_SECTION, f'{heading}<div class="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">{"".join(learning_card(p) for p in programs)}</div>'
+                    + section_cta_link(module.get("cta_label"), module.get("cta_url")))
+
+
+def _mission(module):
+    if not module.get("heading"):
+        return ""
+    import re
+
+    cfg = _cfg(module)
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", cfg.get("body") or "") if p.strip()]
+    cta = (cta_link(module["cta_url"], "btn-outline mt-8 inline-flex", module["cta_label"])
+           if module.get("cta_label") and module.get("cta_url") else "")
+    return (
+        '<section class="border-t border-taupe-200 bg-ivory py-16 sm:py-20"><div class="container-editorial"><div class="mx-auto max-w-3xl text-center">'
+        + (f'<p class="eyebrow">{_t(cfg["eyebrow"])}</p>' if cfg.get("eyebrow") else "")
+        + f'<h2 class="mt-3 font-serif text-3xl font-semibold leading-tight text-charcoal sm:text-4xl">{_t(module["heading"])}</h2>'
+        + (f'<p class="mt-4 text-lg text-charcoal-600">{_t(module["subheading"])}</p>' if module.get("subheading") else "")
+        + "".join(f'<p class="mt-4 text-base leading-relaxed text-charcoal-600">{_t(p)}</p>' for p in paragraphs)
+        + f"{cta}</div></div></section>"
+    )
+
+
 def render_module(module, lead=None):
     kind = module.get("type")
     if kind == "hero":
@@ -1106,14 +1211,24 @@ def render_module(module, lead=None):
     if kind == "topic_collection":
         return _topic(module)
     if kind == "opportunities":
-        return _listing(module, "items", "Opportunity", "/opportunities", "See all", "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3", opportunity_card)
+        eyebrow = "Opening soon" if _cfg(module).get("sort") == "upcoming" else "Funding & opportunities"
+        return _listing(module, "items", eyebrow, "/opportunities", "See all", "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3", opportunity_card)
     if kind == "resources":
         return _listing(module, "items", "Resource Library", "/resources", "See all", "mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3",
                         resource_card, CREAM_SECTION)
     if kind == "events":
         return _listing(module, "items", "Join Us", "/events", "See all", "mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3", event_card)
     if kind == "jobs":
-        return _listing(module, "items", "Careers", "/jobs", "See all", "mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2", job_card, CREAM_SECTION)
+        eyebrow = "Closing soon" if _cfg(module).get("sort") == "closing_soon" else "Careers"
+        return _listing(module, "items", eyebrow, "/jobs", "See all", "mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2", job_card, CREAM_SECTION)
+    if kind in COLLECTION_LAYOUT:
+        return _article_collection(module)
+    if kind == "people_spotlight":
+        return _people_spotlight(module)
+    if kind == "learning":
+        return _learning(module)
+    if kind == "mission":
+        return _mission(module)
     if kind == "newsletter":
         return _newsletter(module)
     if kind in _CALLOUTS:
@@ -1311,7 +1426,59 @@ def _toc_links(entries):
     return f'<ol class="space-y-2 text-sm">{items}</ol>'
 
 
-def render_article(payload, body_html, sponsor_html=""):
+def _expert_provenance(experts):
+    """ArticlePage ExpertProvenance: recorded, public reviewers/experts only."""
+    if not experts:
+        return ""
+    items = []
+    for e in experts:
+        credential = (e.get("credentials") or [None])[0]
+        items.append(
+            '<li class="flex items-start gap-3">'
+            + media_img(e.get("photo"), variant="thumbnail", alt="", width=80, height=80, aspect=1, sizes="40px",
+                        class_name="h-10 w-10 shrink-0 rounded-full object-cover")
+            + '<div class="min-w-0 text-sm">'
+            f'<p class="text-[11px] font-semibold uppercase tracking-wide text-burgundy-600">{_t(e["label"])}</p>'
+            f'<p class="font-semibold text-charcoal"><a href="{_a(e["href"])}" class="hover:text-burgundy-600">{_t(e["name"])}</a></p>'
+            + (f'<p class="text-xs text-charcoal-600">{_t(e["line"])}</p>' if e.get("line") else "")
+            + (f'<p class="text-xs text-charcoal-600/80">{_t(credential["name"])}{", " + _t(credential["issuer"]) if credential.get("issuer") else ""}</p>'
+               if credential else "")
+            + "</div></li>"
+        )
+    return f'<ul aria-label="Editorial review" class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">{"".join(items)}</ul>'
+
+
+def _keep_building(recs):
+    learning, resources = recs.get("learning") or [], recs.get("resources") or []
+    if not learning and not resources:
+        return ""
+    cards = "".join(learning_card(p) for p in learning) + "".join(resource_card(r) for r in resources)
+    return ('<section aria-labelledby="keep-building" class="mt-14 border-t border-taupe-200 pt-8">'
+            f'<p id="keep-building" class="eyebrow mb-5">Keep building</p><div class="grid grid-cols-1 gap-6 sm:grid-cols-2">{cards}</div></section>')
+
+
+def _up_next(article):
+    if not article:
+        return ""
+    topics = article.get("topics") or []
+    topic = topics[0]["name"] if topics else None
+    meta = ""
+    if topic or article.get("publish_date"):
+        sep = '<span aria-hidden="true"> &middot; </span>' if topic and article.get("publish_date") else ""
+        meta = f'<p class="mt-3 text-sm text-charcoal-600">{_t(topic or "")}{sep}{_t(_long_date(article.get("publish_date")))}</p>'
+    return ('<div class="mt-16 border-t-2 border-charcoal pt-8"><p class="eyebrow mb-3">Up next</p>'
+            f'<a href="/{_a(article.get("slug"))}" class="font-serif text-2xl font-semibold leading-snug text-charcoal transition-colors hover:text-burgundy-600 sm:text-3xl">'
+            f'{_t(article.get("title"))} &rarr;</a>{meta}</div>')
+
+
+def _article_grid_band(eyebrow, articles, extra_class="mt-20 "):
+    if not articles:
+        return ""
+    return (f'<div class="container-editorial {extra_class}border-t border-taupe-200 py-16"><p class="eyebrow mb-6">{_t(eyebrow)}</p>'
+            f'<div class="grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-3">{"".join(article_card(a) for a in articles)}</div></div>')
+
+
+def render_article(payload, body_html, sponsor_html="", recommendations=None):
     """ArticlePage.jsx's first frame for an anonymous visitor: breadcrumb,
     header (eyebrow, H1, deck, byline), hero image and the reading column.
     Save/share controls need JavaScript and appear when React mounts;
@@ -1338,11 +1505,16 @@ def render_article(payload, body_html, sponsor_html=""):
                      for c in co_authors)
     published = payload.get("publish_date")
     date_html = f'<time datetime="{_a(published)}">{_t(_long_date(published))}</time>' if published else ""
+    updated = payload.get("editorial_updated_at")
+    updated_html = ""
+    if updated and (not published or (_parse_date(updated) and _parse_date(published) and updated > published)):
+        updated_html = f'<span aria-hidden="true">&middot;</span><span>Updated {_t(_long_date(updated))}</span>'
+    recs = recommendations or {}
     byline = (
         f'<div class="{ARTICLE_BYLINE_ROW}"><div class="flex items-center gap-3">{photo}<div class="text-sm">'
         f'<p class="font-semibold text-charcoal">By {names}</p>'
         + (f'<p class="text-xs text-charcoal-600/70">{_t(author["role"])}</p>' if author and author.get("role") else "")
-        + f'<p class="mt-0.5 flex items-center gap-2 text-charcoal-600"><span>{date_html}</span><span aria-hidden="true">&middot;</span>'
+        + f'<p class="mt-0.5 flex items-center gap-2 text-charcoal-600"><span>{date_html}</span>{updated_html}<span aria-hidden="true">&middot;</span>'
         f'<span class="inline-flex items-center gap-1">{ICONS["clock13"]} {reading_time(payload)} min read</span></p></div></div>'
         # Save/share controls arrive with React; their row height (the h-9
         # share buttons) is reserved so nothing below moves on mobile.
@@ -1358,9 +1530,10 @@ def render_article(payload, body_html, sponsor_html=""):
     hero = media_img(media, variant="hero", alt=_alt(media, title), width=1600, height=_js_round(1600 / aspect), aspect=aspect,
                      sizes="(min-width: 1120px) 1120px, 100vw", priority=True, class_name="h-auto w-full rounded-media object-contain")
     caption = ""
-    if payload.get("hero_image_caption") or payload.get("hero_image_credit"):
-        credit = (f'<span class="ml-1 text-charcoal-600/70">— {_t(payload["hero_image_credit"])}</span>'
-                  if payload.get("hero_image_credit") else "")
+    hero_credit = payload.get("hero_image_credit") or (media or {}).get("credit")
+    if payload.get("hero_image_caption") or hero_credit:
+        credit = (f'<span class="ml-1 text-charcoal-600/70">— {_t(hero_credit)}</span>'
+                  if hero_credit else "")
         caption = f'<p class="mt-3 text-sm text-charcoal-600">{_t(payload.get("hero_image_caption") or "")}{credit}</p>'
     entries = _toc_entries(payload.get("content") or [])
     mobile_toc = ""
@@ -1371,12 +1544,18 @@ def render_article(payload, body_html, sponsor_html=""):
             f'In this article{ICONS["chevronDown18Toc"]}</summary>'
             f'<nav aria-label="In this article" class="border-t border-taupe-200 px-4 py-4">{_toc_links(entries)}</nav></details>'
         )
-    aside = ""
-    if entries:
-        aside = ('<aside class="mt-14 space-y-10 lg:mt-0 lg:self-start lg:sticky lg:top-28">'
-                 '<nav aria-label="In this article" class="hidden border-l-2 border-burgundy-500 pl-5 lg:block">'
-                 f'<p class="eyebrow mb-4">In this article</p>{_toc_links(entries)}</nav></aside>')
-    column = ARTICLE_WITH_SIDEBAR if entries else "mx-auto max-w-reading"
+    sidebar = recs.get("sidebar") or []
+    toc_nav = ('<nav aria-label="In this article" class="hidden border-l-2 border-burgundy-500 pl-5 lg:block">'
+               f'<p class="eyebrow mb-4">In this article</p>{_toc_links(entries)}</nav>') if entries else ""
+    more_on = (f'<div><p class="eyebrow mb-4">More on WSF</p>{"".join(article_card(a, "compact") for a in sidebar)}</div>'
+               if sidebar else "")
+    has_sidebar = bool(entries or sidebar)
+    aside_class = "mt-14 space-y-10 lg:mt-0 lg:self-start lg:sticky lg:top-28" if has_sidebar else "mt-14 space-y-10"
+    aside = f'<aside class="{aside_class}">{toc_nav}{more_on}</aside>'
+    column = ARTICLE_WITH_SIDEBAR if has_sidebar else "mx-auto max-w-reading"
+    author_card = _article_author_card(author)
+    tail = author_card + _keep_building(recs) + _up_next(recs.get("upNext"))
+    author_name = (author or {}).get("name")
     return (
         '<main data-wsf-prerender="article" class="flex-1"><article>'
         f'<div class="container-editorial pt-6"><nav aria-label="Breadcrumb" class="text-xs text-charcoal-600">'
@@ -1386,9 +1565,122 @@ def render_article(payload, body_html, sponsor_html=""):
         + f'<h1 class="{ARTICLE_H1}">{_t(title)}</h1>'
         + (f'<p class="mt-5 max-w-[640px] font-serif text-xl italic leading-relaxed text-charcoal-600 sm:text-2xl">{_t(payload["subtitle"])}</p>'
            if payload.get("subtitle") else "")
-        + sponsor_html + byline + ai + "</div></div></header>"
+        + sponsor_html + byline + _expert_provenance(payload.get("experts")) + ai + "</div></div></header>"
         f'<div class="container-editorial mt-10"><div class="mx-auto max-w-[1120px]">{hero}{caption}</div></div>'
         f'<div class="container-editorial mt-12"><div class="{column}"><div class="min-w-0">{mobile_toc}'
-        f'<section><div>{body_html}</div></section></div>{aside}</div></div>'
-        "</article></main>"
+        f'<section><div>{body_html}</div></section>{tail}</div>{aside}</div></div>'
+        + _article_grid_band("Related reading", recs.get("related") or [])
+        + _article_grid_band(f"More from {author_name}", recs.get("moreFromAuthor") or [], extra_class="")
+        + "</article></main>"
     )
+
+
+def _article_author_card(author):
+    """ArticlePage AuthorCard: portrait, name, role, short bio, expertise."""
+    if not author:
+        return ""
+    expertise = [x for x in (author.get("expertise") or []) if isinstance(x, str) and x.strip()][:4]
+    chips = ("<ul aria-label=\"Areas of expertise\" class=\"mt-3 flex flex-wrap gap-2\">"
+             + "".join(f'<li class="bg-taupe-100 px-2.5 py-1 text-xs font-medium text-charcoal-600">{_t(x)}</li>' for x in expertise)
+             + "</ul>") if expertise else ""
+    line = author.get("headline") or author.get("role")
+    href = f"/authors/{author.get('slug')}"
+    return (
+        '<section aria-label="About the author" class="mt-14 flex gap-5 rounded-card border border-taupe-200 bg-white p-6 sm:p-7">'
+        + media_img(author.get("photo"), variant="thumbnail", alt="", width=128, height=128, aspect=1, sizes="64px",
+                    class_name="h-16 w-16 shrink-0 rounded-full object-cover")
+        + '<div class="min-w-0"><p class="eyebrow">About the author</p>'
+        f'<p class="mt-1 font-serif text-xl font-semibold text-charcoal"><a href="{_a(href)}" class="hover:text-burgundy-600">{_t(author.get("name"))}</a></p>'
+        + (f'<p class="text-sm text-charcoal-600">{_t(line)}</p>' if line else "")
+        + (f'<p class="mt-3 text-[15px] leading-relaxed text-charcoal-600">{_t(author["short_bio"])}</p>' if author.get("short_bio") else "")
+        + chips
+        + f'<a href="{_a(href)}" class="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-burgundy-600 hover:text-burgundy-700">View full profile </a>'
+        + "</div></section>"
+    )
+
+
+# --- Topic hub (pages/TopicDetailPage.jsx) ----------------------------------------------------
+def breadcrumb(items):
+    """ui/Breadcrumb.jsx: Home > items (the last one current)."""
+    crumbs = '<li><a href="/" class="hover:text-burgundy-600">Home</a></li>' + "".join(
+        f'<li class="flex items-center gap-1.5">{ICONS["chevronRight12"]}'
+        + (f'<a href="{_a(to)}" class="hover:text-burgundy-600">{_t(label)}</a>' if to
+           else f'<span class="text-charcoal" aria-current="page">{_t(label)}</span>') + "</li>"
+        for label, to in items
+    )
+    return f'<nav aria-label="Breadcrumb" class="text-xs text-charcoal-600"><ol class="flex flex-wrap items-center gap-1.5">{crumbs}</ol></nav>'
+
+
+def _hub_band(section_class, eyebrow, heading, grid, cards, view_all=None):
+    if not cards:
+        return ""
+    return _section(section_class, section_heading(eyebrow, heading, None, view_all) + f'<div class="{grid}">{"".join(cards)}</div>')
+
+
+def _profile_preview_list(section_id, heading, items, base_path, meta_key):
+    profiles = [p for p in items or [] if isinstance(p, dict) and p.get("slug") and p.get("name")]
+    if not profiles:
+        return ""
+    rows = "".join(
+        '<li class="flex items-start gap-4">'
+        + media_img(p.get("photo"), variant="card", alt=_alt(p.get("photo"), p.get("name")), width=128, height=128, aspect=1,
+                    sizes="64px", class_name="h-16 w-16 shrink-0 rounded-full object-cover")
+        + f'<div class="min-w-0"><a href="{_a(base_path)}/{_a(p["slug"])}" class="font-serif text-lg font-semibold text-charcoal hover:text-burgundy-600">{_t(p["name"])}</a>'
+        + (f'<p class="mt-0.5 text-sm text-charcoal-600">{_t(p[meta_key])}</p>' if p.get(meta_key) else "")
+        + (f'<p class="mt-1 line-clamp-3 text-sm text-charcoal-600/80">{_t(p["short_bio"])}</p>' if p.get("short_bio") else "")
+        + "</div></li>"
+        for p in profiles
+    )
+    return (f'<section aria-labelledby="{section_id}" class="mt-12"><h2 id="{section_id}" class="font-serif text-2xl font-semibold text-charcoal">'
+            f'{_t(heading)}</h2><ul class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">{rows}</ul></section>')
+
+
+def render_topic_hub(topic, hub):
+    from app.services.prerender import render_content_blocks, render_source_references
+
+    name = topic.get("name")
+    related = hub.get("relatedTopics") or []
+    related_html = ""
+    if related:
+        links = "".join(
+            f'<li><a href="/topics/{_a(t["slug"])}" class="inline-flex border border-taupe-300 bg-white px-3 py-1.5 text-sm font-medium text-charcoal '
+            f'transition-colors hover:border-burgundy-500 hover:text-burgundy-600">{_t(t["name"])}</a></li>' for t in related)
+        related_html = ('<nav aria-label="Related topics" class="mt-8"><p class="text-xs font-semibold uppercase tracking-wide text-charcoal-600">'
+                        f'Browse related topics</p><ul class="mt-3 flex flex-wrap gap-2">{links}</ul></nav>')
+    hero = (
+        '<section class="border-b border-taupe-200 bg-cream"><div class="container-editorial py-14 sm:py-16">'
+        + breadcrumb([("Topics", "/topics"), (name, None)])
+        + '<p class="eyebrow mt-6">Topic</p>'
+        f'<h1 class="mt-3 max-w-3xl font-serif text-4xl font-semibold leading-tight text-charcoal sm:text-5xl">{_t(name)}</h1>'
+        + (f'<p class="mt-4 max-w-2xl text-lg text-charcoal-600">{_t(topic["description"])}</p>' if topic.get("description") else "")
+        + related_html + "</div></section>"
+    )
+    content = topic.get("content") or []
+    content_html = (f'<div class="container-editorial pt-12"><div class="max-w-reading">{render_content_blocks(content)}</div></div>'
+                    if content else "")
+    start, latest, picks = hub.get("startHere") or [], hub.get("latest") or [], hub.get("editorsPicks") or []
+    body = (
+        _hub_band("py-14 sm:py-16", "Start here", f"Begin with {name}", "mt-8 grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-3",
+                  [article_card(a) for a in start])
+        + _hub_band("border-t border-taupe-200 py-14 sm:py-16", "Latest", f"New in {name}",
+                    "mt-8 grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-3", [article_card(a) for a in latest])
+        + _hub_band("border-t border-taupe-200 bg-cream py-14 sm:py-16", "Editor's picks", "Most useful",
+                    "mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2", [article_card(a, "horizontal") for a in picks])
+    )
+    if not (start or latest or picks):
+        body += ('<div class="container-editorial py-14"><p class="font-serif text-xl text-charcoal">No stories yet</p>'
+                 '<p class="mt-2 text-sm text-charcoal-600">We haven&#x27;t published a story on this topic yet — check back soon.</p></div>')
+    body += (
+        _hub_band("border-t border-taupe-200 py-14 sm:py-16", "From WSF Learning", f"Learn more about {name}",
+                  "mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3", [learning_card(p) for p in hub.get("learning") or []], "/learning")
+        + _hub_band("border-t border-taupe-200 bg-cream py-14 sm:py-16", "Career tools", "Tools worth using",
+                    "mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3", [resource_card(r) for r in hub.get("resources") or []], "/resources")
+        + _hub_band("border-t border-taupe-200 py-14 sm:py-16", "Opportunities", "Open now",
+                    "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3", [opportunity_card(o) for o in hub.get("opportunities") or []], "/opportunities")
+    )
+    sources = topic.get("sources") or []
+    tail = ('<div class="container-editorial">'
+            + _profile_preview_list("topic-contributors", "Contributors covering this topic", topic.get("contributors"), "/authors", "role")
+            + (f'<div class="max-w-reading">{render_source_references(sources, "topic-sources")}</div>' if sources else "")
+            + "</div>")
+    return f'<main data-wsf-prerender="topic" class="flex-1"><div>{hero}{content_html}{body}{tail}</div></main>'

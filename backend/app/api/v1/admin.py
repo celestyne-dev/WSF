@@ -31,11 +31,14 @@ from app.schemas.cms import (
 from app.schemas.commerce import SponsorSchema
 from app.services.engagement_settings import (
     COOKIE_CONSENT_KEY,
+    NEWSLETTER_PAGE_KEY,
     NEWSLETTER_POPUP_KEY,
     EngagementSettingsError,
     get_cookie_consent,
+    get_newsletter_page,
     get_newsletter_popup,
     save_cookie_consent,
+    save_newsletter_page,
     save_newsletter_popup,
 )
 from app.services.appearance import APPEARANCE_KEY, AppearanceError, public_appearance_payload, save_appearance
@@ -394,7 +397,8 @@ class AdminFooterResource(Resource):
         return success_response(_dump_footer())
 
 
-ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY}
+ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY,
+                      NEWSLETTER_PAGE_KEY}
 
 
 class AdminSettingsResource(Resource):
@@ -464,7 +468,8 @@ class AdminSettingsResource(Resource):
                 raise ApiError(str(exc), 422, code="validation_error")
             log_action(current_user, "settings.update", "SiteSetting", entity_id=APPEARANCE_KEY, changes=appearance)
 
-        for key, saver in ((NEWSLETTER_POPUP_KEY, save_newsletter_popup), (COOKIE_CONSENT_KEY, save_cookie_consent)):
+        for key, saver in ((NEWSLETTER_POPUP_KEY, save_newsletter_popup), (COOKIE_CONSENT_KEY, save_cookie_consent),
+                           (NEWSLETTER_PAGE_KEY, save_newsletter_page)):
             if key in settings_data:
                 # Plain text and bounded numbers only; no script/tag fields
                 # exist (app/services/engagement_settings.py).
@@ -494,6 +499,7 @@ class AdminSettingsResource(Resource):
             APPEARANCE_KEY: public_appearance_payload(),
             NEWSLETTER_POPUP_KEY: get_newsletter_popup(),
             COOKIE_CONSENT_KEY: get_cookie_consent(),
+            NEWSLETTER_PAGE_KEY: get_newsletter_page(),
         }
 
 

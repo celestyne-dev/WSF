@@ -212,7 +212,7 @@ def test_hostile_content_cannot_escape(client, app):
     # A non-public image path written into block JSON is never rendered.
     # (The only images are ArticlePage's own byline/hero slots, never one
     # taken from block JSON.)
-    body = root.split("<section>", 1)[1]
+    body = root.split("<section>", 1)[1].split("</section>", 1)[0]
     assert "/srv/private" not in root and "<img" not in body
 
 

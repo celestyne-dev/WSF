@@ -27,6 +27,16 @@ export default function NewsletterModule({ module }) {
             Join {new Intl.NumberFormat('en-US').format(subscriberCount)}+ readers who start their week with WSF.
           </p>
         )}
+        {module.benefits?.length > 0 && (
+          <ul className="mt-6 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-2 text-left text-sm text-ivory/85 sm:grid-cols-2">
+            {module.benefits.map((benefit) => (
+              <li key={benefit} className="flex items-start gap-2">
+                <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 bg-blush-200" />
+                {benefit}
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="mt-7">
           <NewsletterForm variant="dark" source="homepage" />
         </div>

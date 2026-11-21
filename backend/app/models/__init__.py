@@ -13,7 +13,7 @@ from app.models.token_blocklist import TokenBlocklist  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401
 from app.models.taxonomy import Category, Series, Tag, Topic  # noqa: F401
 from app.models.people import Author, Organization, Person  # noqa: F401
-from app.models.article import Article, ArticleRevision, Redirect  # noqa: F401
+from app.models.article import Article, ArticleExpert, ArticleRevision, Redirect  # noqa: F401
 from app.models.cms import (  # noqa: F401
     AdvertiseMetric,
     AdvertiseOffering,

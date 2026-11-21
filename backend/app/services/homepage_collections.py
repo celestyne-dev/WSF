@@ -351,6 +351,13 @@ def normalize_module_config(data):
     elif module_type == CONTENT_COLLECTION:
         data["config"] = normalize_collection_config(data.get("config") or {}, data.get("selection_mode"))
         _validate_section_cta(data)
+    else:
+        from app.services.homepage_editorial import EDITORIAL_TYPES, normalize_editorial_config
+
+        normalize_editorial_config(data)
+        if module_type in EDITORIAL_TYPES:
+            data["selection_mode"] = None
+            _validate_section_cta(data)
     return data
 
 

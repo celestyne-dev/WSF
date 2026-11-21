@@ -122,3 +122,41 @@ export function CookieConsentSettingsPanel() {
     </div>
   )
 }
+
+// Studio -> Settings -> Newsletter: what /newsletter tells readers about WSF
+// Weekly. "Sending schedule" stays empty unless a real, reliable schedule
+// exists, so the page never promises a frequency nobody configured.
+export function NewsletterPageSettingsPanel() {
+  const { value, setValue, error, saving, save } = useSettingsSection('newsletter_page')
+  if (error) return <p className="text-sm text-burgundy-600">{error}</p>
+  if (!value) return <p className="text-sm text-charcoal-600">Loading…</p>
+  const set = (k) => (v) => setValue({ ...value, [k]: v })
+  const benefits = Array.isArray(value.benefits) ? value.benefits : []
+  return (
+    <div className="max-w-2xl space-y-5">
+      <h2 className="font-serif text-xl font-semibold text-charcoal">WSF Weekly page</h2>
+      <TextField id="nl-title" text="Title" value={value.title} onChange={set('title')} max={60} />
+      <TextField id="nl-tagline" text="Tagline" value={value.tagline} onChange={set('tagline')} max={160} />
+      <TextField id="nl-intro" text="Introduction (optional)" value={value.intro} onChange={set('intro')} max={400} multiline />
+      <TextField id="nl-cadence" text="Sending schedule (optional)" value={value.cadence} onChange={set('cadence')} max={80} />
+      <div>
+        <label htmlFor="nl-benefits" className={label}>What readers get (one per line, up to 8)</label>
+        <textarea
+          id="nl-benefits"
+          rows={6}
+          value={benefits.join('\n')}
+          onChange={(e) => set('benefits')(e.target.value.split('\n').slice(0, 8))}
+          className={`${input} mt-1.5`}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => save({ ...value, benefits: benefits.map((b) => b.trim()).filter(Boolean) })}
+        disabled={saving}
+        className="btn-primary disabled:opacity-60"
+      >
+        {saving ? 'Saving…' : 'Save WSF Weekly page'}
+      </button>
+    </div>
+  )
+}

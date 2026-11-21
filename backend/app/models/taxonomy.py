@@ -33,6 +33,18 @@ CAREER_GOALS = (
 _CAREER_GOAL_CHECK_SQL = "career_goal IS NULL OR career_goal IN (" + ", ".join(f"'{g}'" for g in CAREER_GOALS) + ")"
 
 
+# Explicit "Browse related topics" links for a Topic hub, in editor order.
+# Never inferred from names: a relationship exists only when an editor adds
+# it (one direction; the related Topic's own hub is configured separately).
+topic_related_topics = db.Table(
+    "topic_related_topics",
+    db.Column("topic_id", db.Integer, db.ForeignKey("topics.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("related_topic_id", db.Integer, db.ForeignKey("topics.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("position", db.Integer, nullable=False, server_default="0"),
+    db.CheckConstraint("topic_id <> related_topic_id", name="ck_topic_related_topics_not_self"),
+)
+
+
 class Category(db.Model):
     __tablename__ = "categories"
     __table_args__ = (db.CheckConstraint(_TAXONOMY_STATUS_CHECK_SQL, name="ck_categories_status"),)
@@ -108,8 +120,18 @@ class Topic(db.Model):
         db.DateTime(timezone=True), server_default=db.func.now(), onupdate=db.func.now(), nullable=False
     )
 
+    # Topic hub curation (app/services/topic_hub.py): {"startHereSlugs": [...],
+    # "editorsPicksSlugs": [...]}. Article slugs, in editor order.
+    hub = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
+
     hero_media = db.relationship("Media", foreign_keys=[hero_media_id])
     featured_article = db.relationship("Article", foreign_keys=[featured_article_id])
+    related_topics = db.relationship(
+        "Topic", secondary=topic_related_topics,
+        primaryjoin=lambda: Topic.id == topic_related_topics.c.topic_id,
+        secondaryjoin=lambda: Topic.id == topic_related_topics.c.related_topic_id,
+        order_by=lambda: topic_related_topics.c.position,
+    )
 
 
 class Series(db.Model):

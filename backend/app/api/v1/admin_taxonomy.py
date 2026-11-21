@@ -240,6 +240,34 @@ class TopicAdminStatusResource(Resource):
         return success_response(topic_admin_schema.dump(topic))
 
 
+class TopicAdminHubResource(Resource):
+    """Topic hub curation: Start here / Editor's picks Article slugs and the
+    explicit related-topic links (app/services/topic_hub.py)."""
+
+    @permission_required("taxonomy.manage")
+    def get(self, topic_id):
+        from app.services.topic_hub import admin_hub
+
+        topic = db.session.get(Topic, topic_id)
+        if topic is None:
+            raise ApiError("Topic not found.", 404, code="not_found")
+        return success_response(admin_hub(topic))
+
+    @permission_required("taxonomy.manage")
+    def put(self, topic_id):
+        from app.services.topic_hub import admin_hub, save_hub
+
+        topic = db.session.get(Topic, topic_id)
+        if topic is None:
+            raise ApiError("Topic not found.", 404, code="not_found")
+        public_before = capture_public_urls(topic)
+        save_hub(topic, request.get_json(silent=True) or {})
+        db.session.commit()
+        log_action(current_user, "topic.hub_update", "Topic", topic.id, {})
+        notify_public_change(public_before, topic)
+        return success_response(admin_hub(topic))
+
+
 class CategoryAdminListResource(Resource):
     @permission_required("taxonomy.manage")
     def get(self):
@@ -565,6 +593,7 @@ class TagAdminMergeResource(Resource):
 api.add_resource(TopicAdminListResource, "/topics")
 api.add_resource(TopicAdminDetailResource, "/topics/<int:topic_id>")
 api.add_resource(TopicAdminStatusResource, "/topics/<int:topic_id>/status")
+api.add_resource(TopicAdminHubResource, "/topics/<int:topic_id>/hub")
 
 api.add_resource(CategoryAdminListResource, "/categories")
 api.add_resource(CategoryAdminDetailResource, "/categories/<int:category_id>")

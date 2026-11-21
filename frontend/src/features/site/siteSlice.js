@@ -46,8 +46,9 @@ const siteSlice = createSlice({
     // their existing "fetched once per session" caching behavior.
     clearHomepageBootstrapLead(state) {
       state.leadArticle = null
-      // Same rule for each module's one-shot first-paint data.
-      state.homepageModules = state.homepageModules.map((m) => (m.initialData ? { ...m, initialData: null } : m))
+      // Each module's `initialData` is kept: it is the server's page-level,
+      // de-duplicated selection (first placement wins), so a later visit
+      // must render the same set rather than let modules re-select alone.
     },
   },
   extraReducers: (builder) => {

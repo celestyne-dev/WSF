@@ -483,7 +483,9 @@ def test_raw_html_editorial_depth_in_order(client, app, token, kind):
     order = [root.index("EDITORIAL-BODY-TEXT"), root.index("Start here"), root.index(people_heading),
              root.index("Sources &amp; references")]
     assert order == sorted(order)
-    for once in ("Start here</h2>", f"{people_heading}</h2>", "Sources &amp; references</h2>"):
+    # Topic hubs show "Start here" as a section eyebrow (TopicDetailPage).
+    start_marker = "Start here</p>" if kind == "topics" else "Start here</h2>"
+    for once in (start_marker, f"{people_heading}</h2>", "Sources &amp; references</h2>"):
         assert root.count(once) == 1, once
     if kind == "series":
         assert root.index("SERIES-SUBTITLE") < root.index("SHORT-DESCRIPTION.")

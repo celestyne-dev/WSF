@@ -2,6 +2,8 @@ import { apiClient, USE_MOCK } from './client'
 import { delay, paginate } from './mockUtils'
 import { RESERVED_SLUGS } from '../constants/routes'
 import { mapMediaRef } from '../utils/media'
+import { mapLearningProgram } from './learning'
+import { mapResource } from './resources'
 
 // Mock article/author/topic datasets are only ever needed when
 // VITE_USE_MOCK=true — dynamic-importing them here (instead of a static
@@ -57,7 +59,14 @@ export function mapArticle(a) {
     heroMediaId: a.hero_media?.id || null,
     heroImageAlt: a.hero_media?.alt_text || '',
     heroImageCaption: a.hero_image_caption,
-    heroImageCredit: a.hero_image_credit,
+    // The Article's own credit, else the hero image's stored credit; never invented.
+    heroImageCredit: a.hero_image_credit || a.hero_media?.credit || null,
+    // Editor-recorded "Updated" date (never derived from any save).
+    editorialUpdatedAt: a.editorial_updated_at || null,
+    // Structured provenance: public profiles only (backend article_experts.py).
+    experts: Array.isArray(a.experts) ? a.experts.filter((e) => e && e.name && e.href) : [],
+    // Studio's stored references (the editor dump: role + authorSlug/personSlug).
+    expertRefs: Array.isArray(a.experts) ? a.experts.filter((e) => e && (e.authorSlug || e.personSlug)) : [],
     authorSlug: a.author?.slug,
     // Nested, already-resolved objects — cards prefer these over looking an
     // author/topic up by slug themselves (only the mock branch needs the
@@ -67,6 +76,8 @@ export function mapArticle(a) {
           slug: a.author.slug,
           name: a.author.name,
           role: a.author.role,
+          headline: a.author.headline || null,
+          expertise: Array.isArray(a.author.expertise) ? a.author.expertise.filter((x) => typeof x === 'string' && x.trim()) : [],
           shortBio: a.author.short_bio || null,
           photo: a.author.photo?.public_url || null,
           photoMedia: mapMediaRef(a.author.photo),
@@ -181,6 +192,25 @@ export async function fetchArticleBySlug(slug) {
   }
   const { findBySlug } = await loadMockDeps()
   return delay(await enrichMockArticle(findBySlug(slug)))
+}
+
+// GET /articles/{slug}/recommendations — the page's de-duplicated blocks
+// (backend services/article_recommendations.py).
+export function mapArticleRecommendations(r) {
+  return {
+    bodyArticles: (r?.bodyArticles || []).map(mapArticle),
+    upNext: r?.upNext ? mapArticle(r.upNext) : null,
+    related: (r?.related || []).map(mapArticle),
+    moreFromAuthor: (r?.moreFromAuthor || []).map(mapArticle),
+    sidebar: (r?.sidebar || []).map(mapArticle),
+    learning: (r?.learning || []).map(mapLearningProgram),
+    resources: (r?.resources || []).map(mapResource),
+  }
+}
+
+export async function fetchArticleRecommendations(slug) {
+  if (USE_MOCK) return mapArticleRecommendations({})
+  return mapArticleRecommendations((await apiClient.get(`/articles/${slug}/recommendations`)).data)
 }
 
 export async function fetchRelatedArticles(slugs = []) {

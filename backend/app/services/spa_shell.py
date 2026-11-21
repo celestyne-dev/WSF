@@ -98,7 +98,7 @@ from app.schemas.commerce import ProductSchema
 from app.schemas.people import PersonDetailSchema
 from app.services.appearance import DEFAULT_CORNER_STYLE, get_appearance
 from app.services.event_registrations import is_event_publicly_visible
-from app.services.homepage import get_enabled_homepage_modules, resolve_hero_lead_article
+from app.services.homepage import get_enabled_homepage_modules
 from app.services.prerender import (
     render_article_prerender,
     render_author_prerender,
@@ -965,12 +965,18 @@ def render_article_shell(article):
     # mismatched/stale bootstrap (should never happen — this IS the
     # Article this exact request resolved to) is never consumed.
     article_payload = _safe_public_article_payload(article)
-    html_doc = _set_bootstrap_data(html_doc, "article", {"key": article.slug, "data": article_payload})
+    # The page's recommendation blocks, chosen once here (current Article
+    # reserved, first placement wins; services/article_recommendations.py).
+    from app.services.article_recommendations import article_recommendations
+
+    recommendations = _redact_internal_media_fields(article_recommendations(article)) if article.status == "published" else None
+    html_doc = _set_bootstrap_data(html_doc, "article", {"key": article.slug, "data": article_payload,
+                                                         "recommendations": recommendations})
 
     # AI Search / GEO Phase 1B — the Article's own title/byline/date and
     # editorial blocks as visible, semantic HTML inside #root, built from
     # that SAME public payload (see _set_root_prerender).
-    html_doc = _set_root_prerender(html_doc, render_article_prerender(article_payload))
+    html_doc = _set_root_prerender(html_doc, render_article_prerender(article_payload, recommendations))
 
     return _html_response(html_doc)
 
@@ -1068,21 +1074,19 @@ def render_homepage_shell():
     html_doc = _set_structured_data(html_doc, "data-site-structured-data", _build_site_json_ld(site_identity, public_site_url))
 
     modules = get_enabled_homepage_modules()
-    lead_article = resolve_hero_lead_article(modules)
-    from app.services.homepage_collections import resolve_homepage_extras
+    from app.services.first_paint import render_homepage
+    from app.services.homepage_editorial import public_homepage_payload
 
-    extras = resolve_homepage_extras(modules)
-    from app.services.first_paint import homepage_initial_data, render_homepage
-
-    module_payloads = _safe_homepage_modules_payload(modules, extras)
-    for payload in module_payloads:
-        # Exactly what each module's component fetches on mount, so React's
-        # first frame matches the server's (first_paint.homepage_initial_data).
-        initial = homepage_initial_data(payload)
-        if initial is not None:
-            payload["initial_data"] = _redact_internal_media_fields(initial)
+    # One ordered, de-duplicated resolution of every module (first placement
+    # wins; services/editorial_selection.py). The bootstrap, the first paint
+    # and React all use exactly this result.
+    module_payloads, _selection = public_homepage_payload(modules)
+    hero_payload = next((m for m in module_payloads if m.get("type") == "hero"), None)
+    lead_card = ((hero_payload or {}).get("initial_data") or {}).get("lead")
+    lead_article = db.session.get(Article, lead_card["id"]) if lead_card else None
     bootstrap_payload = {
         "modules": module_payloads,
+        # The lead stays the exact public summary dump (HeroModule/store read it).
         "leadArticle": _safe_article_summary_payload(lead_article) if lead_article is not None else None,
     }
     html_doc = _set_bootstrap_data(html_doc, "homepage", bootstrap_payload)
@@ -2161,7 +2165,7 @@ _STATIC_ROUTES = {
     "newsletter": (
         "list",
         "WSF Weekly Newsletter | Women Shaping Futures",
-        "Subscribe to WSF Weekly for stories, jobs, and opportunities delivered every Thursday.",
+        "WSF Weekly: Your career briefing for women who want to move forward.",
     ),
     # List/landing pages added by AI Search / GEO Phase 1A — copy is each
     # page's own useSeo() call, verbatim.
@@ -2432,7 +2436,7 @@ _HUB_PAGES = {
     "shop": ("shop-index", "Shop", "WSF Shop", "Digital guides, templates, and workbooks from Women Shaping Futures.",
              "Products", "shop", "shop_hub", "No products are listed right now — check back soon."),
     "newsletter": ("newsletter-index", "Newsletter", "WSF Weekly",
-                   "One email, every Thursday: the story worth your time, a woman worth knowing, and the jobs and opportunities worth applying for.",
+                   "Your career briefing for women who want to move forward.",
                    "Recent issues", "newsletter", "newsletter_hub", "No issues have been published to the archive yet."),
 }
 
@@ -2805,6 +2809,18 @@ def _render_entity_detail(prefix, slug):
             authority={**bootstrap["authority"], "latestArticles": author_latest_articles(entity)},
             portrait=_author_portrait(entity),
         ))
+        return _html_response(html_doc)
+
+    if prefix == "topics":
+        # Topic hub: one de-duplicated selection (services/topic_hub.py) is
+        # the bootstrap TopicDetailPage renders from AND the prerender.
+        from app.schemas.taxonomy import TopicDetailSchema
+        from app.services.first_paint import render_topic_hub
+        from app.services.topic_hub import topic_hub
+
+        data = _redact_internal_media_fields({"topic": TopicDetailSchema().dump(entity), "hub": topic_hub(entity)})
+        html_doc = _set_bootstrap_data(html_doc, "topic", {"key": entity.slug, "data": data})
+        html_doc = _set_root_prerender(html_doc, render_topic_hub(data["topic"], data["hub"]))
         return _html_response(html_doc)
 
     if prefix == "people":

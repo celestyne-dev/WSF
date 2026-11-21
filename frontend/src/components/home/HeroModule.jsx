@@ -29,7 +29,11 @@ import CtaLink from '../ui/CtaLink'
 export default function HeroModule({ module }) {
   const bootstrapLeadArticle = useSelector((s) => s.site.leadArticle)
   const matchesBootstrap = Boolean(bootstrapLeadArticle) && bootstrapLeadArticle.slug === module.leadArticleSlug
+  // The server's de-duplicated selection decides the lead: `initialData.lead`
+  // is the lead (or null when it is unpublished or placed earlier).
+  const hasInitial = Boolean(module.initialData) && 'lead' in module.initialData
   const [lead, setLead] = useState(() => {
+    if (hasInitial) return module.initialData.lead ? mapArticle(module.initialData.lead) : null
     if (matchesBootstrap) return bootstrapLeadArticle
     return module.leadArticleSlug ? undefined : null
   })
@@ -38,7 +42,9 @@ export default function HeroModule({ module }) {
 
   useEffect(() => {
     let active = true
-    if (!module.leadArticleSlug) {
+    if (hasInitial) {
+      // already resolved by the server
+    } else if (!module.leadArticleSlug) {
       setLead(null)
     } else if (!matchesBootstrap) {
       fetchArticleBySlug(module.leadArticleSlug)
@@ -56,7 +62,7 @@ export default function HeroModule({ module }) {
     return () => {
       active = false
     }
-  }, [module.leadArticleSlug, module.secondaryArticleSlugs, matchesBootstrap, initialSecondary])
+  }, [module.leadArticleSlug, module.secondaryArticleSlugs, matchesBootstrap, initialSecondary, hasInitial])
 
   if (lead === undefined) return null // still resolving the lead article
 

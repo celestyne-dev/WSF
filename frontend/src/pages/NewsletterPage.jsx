@@ -20,6 +20,16 @@ export default function NewsletterPage() {
   const [topicSlugs, setTopicSlugs] = useState([])
   const dispatch = useDispatch()
   const status = useSelector((s) => s.newsletter.status)
+  // CMS-editable value proposition (Studio > Settings > Engagement); the
+  // defaults never promise a sending frequency nobody configured.
+  const stored = useSelector((s) => s.site.settings?.newsletterPage)
+  const page = {
+    title: stored?.title || 'WSF Weekly',
+    tagline: stored?.tagline || 'Your career briefing for women who want to move forward.',
+    intro: stored?.intro || '',
+    cadence: stored?.cadence || '',
+    benefits: Array.isArray(stored?.benefits) ? stored.benefits : [],
+  }
 
   useEffect(() => {
     let active = true
@@ -37,7 +47,7 @@ export default function NewsletterPage() {
 
   useSeo({
     title: 'WSF Weekly Newsletter | Women Shaping Futures',
-    description: 'Subscribe to WSF Weekly for stories, jobs, and opportunities delivered every Thursday.',
+    description: `${page.title}: ${page.tagline}`,
     canonical: 'https://womenshapingfutures.org/newsletter',
   })
   // Home > Newsletter — matches the server's own 2-level breadcrumb for this
@@ -78,14 +88,20 @@ export default function NewsletterPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Newsletter" title="WSF Weekly" description="One email, every Thursday: the story worth your time, a woman worth knowing, and the jobs and opportunities worth applying for." />
+      <PageHeader eyebrow="Newsletter" title={page.title} description={page.tagline} />
+      {(page.intro || page.cadence) && (
+        <div className="container-editorial pt-10">
+          {page.intro && <p className="max-w-2xl text-base leading-relaxed text-charcoal-600">{page.intro}</p>}
+          {page.cadence && <p className="mt-2 text-sm font-semibold text-charcoal">{page.cadence}</p>}
+        </div>
+      )}
 
       <div className="container-editorial grid grid-cols-1 gap-14 py-14 lg:grid-cols-[1fr_1.2fr]">
         <div>
           <h2 className="font-serif text-2xl font-semibold text-charcoal">Subscribe</h2>
-          <p className="mt-3 text-base text-charcoal-600">
-            Join {archive ? new Intl.NumberFormat('en-US').format(archive.stats.subscriberCount) : '34,000'}+ readers. Free, always. Unsubscribe anytime.
-          </p>
+          {/* No reader count here: it would arrive after the page and push the
+              form down, and a made-up fallback number is never shown. */}
+          <p className="mt-3 text-base text-charcoal-600">Free. Unsubscribe anytime.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-3" noValidate>
             <input
@@ -103,23 +119,27 @@ export default function NewsletterPage() {
               className="w-full border border-taupe-300 bg-white px-4 py-3 text-sm text-charcoal placeholder:text-charcoal-600/60 focus:border-burgundy-500 focus:outline-none"
             />
 
-            {topics.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Topics you care about (optional)</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {topics.map((t) => (
-                    <button
-                      key={t.slug}
-                      type="button"
-                      onClick={() => toggleTopic(t.slug)}
-                      className={`px-2.5 py-1 text-xs font-medium ${topicSlugs.includes(t.slug) ? 'bg-plum-600 text-ivory' : 'bg-taupe-100 text-charcoal-600'}`}
-                    >
-                      {t.name}
-                    </button>
-                  ))}
-                </div>
+            {/* Always present (collapsed), so the topic list arriving after the
+                page never pushes the form down. */}
+            <details className="group border border-taupe-200 bg-white px-4 py-3">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                Topics you care about (optional)
+              </summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {topics.map((t) => (
+                  <button
+                    key={t.slug}
+                    type="button"
+                    aria-pressed={topicSlugs.includes(t.slug)}
+                    onClick={() => toggleTopic(t.slug)}
+                    className={`px-2.5 py-1 text-xs font-medium ${topicSlugs.includes(t.slug) ? 'bg-plum-600 text-ivory' : 'bg-taupe-100 text-charcoal-600'}`}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+                {topics.length === 0 && <p className="text-xs text-charcoal-600">Loading topics…</p>}
               </div>
-            )}
+            </details>
 
             <button
               type="submit"
@@ -136,14 +156,16 @@ export default function NewsletterPage() {
             </p>
           </form>
 
-          <h3 className="mt-10 font-serif text-lg font-semibold text-charcoal">What's inside every issue</h3>
-          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-charcoal-600">
-            <li>The featured story of the week</li>
-            <li>A woman worth knowing</li>
-            <li>Curated jobs and opportunities</li>
-            <li>Career and business insights</li>
-            <li>Upcoming events and resources</li>
-          </ul>
+          {page.benefits.length > 0 && (
+            <>
+              <h3 className="mt-10 font-serif text-lg font-semibold text-charcoal">What you get</h3>
+              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-charcoal-600">
+                {page.benefits.map((benefit) => (
+                  <li key={benefit}>{benefit}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
 
         <div>

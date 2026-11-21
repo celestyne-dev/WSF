@@ -61,7 +61,10 @@ def _assert_valid(html, kind, title, text, canonical, entity_attr=None):
     assert _count_script(html, "data-site-structured-data") == 1
     if entity_attr:
         assert _count_script(html, entity_attr) == 1
-    lowered = root.lower()
+    # Decorative icons and responsive visibility pairs mirror the React page.
+    from tests.test_spa_shell_geo_phase3b3 import _without_decoration
+
+    lowered = _without_decoration(root).lower()
     for hidden in (" hidden", "display:none", "visibility:hidden", 'aria-hidden="true"'):
         assert hidden not in lowered
     assert "<noscript" not in html.lower()

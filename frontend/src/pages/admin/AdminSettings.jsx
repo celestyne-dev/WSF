@@ -5,7 +5,7 @@ import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import MediaPicker from '../../components/cms/MediaPicker'
 import AppearanceSettingsPanel from '../../components/cms/AppearanceSettingsPanel'
-import { CookieConsentSettingsPanel, NewsletterPopupSettingsPanel } from '../../components/cms/EngagementSettingsPanels'
+import { CookieConsentSettingsPanel, NewsletterPageSettingsPanel, NewsletterPopupSettingsPanel } from '../../components/cms/EngagementSettingsPanels'
 import PaymentSettingsPanel from '../../components/cms/PaymentSettingsPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
@@ -291,6 +291,11 @@ export default function AdminSettings() {
             version are recorded). Double opt-in (a confirmation email before activation) is not implemented. Sender name and
             reply-to are not configurable here yet.
           </p>
+        )}
+        {tab === 'Newsletter' && (
+          <div className="mt-8">
+            <NewsletterPageSettingsPanel />
+          </div>
         )}
 
         {tab === 'Newsletter popup' && <NewsletterPopupSettingsPanel />}

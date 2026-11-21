@@ -18,6 +18,8 @@ import {
 } from '../../api/articles'
 import { fetchAuthors, fetchTopics, fetchCategories, fetchSeries } from '../../api/taxonomies'
 import { fetchPeople } from '../../api/people'
+import ArticleProvenanceFields from '../../components/cms/ArticleProvenanceFields'
+import { expertRowsFromArticle, expertRowsToPayload } from '../../utils/articleProvenance'
 import { fetchSponsors } from '../../api/admin'
 import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
@@ -69,6 +71,8 @@ function blankForm(defaultAuthorSlug) {
     seriesSlug: '',
     tagSlugs: [],
     relatedPersonSlugs: [],
+    experts: [],
+    editorialUpdatedAt: '',
     status: 'draft',
     featured: false,
     promoted: false,
@@ -107,6 +111,8 @@ function toForm(article) {
     seriesSlug: article.seriesSlug || '',
     tagSlugs: article.tagSlugs || [],
     relatedPersonSlugs: article.relatedPersonSlugs || [],
+    experts: expertRowsFromArticle(article.expertRefs),
+    editorialUpdatedAt: article.editorialUpdatedAt ? String(article.editorialUpdatedAt).slice(0, 10) : '',
     status: article.status || 'draft',
     featured: !!article.featured,
     promoted: !!article.promoted,
@@ -390,6 +396,8 @@ export default function AdminArticleEditor() {
       seriesSlug: form.seriesSlug || null,
       tagSlugs: form.tagSlugs,
       relatedPersonSlugs: form.relatedPersonSlugs,
+      experts: expertRowsToPayload(form.experts),
+      editorialUpdatedAt: form.editorialUpdatedAt ? new Date(`${form.editorialUpdatedAt}T12:00:00Z`).toISOString() : null,
       status: isNew ? 'draft' : form.status,
       featured: form.featured,
       promoted: form.promoted,
@@ -631,6 +639,24 @@ export default function AdminArticleEditor() {
                 ))}
               </div>
             </Field>
+          </Section>
+
+          <Section
+            id="provenance"
+            step="7b"
+            title="Review & provenance"
+            description="Who reviewed, fact-checked or contributed expertise. Shown publicly only when recorded here."
+            collapsible
+            defaultOpen={form.experts.length > 0 || Boolean(form.editorialUpdatedAt)}
+          >
+            <ArticleProvenanceFields
+              rows={form.experts}
+              onChange={(experts) => updateField('experts', experts)}
+              authors={authors}
+              people={people}
+              updatedAt={form.editorialUpdatedAt}
+              onUpdatedAtChange={(value) => updateField('editorialUpdatedAt', value)}
+            />
           </Section>
 
           <Section
