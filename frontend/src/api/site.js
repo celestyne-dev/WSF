@@ -108,6 +108,9 @@ function mapSiteSettings(data) {
       defaultOgImage: mapMediaRef(data.seo?.defaultOgImage),
     },
     appearance: { cornerStyle: data.appearance?.cornerStyle || null },
+    // Plain-text, server-validated settings (backend engagement_settings.py).
+    newsletterPopup: data.newsletterPopup || null,
+    cookieConsent: data.cookieConsent || null,
   }
 }
 

@@ -38,7 +38,7 @@ from app.models.people import Author, Organization, Person
 from app.models.resource import Resource as ResourceModel
 from app.models.taxonomy import Series, Topic
 from app.services.event_registrations import is_event_publicly_visible
-from app.services.job_access import is_job_publicly_visible
+from app.services.listing_lifecycle import live_jobs_clause, open_opportunities_clause, upcoming_opportunities_clause
 
 SITEMAP_XML_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 
@@ -117,8 +117,10 @@ def _job_entries():
     # rows) — the real decision is is_job_publicly_visible()'s own
     # scheduled-date rule, applied per row below so this can never drift
     # from JobDetailResource's actual behavior.
-    jobs = Job.query.filter(Job.status.in_(["published", "scheduled"])).all()
-    entries += [_entry(f"/jobs/{j.slug}", j.updated_at) for j in jobs if is_job_publicly_visible(j)]
+    # Live Jobs only (listing_lifecycle): a closed Job's URL still answers
+    # (noindex) but is no longer advertised.
+    jobs = Job.query.filter(live_jobs_clause(Job)).all()
+    entries += [_entry(f"/jobs/{j.slug}", j.updated_at) for j in jobs]
     return entries
 
 
@@ -129,9 +131,9 @@ def _opportunity_entries():
     # access predicate exists for Opportunity) — status=="published" and
     # not past its own expiry_date.
     opportunities = (
-        Opportunity.query.filter(Opportunity.status == "published")
-        .filter(or_(Opportunity.expiry_date.is_(None), Opportunity.expiry_date >= today))
-        .all()
+        Opportunity.query.filter(
+            or_(open_opportunities_clause(Opportunity, today), upcoming_opportunities_clause(Opportunity, today))
+        ).all()
     )
     entries += [_entry(f"/opportunities/{o.slug}", o.updated_at) for o in opportunities]
     return entries

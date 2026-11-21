@@ -15,7 +15,6 @@ curriculum, no subscriber/applicant/attendee data).
 """
 from datetime import date
 
-from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 
 HUB_BATCH_SIZE = 8
@@ -24,27 +23,27 @@ HUB_BATCH_SIZE = 8
 def jobs_hub(limit=HUB_BATCH_SIZE):
     from app.api.v1.jobs import build_public_job_payload
     from app.models.opportunity import Job
-    from app.services.job_access import is_job_publicly_visible
+    from app.services.listing_lifecycle import live_jobs_clause
 
     rows = (
         Job.query.options(selectinload(Job.organization))
-        .filter(Job.status.in_(["published", "scheduled"]))
+        .filter(live_jobs_clause(Job))
         .order_by(Job.featured.desc(), Job.published_date.desc())
-        .limit(limit * 3)
+        .limit(limit)
         .all()
     )
-    return [build_public_job_payload(j, None, detail=False) for j in rows if is_job_publicly_visible(j)][:limit]
+    return [build_public_job_payload(j, None, detail=False) for j in rows]
 
 
 def opportunities_hub(limit=HUB_BATCH_SIZE):
     from app.api.v1.opportunities import build_public_opportunity_payload
     from app.models.opportunity import Opportunity
+    from app.services.listing_lifecycle import open_opportunities_clause
 
     rows = (
         Opportunity.query.options(selectinload(Opportunity.organization), selectinload(Opportunity.topics))
-        .filter(Opportunity.status == "published")
-        .filter(or_(Opportunity.expiry_date.is_(None), Opportunity.expiry_date >= date.today()))
-        .order_by(Opportunity.featured.desc(), Opportunity.deadline)
+        .filter(open_opportunities_clause(Opportunity))
+        .order_by(Opportunity.featured.desc(), Opportunity.deadline.is_(None), Opportunity.deadline)
         .limit(limit)
         .all()
     )

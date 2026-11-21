@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Pencil, ExternalLink, Search } from 'lucide-react'
 import { fetchJobs } from '../../api/jobs'
-import { formatDate } from '../../utils/format'
+import { longDate } from '../../utils/listingDates'
+import { EffectiveStateBadge, ListingStateFilters } from '../../components/cms/ListingStateFilters'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import PageLoader from '../../components/ui/PageLoader'
@@ -10,7 +11,7 @@ import EmptyState from '../../components/ui/EmptyState'
 
 export default function AdminJobs() {
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('')
+  const [state, setState] = useState('')
   const [workMode, setWorkMode] = useState('')
   const [featuredOnly, setFeaturedOnly] = useState(false)
   const [rows, setRows] = useState(undefined)
@@ -19,13 +20,13 @@ export default function AdminJobs() {
   useEffect(() => {
     let active = true
     setError(null)
-    fetchJobs({ status, query, workMode, featured: featuredOnly || undefined, pageSize: 100 })
+    fetchJobs({ scope: 'studio', state: state || undefined, query, workMode, featured: featuredOnly || undefined, pageSize: 100 })
       .then((res) => active && setRows(res.items))
       .catch(() => active && setError('Something went wrong loading jobs. Please try again.'))
     return () => {
       active = false
     }
-  }, [status, query, workMode, featuredOnly])
+  }, [state, query, workMode, featuredOnly])
 
   return (
     <div>
@@ -39,19 +40,19 @@ export default function AdminJobs() {
         }
       />
 
+      <div className="mb-3">
+        <ListingStateFilters
+          label="Job state"
+          value={state}
+          onChange={setState}
+          options={[['draft', 'Draft'], ['review', 'Review'], ['scheduled', 'Scheduled'], ['open', 'Open'], ['expired', 'Expired'], ['archived', 'Archived']]}
+        />
+      </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 border border-taupe-300 bg-white px-3 py-2">
           <Search size={15} className="text-charcoal-600" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search jobs…" className="w-56 text-sm focus:outline-none" />
         </div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="border border-taupe-300 bg-white px-3 py-2 text-sm">
-          <option value="">All statuses</option>
-          {['draft', 'review', 'scheduled', 'published', 'expired', 'archived'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
         <select value={workMode} onChange={(e) => setWorkMode(e.target.value)} className="border border-taupe-300 bg-white px-3 py-2 text-sm">
           <option value="">All work modes</option>
           {['On-site', 'Hybrid', 'Remote'].map((w) => (
@@ -78,8 +79,10 @@ export default function AdminJobs() {
                   <th className="px-4 py-3">Organization</th>
                   <th className="px-4 py-3">Location</th>
                   <th className="px-4 py-3">Work mode</th>
-                  <th className="px-4 py-3">Deadline</th>
+                  <th className="px-4 py-3">Posted</th>
+                  <th className="px-4 py-3">Closes</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Effective state</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -94,9 +97,13 @@ export default function AdminJobs() {
                     <td className="px-4 py-3 text-charcoal-600">{row.company}</td>
                     <td className="px-4 py-3 text-charcoal-600">{row.location || row.country?.name || '—'}</td>
                     <td className="px-4 py-3 text-charcoal-600">{row.workMode || '—'}</td>
-                    <td className="px-4 py-3 text-charcoal-600">{row.deadline ? formatDate(row.deadline, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                    <td className="px-4 py-3 text-charcoal-600">{row.publishedDate ? longDate(row.publishedDate) : '—'}</td>
+                    <td className="px-4 py-3 text-charcoal-600">{row.closesOn ? longDate(row.closesOn) : <span title="No deadline or expiry: stays open until closed manually">No close date</span>}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={row.isClosed && row.status === 'published' ? 'closed' : row.status} />
+                      <StatusBadge status={row.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <EffectiveStateBadge state={row.effectiveState} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-3">

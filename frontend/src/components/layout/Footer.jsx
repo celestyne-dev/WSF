@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import Logo from './Logo'
 import NewsletterForm from '../ui/NewsletterForm'
 import SocialIcon from '../ui/SocialIcon'
+import { openConsentManager } from '../../utils/consent'
 
 function isExternal(url) {
   return !!url && /^https?:\/\//i.test(url)
@@ -92,6 +93,11 @@ export default function Footer() {
           <p className="text-xs text-ivory/50">
             &copy; {new Date().getFullYear()} {footer.copyrightText || `${siteName}. All rights reserved.`}
           </p>
+          {/* An action, not a page: reopens the consent manager. The /cookies
+              policy link stays separate (Footer CMS). */}
+          <button type="button" onClick={openConsentManager} className="text-xs text-ivory/70 underline-offset-2 hover:text-ivory hover:underline">
+            Cookie settings
+          </button>
           {footer.contactEmail && (
             <a href={`mailto:${footer.contactEmail}`} className="text-xs text-ivory/50 hover:text-ivory">
               {footer.contactEmail}

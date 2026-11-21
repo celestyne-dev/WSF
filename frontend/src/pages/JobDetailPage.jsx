@@ -6,7 +6,8 @@ import { MapPin, Briefcase, Clock, DollarSign, AlertCircle, Calendar, Building2 
 import { fetchJobBySlug, fetchJobs, accessJob } from '../api/jobs'
 import { fetchOrganizationBySlug } from '../api/taxonomies'
 import { fetchArticles } from '../api/articles'
-import { formatSalary, formatDate } from '../utils/format'
+import { formatSalary } from '../utils/format'
+import { longDate } from '../utils/listingDates'
 import { resolveImage, resolveAltText } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -37,13 +38,21 @@ const EMPLOYMENT_TYPE_SCHEMA = {
 function useJobStructuredData(job, canonicalUrl) {
   useEffect(() => {
     if (!job) return
+    // A closed job is never advertised as an open JobPosting (same rule as
+    // the server's _build_job_json_ld): remove any tag and stop.
+    if (job.isClosed) {
+      document.head.querySelector('script[data-job-structured-data]')?.remove()
+      return
+    }
     const data = {
       '@context': 'https://schema.org',
       '@type': 'JobPosting',
       title: job.title,
       description: job.shortDescription || job.title,
       datePosted: job.publishedDate || undefined,
-      ...(job.deadline ? { validThrough: new Date(job.deadline).toISOString() } : {}),
+      // The effective close date (deadline or expiry, whichever is first)
+      // as a plain date: open THROUGH that day. Matches the server.
+      ...(job.closesOn ? { validThrough: job.closesOn } : {}),
       ...(job.employmentType && EMPLOYMENT_TYPE_SCHEMA[job.employmentType]
         ? { employmentType: EMPLOYMENT_TYPE_SCHEMA[job.employmentType] }
         : {}),
@@ -277,7 +286,10 @@ export default function JobDetailPage() {
           {job.isClosed && (
             <div className="mt-4 flex items-center gap-2 border border-taupe-300 bg-taupe-100 px-4 py-3 text-sm text-charcoal-600">
               <AlertCircle size={16} className="shrink-0" />
-              <span className="font-semibold">Applications closed</span> — this role is no longer accepting applications.
+              <span>
+                <span className="font-semibold">Applications closed</span>
+                {job.closesOn ? ` on ${longDate(job.closesOn)}.` : '.'} This role is no longer accepting applications.
+              </span>
             </div>
           )}
 
@@ -318,17 +330,31 @@ export default function JobDetailPage() {
                 <DollarSign size={15} /> {formatSalary(job)}
               </span>
             )}
-            {job.publishedDate && (
-              <span className="inline-flex items-center gap-1.5">
-                <Calendar size={15} /> Posted {formatDate(job.publishedDate)}
-              </span>
-            )}
-            {job.deadline && (
-              <span className="inline-flex items-center gap-1.5">
-                <Clock size={15} /> Apply by {formatDate(job.deadline)}
-              </span>
-            )}
           </div>
+          {/* Dates next to the application action, not buried below. */}
+          <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+            {job.publishedDate && (
+              <div className="flex items-center gap-1.5">
+                <Calendar size={15} aria-hidden="true" className="text-charcoal-600" />
+                <dt className="text-charcoal-600">Posted</dt>
+                <dd className="font-semibold text-charcoal">{longDate(job.publishedDate)}</dd>
+              </div>
+            )}
+            {job.closesOn && (
+              <div className="flex items-center gap-1.5">
+                <Clock size={15} aria-hidden="true" className="text-charcoal-600" />
+                <dt className="text-charcoal-600">{job.isClosed ? 'Closed' : 'Application deadline'}</dt>
+                <dd className="font-semibold text-charcoal">
+                  {longDate(job.closesOn)}
+                  {!job.isClosed && job.closing && (
+                    <span className={`ml-2 font-normal ${job.closing.closingSoon ? 'text-burgundy-700' : 'text-charcoal-600'}`}>
+                      ({job.closing.daysLeft === 0 ? 'closes today' : job.closing.daysLeft === 1 ? 'closes tomorrow' : `${job.closing.daysLeft} days left`})
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
+          </dl>
           {job.isClosed ? (
             <button type="button" disabled className="btn-secondary mt-6 inline-flex cursor-not-allowed opacity-60">
               Applications closed

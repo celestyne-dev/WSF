@@ -27,6 +27,7 @@ from app.schemas.nominations import (
     NominationUpdateSchema,
 )
 from app.services.audit import log_action
+from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
 from app.services.newsletter import upsert_subscriber
 from app.services.notifications import notify_nomination_received
 from app.services.flat_slugs import generate_flat_slug
@@ -183,6 +184,7 @@ class NominationListResource(Resource):
                 country_code=nomination.country_code,
                 placement="Nomination",
                 acquisition=nomination.acquisition,
+                consent_version=NEWSLETTER_CHECKBOX_CONSENT_VERSION,
             )
 
         log_action(None, "nomination.received", "nomination", nomination.id, {"reference": nomination.reference})

@@ -39,6 +39,7 @@ from app.schemas.media import MediaSchema
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
 from app.services.newsletter import upsert_subscriber
 from app.services.notifications import notify_mentorship_application_received
 from app.services.public_visibility import is_public_taxonomy
@@ -251,6 +252,7 @@ def _subscribe_to_newsletter(application, data):
         country_code=application.country_code,
         placement="mentorship-application",
         acquisition=data.get("acquisition"),
+        consent_version=NEWSLETTER_CHECKBOX_CONSENT_VERSION,
     )
     db.session.commit()
 

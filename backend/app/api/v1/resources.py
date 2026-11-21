@@ -42,6 +42,7 @@ from app.schemas.taxonomy import TagSchema, TopicSchema
 from app.services.content_blocks import sanitize_editor_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
 from app.services.newsletter import upsert_subscriber
 from app.services.public_visibility import is_public_author, is_public_taxonomy, public_author_dump, public_organization_preview
 from app.services.career_hub import CIRCLE_INCLUSION_LABELS, resource_estimated_time, resource_format, viewer_membership_label
@@ -830,6 +831,7 @@ class ResourceAccessResource(Resource):
                     country_code=lead_data.get("country_code"),
                     placement="resource_download",
                     acquisition=lead_data.get("acquisition"),
+                    consent_version=NEWSLETTER_CHECKBOX_CONSENT_VERSION,
                 )
 
         # One commit for the whole grant — the token _resolve_target_url()

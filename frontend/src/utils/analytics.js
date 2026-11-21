@@ -18,6 +18,12 @@
 // that integration ever exists.
 
 import { apiClient, USE_MOCK } from '../api/client'
+import { hasConsent } from './consent'
+
+// Analytics consent (utils/consent.js) gates everything in this module:
+// without it nothing is stored (no wsf_acquisition) and no event is sent.
+// Withdrawing consent clears the stored acquisition record immediately
+// (clearAnalyticsStorage, called by the consent manager).
 
 const STORAGE_KEY = 'wsf_acquisition'
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
@@ -60,6 +66,7 @@ function sourceFromReferrer(referrer) {
  */
 export function captureAcquisitionContext() {
   if (typeof window === 'undefined') return null
+  if (!hasConsent('analytics')) return null
 
   const params = new URLSearchParams(window.location.search)
   const utm = Object.fromEntries(UTM_KEYS.map((k) => [k, params.get(k)]).filter(([, v]) => v))
@@ -85,11 +92,19 @@ export function captureAcquisitionContext() {
 }
 
 export function getAcquisitionContext() {
-  return readStored()
+  return hasConsent('analytics') ? readStored() : null
+}
+
+export function clearAnalyticsStorage() {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY)
+  } catch {
+    /* storage unavailable: nothing stored */
+  }
 }
 
 export function isFromLinkedIn() {
-  return readStored()?.source === 'linkedin'
+  return getAcquisitionContext()?.source === 'linkedin'
 }
 
 /** Attaches the session's acquisition context to a form/API payload. */
@@ -118,7 +133,7 @@ export function trackEvent(eventName, payload = {}, { entityType, entityId } = {
     // eslint-disable-next-line no-console
     console.debug('[analytics]', event)
   }
-  if (!USE_MOCK) {
+  if (!USE_MOCK && hasConsent('analytics')) {
     apiClient.post('/analytics/events', { eventName, payload, acquisition, entityType, entityId }).catch(() => {})
   }
   return event

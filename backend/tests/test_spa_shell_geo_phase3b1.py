@@ -114,12 +114,18 @@ def test_expired_and_future_jobs_get_no_prerender(client, app):
     _add(app, Job(slug="expired-job", title="Expired Job Title", company_name="X", status="expired", description=_body("EXPIRED-BODY")))
     _add(app, Job(slug="future-job", title="Future Job Title", company_name="X", status="scheduled",
                   published_date=date.today() + timedelta(days=5), description=_body("FUTURE-BODY")))
-    for path, secrets in (("/jobs/expired-job", ("Expired Job Title", "EXPIRED-BODY")), ("/jobs/future-job", ("Future Job Title", "FUTURE-BODY"))):
-        status, html = _html(client, path)
-        assert status == 404
-        assert "data-wsf-prerender" not in html
-        for secret in secrets:
-            assert secret not in html
+    # Future-scheduled: still a true 404 with nothing leaked.
+    status, html = _html(client, "/jobs/future-job")
+    assert status == 404
+    assert "data-wsf-prerender" not in html
+    for secret in ("Future Job Title", "FUTURE-BODY"):
+        assert secret not in html
+    # Expired: the URL stays reachable as a closed record (listing_lifecycle),
+    # noindex, never an open JobPosting, and never an application destination.
+    status, html = _html(client, "/jobs/expired-job")
+    assert status == 200
+    assert 'content="noindex, follow"' in html and "data-job-structured-data" not in html
+    assert "Applications closed" in html and "Apply for this role" not in html
 
 
 # --- Opportunities -------------------------------------------------------------------

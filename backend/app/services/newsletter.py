@@ -6,6 +6,7 @@ must call upsert_subscriber() rather than writing to NewsletterSubscriber
 directly, so the suppression/resubscribe rules below are enforced
 consistently everywhere.
 """
+from datetime import datetime, timezone
 from app.extensions import db
 from app.models.newsletter import NewsletterSubscriber
 from app.models.taxonomy import Topic
@@ -26,6 +27,7 @@ def upsert_subscriber(
     placement=None,
     acquisition=None,
     topic_slugs=None,
+    consent_version=None,
 ):
     """Create or update a subscriber record from an explicit consent
     action. Returns (subscriber, created, reactivated).
@@ -43,7 +45,13 @@ def upsert_subscriber(
 
     if created or subscriber.status in _REACTIVATABLE_STATUSES:
         subscriber.status = "active"
+        # A deliberate re-subscribe: the earlier unsubscribe is superseded
+        # by this new consent (recorded below); bounced/complained never
+        # reach this branch.
         subscriber.unsubscribed_at = None
+    if subscriber.status == "active" and consent_version:
+        subscriber.consent_at = datetime.now(timezone.utc)
+        subscriber.consent_version = consent_version
     # A bounced/complained subscriber's contact details below are still
     # updated (so a later admin review has current info) but their
     # suppressed status is left untouched by this ordinary signup.

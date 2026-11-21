@@ -7,6 +7,7 @@ from app.extensions import db
 from app.models.user import Role, User
 from app.services.advertise import seed_advertise_page_and_offerings
 from app.services.articles_workflow import publish_due_articles
+from app.services.listing_maintenance import expire_closed_listings
 from app.services.demo_seed import seed_demo_content
 from app.services.footer import heal_footer_defaults
 from app.services.geography import seed_countries
@@ -163,6 +164,20 @@ def register_cli(app):
         )
         for failure in result["failed"]:
             click.echo(f"  FAILED article_id={failure['article_id']}: {failure['error']}")
+        # Same timer, one more idempotent step: Jobs/Opportunities whose
+        # close date has passed get their stored status updated (the public
+        # site already hides them by date; this keeps Studio accurate).
+        _echo_expired(expire_closed_listings())
+
+    def _echo_expired(changed):
+        click.echo(f"Expired {len(changed['jobs'])} job(s); closed {len(changed['opportunities'])} opportunity(ies).")
+
+    @app.cli.command("expire-closed-listings")
+    def expire_closed_listings_command():
+        """Idempotent: published/scheduled Jobs past their deadline or expiry
+        date -> expired; published Opportunities past theirs -> closed.
+        Never deletes or archives. Also runs inside publish-due-content."""
+        _echo_expired(expire_closed_listings())
 
     @app.cli.command("create-superadmin")
     @click.option("--email", required=True)
@@ -216,6 +231,36 @@ def register_cli(app):
             click.echo("Lifetime preflight FAILED.")
             raise SystemExit(1)
         click.echo("Lifetime preflight PASSED.")
+
+    @app.cli.command("legal-pages-audit")
+    def legal_pages_audit_command():
+        """Read-only: the four core legal Pages (status, dates, structure,
+        SEO) and the browser technologies WSF's code actually uses. Prints
+        no user data. Missing/unpublished legal Pages are highlighted;
+        structural gaps are warnings. Always exits 0 (advisory)."""
+        from app.services.legal_audit import INACTIVE_INTEGRATIONS, TECHNOLOGY_INVENTORY, audit_legal_pages
+
+        result = audit_legal_pages()
+        for row in result["pages"]:
+            if not row["exists"]:
+                click.echo(f"[{row['key']}] MISSING")
+                continue
+            click.echo(
+                f"[{row['key']}] \"{row['title']}\" status={row['status']} public={'yes' if row['public'] else 'no'} "
+                f"effective={row['effectiveDate'] or '-'} reviewed={row['lastReviewedAt'] or '-'} blocks={row['blocks']} "
+                f"seo_title={'yes' if row['seoTitle'] else 'no'} seo_description={'yes' if row['seoDescription'] else 'no'} "
+                f"canonical={row['canonical']}"
+            )
+            click.echo(f"    headings: {', '.join(row['headings']) or '(none)'}")
+        for line in result["highlights"]:
+            click.echo(f"HIGHLIGHT: {line}")
+        for line in result["warnings"]:
+            click.echo(f"WARNING: {line}")
+        click.echo("Technologies in use (input for the Cookie Policy):")
+        for tech in TECHNOLOGY_INVENTORY:
+            click.echo(f"  - {tech['name']} | {tech['provider']} | {tech['category']} | {tech['storage']} | "
+                       f"consent {'required' if tech['consentRequired'] else 'not required'} | {tech['purpose']} | {tech['duration']}")
+        click.echo(f"Configured but NOT active (no runtime integration): {', '.join(INACTIVE_INTEGRATIONS)}")
 
     @app.cli.command("production-check")
     def production_check_command():

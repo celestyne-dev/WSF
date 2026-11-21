@@ -657,11 +657,12 @@ def test_55_draft_cannot_access(client, app, user_a_token):
 def test_56_closed_published_metadata_stays_truthful(client, app, manager_token):
     opportunity_id = _make_opportunity(app, access_type="public", status="closed")
     slug = _opportunity_slug(app, opportunity_id)
-    # Anonymous detail hides non-published statuses outright (pre-existing
-    # behavior, unchanged by this module) — staff still sees the truthful
-    # is_closed=True metadata.
+    # A closed Opportunity keeps its public URL as a closed record
+    # (listing_lifecycle): truthful is_closed, and no application target.
     anon = client.get(f"/api/v1/opportunities/{slug}")
-    assert anon.status_code == 404
+    assert anon.status_code == 200
+    assert anon.get_json()["data"]["is_closed"] is True and anon.get_json()["data"]["state"] == "closed"
+    assert "application_url" not in anon.get_json()["data"]
     staff = client.get(f"/api/v1/opportunities/{slug}", headers=auth_headers(manager_token))
     assert staff.get_json()["data"]["is_closed"] is True
 

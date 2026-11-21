@@ -4,7 +4,8 @@ import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { Calendar, Globe2, Award, AlertCircle } from 'lucide-react'
 import { fetchOpportunityBySlug, fetchOpportunities, accessOpportunity } from '../api/opportunities'
-import { formatDate, formatFunding } from '../utils/format'
+import { formatFunding } from '../utils/format'
+import { longDate, opensLabel } from '../utils/listingDates'
 import { resolveImage, resolveAltText } from '../utils/media'
 import { trackEvent } from '../utils/analytics'
 import useSeo from '../hooks/useSeo'
@@ -47,8 +48,13 @@ function useOpportunityStructuredData(opportunity, canonicalUrl) {
     // detail page's own canonical URL is used instead of omitting `url`
     // entirely (spec section R).
     const schemaUrl = opportunity.accessType === 'circle_only' ? canonicalUrl : opportunity.applicationUrl || canonicalUrl
+    const closed = opportunity.state === 'closed' || opportunity.isClosed
 
-    if (GRANT_TYPES.has(opportunity.type)) {
+    // A closed opportunity gets no structured data: nothing may suggest it
+    // is still accepting applications.
+    if (closed) {
+      data = null
+    } else if (GRANT_TYPES.has(opportunity.type)) {
       data = {
         '@context': 'https://schema.org',
         '@type': 'MonetaryGrant',
@@ -74,7 +80,7 @@ function useOpportunityStructuredData(opportunity, canonicalUrl) {
         description: opportunity.shortDescription || opportunity.title,
         url: schemaUrl,
         provider: opportunity.organization ? { '@type': 'Organization', name: opportunity.organization } : undefined,
-        ...(opportunity.deadline ? { applicationDeadline: opportunity.deadline } : {}),
+        ...(opportunity.closesOn ? { applicationDeadline: opportunity.closesOn } : {}),
         ...(opportunity.openingDate ? { applicationStartDate: opportunity.openingDate } : {}),
       }
     }
@@ -215,6 +221,8 @@ export default function OpportunityDetailPage() {
   if (opportunity === null) return <NotFoundPage />
 
   const funding = formatFunding(opportunity)
+  const closed = opportunity.state === 'closed' || opportunity.isClosed
+  const upcoming = opportunity.state === 'upcoming'
   const geography = opportunity.countriesEligibleNames?.length ? opportunity.countriesEligibleNames.join(', ') : null
 
   return (
@@ -236,10 +244,13 @@ export default function OpportunityDetailPage() {
             </div>
           )}
 
-          {opportunity.isClosed && (
+          {closed && (
             <div className="mt-4 flex items-center gap-2 border border-taupe-300 bg-taupe-100 px-4 py-3 text-sm text-charcoal-600">
               <AlertCircle size={16} className="shrink-0" />
-              <span className="font-semibold">Applications closed</span> — this opportunity is no longer accepting applications.
+              <span>
+                <span className="font-semibold">Applications closed</span>
+                {opportunity.closesOn ? ` on ${longDate(opportunity.closesOn)}.` : '.'} This opportunity is no longer accepting applications.
+              </span>
             </div>
           )}
 
@@ -269,22 +280,49 @@ export default function OpportunityDetailPage() {
                 <Globe2 size={15} /> {geography}
               </span>
             )}
-            {opportunity.deadline && (
-              <span className="inline-flex items-center gap-1.5">
-                <Calendar size={15} /> Deadline: {formatDate(opportunity.deadline)}
-              </span>
-            )}
             {funding && (
               <span className="inline-flex items-center gap-1.5">
                 <Award size={15} /> {funding}
               </span>
             )}
           </div>
+          {/* Dates and status next to the application action. */}
+          <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+            <div className="flex items-center gap-1.5">
+              <dt className="text-charcoal-600">Status</dt>
+              <dd className="font-semibold text-charcoal">{upcoming ? 'Opening soon' : closed ? 'Closed' : 'Open'}</dd>
+            </div>
+            {opportunity.openingDate && (
+              <div className="flex items-center gap-1.5">
+                <Calendar size={15} aria-hidden="true" className="text-charcoal-600" />
+                <dt className="text-charcoal-600">Applications open</dt>
+                <dd className="font-semibold text-charcoal">{longDate(opportunity.openingDate)}</dd>
+              </div>
+            )}
+            {opportunity.closesOn && (
+              <div className="flex items-center gap-1.5">
+                <Calendar size={15} aria-hidden="true" className="text-charcoal-600" />
+                <dt className="text-charcoal-600">{closed ? 'Applications closed' : 'Applications close'}</dt>
+                <dd className="font-semibold text-charcoal">
+                  {longDate(opportunity.closesOn)}
+                  {!closed && !upcoming && opportunity.closing && (
+                    <span className={`ml-2 font-normal ${opportunity.closing.closingSoon ? 'text-burgundy-700' : 'text-charcoal-600'}`}>
+                      ({opportunity.closing.daysLeft === 0 ? 'closes today' : opportunity.closing.daysLeft === 1 ? 'closes tomorrow' : `${opportunity.closing.daysLeft} days left`})
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
+          </dl>
 
-          {opportunity.isClosed ? (
+          {closed ? (
             <button type="button" disabled className="btn-secondary mt-6 inline-flex cursor-not-allowed opacity-60">
               Applications closed
             </button>
+          ) : upcoming ? (
+            <p className="mt-6 inline-flex rounded-control border border-taupe-300 bg-cream px-4 py-3 text-sm font-semibold text-charcoal">
+              {opensLabel(opportunity.openingDate)}. Applications are not open yet.
+            </p>
           ) : opportunity.accessType === 'circle_only' ? (
             <CircleApplyCta
               opportunity={opportunity}
@@ -319,7 +357,7 @@ export default function OpportunityDetailPage() {
 
           {opportunity.accessType === 'circle_only'
             ? circleAccess &&
-              !opportunity.isClosed && (
+              !closed && !upcoming && (
                 <div className="mt-8 border border-taupe-200 bg-cream p-5">
                   <p className="text-sm font-semibold text-charcoal">How to apply</p>
                   {circleAccess.applicationInstructions && (
@@ -331,7 +369,7 @@ export default function OpportunityDetailPage() {
                 </div>
               )
             : (opportunity.applicationInstructions || opportunity.applicationUrl) &&
-              !opportunity.isClosed && (
+              !closed && !upcoming && (
                 <div className="mt-8 border border-taupe-200 bg-cream p-5">
                   <p className="text-sm font-semibold text-charcoal">How to apply</p>
                   {opportunity.applicationInstructions && <p className="mt-1 text-sm text-charcoal-600">{opportunity.applicationInstructions}</p>}

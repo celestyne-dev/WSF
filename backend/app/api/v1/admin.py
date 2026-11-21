@@ -29,6 +29,15 @@ from app.schemas.cms import (
     SocialLinkSchema,
 )
 from app.schemas.commerce import SponsorSchema
+from app.services.engagement_settings import (
+    COOKIE_CONSENT_KEY,
+    NEWSLETTER_POPUP_KEY,
+    EngagementSettingsError,
+    get_cookie_consent,
+    get_newsletter_popup,
+    save_cookie_consent,
+    save_newsletter_popup,
+)
 from app.services.appearance import APPEARANCE_KEY, AppearanceError, public_appearance_payload, save_appearance
 from app.services.audit import log_action
 from app.services.cms import (
@@ -385,7 +394,7 @@ class AdminFooterResource(Resource):
         return success_response(_dump_footer())
 
 
-ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY}
+ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY}
 
 
 class AdminSettingsResource(Resource):
@@ -455,6 +464,16 @@ class AdminSettingsResource(Resource):
                 raise ApiError(str(exc), 422, code="validation_error")
             log_action(current_user, "settings.update", "SiteSetting", entity_id=APPEARANCE_KEY, changes=appearance)
 
+        for key, saver in ((NEWSLETTER_POPUP_KEY, save_newsletter_popup), (COOKIE_CONSENT_KEY, save_cookie_consent)):
+            if key in settings_data:
+                # Plain text and bounded numbers only; no script/tag fields
+                # exist (app/services/engagement_settings.py).
+                try:
+                    saved = saver(settings_data[key])
+                except EngagementSettingsError as exc:
+                    raise ApiError(str(exc), 422, code="validation_error")
+                log_action(current_user, "settings.update", "SiteSetting", entity_id=key, changes=saved)
+
         if "audience_stats" in settings_data:
             audience_value = settings_data["audience_stats"]
             if not isinstance(audience_value, dict):
@@ -473,6 +492,8 @@ class AdminSettingsResource(Resource):
             # only) + the ISO 4217 catalogue. Never any secret value.
             PAYMENT_SETTINGS_KEY: admin_payment_settings_payload(),
             APPEARANCE_KEY: public_appearance_payload(),
+            NEWSLETTER_POPUP_KEY: get_newsletter_popup(),
+            COOKIE_CONSENT_KEY: get_cookie_consent(),
         }
 
 

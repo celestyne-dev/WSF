@@ -71,9 +71,9 @@ def test_every_shell_response_carries_the_corner_attribute(client, app, admin_to
     for path in paths:
         html = client.get(path).get_data(as_text=True)
         assert html.count("data-wsf-corners=") == 1, path
-        assert '<html lang="en" data-wsf-corners="square">' in html, path
+        assert '<html lang="en" data-wsf-corners="square" data-wsf-consent-version="1">' in html, path
     assert _put(client, admin_token, {"cornerStyle": "rounded"}).status_code == 200
     for path in paths:
         html = client.get(path).get_data(as_text=True)
         assert html.count("data-wsf-corners=") == 1 and 'data-wsf-corners="rounded"' in html, path
-        assert '<html lang="en" data-wsf-corners="rounded">' in html, path
+        assert '<html lang="en" data-wsf-corners="rounded" data-wsf-consent-version="1">' in html, path

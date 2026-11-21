@@ -70,6 +70,12 @@ export function mapJob(j) {
     sponsorTier: j.sponsor?.tier || null,
     status: j.status || 'published',
     isClosed: j.is_closed ?? false,
+    // Server lifecycle (backend listing_lifecycle.py): effective close date,
+    // and while open {closesOn, daysLeft, closingSoon}. Studio rows also
+    // carry effectiveState.
+    closesOn: j.closes_on || null,
+    closing: j.closing || null,
+    effectiveState: j.effective_state || null,
     isScheduled: j.is_scheduled ?? false,
     seo: j.seo || null,
     publishedDate: j.published_date,
@@ -96,9 +102,12 @@ function normalizeMockJobDescription(item) {
   }
 }
 
+// Public pages get the visitor view (scope=public: live listings only,
+// decided server-side) even when an editor is signed in. Studio passes
+// scope: 'studio' for the editor view.
 export async function fetchJobs(params = {}) {
   if (!USE_MOCK) {
-    const { data } = await apiClient.get('/jobs', { params })
+    const { data } = await apiClient.get('/jobs', { params: { scope: 'public', ...params } })
     return { ...data, items: data.items.map(mapJob) }
   }
   const { jobs } = await loadMockJobs()
@@ -196,7 +205,7 @@ export async function accessJob(slug) {
 
 export async function fetchJobsFilterOptions() {
   if (!USE_MOCK) {
-    const { data } = await apiClient.get('/jobs', { params: { pageSize: 100 } })
+    const { data } = await apiClient.get('/jobs', { params: { scope: 'public', pageSize: 100 } })
     const all = data.items.map(mapJob)
     return {
       countries: countryOptionsFromItems(all),

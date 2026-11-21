@@ -17,6 +17,16 @@ from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.public_visibility import is_public_taxonomy, public_organization_preview
+from app.services.listing_lifecycle import (
+    closing_info,
+    closing_soon_clause,
+    open_opportunities_clause,
+    opportunity_close_date,
+    opportunity_effective_state,
+    opportunity_is_reachable,
+    opportunity_state,
+    upcoming_opportunities_clause,
+)
 from app.services.opportunity_access import (
     check_opportunity_application_access,
     has_safe_application_target,
@@ -42,6 +52,8 @@ def _dump_opportunity_for_staff(opportunity):
     app/api/v1/events.py's _dump_event_for_staff() for virtual_link.
     """
     data = opportunity_schema.dump(opportunity)
+    data["effective_state"] = opportunity_effective_state(opportunity)
+    data["closes_on"] = opportunity_close_date(opportunity).isoformat() if opportunity_close_date(opportunity) else None
     data["application_url"] = opportunity.application_url
     data["application_instructions"] = opportunity.application_instructions
     return data
@@ -223,7 +235,13 @@ def build_public_opportunity_payload(opportunity, viewer, *, detail=False):
         "featured": opportunity.featured,
         "sponsored": opportunity.sponsored,
         "status": opportunity.status,
-        "is_closed": not is_application_open(opportunity),
+        "is_closed": opportunity_state(opportunity) == "closed",
+        # One lifecycle authority (app/services/listing_lifecycle.py):
+        # open | upcoming | closed, the effective close date, and while
+        # open, days left / closing soon.
+        "state": opportunity_state(opportunity),
+        "closes_on": opportunity_close_date(opportunity).isoformat() if opportunity_close_date(opportunity) else None,
+        "closing": closing_info(opportunity_close_date(opportunity)) if opportunity_state(opportunity) == "open" else None,
         "seo": opportunity.seo or {},
         "topics": TopicSchema(many=True, exclude=("article_count",)).dump(
             [t for t in opportunity.topics if is_public_taxonomy(t)]
@@ -243,18 +261,58 @@ def build_public_opportunity_payload(opportunity, viewer, *, detail=False):
     return payload
 
 
+def _studio_state_clause(state):
+    """Studio quick filters derived from status + dates: upcoming, open,
+    closed (stored closed, or published past its close date), plus plain
+    statuses."""
+    from sqlalchemy import and_
+
+    if state == "open":
+        return open_opportunities_clause(Opportunity)
+    if state == "upcoming":
+        return upcoming_opportunities_clause(Opportunity)
+    if state == "closed":
+        today = date.today()
+        past = or_(Opportunity.deadline < today, Opportunity.expiry_date < today)
+        return or_(Opportunity.status == "closed", and_(Opportunity.status == "published", past))
+    return Opportunity.status == state
+
+
 class OpportunityListResource(Resource):
     def get(self):
         user = _current_user_or_none()
         can_manage = bool(user and user.has_permission("opportunities.manage"))
 
-        query = Opportunity.query.order_by(Opportunity.featured.desc(), Opportunity.deadline)
+        # scope=public (always sent by the public site) gives every viewer,
+        # editors included, the visitor view; Studio omits it.
+        if request.args.get("scope") == "public":
+            can_manage = False
+        state = request.args.get("state")
+        if not can_manage and state == "upcoming":
+            query = Opportunity.query.order_by(Opportunity.featured.desc(), Opportunity.opening_date.asc(), Opportunity.id)
+        elif request.args.get("sort") == "newest":
+            query = Opportunity.query.order_by(Opportunity.featured.desc(), Opportunity.published_date.desc().nullslast(), Opportunity.id.desc())
+        else:
+            query = Opportunity.query.order_by(Opportunity.featured.desc(), Opportunity.deadline.is_(None), Opportunity.deadline, Opportunity.id)
         if can_manage:
             if request.args.get("status"):
                 query = query.filter(Opportunity.status == request.args["status"])
+            if state:
+                query = query.filter(_studio_state_clause(state))
+        elif state == "upcoming":
+            query = query.filter(upcoming_opportunities_clause(Opportunity))
         else:
-            query = query.filter(Opportunity.status == "published")
-            query = query.filter(or_(Opportunity.expiry_date.is_(None), Opportunity.expiry_date >= date.today()))
+            # Default public listing: OPEN only, decided in SQL by the one
+            # lifecycle rule. Closed and not-yet-open never mix in.
+            query = query.filter(open_opportunities_clause(Opportunity))
+        if (request.args.get("closingSoon") or request.args.get("closing_soon")) == "true":
+            query = query.filter(closing_soon_clause(Opportunity))
+        funding_type = request.args.get("funding_type") or request.args.get("fundingType")
+        if funding_type:
+            query = query.filter(Opportunity.funding_type == funding_type)
+        career_stage = request.args.get("career_stage") or request.args.get("careerStage")
+        if career_stage:
+            query = query.filter(Opportunity.career_stage == career_stage)
 
         opp_type = request.args.get("type")
         if opp_type:
@@ -318,7 +376,9 @@ class OpportunityDetailResource(Resource):
         if opportunity is None:
             raise ApiError("Opportunity not found.", 404, code="not_found")
         editor = _can_edit_or_none()
-        if opportunity.status != "published" and not editor:
+        # A closed Opportunity keeps its public URL (shown as closed, no
+        # application destination); draft/archived stay private.
+        if not opportunity_is_reachable(opportunity) and not editor:
             raise ApiError("Opportunity not found.", 404, code="not_found")
         if editor:
             return success_response(_dump_opportunity_for_staff(opportunity))

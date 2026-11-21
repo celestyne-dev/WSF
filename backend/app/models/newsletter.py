@@ -59,6 +59,13 @@ class NewsletterSubscriber(db.Model):
     )
     subscribed_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     unsubscribed_at = db.Column(db.DateTime(timezone=True))
+    # Consent provenance (operational record, not legal proof): when the
+    # visitor last gave signup consent and which wording version they saw
+    # (engagement_settings.NEWSLETTER_CONSENT_VERSION). Where = `placement`.
+    # Never an IP address or browser identity. NULL on rows from before
+    # this was recorded.
+    consent_at = db.Column(db.DateTime(timezone=True))
+    consent_version = db.Column(db.String(40))
 
     country = db.relationship("Country", foreign_keys=[country_code])
     interests = db.relationship("Topic", secondary=newsletter_subscriber_topics, backref="newsletter_subscribers")

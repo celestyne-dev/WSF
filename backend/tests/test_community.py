@@ -40,7 +40,7 @@ def test_newsletter_subscribe_unsubscribe_and_resubscribe(client, admin_token):
         },
     )
     assert subscribe.status_code == 201
-    assert subscribe.get_json()["data"]["status"] == "active"
+    assert subscribe.get_json()["data"]["status"] == "subscribed"
 
     # Subscribing again with the same email updates rather than duplicates.
     # The public response is a privacy-trimmed confirmation (email/status/
@@ -62,7 +62,7 @@ def test_newsletter_subscribe_unsubscribe_and_resubscribe(client, admin_token):
 
     resub = client.post("/api/v1/newsletter/subscribe", json={"email": "reader@example.com"})
     assert resub.status_code == 201
-    assert resub.get_json()["data"]["status"] == "active"
+    assert resub.get_json()["data"]["status"] == "subscribed"
 
 
 def test_newsletter_subscribe_ignores_unknown_frontend_fields(client):
@@ -79,7 +79,7 @@ def test_newsletter_subscribe_ignores_unknown_frontend_fields(client):
         },
     )
     assert subscribe.status_code == 201
-    assert subscribe.get_json()["data"]["status"] == "active"
+    assert subscribe.get_json()["data"]["status"] == "subscribed"
 
 
 def test_newsletter_subscribers_list_requires_permission(client, admin_token):

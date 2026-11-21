@@ -10,7 +10,6 @@ Opportunity.access_type is orthogonal to the application mechanism
 itself — applying always happens on the provider's own external site;
 WSF never runs an application workflow, with or without Circle.
 """
-from datetime import date
 
 from app.services.circle import has_circle_access
 from app.utils.responses import ApiError
@@ -20,18 +19,12 @@ OPPORTUNITY_ACCESS_REASONS = ("circle_required",)
 
 
 def is_application_open(opportunity):
-    """True only for a published Opportunity whose deadline/expiry have
-    not passed. draft/closed/archived are never open — a draft is never
-    even publicly visible, and closed/archived are explicit end states.
-    """
-    if opportunity.status != "published":
-        return False
-    today = date.today()
-    if opportunity.expiry_date and opportunity.expiry_date < today:
-        return False
-    if opportunity.deadline and opportunity.deadline < today:
-        return False
-    return True
+    """True only for an OPEN Opportunity: published, opened (or no
+    opening_date), and its deadline/expiry not passed. Upcoming, closed,
+    draft and archived are never open. See app/services/listing_lifecycle.py."""
+    from app.services.listing_lifecycle import opportunity_is_open
+
+    return opportunity_is_open(opportunity)
 
 
 def has_safe_application_target(opportunity):
@@ -100,6 +93,12 @@ def check_opportunity_application_access(opportunity, user):
     that only after this check passes (spec section G).
     """
     if not is_application_open(opportunity):
+        from app.services.listing_lifecycle import opportunity_state
+
+        if opportunity_state(opportunity) == "upcoming":
+            raise ApiError(
+                f"Applications open on {opportunity.opening_date.strftime('%-d %B %Y')}.", 409, code="application_not_open"
+            )
         raise ApiError(
             "This opportunity is no longer accepting applications.", 409, code="application_closed"
         )

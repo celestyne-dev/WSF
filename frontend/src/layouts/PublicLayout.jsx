@@ -8,6 +8,9 @@ import { loadNavigation, loadCountries, loadSiteSettings, loadFooter } from '../
 import { closeOverlays } from '../features/navigation/uiSlice'
 import { restoreSession } from '../features/auth/authSlice'
 import { captureAcquisitionContext } from '../utils/analytics'
+import { onConsentChange } from '../utils/consent'
+import CookieConsent from '../components/consent/CookieConsent'
+import NewsletterPopup from '../components/newsletter/NewsletterPopup'
 import useSiteStructuredData from '../hooks/useSiteStructuredData'
 import { applyCornerStyle } from '../utils/appearance'
 
@@ -54,6 +57,10 @@ export default function PublicLayout() {
     if (accessToken && !user) dispatch(restoreSession())
   }, [accessToken, user, dispatch])
 
+  // Acquisition is recorded only with analytics consent (utils/analytics):
+  // when consent is given on this page, record the current visit too.
+  useEffect(() => onConsentChange((snap) => snap.analytics && captureAcquisitionContext()), [])
+
   useEffect(() => {
     dispatch(closeOverlays())
     window.scrollTo(0, 0)
@@ -73,6 +80,8 @@ export default function PublicLayout() {
         <Outlet />
       </main>
       <Footer />
+      <NewsletterPopup />
+      <CookieConsent />
     </div>
   )
 }

@@ -19,7 +19,7 @@ and the pre-existing Article coverage (test_spa_shell.py):
 import json
 import os
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from app.extensions import db
 
@@ -177,8 +177,8 @@ class TestJobPostingStructuredData:
             company_name="Kaziwave",
             short_description="Lead our flagship program.",
             employment_type="Full-time",
-            published_date=date(2026, 1, 10),
-            deadline=date(2026, 3, 1),
+            published_date=date.today() - timedelta(days=10),
+            deadline=date.today() + timedelta(days=30),
         )
         html = client.get("/jobs/program-manager").get_data(as_text=True)
         data = _structured_data_json_by_attr(html, "data-job-structured-data")
@@ -186,8 +186,9 @@ class TestJobPostingStructuredData:
         assert data["title"] == "Program Manager"
         assert data["description"] == "Lead our flagship program."
         assert data["employmentType"] == "FULL_TIME"
-        assert data["datePosted"] == "2026-01-10"
-        assert data["validThrough"] == "2026-03-01T00:00:00Z"
+        assert data["datePosted"] == (date.today() - timedelta(days=10)).isoformat()
+        # Date-only: open THROUGH the close date (no invented time of day).
+        assert data["validThrough"] == (date.today() + timedelta(days=30)).isoformat()
         assert data["hiringOrganization"] == {"@type": "Organization", "name": "Kaziwave"}
 
     def test_jobs_list_page_has_no_jobposting(self, client, app):

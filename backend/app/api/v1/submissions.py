@@ -32,6 +32,7 @@ from app.schemas.submissions import (
 from app.schemas.media import MediaSchema
 from app.services.audit import log_action
 from app.services.career_outcomes import apply_outcome_review
+from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
 from app.services.newsletter import upsert_subscriber
 from app.services.media import MediaService
 from app.services.notifications import notify_story_submission_received
@@ -168,6 +169,7 @@ class SubmissionListResource(Resource):
                 country_code=submission.country_code,
                 placement="Story submission",
                 acquisition=submission.acquisition,
+                consent_version=NEWSLETTER_CHECKBOX_CONSENT_VERSION,
             )
 
         log_action(None, "submission.received", "story_submission", submission.id, {"reference": submission.reference})

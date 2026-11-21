@@ -11,7 +11,6 @@ Job.access_type is orthogonal to the application mechanism itself —
 applying always happens via the employer's own URL/email/instructions,
 with or without Circle.
 """
-from datetime import date
 
 from marshmallow import validate as ma_validate
 
@@ -25,31 +24,24 @@ _email_validator = ma_validate.Email()
 
 
 def is_job_publicly_visible(job):
-    """True only for a job a non-privileged viewer may see at all.
-    draft/review/future-scheduled/expired/archived are never visible —
-    expired/archived are explicit end states kept only for record, distinct
-    from "published but past its deadline" (still visible, just closed to
-    new applications — see is_job_application_open below).
-    """
-    if job.status == "published":
-        return True
-    if job.status == "scheduled" and job.published_date and job.published_date <= date.today():
-        return True
-    return False
+    """True when the Job's detail URL answers publicly: published, a
+    scheduled Job whose date has arrived, or an expired Job (shown as
+    "Applications closed"). draft/review/future-scheduled/archived never.
+    Listings use is_job_application_open (live) instead. The date rules
+    live in app/services/listing_lifecycle.py."""
+    from app.services.listing_lifecycle import job_is_reachable
+
+    return job_is_reachable(job)
 
 
 def is_job_application_open(job):
-    """True only for a publicly visible Job whose deadline/expiry have not
-    passed. Not publicly visible => never open either.
-    """
-    if not is_job_publicly_visible(job):
-        return False
-    today = date.today()
-    if job.deadline and job.deadline < today:
-        return False
-    if job.expiry_date and job.expiry_date < today:
-        return False
-    return True
+    """True only for a LIVE Job: reachable, not expired, and its effective
+    close date (deadline or expiry, whichever is first) has not passed. The
+    only Jobs that appear in listings and the only ones whose application
+    destination is ever served."""
+    from app.services.listing_lifecycle import job_is_live
+
+    return job_is_live(job)
 
 
 def is_safe_application_email(email):

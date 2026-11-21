@@ -121,6 +121,8 @@ from app.services.prerender import (
 from app.schemas.page import PagePublicSchema
 from app.services.public_visibility import is_public_author, is_public_organization, is_public_person
 from app.services.job_access import is_job_application_open, is_job_publicly_visible
+from app.services.listing_lifecycle import job_close_date, opportunity_is_reachable, opportunity_state
+from app.services.engagement_settings import get_cookie_consent
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 
 _HEAD_CLOSE_RE = re.compile(r"</head>", re.IGNORECASE)
@@ -580,6 +582,7 @@ def _absolute_url(value, public_site_url):
 
 _HTML_OPEN_RE = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
 _CORNERS_ATTR_RE = re.compile(r'\sdata-wsf-corners="[^"]*"')
+_CONSENT_ATTR_RE = re.compile(r'\sdata-wsf-consent-version="[^"]*"')
 
 
 def _set_appearance_attributes(html_doc):
@@ -594,9 +597,20 @@ def _set_appearance_attributes(html_doc):
         db.session.rollback()
         corner_style = DEFAULT_CORNER_STYLE
 
+    # The cookie-consent version too (validated to [A-Za-z0-9._-]), so the
+    # consent boundary (frontend/src/utils/consent.js) knows it on first
+    # load and a visitor's existing choice applies before settings arrive.
+    try:
+        consent_version = get_cookie_consent()["version"]
+    except Exception:  # pragma: no cover - a settings read must never break page delivery
+        db.session.rollback()
+        consent_version = "1"
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,20}", consent_version or ""):
+        consent_version = "1"
+
     def _replace(match):
-        tag = _CORNERS_ATTR_RE.sub("", match.group(0))
-        return f'{tag[:-1].rstrip()} data-wsf-corners="{corner_style}">'
+        tag = _CONSENT_ATTR_RE.sub("", _CORNERS_ATTR_RE.sub("", match.group(0)))
+        return f'{tag[:-1].rstrip()} data-wsf-corners="{corner_style}" data-wsf-consent-version="{consent_version}">'
 
     return _HTML_OPEN_RE.sub(_replace, html_doc, count=1)
 
@@ -1107,7 +1121,8 @@ def _lookup_author(slug):
 def _lookup_opportunity(slug):
     """Same status check as app/api/v1/opportunities.py's public detail route."""
     opportunity = Opportunity.query.filter_by(slug=slug).first()
-    return opportunity if opportunity is not None and opportunity.status == "published" else None
+    # published or closed (a closed Opportunity keeps its URL, shown as closed).
+    return opportunity if opportunity is not None and opportunity_is_reachable(opportunity) else None
 
 
 def _lookup_job(slug):
@@ -1253,7 +1268,9 @@ def _opportunity_meta(opportunity, public_site_url, site_identity):
         "title": seo.get("title") or f"{opportunity.title} | Women Shaping Futures Opportunities",
         "description": seo.get("description") or opportunity.short_description or opportunity.eligibility,
         "canonical": seo.get("canonical") or f"{public_site_url.rstrip('/')}/opportunities/{opportunity.slug}",
-        "robots": seo.get("robots") or "index, follow",
+        # A closed Opportunity stays reachable for the record but should not
+        # rank, unless an editor overrides seo.robots (same rule as Jobs).
+        "robots": seo.get("robots") or ("noindex, follow" if opportunity_state(opportunity) == "closed" else "index, follow"),
         "image_url": image_url,
         "image_alt": image_alt,
     }
@@ -1424,6 +1441,10 @@ def _build_job_json_ld(job, canonical_url, public_site_url, site_name):
     4 entity builders but unused here — a JobPosting's organization is
     always the job's own employer, never WSF itself.
     """
+    # A closed Job (deadline/expiry passed, or expired) must never be
+    # advertised as an open JobPosting: no structured data at all.
+    if not is_job_application_open(job):
+        return None
     data = {
         "@context": "https://schema.org",
         "@type": "JobPosting",
@@ -1432,10 +1453,13 @@ def _build_job_json_ld(job, canonical_url, public_site_url, site_name):
     }
     if job.published_date:
         data["datePosted"] = job.published_date.isoformat()
-    if job.deadline:
-        # Matches new Date(job.deadline).toISOString() for a date-only
-        # JS Date — midnight UTC on that calendar date.
-        data["validThrough"] = f"{job.deadline.isoformat()}T00:00:00Z"
+    close = job_close_date(job)
+    if close:
+        # The effective close date (deadline or expiry, whichever is
+        # first) as a plain ISO date: applications are open THROUGH that
+        # calendar day. No time of day is invented (the old midnight-UTC
+        # value told search engines the posting ended a day early).
+        data["validThrough"] = close.isoformat()
     if job.employment_type and job.employment_type in _JOB_EMPLOYMENT_TYPE_SCHEMA:
         data["employmentType"] = _JOB_EMPLOYMENT_TYPE_SCHEMA[job.employment_type]
 

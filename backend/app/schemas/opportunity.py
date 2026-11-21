@@ -314,6 +314,9 @@ class JobInputSchema(ma.Schema):
     def validate_dates(self, data, **kwargs):
         deadline = data.get("deadline")
         expiry_date = data.get("expiry_date")
+        published_date = data.get("published_date")
+        if published_date and deadline and published_date > deadline:
+            raise ValidationError("The posted date must be on or before the application deadline.", field_name="published_date")
         if deadline and expiry_date and deadline > expiry_date:
             raise ValidationError("Application deadline cannot be after the listing's expiry date.", field_name="deadline")
 
@@ -385,6 +388,8 @@ class OpportunityInputSchema(ma.Schema):
             raise ValidationError("Opening date must be before the application deadline.", field_name="opening_date")
         if deadline and expiry_date and deadline > expiry_date:
             raise ValidationError("Application deadline cannot be after the listing's expiry date.", field_name="deadline")
+        if opening_date and expiry_date and not deadline and opening_date > expiry_date:
+            raise ValidationError("Opening date must be before the listing's expiry date.", field_name="opening_date")
 
 
 class AgendaItemSchema(ma.Schema):

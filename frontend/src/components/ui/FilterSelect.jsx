@@ -5,16 +5,16 @@ function normalize(opt) {
   return typeof opt === 'string' ? { value: opt, label: opt } : opt
 }
 
-export default function FilterSelect({ label, value, onChange, options }) {
+export default function FilterSelect({ label, value, onChange, options, allLabel = 'All' }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
       {label}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-w-[10rem] border border-taupe-300 bg-white px-3 py-2 text-sm font-normal normal-case text-charcoal focus:border-burgundy-500 focus:outline-none"
+        className="rounded-control min-w-[10rem] border border-taupe-300 bg-white px-3 py-2 text-sm font-normal normal-case text-charcoal focus:border-burgundy-500 focus:outline-none"
       >
-        <option value="">All</option>
+        <option value="">{allLabel}</option>
         {options.map(normalize).map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}

@@ -111,7 +111,7 @@ def test_subscribe_creates_subscriber_with_consent_fields(client):
     assert resp.status_code == 201
     data = resp.get_json()["data"]
     assert data["email"] == "reader@example.com"
-    assert data["status"] == "active"
+    assert data["status"] == "subscribed"
     assert data["subscribedAt"]
     # Public response is a privacy-trimmed confirmation, not the full record.
     assert set(data.keys()) == {"email", "status", "subscribedAt"}
@@ -187,7 +187,7 @@ def test_explicit_resubscribe_reactivates_unsubscribed_address(client, app):
 
     resp = client.post("/api/v1/newsletter/subscribe", json={"email": "comeback@example.com"})
     assert resp.status_code == 201
-    assert resp.get_json()["data"]["status"] == "active"
+    assert resp.get_json()["data"]["status"] == "subscribed"
 
     from app.models.newsletter import NewsletterSubscriber
 

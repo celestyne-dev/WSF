@@ -859,7 +859,11 @@ def test_73_expired_status_not_discoverable_through_access_endpoint(client, app,
     job_id = _make_job(app, access_type="circle_only", status="expired")
     slug = _job_slug(app, job_id)
     resp = client.post(f"/api/v1/jobs/{slug}/access", headers=auth_headers(user_a_token))
-    assert resp.status_code == 404
+    # An expired Job keeps its public URL (shown as "Applications closed",
+    # listing_lifecycle) so access answers "closed", never the destination,
+    # even for an entitled Circle member.
+    assert resp.status_code == 409
+    assert "example.com/apply" not in resp.get_data(as_text=True)
 
 
 def test_74_archived_status_not_discoverable_through_access_endpoint(client, app, user_a_token):

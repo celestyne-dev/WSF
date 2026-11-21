@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Pencil, ExternalLink, Search } from 'lucide-react'
 import { fetchOpportunities } from '../../api/opportunities'
-import { formatDate } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
+import { longDate } from '../../utils/listingDates'
+import { EffectiveStateBadge, ListingStateFilters } from '../../components/cms/ListingStateFilters'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
@@ -27,7 +28,7 @@ const TYPES = [
 
 export default function AdminOpportunities() {
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('')
+  const [state, setState] = useState('')
   const [type, setType] = useState('')
   const [rows, setRows] = useState(undefined)
   const [error, setError] = useState(null)
@@ -35,13 +36,13 @@ export default function AdminOpportunities() {
   useEffect(() => {
     let active = true
     setError(null)
-    fetchOpportunities({ status, query, type, pageSize: 100 })
+    fetchOpportunities({ scope: 'studio', state: state || undefined, query, type, pageSize: 100 })
       .then((res) => active && setRows(res.items))
       .catch(() => active && setError('Something went wrong loading opportunities. Please try again.'))
     return () => {
       active = false
     }
-  }, [status, query, type])
+  }, [state, query, type])
 
   return (
     <div>
@@ -55,19 +56,19 @@ export default function AdminOpportunities() {
         }
       />
 
+      <div className="mb-3">
+        <ListingStateFilters
+          label="Opportunity state"
+          value={state}
+          onChange={setState}
+          options={[['draft', 'Draft'], ['upcoming', 'Upcoming'], ['open', 'Open'], ['closed', 'Closed'], ['archived', 'Archived']]}
+        />
+      </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 border border-taupe-300 bg-white px-3 py-2">
           <Search size={15} className="text-charcoal-600" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search opportunities…" className="w-56 text-sm focus:outline-none" />
         </div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="border border-taupe-300 bg-white px-3 py-2 text-sm">
-          <option value="">All statuses</option>
-          {['draft', 'published', 'closed', 'archived'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
         <select value={type} onChange={(e) => setType(e.target.value)} className="border border-taupe-300 bg-white px-3 py-2 text-sm">
           <option value="">All types</option>
           {TYPES.map((t) => (
@@ -90,8 +91,10 @@ export default function AdminOpportunities() {
                   <th className="px-4 py-3">Provider</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Geography</th>
-                  <th className="px-4 py-3">Deadline</th>
+                  <th className="px-4 py-3">Opens</th>
+                  <th className="px-4 py-3">Closes</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Effective state</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -108,9 +111,13 @@ export default function AdminOpportunities() {
                     <td className="px-4 py-3 text-charcoal-600">
                       {row.countriesEligibleNames?.length ? row.countriesEligibleNames.slice(0, 2).join(', ') + (row.countriesEligibleNames.length > 2 ? '…' : '') : '—'}
                     </td>
-                    <td className="px-4 py-3 text-charcoal-600">{row.deadline ? formatDate(row.deadline, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                    <td className="px-4 py-3 text-charcoal-600">{row.openingDate ? longDate(row.openingDate) : '—'}</td>
+                    <td className="px-4 py-3 text-charcoal-600">{row.closesOn ? longDate(row.closesOn) : <span title="No deadline or expiry: stays open until closed manually">No close date</span>}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={row.isClosed && row.status === 'published' ? 'closed' : row.status} />
+                      <StatusBadge status={row.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <EffectiveStateBadge state={row.effectiveState} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-3">

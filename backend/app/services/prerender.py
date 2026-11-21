@@ -592,8 +592,11 @@ def render_job_prerender(payload):
         ("Career level", _text(_humanize(payload.get("career_level")))),
         ("Industry", _text(payload.get("industry"))),
         ("Salary", _salary(payload) if payload.get("salary_visible") else ""),
-        ("Apply by", _date_html(payload.get("deadline"))),
+        ("Posted", _date_html(payload.get("published_date"))),
+        ("Applications closed" if payload.get("is_closed") else "Application deadline", _date_html(payload.get("closes_on"))),
     ]))
+    if payload.get("is_closed"):
+        header.append(_paragraph("Applications closed. This role is no longer accepting applications.", _PARAGRAPH_CLASS))
     body = [
         _paragraph(payload.get("short_description"), _PARAGRAPH_CLASS),
         render_content_blocks(payload.get("description") or []),
@@ -625,9 +628,12 @@ def render_opportunity_prerender(payload):
         ("Location", _text(payload.get("location"))),
         ("Career stage", _text(_humanize(payload.get("career_stage")))),
         ("Funding", funding),
-        ("Opens", _date_html(payload.get("opening_date"))),
-        ("Deadline", _date_html(payload.get("deadline"))),
+        ("Applications open", _date_html(payload.get("opening_date"))),
+        ("Applications closed" if payload.get("state") == "closed" else "Applications close", _date_html(payload.get("closes_on"))),
+        ("Status", _text({"open": "Open", "upcoming": "Opening soon", "closed": "Closed"}.get(payload.get("state"), ""))),
     ]))
+    if payload.get("state") == "closed":
+        header.append(_paragraph("Applications closed. This opportunity is no longer accepting applications.", _PARAGRAPH_CLASS))
     eligibility = _paragraph(payload.get("eligibility"), _PARAGRAPH_CLASS) + _paragraph(payload.get("eligibility_notes"), _PARAGRAPH_CLASS)
     body = [
         _paragraph(payload.get("short_description"), _PARAGRAPH_CLASS),

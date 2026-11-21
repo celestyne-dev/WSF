@@ -27,6 +27,7 @@ from app.schemas.newsletter import (
 from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.engagement_settings import NEWSLETTER_CONSENT_VERSION
 from app.services.newsletter import audience_query, count_audience, upsert_subscriber
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -129,9 +130,18 @@ class SubscribeResource(Resource):
             placement=data.get("placement"),
             acquisition=data.get("acquisition"),
             topic_slugs=data.get("topic_slugs"),
+            consent_version=NEWSLETTER_CONSENT_VERSION,
         )
         db.session.commit()
-        return success_response(confirmation_schema.dump(subscriber), status=201)
+        # One uniform acknowledgement for every outcome (new, already
+        # subscribed, re-subscribed, or a suppressed bounced/complained
+        # address that this signup deliberately does NOT reactivate), so the
+        # response never reveals whether or how an address is on the list.
+        return success_response(
+            {"email": data["email"].strip().lower(), "status": "subscribed",
+             "subscribedAt": datetime.now(timezone.utc).isoformat()},
+            status=201,
+        )
 
 
 class UnsubscribeResource(Resource):

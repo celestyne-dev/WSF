@@ -486,6 +486,19 @@ idempotency guarantees — safe to run on a schedule, safe to re-run, never
 double-publishes). This task does not add Celery/Redis or any other
 scheduler — it only documents invoking the existing command.
 
+The same command also closes listings whose dates have passed: published/
+scheduled Jobs past their deadline or expiry become `expired`, published
+Opportunities past theirs become `closed` (idempotent, never deletes or
+archives; listings without dates are untouched). The public site already
+hides them by date, so this only keeps Studio accurate; no extra timer is
+needed. `flask --app run:app expire-closed-listings` runs just that step.
+
+Read-only checks, safe on production at any time:
+`flask --app run:app legal-pages-audit` (legal Pages and the browser
+technologies in use; advisory) and
+`flask --app run:app learning-lifetime-preflight` (/lifetime slug and
+Lifetime plan; exits 1 on a slug conflict).
+
 **Cron** (simplest option):
 
 ```cron

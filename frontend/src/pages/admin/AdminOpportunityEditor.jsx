@@ -377,6 +377,12 @@ export default function AdminOpportunityEditor() {
                   </option>
                 ))}
               </select>
+              {form.type === 'Internship' && (
+                <p className="mt-1.5 text-xs text-charcoal-600">
+                  Use an Opportunity for an internship programme or call for applications. An internship that is an actual
+                  employment placement with an employer usually belongs in Jobs.
+                </p>
+              )}
             </Field>
           </Section>
 
@@ -530,6 +536,12 @@ export default function AdminOpportunityEditor() {
               <input type="date" value={form.expiryDate} onChange={(e) => updateField('expiryDate', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm" />
             </Field>
             {openingAfterDeadline && <p className="text-xs text-rose-600">Opening date must be before the deadline.</p>}
+            {!form.deadline && !form.expiryDate && (
+              <div className="mt-3 flex gap-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                <AlertTriangle size={16} className="shrink-0" />
+                <span>No closing date is set. This opportunity will remain active until manually closed.</span>
+              </div>
+            )}
             {deadlineAfterExpiry && <p className="text-xs text-rose-600">Deadline can't be after the expiry date.</p>}
 
             {hasNoProvider && (

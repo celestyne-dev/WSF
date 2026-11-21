@@ -36,6 +36,7 @@ from app.services.community_accounts import (
 )
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
+from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
 from app.services.newsletter import upsert_subscriber
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
@@ -126,6 +127,7 @@ def _subscribe_to_newsletter(member, data):
         country_code=member.country_code,
         placement="community-join",
         acquisition=data.get("acquisition"),
+        consent_version=NEWSLETTER_CHECKBOX_CONSENT_VERSION,
     )
     db.session.commit()
 

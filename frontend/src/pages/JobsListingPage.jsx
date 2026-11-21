@@ -5,15 +5,17 @@ import useSeo from '../hooks/useSeo'
 import useBreadcrumbStructuredData from '../hooks/useBreadcrumbStructuredData'
 import PageHeader from '../components/ui/PageHeader'
 import FilterSelect from '../components/ui/FilterSelect'
+import ListingFilters from '../components/ui/ListingFilters'
+import ListingNewsletterCta from '../components/newsletter/ListingNewsletterCta'
 import JobCard from '../components/cards/JobCard'
 import EmptyState from '../components/ui/EmptyState'
 import PageLoader from '../components/ui/PageLoader'
 
 const PAGE_SIZE = 10
 const CANONICAL = 'https://womenshapingfutures.org/jobs'
-const CLOSING_OPTIONS = [
-  { value: '7', label: 'Within 7 days' },
-  { value: '30', label: 'Within 30 days' },
+const SORT_OPTIONS = [
+  { value: 'closing', label: 'Closing soonest' },
+  { value: 'salary', label: 'Highest public salary' },
 ]
 
 export default function JobsListingPage() {
@@ -27,7 +29,8 @@ export default function JobsListingPage() {
   const [employmentType, setEmploymentType] = useState('')
   const [company, setCompany] = useState('')
   const [salaryMin, setSalaryMin] = useState('')
-  const [closingWithinDays, setClosingWithinDays] = useState('')
+  const [closingSoon, setClosingSoon] = useState(false)
+  const [sort, setSort] = useState('')
   const [page, setPage] = useState(1)
 
   const [featuredJobs, setFeaturedJobs] = useState(null)
@@ -51,7 +54,7 @@ export default function JobsListingPage() {
     fetchJobsFilterOptions()
       .then((data) => active && setOptions(data))
       .catch(() => {})
-    fetchJobs({ featured: true, pageSize: 3 })
+    fetchJobs({ scope: 'public', featured: true, pageSize: 3 })
       .then((res) => active && setFeaturedJobs(res.items))
       .catch(() => active && setFeaturedJobs([]))
     return () => {
@@ -61,7 +64,7 @@ export default function JobsListingPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [query, country, region, city, industry, workMode, careerLevel, employmentType, company, salaryMin, closingWithinDays])
+  }, [query, country, region, city, industry, workMode, careerLevel, employmentType, company, salaryMin, closingSoon, sort])
 
   useEffect(() => {
     let active = true
@@ -77,7 +80,10 @@ export default function JobsListingPage() {
       employmentType,
       organization: company,
       salaryMin,
-      closingWithinDays,
+      // Server-side: only live jobs (listing_lifecycle), closing within 7 days.
+      closingSoon: closingSoon ? 'true' : undefined,
+      sort: sort || undefined,
+      scope: 'public',
       page,
       pageSize: PAGE_SIZE,
     })
@@ -90,39 +96,44 @@ export default function JobsListingPage() {
     return () => {
       active = false
     }
-  }, [query, country, region, city, industry, workMode, careerLevel, employmentType, company, salaryMin, closingWithinDays, page])
+  }, [query, country, region, city, industry, workMode, careerLevel, employmentType, company, salaryMin, closingSoon, sort, page])
 
-  const hasFilters = query || country || region || city || industry || workMode || careerLevel || employmentType || company || salaryMin || closingWithinDays
+  const hasFilters = query || country || region || city || industry || workMode || careerLevel || employmentType || company || salaryMin || closingSoon
+  const activeCount = [country, region, city, industry, workMode, careerLevel, employmentType, company, salaryMin, closingSoon].filter(Boolean).length
 
   return (
     <div>
-      <PageHeader eyebrow="Opportunity" title="Jobs" description="Roles from employers we've vetted for pay transparency and growth potential — worldwide, remote, and hybrid. New listings added weekly." />
+      <PageHeader eyebrow="Opportunity" title="Jobs" description="Roles from employers we've vetted for pay transparency and growth potential, worldwide, remote and hybrid. Only roles still open for applications are listed." />
       <div className="container-editorial py-10">
-        <div className="flex flex-wrap items-end gap-4 border-b border-taupe-200 pb-8">
-          <div className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-            Search
-            <div className="flex min-w-[14rem] items-center gap-2 border border-taupe-300 bg-white px-3 py-2">
-              <Search size={15} className="text-charcoal-600" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Job title or company…" className="w-full text-sm font-normal normal-case text-charcoal focus:outline-none" />
+        <ListingFilters
+          activeCount={activeCount}
+          search={
+            <div className="rounded-control flex min-w-[14rem] items-center gap-2 border border-taupe-300 bg-white px-3 py-2">
+              <Search size={15} className="text-charcoal-600" aria-hidden="true" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Job title or company…" aria-label="Search jobs" className="w-full text-sm text-charcoal focus:outline-none" />
             </div>
-          </div>
+          }
+        >
           <FilterSelect label="Region" value={region} onChange={setRegion} options={options.regions} />
           <FilterSelect label="Country" value={country} onChange={setCountry} options={options.countries} />
           <div className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-            City
-            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Any city" className="min-w-[9rem] border border-taupe-300 bg-white px-3 py-2 text-sm font-normal normal-case text-charcoal focus:border-burgundy-500 focus:outline-none" />
+            <label htmlFor="jobs-city">City</label>
+            <input id="jobs-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Any city" className="rounded-control min-w-[9rem] border border-taupe-300 bg-white px-3 py-2 text-sm font-normal normal-case text-charcoal focus:border-burgundy-500 focus:outline-none" />
           </div>
-          <FilterSelect label="Work Mode" value={workMode} onChange={setWorkMode} options={options.workModes} />
+          <FilterSelect label="Work mode" value={workMode} onChange={setWorkMode} options={options.workModes} />
           <FilterSelect label="Industry" value={industry} onChange={setIndustry} options={options.industries} />
-          <FilterSelect label="Employment Type" value={employmentType} onChange={setEmploymentType} options={options.employmentTypes} />
-          <FilterSelect label="Career Level" value={careerLevel} onChange={setCareerLevel} options={options.careerLevels} />
+          <FilterSelect label="Employment type" value={employmentType} onChange={setEmploymentType} options={options.employmentTypes} />
+          <FilterSelect label="Career level" value={careerLevel} onChange={setCareerLevel} options={options.careerLevels} />
           {options.companies?.length > 0 && <FilterSelect label="Company" value={company} onChange={setCompany} options={options.companies} />}
           <div className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-charcoal-600">
-            Min. salary
-            <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder="Any" className="min-w-[7rem] border border-taupe-300 bg-white px-3 py-2 text-sm font-normal normal-case text-charcoal focus:border-burgundy-500 focus:outline-none" />
+            <label htmlFor="jobs-salary">Min. salary</label>
+            <input id="jobs-salary" type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder="Any" className="rounded-control min-w-[7rem] border border-taupe-300 bg-white px-3 py-2 text-sm font-normal normal-case text-charcoal focus:border-burgundy-500 focus:outline-none" />
           </div>
-          <FilterSelect label="Closing" value={closingWithinDays} onChange={setClosingWithinDays} options={CLOSING_OPTIONS} />
-        </div>
+          <FilterSelect label="Sort" value={sort} onChange={setSort} options={SORT_OPTIONS} allLabel="Newest" />
+          <label className="flex items-center gap-2 pb-2 text-sm text-charcoal-700">
+            <input type="checkbox" checked={closingSoon} onChange={(e) => setClosingSoon(e.target.checked)} /> Closing within 7 days
+          </label>
+        </ListingFilters>
 
         {featuredJobs?.length > 0 && !hasFilters && (
           <div className="mt-8">
@@ -180,6 +191,7 @@ export default function JobsListingPage() {
             </div>
           )
         )}
+        <ListingNewsletterCta placement="jobs-listing" />
       </div>
     </div>
   )

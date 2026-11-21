@@ -223,6 +223,7 @@ export default function AdminJobEditor() {
   const hasNoApplicationDestination = form && !form.applicationUrl && !form.applicationEmail
   const salaryRangeInvalid = form && form.salaryMin !== '' && form.salaryMax !== '' && Number(form.salaryMin) > Number(form.salaryMax)
   const dateOrderInvalid = form && form.deadline && form.expiryDate && form.deadline > form.expiryDate
+  const postedAfterDeadline = form && form.publishedDate && form.deadline && form.publishedDate > form.deadline
   const publishesLive = form && (form.status === 'published' || form.status === 'scheduled')
   const canonicalPreview = `womenshapingfutures.org/jobs/${form?.slug || 'your-slug'}`
 
@@ -243,6 +244,10 @@ export default function AdminJobEditor() {
     }
     if (dateOrderInvalid) {
       toast.error("Application deadline cannot be after the listing's expiry date.")
+      return
+    }
+    if (postedAfterDeadline) {
+      toast.error('The posted date must be on or before the application deadline.')
       return
     }
     if (nextStatus === 'published' || nextStatus === 'scheduled') {
@@ -446,6 +451,12 @@ export default function AdminJobEditor() {
                     </option>
                   ))}
                 </select>
+                {form.employmentType === 'Internship' && (
+                  <p className="mt-1.5 text-xs text-charcoal-600">
+                    Jobs are for internships that are a real employment placement. A programme or call for applications
+                    usually belongs in Opportunities.
+                  </p>
+                )}
               </Field>
               <Field label="Career level">
                 <select value={form.careerLevel} onChange={(e) => updateField('careerLevel', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm">
@@ -604,6 +615,13 @@ export default function AdminJobEditor() {
               <input type="date" value={form.expiryDate} onChange={(e) => updateField('expiryDate', e.target.value)} className="w-full border border-taupe-300 px-3 py-2 text-sm" />
             </Field>
             {dateOrderInvalid && <p className="text-xs text-rose-600">Deadline can't be after the expiry date.</p>}
+            {postedAfterDeadline && <p className="text-xs text-rose-600">The posted date must be on or before the deadline.</p>}
+            {!form.deadline && !form.expiryDate && (
+              <div className="mt-3 flex gap-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                <AlertTriangle size={16} className="shrink-0" />
+                <span>No closing date is set. This job will stay listed until it is closed manually.</span>
+              </div>
+            )}
 
             {hasNoEmployer && (
               <div className="mt-3 flex gap-2 border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">

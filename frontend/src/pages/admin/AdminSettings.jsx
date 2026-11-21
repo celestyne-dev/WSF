@@ -5,12 +5,13 @@ import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import MediaPicker from '../../components/cms/MediaPicker'
 import AppearanceSettingsPanel from '../../components/cms/AppearanceSettingsPanel'
+import { CookieConsentSettingsPanel, NewsletterPopupSettingsPanel } from '../../components/cms/EngagementSettingsPanels'
 import PaymentSettingsPanel from '../../components/cms/PaymentSettingsPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { mapMediaRef } from '../../utils/media'
 
-const TABS = ['Site Identity', 'Appearance', 'Navigation', 'Footer', 'Newsletter', 'Media Kit', 'Payments', 'Integrations']
+const TABS = ['Site Identity', 'Appearance', 'Navigation', 'Footer', 'Newsletter', 'Newsletter popup', 'Cookie consent', 'Media Kit', 'Payments', 'Integrations']
 
 const DEFAULT_IDENTITY = {
   siteName: 'Women Shaping Futures',
@@ -284,7 +285,17 @@ export default function AdminSettings() {
           </p>
         )}
 
-        {tab === 'Newsletter' && <p className="text-sm text-charcoal-600">Default sender name, reply-to address, and double opt-in settings for WSF Weekly.</p>}
+        {tab === 'Newsletter' && (
+          <p className="max-w-2xl text-sm text-charcoal-600">
+            Signups are single opt-in: a subscriber is active as soon as they submit a signup form (the time and the consent wording
+            version are recorded). Double opt-in (a confirmation email before activation) is not implemented. Sender name and
+            reply-to are not configurable here yet.
+          </p>
+        )}
+
+        {tab === 'Newsletter popup' && <NewsletterPopupSettingsPanel />}
+
+        {tab === 'Cookie consent' && <CookieConsentSettingsPanel />}
 
         {tab === 'Media Kit' && (
           <div className="space-y-4">
@@ -354,11 +365,14 @@ export default function AdminSettings() {
 
         {tab === 'Integrations' && (
           <div className="space-y-4">
-            <p className="text-sm text-charcoal-600">Analytics and tracking IDs are configurable here — never hard-coded in the frontend.</p>
+            <p className="text-sm text-charcoal-600">
+              None of these integrations is active: no Google, Meta or LinkedIn script loads on the site, and these fields are not
+              saved. Connecting one later must go through the cookie-consent gate (Analytics or Marketing) before it can run.
+            </p>
             {['Google Analytics ID', 'Google Search Console', 'Meta Pixel ID', 'LinkedIn Insight Tag'].map((label) => (
               <div key={label}>
                 <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">{label}</label>
-                <input placeholder="Not connected" className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm text-charcoal-600/50 focus:border-burgundy-500 focus:outline-none" />
+                <input disabled placeholder="Not connected" className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm text-charcoal-600/50 focus:border-burgundy-500 focus:outline-none" />
               </div>
             ))}
           </div>

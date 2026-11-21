@@ -34,7 +34,6 @@ homepage yet).
 from datetime import date
 
 from marshmallow import ValidationError
-from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 
 from app.extensions import db
@@ -476,14 +475,15 @@ def _query_collection(entity, config, manual_slugs, limit):
     elif entity in ("opportunities", "jobs"):
         model = Opportunity if entity == "opportunities" else Job
         query = model.query.options(selectinload(model.organization))
+        from app.services.listing_lifecycle import live_jobs_clause, open_opportunities_clause
+
+        # Closed (and not-yet-open) listings never show, in either mode:
+        # the one lifecycle rule (app/services/listing_lifecycle.py).
         if entity == "opportunities":
             query = query.options(selectinload(Opportunity.countries_eligible), selectinload(Opportunity.topics))
-            query = query.filter(Opportunity.status == "published")
+            query = query.filter(open_opportunities_clause(Opportunity, today))
         else:
-            query = query.filter(Job.status.in_(["published", "scheduled"]))
-        # Expired records never show, in either mode.
-        query = query.filter(or_(model.expiry_date.is_(None), model.expiry_date >= today))
-        query = query.filter(or_(model.deadline.is_(None), model.deadline >= today))
+            query = query.filter(live_jobs_clause(Job, today))
         if not manual_slugs:
             if sort == "closing_soon":
                 query = query.filter(model.deadline.isnot(None)).order_by(model.deadline.asc(), model.id.asc())
@@ -561,9 +561,8 @@ def _build_collection_items(entity, rows, limit):
         return [build_public_opportunity_payload(o, None, detail=False) for o in rows[:limit]]
     if entity == "jobs":
         from app.api.v1.jobs import build_public_job_payload
-        from app.services.job_access import is_job_application_open
 
-        return [build_public_job_payload(j, None, detail=False) for j in [j for j in rows if is_job_application_open(j)][:limit]]
+        return [build_public_job_payload(j, None, detail=False) for j in rows[:limit]]
     if entity == "events":
         from app.schemas.opportunity import EventSchema
         from app.services.event_registrations import is_event_publicly_visible

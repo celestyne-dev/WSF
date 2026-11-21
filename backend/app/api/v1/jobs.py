@@ -3,7 +3,7 @@ from datetime import date
 from flask import Blueprint, request
 from flask_jwt_extended import current_user, verify_jwt_in_request
 from flask_restful import Api, Resource
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from app.extensions import db
 from app.models.commerce import Sponsor
@@ -17,6 +17,7 @@ from app.services.content_blocks import sanitize_content_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.public_visibility import public_organization_preview
+from app.services.listing_lifecycle import closing_info, closing_soon_clause, job_close_date, job_effective_state, live_jobs_clause
 from app.services.job_access import (
     check_job_application_access,
     has_valid_application_channel,
@@ -120,6 +121,8 @@ def _dump_job_for_editor(job):
     app/api/v1/opportunities.py's _dump_opportunity_for_staff().
     """
     data = job_schema.dump(job)
+    data["effective_state"] = job_effective_state(job)
+    data["closes_on"] = job_close_date(job).isoformat() if job_close_date(job) else None
     data["application_url"] = job.application_url
     data["application_email"] = job.application_email
     data["application_instructions"] = job.application_instructions
@@ -189,6 +192,11 @@ def build_public_job_payload(job, viewer, *, detail=False):
         # `sponsored` + the company name. Staff dumps keep sponsor_id/sponsor.
         "status": job.status,
         "is_closed": not is_job_application_open(job),
+        # One lifecycle authority (app/services/listing_lifecycle.py): the
+        # effective close date (deadline or expiry, whichever is first) and,
+        # while live, days left / closing soon.
+        "closes_on": job_close_date(job).isoformat() if job_close_date(job) else None,
+        "closing": closing_info(job_close_date(job)) if is_job_application_open(job) else None,
         "is_scheduled": job.status == "scheduled" and bool(job.published_date) and job.published_date > date.today(),
         "seo": job.seo or {},
         "access_type": job.access_type,
@@ -203,6 +211,21 @@ def build_public_job_payload(job, viewer, *, detail=False):
                 payload["application_email"] = channel["email"]
                 payload["application_instructions"] = job.application_instructions
     return payload
+
+
+def _studio_state_clause(state):
+    """Studio quick filters derived from status + dates (no extra stored
+    statuses): open (live), expired (stored expired, or published past its
+    close date and not yet swept), plus plain statuses."""
+    from sqlalchemy import and_
+
+    if state == "open":
+        return live_jobs_clause(Job)
+    if state == "expired":
+        today = date.today()
+        past = or_(Job.deadline < today, Job.expiry_date < today)
+        return or_(Job.status == "expired", and_(Job.status.in_(["published", "scheduled"]), past))
+    return Job.status == state
 
 
 def _apply_fields(job, data, organization, sponsor):
@@ -277,27 +300,39 @@ class JobListResource(Resource):
         can_own = bool(user and user.has_permission("jobs.create_own"))
 
         query = Job.query
-        if request.args.get("sort") == "deadline":
+        if request.args.get("sort") in ("deadline", "closing"):
             query = query.order_by(Job.featured.desc(), Job.deadline.is_(None), Job.deadline.asc())
+        elif request.args.get("sort") == "salary":
+            from sqlalchemy import case
+
+            # Only a PUBLIC salary affects order: a hidden salary must not be
+            # inferable from where its Job sorts.
+            visible_salary = case((Job.salary_visible.is_(True), func.coalesce(Job.salary_max, Job.salary_min)), else_=None)
+            query = query.order_by(visible_salary.desc().nullslast(), Job.published_date.desc())
         else:
             query = query.order_by(Job.featured.desc(), Job.published_date.desc())
 
+        # The public site always asks for scope=public, so a signed-in
+        # editor browsing /jobs sees exactly what visitors see; Studio omits
+        # it and gets the editor view.
+        public_scope = request.args.get("scope") == "public" or not (can_manage or can_own)
+        if public_scope:
+            can_manage = can_own = False
         if can_manage:
             if request.args.get("status"):
                 query = query.filter(Job.status == request.args["status"])
+            state = request.args.get("state")
+            if state:
+                query = query.filter(_studio_state_clause(state))
         elif can_own:
             query = query.filter(Job.posted_by_id == user.id)
             if request.args.get("status"):
                 query = query.filter(Job.status == request.args["status"])
-        else:
-            today = date.today()
-            query = query.filter(
-                or_(
-                    Job.status == "published",
-                    (Job.status == "scheduled") & (Job.published_date <= today),
-                )
-            )
-            query = query.filter(or_(Job.expiry_date.is_(None), Job.expiry_date >= today))
+        if public_scope:
+            # Live Jobs only, decided in SQL by the one lifecycle rule: a Job
+            # past its deadline/expiry leaves the listing the day after, with
+            # or without the maintenance command having run.
+            query = query.filter(live_jobs_clause(Job))
 
         query = apply_country_or_region_filter(query, Job, request.args)
         query = apply_equality_filters(
@@ -311,18 +346,19 @@ class JobListResource(Resource):
             query = query.filter(Job.organization.has(slug=request.args["organization"]))
         if request.args.get("featured") == "true":
             query = query.filter(Job.featured.is_(True))
-        salary_min_param = request.args.get("salaryMin")
+        salary_min_param = request.args.get("salaryMin") or request.args.get("salary_min")
         if salary_min_param:
             query = query.filter(or_(Job.salary_max.is_(None), Job.salary_max >= int(salary_min_param)))
-        salary_max_param = request.args.get("salaryMax")
+        salary_max_param = request.args.get("salaryMax") or request.args.get("salary_max")
         if salary_max_param:
             query = query.filter(or_(Job.salary_min.is_(None), Job.salary_min <= int(salary_max_param)))
-        closing_within_days = request.args.get("closingWithinDays")
+        # The frontend API client sends snake_case query params
+        # (closing_soon); camelCase is accepted too.
+        closing_within_days = request.args.get("closingWithinDays") or request.args.get("closing_within_days")
         if closing_within_days:
-            from datetime import timedelta
-
-            cutoff = date.today() + timedelta(days=int(closing_within_days))
-            query = query.filter(Job.deadline.isnot(None), Job.deadline <= cutoff)
+            query = query.filter(closing_soon_clause(Job, days=int(closing_within_days)))
+        if (request.args.get("closingSoon") or request.args.get("closing_soon")) == "true":
+            query = query.filter(closing_soon_clause(Job))
 
         result = paginate(query, schema=None)
         if can_manage or can_own:

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Save, Eye, ShieldCheck, History, CheckCircle2 } from 'lucide-react'
+import PolicyReviewPanel from '../../components/cms/PolicyReviewPanel'
 import { fetchPageAdmin, createPage, updatePage, setPageStatus, markPageReviewed, deletePage, fetchPageRevisions } from '../../api/pages'
 import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
@@ -292,7 +293,11 @@ export default function AdminPageEditor() {
             <MediaPicker label="Social / OG image" aspect={1.91 / 1} value={form.seoOgMedia} onChange={(media) => updateField('seoOgMedia', media)} />
           </Section>
 
-          <Section title="Legal / effective date" description="Shown publicly as “Last updated” on legal pages. Never auto-derived — set it only when the substance of this page actually changes.">
+          <Section
+            title="Policy dates & review"
+            description="Effective date: shown publicly as “Last updated”. Change it yourself when the substance changes; it never moves on its own. Mark reviewed: records that someone checked the page, without changing the public date."
+          >
+            {page?.key && <PolicyReviewPanel pageKey={page.key} />}
             <Field label="Effective / last updated date" hint="optional">
               <input type="date" value={form.effectiveDate} onChange={(e) => updateField('effectiveDate', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none sm:w-64" />
             </Field>

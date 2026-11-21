@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react'
 import { subscribe, resetNewsletterStatus } from '../../features/newsletter/newsletterSlice'
 import { withAcquisitionMetadata } from '../../utils/analytics'
 
-export default function NewsletterForm({ variant = 'light', source = 'inline' }) {
+export default function NewsletterForm({ variant = 'light', source = 'inline', buttonLabel = 'Subscribe' }) {
   const [email, setEmail] = useState('')
   const dispatch = useDispatch()
   const status = useSelector((s) => s.newsletter.status)
@@ -19,7 +19,7 @@ export default function NewsletterForm({ variant = 'light', source = 'inline' })
       return
     }
     const result = await dispatch(
-      subscribe(withAcquisitionMetadata({ email, placement: source, consentTimestamp: new Date().toISOString() })),
+      subscribe(withAcquisitionMetadata({ email, placement: source })),
     )
     if (result.meta.requestStatus === 'fulfilled') {
       toast.success(result.payload.message)
@@ -42,7 +42,7 @@ export default function NewsletterForm({ variant = 'light', source = 'inline' })
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="Your email address"
-        className={`w-full flex-1 border px-4 py-3 text-sm focus:outline-none ${
+        className={`rounded-control w-full flex-1 border px-4 py-3 text-sm focus:outline-none ${
           isDark
             ? 'border-ivory/30 bg-transparent text-ivory placeholder:text-ivory/60 focus:border-ivory'
             : 'border-taupe-300 bg-white text-charcoal placeholder:text-charcoal-600/60 focus:border-burgundy-500'
@@ -51,11 +51,11 @@ export default function NewsletterForm({ variant = 'light', source = 'inline' })
       <button
         type="submit"
         disabled={status === 'loading'}
-        className={`inline-flex shrink-0 items-center justify-center gap-2 px-6 py-3 text-sm font-semibold transition-colors disabled:opacity-60 ${
+        className={`rounded-control inline-flex shrink-0 items-center justify-center gap-2 px-6 py-3 text-sm font-semibold transition-colors disabled:opacity-60 ${
           isDark ? 'bg-ivory text-charcoal hover:bg-blush-100' : 'bg-plum-600 text-ivory hover:bg-plum-700'
         }`}
       >
-        {status === 'loading' ? 'Subscribing…' : 'Subscribe'}
+        {status === 'loading' ? 'Subscribing…' : buttonLabel}
         <ArrowRight size={16} />
       </button>
     </form>

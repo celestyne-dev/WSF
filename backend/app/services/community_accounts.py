@@ -18,6 +18,7 @@ from app.models.community import Member
 from app.models.geography import Country
 from app.models.taxonomy import Topic
 from app.models.user import User
+from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
 from app.services.newsletter import upsert_subscriber
 from app.utils.responses import ApiError
 
@@ -141,6 +142,7 @@ def join_as_account(user, data):
             last_name=member.last_name,
             country_code=member.country_code,
             placement="community-join",
+            consent_version=NEWSLETTER_CHECKBOX_CONSENT_VERSION,
         )
         db.session.commit()
 

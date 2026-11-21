@@ -345,9 +345,9 @@ def _search_jobs(term, filters):
     # Mirrors api/v1/jobs.py:JobListResource's public-visibility filter
     # exactly (published, or scheduled once its publish date has arrived;
     # never past its own expiry).
-    query = Job.query.filter(
-        or_(Job.status == "published", (Job.status == "scheduled") & (Job.published_date <= today))
-    ).filter(or_(Job.expiry_date.is_(None), Job.expiry_date >= today))
+    from app.services.listing_lifecycle import live_jobs_clause
+
+    query = Job.query.filter(live_jobs_clause(Job, today))
     query = apply_country_or_region_filter(query, Job, filters)
     if filters.get("remote") is True:
         query = query.filter(Job.work_mode == "Remote")
@@ -389,9 +389,9 @@ def _search_opportunities(term, filters):
     like = f"%{term}%"
     today = date.today()
     # Mirrors api/v1/opportunities.py:OpportunityListResource's public filter.
-    query = Opportunity.query.filter(Opportunity.status == "published").filter(
-        or_(Opportunity.expiry_date.is_(None), Opportunity.expiry_date >= today)
-    )
+    from app.services.listing_lifecycle import open_opportunities_clause
+
+    query = Opportunity.query.filter(open_opportunities_clause(Opportunity, today))
     if filters.get("country"):
         query = query.filter(Opportunity.countries_eligible.any(code=filters["country"].upper()))
     if filters.get("topic"):

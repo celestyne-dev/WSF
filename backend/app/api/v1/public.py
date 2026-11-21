@@ -9,6 +9,7 @@ from app.services.footer import build_public_footer
 from app.services.homepage import get_enabled_homepage_modules, public_homepage_modules_payload
 from app.services.navigation import serialize_public_menu
 from app.services.appearance import public_appearance_payload
+from app.services.engagement_settings import get_cookie_consent, get_newsletter_popup
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 from app.utils.responses import success_response
 
@@ -110,6 +111,10 @@ class SiteSettingsResource(Resource):
                 "social": social_link_schema.dump(social_links, many=True),
                 # Controlled design presets only (app/services/appearance.py).
                 "appearance": public_appearance_payload(),
+                # Plain-text, validated engagement settings
+                # (app/services/engagement_settings.py). No scripts or IDs.
+                "newsletterPopup": get_newsletter_popup(),
+                "cookieConsent": get_cookie_consent(),
                 "seo": {
                     "defaultTitle": identity["seo_default_title"],
                     "defaultDescription": identity["seo_default_description"],

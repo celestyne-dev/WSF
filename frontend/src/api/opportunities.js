@@ -73,6 +73,11 @@ export function mapOpportunity(o) {
     sponsored: o.sponsored,
     status: o.status,
     isClosed: o.is_closed ?? false,
+    // open | upcoming | closed (backend listing_lifecycle.py).
+    state: o.state || (o.is_closed ? 'closed' : 'open'),
+    closesOn: o.closes_on || null,
+    closing: o.closing || null,
+    effectiveState: o.effective_state || null,
     seo: o.seo || null,
     topicSlugs: (o.topics || []).map((t) => t.slug),
     accessType: o.access_type || 'public',
@@ -81,9 +86,12 @@ export function mapOpportunity(o) {
   }
 }
 
+// Public pages get the visitor view (scope=public: live listings only,
+// decided server-side) even when an editor is signed in. Studio passes
+// scope: 'studio' for the editor view.
 export async function fetchOpportunities(params = {}) {
   if (!USE_MOCK) {
-    const { data } = await apiClient.get('/opportunities', { params })
+    const { data } = await apiClient.get('/opportunities', { params: { scope: 'public', ...params } })
     return { ...data, items: data.items.map(mapOpportunity) }
   }
   const { opportunities } = await loadMockOpportunities()
@@ -119,10 +127,18 @@ export async function fetchOpportunityBySlug(slug) {
 
 export async function fetchOpportunityFilterOptions() {
   if (!USE_MOCK) {
-    const { data } = await apiClient.get('/opportunities', { params: { pageSize: 100 } })
-    const all = data.items.map(mapOpportunity)
+    // Options come from what is actually listed (open + upcoming), so a
+    // filter never offers a value with no results.
+    const [open, upcoming] = await Promise.all([
+      apiClient.get('/opportunities', { params: { scope: 'public', pageSize: 100 } }),
+      apiClient.get('/opportunities', { params: { scope: 'public', state: 'upcoming', pageSize: 100 } }),
+    ])
+    const all = [...open.data.items, ...upcoming.data.items].map(mapOpportunity)
+    const present = (key) => [...new Set(all.map((o) => o[key]))].filter(Boolean).sort()
     return {
-      types: [...new Set(all.map((o) => o.type))].filter(Boolean),
+      types: present('type'),
+      careerStages: present('careerStage'),
+      fundingTypes: present('fundingType'),
       countries: dedupeCountryOptions(
         all.flatMap((o) => o.countriesEligible.map((code, i) => ({ code, name: o.countriesEligibleNames[i] }))),
       ),
