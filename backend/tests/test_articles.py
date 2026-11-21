@@ -153,6 +153,38 @@ def test_article_listing_filters_by_topic(client, editor_token, author_slug):
     assert listed.get_json()["data"][0]["slug"] != "" and empty.get_json()["data"] == []
 
 
+def test_article_listing_filters_by_series(client, app, editor_token, author_slug):
+    """series.featured_article_id is a second FK between the two tables, so
+    the series filter needs an explicit join condition (it used to 500)."""
+    from app.extensions import db
+    from app.models import Article, Series
+
+    create = client.post(
+        "/api/v1/articles",
+        json={
+            "title": "Series Story",
+            "authorSlug": author_slug,
+            "status": "published",
+            "content": [{"type": "paragraph", "text": "Body text."}],
+        },
+        headers=auth_headers(editor_token),
+    )
+    assert create.status_code == 201
+    with app.app_context():
+        article = Article.query.filter_by(title="Series Story").one()
+        series = Series(slug="women-doing-incredible-things", name="Women Doing Incredible Things")
+        db.session.add(series)
+        db.session.flush()
+        article.series_id = series.id
+        series.featured_article_id = article.id
+        db.session.commit()
+
+    listed = client.get("/api/v1/articles?series=women-doing-incredible-things&per_page=3")
+    assert listed.status_code == 200
+    assert [a["title"] for a in listed.get_json()["data"]] == ["Series Story"]
+    assert client.get("/api/v1/articles?series=missing").get_json()["data"] == []
+
+
 def test_article_listing_filters_by_person_and_organization(client, editor_token, author_slug):
     person = client.post(
         "/api/v1/people", json={"name": "Naliaka Wafula"}, headers=auth_headers(editor_token)

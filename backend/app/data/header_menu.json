@@ -1,0 +1,18 @@
+{
+ "_comment": "Mirror of frontend/src/constants/megaMenu.js (MENU_PRESENTATION keys/absorbs, SECONDARY_PLACEMENT, SECONDARY_FALLBACK_MENU, MIN_TOP_LEVEL). Used by the server first-paint header (app/services/first_paint.py); frontend/src/utils/firstPaintContract.test.js fails if the two drift.",
+ "minTopLevel": 5,
+ "secondaryFallbackMenu": "community",
+ "hosts": {
+  "/topics": {"key": "stories", "absorbs": []},
+  "/people": {"key": "people", "absorbs": []},
+  "/opportunities": {"key": "opportunities", "absorbs": ["/events", "/jobs", "/mentorship", "/directory"]},
+  "/resources": {"key": "resources", "absorbs": ["/shop", "/learning", "/career-hub"]},
+  "/community": {"key": "community", "absorbs": []}
+ },
+ "secondaryPlacement": {
+  "/newsletter": "stories", "/partnerships": "community", "/advertise": "community", "/about": "community",
+  "/contact": "community", "/submit": "community", "/nominate": "community", "/learning": "resources",
+  "/career-hub": "resources", "/shop": "resources", "/organizations": "people", "/mentorship": "opportunities",
+  "/directory": "opportunities", "/events": "opportunities", "/jobs": "opportunities"
+ }
+}

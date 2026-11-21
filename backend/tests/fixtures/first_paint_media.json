@@ -1,0 +1,158 @@
+{
+ "_comment": "Generated from frontend/src/utils/media.js. Checked by frontend/src/utils/firstPaintContract.test.js and backend/tests/test_first_paint.py.",
+ "placeholders": [
+  {
+   "width": 1400,
+   "height": 933,
+   "tone": null,
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221400%22%20height%3D%22933%22%20viewBox%3D%220%200%20100%2066.64285714285714%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 400,
+   "height": 400,
+   "tone": null,
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22400%22%20height%3D%22400%22%20viewBox%3D%220%200%20100%20100%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 800,
+   "height": 533,
+   "tone": null,
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%22533%22%20viewBox%3D%220%200%20100%2066.625%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 900,
+   "height": 1080,
+   "tone": "plum",
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22900%22%20height%3D%221080%22%20viewBox%3D%220%200%20100%20120%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 800,
+   "height": 1000,
+   "tone": null,
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%221000%22%20viewBox%3D%220%200%20100%20125%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 900,
+   "height": 600,
+   "tone": "plum",
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22900%22%20height%3D%22600%22%20viewBox%3D%220%200%20100%2066.66666666666667%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 800,
+   "height": 600,
+   "tone": null,
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%22600%22%20viewBox%3D%220%200%20100%2075%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 1200,
+   "height": 800,
+   "tone": null,
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221200%22%20height%3D%22800%22%20viewBox%3D%220%200%20100%2066.66666666666667%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  },
+  {
+   "width": 64,
+   "height": 64,
+   "tone": null,
+   "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2264%22%20height%3D%2264%22%20viewBox%3D%220%200%20100%20100%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%20gradientTransform%3D%22rotate(211%2050%2050)%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23EDE3E8%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%235B3A4E%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2216%25%22%20cy%3D%2256%25%22%20r%3D%2243%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.16%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2284%25%22%20cy%3D%2244%25%22%20r%3D%2223.650000000000002%25%22%20fill%3D%22%2333202C%22%20fill-opacity%3D%220.12%22%2F%3E%0A%3C%2Fsvg%3E"
+  }
+ ],
+ "media": [
+  {
+   "media": {
+    "variants": {
+     "thumbnail": {
+      "url": "/media/a-320.webp",
+      "width": 320,
+      "height": 213
+     },
+     "card": {
+      "url": "/media/a-640.webp",
+      "width": 640,
+      "height": 427
+     },
+     "medium": {
+      "url": "/media/a-960.webp",
+      "width": 960,
+      "height": 640
+     },
+     "large": {
+      "url": "/media/a-1280.webp",
+      "width": 1280,
+      "height": 853
+     },
+     "hero": {
+      "url": "/media/a-1920.webp",
+      "width": 1920,
+      "height": 1280
+     }
+    },
+    "mediaPath": "/media/originals/a.webp"
+   },
+   "variant": "large",
+   "width": 1400,
+   "height": 933,
+   "src": "/media/a-1280.webp",
+   "srcSet": "/media/a-320.webp 320w, /media/a-640.webp 640w, /media/a-960.webp 960w, /media/a-1280.webp 1280w, /media/a-1920.webp 1920w"
+  },
+  {
+   "media": {
+    "variants": {
+     "hero": {
+      "url": "/media/a-1920.webp",
+      "width": 1920,
+      "height": 1280
+     },
+     "card": {
+      "url": "/media/a-640.webp",
+      "width": 640,
+      "height": 427
+     },
+     "thumbnail": {
+      "url": "/media/a-320.webp",
+      "width": 320,
+      "height": 213
+     }
+    },
+    "mediaPath": "/media/originals/b.webp"
+   },
+   "variant": "medium",
+   "width": 900,
+   "height": 600,
+   "src": "/media/a-1920.webp",
+   "srcSet": "/media/a-320.webp 320w, /media/a-640.webp 640w, /media/a-1920.webp 1920w"
+  },
+  {
+   "media": {
+    "variants": {
+     "card": {
+      "url": "/media/x.webp",
+      "width": 640,
+      "height": 400
+     },
+     "dup": {
+      "url": "/media/y.webp",
+      "width": 640,
+      "height": 400
+     }
+    },
+    "mediaPath": "/m/o.webp"
+   },
+   "variant": "card",
+   "width": 800,
+   "height": 533,
+   "src": "/media/x.webp",
+   "srcSet": "/media/y.webp 640w"
+  },
+  {
+   "media": {
+    "variants": null,
+    "mediaPath": "/media/originals/only.webp"
+   },
+   "variant": "card",
+   "width": 800,
+   "height": 533,
+   "src": "/media/originals/only.webp",
+   "srcSet": null
+  }
+ ]
+}

@@ -48,7 +48,7 @@ function mapNavItem(item) {
 // (GET /public/footer) instead — this only covers primary/secondary
 // (header) navigation, plus `social` for MobileNav's social row, which
 // reads this same socialLinks list (already visible-filtered server-side).
-function mapNavigation(data) {
+export function mapNavigation(data) {
   const menus = data.menus || {}
   return {
     primary: (menus.primary?.items || []).map(mapNavItem),
@@ -75,6 +75,11 @@ export function mapHomepageModule(m) {
     // career_pathways / content_collection: resolved server-side (public
     // anonymous visibility) so these sections need no request of their own.
     resolved: m.resolved || null,
+    // Hard load of "/" only: the exact public API data this module's
+    // component fetches on mount (backend first_paint.homepage_initial_data),
+    // so its first frame matches the server's first paint. HomePage clears
+    // it on unmount, so a later visit fetches as before.
+    initialData: m.initial_data || null,
   }
 }
 
@@ -91,7 +96,7 @@ export async function fetchNavigation() {
 // reads through optional chaining rather than assuming this shape is
 // present — never a second hard-coded copy of these values that could
 // silently drift from what an admin saves.
-function mapSiteSettings(data) {
+export function mapSiteSettings(data) {
   return {
     site: {
       name: data.site?.name || null,

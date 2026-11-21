@@ -437,7 +437,9 @@ def test_circle_only_learning_shell_never_contains_protected_curriculum(client, 
     assert _meta(html, "name", "description") == "Members-only course."
     for protected in ("PROTECTED-LESSON-BODY-TEXT", "PROTECTED-VIDEO-URL", "video.example.org", "Lesson One", "Module One"):
         assert protected not in html
-    assert "data-wsf-bootstrap" not in html
+    # No content bootstrap; only the public site shell (navigation,
+    # settings, footer) every page carries.
+    assert re.findall(r'data-wsf-bootstrap="([a-z]+)"', html) == ["shell"]
 
 
 @pytest.mark.parametrize("status_value", ["draft", "archived"])

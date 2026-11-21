@@ -520,7 +520,7 @@ class TestShellIntegration:
         assert [c["href"] for c in modules[0]["resolved"]["cards"]] == ["/guide-page", "/learning"]
         assert [i["slug"] for i in modules[1]["resolved"]["items"]] == ["shell-story"]
         assert modules == _public(client)
-        prerender = html.split('data-wsf-prerender="home"', 1)[1]
+        prerender = html.split('data-wsf-prerender="home"', 1)[1].split("</main>", 1)[0]
         assert 'href="/guide-page"' in prerender and "Custom path one" in prerender
         assert "Fresh reads" in prerender and "/shell-story" in prerender
         # An empty collection never renders an empty shell.

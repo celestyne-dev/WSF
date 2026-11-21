@@ -13,12 +13,14 @@ import { resolveReadingTime } from '../../utils/readingTime'
  * mode, enrichMockArticle for mock mode). This component never looks
  * authors/topics up itself.
  */
-export default function ArticleCard({ article, variant = 'grid' }) {
+export default function ArticleCard({ article, variant = 'grid', headingLevel = 2 }) {
   if (!article) return null
   const { author, topic } = article
   const href = `/${article.slug}`
 
   if (variant === 'lead') {
+    // The homepage hero passes headingLevel={1}: its lead story is the page's H1.
+    const LeadHeading = headingLevel === 1 ? 'h1' : 'h2'
     return (
       <article className="group relative">
         <Link to={href} className="block overflow-hidden rounded-media">
@@ -45,11 +47,11 @@ export default function ArticleCard({ article, variant = 'grid' }) {
               {topic.name}
             </Link>
           )}
-          <h2 className="mt-2 font-serif text-3xl font-semibold leading-tight text-charcoal sm:text-4xl lg:text-[2.75rem]">
+          <LeadHeading className="mt-2 font-serif text-3xl font-semibold leading-tight text-charcoal sm:text-4xl lg:text-[2.75rem]">
             <Link to={href} className="transition-colors hover:text-burgundy-600">
               {article.title}
             </Link>
-          </h2>
+          </LeadHeading>
           <p className="mt-3 max-w-xl text-base text-charcoal-600">{article.excerpt}</p>
           <div className="mt-4 flex items-center gap-2 text-sm text-charcoal-600">
             {author && <span className="font-medium text-charcoal">{author.name}</span>}

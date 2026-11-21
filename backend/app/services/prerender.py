@@ -243,10 +243,28 @@ def _render_block(block, list_start=None):
     return ""
 
 
-def render_content_blocks(blocks):
+def render_content_blocks(blocks, variant=None):
+    """`variant="article"` mirrors ArticleContent variant="article" for the
+    blocks that set an article's reading rhythm (headings with their
+    anchor ids, the lead and body paragraphs); every other block renders
+    the shared way."""
     clean = sanitize_content_blocks(blocks)
     starts = resolve_list_starts(clean)
-    return "".join(_render_block(block, list_start=start) for block, start in zip(clean, starts))
+    if variant != "article":
+        return "".join(_render_block(block, list_start=start) for block, start in zip(clean, starts))
+    from app.services.first_paint import article_heading_ids, render_article_heading, render_article_paragraph
+
+    ids = article_heading_ids(clean)
+    lead = next((i for i, b in enumerate(clean) if b.get("type") == "paragraph"), -1)
+    out = []
+    for i, (block, start) in enumerate(zip(clean, starts)):
+        if block.get("type") == "heading" and _is_nonblank(block.get("text")):
+            out.append(render_article_heading(block, ids.get(i)))
+        elif block.get("type") == "paragraph" and _is_nonblank(block.get("text")):
+            out.append(render_article_paragraph(_inline(block["text"]), lead=i == lead))
+        else:
+            out.append(_render_block(block, list_start=start))
+    return "".join(out)
 
 
 def _format_date(value):
@@ -374,23 +392,13 @@ def render_credentials(credentials, section_id, compact=False):
 def render_article_prerender(payload):
     """`payload` is the same public_article_schema() dump the Article
     bootstrap embeds — so the prerender can only ever show what the
-    public Article API already exposes."""
-    header = [f'<h1 class="{_H1_CLASS}">{_text(payload.get("title"))}</h1>']
-    if _is_nonblank(payload.get("subtitle")):
-        header.append(f'<p class="{_DECK_CLASS}">{_text(payload["subtitle"])}</p>')
-    header.append(_sponsor_disclosure(payload))
-    names = [link for link in [_author_link(payload.get("author"))] + [_author_link(a) for a in payload.get("co_authors") or []] if link]
-    if names:
-        header.append(f'<p class="{_META_CLASS}">By {" &amp; ".join(names)}</p>')
-    iso, label = _format_date(payload.get("publish_date"))
-    if iso:
-        header.append(f'<p class="{_META_CLASS}"><time datetime="{_attr(iso)}">{_text(label)}</time></p>')
-    body = render_content_blocks(payload.get("content") or [])
+    public Article API already exposes. Layout: ArticlePage.jsx's first
+    frame (services/first_paint.render_article)."""
+    from app.services.first_paint import render_article
+
+    body = render_content_blocks(payload.get("content") or [], variant="article")
     sources = render_article_sources(payload.get("sources") or [])
-    return (
-        f'<main data-wsf-prerender="article" class="{_MAIN_CLASS}"><article class="{_ARTICLE_CLASS}">'
-        f'<header>{"".join(header)}</header><section>{body}</section>{sources}</article></main>'
-    )
+    return render_article(payload, body + sources, sponsor_html=_sponsor_disclosure(payload))
 
 
 def _normalize_label(value):
@@ -1493,94 +1501,3 @@ def _safe_cta_href(url):
     if url.startswith("/") and not url.startswith("//") and "\\" not in url:
         return None if _is_private_cta_path(url) else url
     return _http_url(url)
-
-
-def _cta_links(ctas):
-    links = []
-    for label, url in ctas or []:
-        href = _safe_cta_href(url)
-        if href and _is_nonblank(label):
-            links.append(f'<a href="{_attr(href)}" class="{_LINK_CLASS}">{_text(label)}</a>')
-    return f'<p class="mt-4">{" · ".join(links)}</p>' if links else ""
-
-
-_HOME_DEFAULT_HEADINGS = {
-    "featured_stories": "Editors' picks", "latest_stories": "Latest stories", "featured_woman": "Featured woman",
-    "jobs": "Jobs", "opportunities": "Opportunities", "events": "Events", "resources": "Resources",
-}
-_COLLECTION_DEFAULT_HEADINGS = {
-    "articles": "Stories", "people": "People", "opportunities": "Opportunities", "jobs": "Jobs",
-    "events": "Events", "resources": "Resources", "learning": "Learning",
-}
-_HOME_ITEM_KIND = {"jobs": "jobs", "opportunities": "opportunities", "events": "events", "resources": "resources"}
-
-
-def render_homepage_prerender(sections, site_name):
-    """The configured homepage modules (public_hubs.homepage_sections) in
-    builder order. Exactly one H1, matching HeroModule.jsx: with a lead
-    Article, the module heading override else the Article title (linked to
-    the Article); else the manual hero heading; else the site name."""
-    hero = next((s for s in sections if s["type"] == "hero"), None)
-    if hero and hero.get("lead"):
-        # ArticleCard receives {...lead, title: module.heading} when an
-        # override is set, and its headline links to the Article.
-        lead = hero["lead"]
-        title = hero["heading"] if _is_nonblank(hero.get("heading")) else lead.get("title")
-        h1 = f'<h1 class="{_H1_CLASS}">{_hub_link("/" + lead["slug"], title)}</h1>'
-    elif hero and _is_nonblank(hero.get("heading")):
-        h1 = _h1(hero["heading"])
-    else:
-        h1 = _h1(site_name)
-    header = [h1]
-    body = []
-    for section in sections:
-        heading = section.get("heading") or _HOME_DEFAULT_HEADINGS.get(section["type"]) or ""
-        sub = _paragraph(section.get("subheading"), _META_CLASS)
-        if section["type"] == "hero":
-            if section.get("lead"):
-                lead = section["lead"]
-                header.append(_paragraph(lead.get("excerpt")))
-                header.append(_cta_links(section.get("ctas")))
-            else:
-                header.append(_paragraph(section.get("subheading")))
-                header.append(_cta_links(section.get("ctas")))
-            if section.get("articles"):
-                body.append(_section("More stories", _item_list(_article_card(a) for a in section["articles"])))
-        elif section.get("articles") is not None and section["type"] in ("featured_stories", "latest_stories"):
-            body.append(_section(heading, sub + _item_list(_article_card(a) for a in section["articles"])))
-        elif section["type"] == "featured_woman":
-            body.append(_section(heading or "Featured woman", sub + _item_list([_person_card(section["person"])])))
-        elif section.get("term"):
-            term = section["term"]
-            path = f"/{'series' if term['kind'] == 'series' else 'topics'}/{term['slug']}"
-            inner = sub + f'<p>{_hub_link(path, term["name"])}</p>' + _paragraph(term.get("description"), _META_CLASS)
-            body.append(_section(heading or term["name"], inner + _item_list(_article_card(a) for a in section.get("articles") or [])))
-        elif section["type"] == "career_pathways":
-            cards = []
-            for card in section["cards"]:
-                href = _safe_cta_href(card.get("href"))
-                if not href:
-                    continue
-                cards.append(
-                    "<li><article>"
-                    + (f'<p class="{_META_CLASS}">{_text(card["eyebrow"])}</p>' if _is_nonblank(card.get("eyebrow")) else "")
-                    + f'<h3 class="{_HUB_ITEM_TITLE_CLASS}"><a href="{_attr(href)}" class="{_LINK_CLASS}">{_text(card["title"])}</a></h3>'
-                    + _paragraph(card.get("description"), _META_CLASS)
-                    + "</article></li>"
-                )
-            body.append(_section(heading or "Start here", sub + _item_list(cards) + _cta_links(section.get("ctas"))))
-        elif section["type"] == "content_collection":
-            render = HUB_CARD_RENDERERS.get(section["entityType"])
-            if section["entityType"] == "articles":
-                render = _article_card
-            if render is not None:
-                body.append(_section(
-                    heading or _COLLECTION_DEFAULT_HEADINGS.get(section["entityType"], ""),
-                    sub + _item_list(render(i) for i in section["items"]) + _cta_links(section.get("ctas")),
-                ))
-        elif section["type"] in _HOME_ITEM_KIND:
-            render = HUB_CARD_RENDERERS[_HOME_ITEM_KIND[section["type"]]]
-            body.append(_section(heading, sub + _item_list(render(i) for i in section["items"])))
-        elif section.get("ctas") is not None and _is_nonblank(section.get("heading")):
-            body.append(_section(section["heading"], sub + _cta_links(section["ctas"])))
-    return _main("home", header, body)

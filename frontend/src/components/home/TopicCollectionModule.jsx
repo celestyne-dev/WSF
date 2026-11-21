@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
-import { fetchTopicBySlug } from '../../api/taxonomies'
-import { fetchArticles } from '../../api/articles'
+import { fetchTopicBySlug, mapTopicDetail } from '../../api/taxonomies'
+import { fetchArticles, mapArticle } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function TopicCollectionModule({ module }) {
-  const [topic, setTopic] = useState(undefined)
-  const [items, setItems] = useState([])
+  const initialTopic = module.initialData?.topic
+  // `topic: null` is the server's 404 answer (nothing to show).
+  const topicNotFound = Boolean(module.initialData) && module.initialData.topic === null
+  const initialArticles = module.initialData?.articles
+  const [topic, setTopic] = useState(() => (initialTopic ? mapTopicDetail(initialTopic) : topicNotFound ? null : undefined))
+  const [items, setItems] = useState(() => (initialArticles ? initialArticles.map(mapArticle) : []))
 
   useEffect(() => {
-    if (!module.topicSlug) return
+    if (!module.topicSlug || topicNotFound || (initialTopic && initialArticles)) return
     let active = true
     fetchTopicBySlug(module.topicSlug)
       .then((data) => {
@@ -24,7 +28,7 @@ export default function TopicCollectionModule({ module }) {
     return () => {
       active = false
     }
-  }, [module.topicSlug, module.itemCount])
+  }, [module.topicSlug, module.itemCount, initialTopic, initialArticles, topicNotFound])
 
   if (!module.topicSlug || !topic || !items.length) return null
 

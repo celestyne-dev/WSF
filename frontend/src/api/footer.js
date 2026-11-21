@@ -19,7 +19,7 @@ function mapPublicFooterGroup(group) {
   return { key: group.key, heading: group.heading, links: (group.items || []).map(mapPublicFooterLink) }
 }
 
-function mapPublicFooter(data) {
+export function mapPublicFooter(data) {
   const settings = data.settings || {}
   return {
     brandDescription: settings.brandDescription || '',

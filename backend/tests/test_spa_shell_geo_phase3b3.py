@@ -1,6 +1,6 @@
 """AI Search / GEO Phase 3B3 — crawler-readable public hubs & listing
 pages (app/services/public_hubs.py + prerender.render_hub_prerender /
-render_homepage_prerender), proven on raw HTML only (no JS).
+services/first_paint.render_homepage), proven on raw HTML only (no JS).
 """
 import os
 import re
@@ -46,10 +46,25 @@ def _assert_hub(html, marker, title, canonical):
     assert h1 and re.sub(r"<[^>]+>", "", h1.group(1)) == title
     assert re.search(r'<link\s+rel=["\']canonical["\']\s+href=["\']' + re.escape(canonical), html)
     assert len(re.findall(r"<script\b[^>]*data-site-structured-data", html)) == 1
-    lowered = root.lower()
+    lowered = _without_decoration(root).lower()
     for hidden in (" hidden", "display:none", "visibility:hidden", 'aria-hidden="true"', "<noscript"):
         assert hidden not in lowered
     return root
+
+
+def _without_decoration(root):
+    """What is left once the parts that hide nothing are removed: the
+    no-JS navigation (additive, only rendered without scripting),
+    decorative icons and separators (aria-hidden, as in the React
+    components), and responsive visibility pairs such as
+    `hidden sm:block` (shown at a breakpoint, exactly as React renders).
+    Any other hidden marker still fails the check."""
+    text = re.sub(r'<noscript><nav aria-label="Site sections".*?</nav></noscript>', "", root, flags=re.DOTALL)
+    text = re.sub(r"<svg\b.*?</svg>", "", text, flags=re.DOTALL)
+    text = re.sub(r'<span aria-hidden="true">&middot;</span>', "", text)
+    text = re.sub(r'<span class="[^"]*" aria-hidden="true">\s*</span>', "", text)
+    return re.sub(r'class="([^"]*)"', lambda m: 'class="' + re.sub(
+        r"(^|\s)hidden(?=\s)(?=.*\b(?:sm|md|lg|xl):(?:block|flex|inline-flex|grid)\b)", r"\1", m.group(1)) + '"', text)
 
 
 def _absent(text, *needles):
@@ -412,6 +427,10 @@ def test_cta_boundary_paths_and_external_https_allowed(client, app):
          HomepageModule(type="newsletter", enabled=True, sort_order=3, heading="Newsletter Block",
                         cta_label="Newsletter archive", cta_url="/newsletter"))
     root = _root(_raw(client, "/"))
-    assert 'href="/accountability"' in root and 'href="/searching"' in root
+    assert 'href="/accountability"' in root
     assert 'href="https://partner.example.org/page?x=1"' in root
-    assert 'href="/newsletter"' in root
+    # First-paint parity: CalloutModule renders only the primary CTA and
+    # NewsletterModule renders its form, never a CTA link, so neither does
+    # the server (the no-JS form submits to /newsletter).
+    assert 'href="/searching"' not in root and "Newsletter archive" not in root
+    assert '<form action="/newsletter" method="get"' in root

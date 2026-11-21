@@ -36,8 +36,12 @@ def test_prerendered_page_reserves_the_header_height(client, app):
     assert "h-16" in match.group(0) and "lg:h-[68px]" in match.group(0)
     inner = match.group(1)
     assert 'href="/"' in inner and "Women Shaping" in inner
-    # Only the brand mark: no navigation, buttons or account controls.
-    for absent in ("<nav", "<button", "Subscribe", "Search", "/login", "<h1"):
+    # The real header's first state (first_paint.render_header): primary
+    # navigation, search, account and Subscribe as plain links; never a
+    # fake button that needs JavaScript, and never the page's H1.
+    assert '<nav aria-label="Primary"' in inner
+    assert 'href="/search"' in inner and 'href="/login"' in inner and ">Subscribe</a>" in inner
+    for absent in ("<button", "<h1"):
         assert absent not in inner, absent
     # #root content is unchanged (still starts with the prerender <main>).
     root = html.split('<div id="root">', 1)[1]

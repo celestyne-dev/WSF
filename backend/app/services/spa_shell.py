@@ -105,7 +105,6 @@ from app.services.prerender import (
     render_directory_prerender,
     render_event_prerender,
     render_job_prerender,
-    render_homepage_prerender,
     render_hub_prerender,
     render_learning_prerender,
     render_newsletter_prerender,
@@ -143,6 +142,20 @@ _RESERVED_EXACT = ("sitemap.xml", "robots.txt")
 
 def _meta_re(attr, key):
     return re.compile(rf'<meta\s+(?:[^>]*?\s)?{attr}=["\']{re.escape(key)}["\'][^>]*>', re.IGNORECASE)
+
+
+_BODY_CLOSE_RE = re.compile(r"</body>", re.IGNORECASE)
+
+
+def _insert_before_body_close(html_doc, fragment):
+    """Bootstraps go at the END of <body>: the visible header and prerender
+    arrive (and paint) before the data, and the app's module scripts run
+    only after the document is parsed, so they still find it."""
+    matches = list(_BODY_CLOSE_RE.finditer(html_doc))
+    if not matches:
+        return html_doc + fragment
+    end = matches[-1].start()
+    return html_doc[:end] + fragment + html_doc[end:]
 
 
 def _insert_before_head_close(html_doc, fragment):
@@ -299,53 +312,42 @@ def _set_image_preload(html_doc, *, media, public_site_url, sizes, preferred_var
 _EMPTY_ROOT_RE = re.compile(r'<div id="root">\s*</div>')
 
 
-# The public header's first-paint placeholder. The React header (frontend/
-# src/components/layout/Header.jsx) has a fixed height (h-16 + 1px border =
-# 65px; lg:h-[68px] + border = 69px) and lives inside #root, so without this
-# the whole prerendered page moved down 65-69px when React mounted.
-#
-# This static banner shows only the stable site logo (the same choice
-# Logo.jsx makes: the configured logo image, else the wordmark) — no
-# navigation. It is position:fixed OUTSIDE #root, and the prerendered
-# <main> reserves the header's height with a ::before block (inline rule
-# below), so #root itself starts at y=0 both before and after React mounts:
-# React only replaces #root's children and Header removes this banner in a
-# layout effect, before the browser paints — no layout shift is recorded.
-# Every class string is copied from Header.jsx / Logo.jsx / existing
-# components, so it exists in the built CSS. Keep the two heights in the
-# rule below in sync with Header.jsx.
+# The public header's first paint (app/services/first_paint.py
+# render_header): a mirror of Header.jsx built from the SAME public
+# navigation payload, position:fixed OUTSIDE #root. The prerendered <main>
+# reserves the header's height with a ::before block (rule below), so #root
+# starts at y=0 both before and after React mounts; Header.jsx removes this
+# element (and the rule) in a layout effect before React's first paint.
+# Keep the two heights in sync with Header.jsx (h-16 / lg:h-[68px] + 1px).
 _HEADER_RESERVE_STYLE = (
     "<style data-wsf-header-placeholder-style>#root>[data-wsf-prerender]::before"
     '{content:"";display:block;height:65px}'
     "@media (min-width:1024px){#root>[data-wsf-prerender]::before{height:69px}}</style>"
 )
-_HEADER_PLACEHOLDER_OPEN = (
-    '<header data-wsf-header-placeholder="true" class="fixed inset-x-0 top-0 z-40 border-b border-taupe-200 bg-ivory">'
-    '<div class="container-editorial flex h-16 items-center gap-4 lg:h-[68px]"><div class="mr-auto shrink-0 xl:mr-4 2xl:mr-10">'
-)
-_HEADER_PLACEHOLDER_CLOSE = "</div></div></header>"
-_WORDMARK = (
-    '<a href="/" class="flex flex-col items-start leading-none">'
-    '<span class="whitespace-nowrap font-serif text-xl font-semibold tracking-tight sm:text-[1.5rem] text-charcoal">'
-    'Women Shaping <span class="text-burgundy-500">Futures</span></span>'
-    '<span class="mt-0.5 hidden whitespace-nowrap text-[10px] font-semibold uppercase tracking-widest2 sm:block text-charcoal-600">'
-    "Stories &middot; Opportunity &middot; Growth</span></a>"
-)
 
 
-def _header_placeholder_html():
+def _shell_payloads():
+    """The public navigation/settings/footer bodies, exactly as their GET
+    /public/* endpoints return them (one source of truth)."""
+    from app.api.v1.public import public_navigation_payload, public_settings_payload
+    from app.services.footer import build_public_footer
+
+    return public_navigation_payload(), public_settings_payload(), build_public_footer()
+
+
+def _header_placeholder_html(navigation=None):
+    from flask import has_request_context, request
+
+    from app.services.first_paint import render_header
+
     identity = get_site_identity_resolved()
     site_name = identity.get("site_name") or "Women Shaping Futures"
     logo = identity.get("logo")
     logo_url = (logo.variant_url("card") or logo.public_url) if logo is not None else None
-    if logo_url:
-        mark = (
-            f'<a href="/" class="flex items-center"><img src="{_escape(logo_url, quote=True)}" '
-            f'alt="{_escape(site_name, quote=True)}" class="h-8 w-auto sm:h-9"></a>'
-        )
-    else:
-        mark = _WORDMARK
-    return _HEADER_RESERVE_STYLE + _HEADER_PLACEHOLDER_OPEN + mark + _HEADER_PLACEHOLDER_CLOSE
+    if navigation is None:
+        navigation = _shell_payloads()[0]
+    pathname = request.path if has_request_context() else "/"
+    return _HEADER_RESERVE_STYLE + render_header(navigation, logo_url=logo_url, site_name=site_name, pathname=pathname)
 
 
 def _set_root_prerender(html_doc, inner_html):
@@ -357,8 +359,22 @@ def _set_root_prerender(html_doc, inner_html):
     """
     if not inner_html or len(_EMPTY_ROOT_RE.findall(html_doc)) != 1:
         return html_doc
-    placeholder = _header_placeholder_html()
+    from app.services.first_paint import render_noscript_nav
+
+    navigation = _shell_payloads()[0]
+    placeholder = _header_placeholder_html(navigation)
+    inner_html = _with_noscript_nav(inner_html, render_noscript_nav(navigation))
     return _EMPTY_ROOT_RE.sub(lambda _m: f'{placeholder}<div id="root">{inner_html}</div>', html_doc, count=1)
+
+
+def _with_noscript_nav(inner_html, nav_html):
+    """Puts the no-JS navigation just inside the prerendered <main> (after
+    its header-height reserve), so it never shifts anything for visitors
+    with JavaScript (a <noscript> body is not rendered then)."""
+    if not nav_html:
+        return inner_html
+    match = re.match(r"(<main\b[^>]*>)", inner_html)
+    return inner_html[: match.end()] + nav_html + inner_html[match.end():] if match else nav_html + inner_html
 
 
 _BOOTSTRAP_RE_CACHE = {}
@@ -558,7 +574,7 @@ def _set_bootstrap_data(html_doc, bootstrap_type, payload):
     if payload is None:
         return html_doc
     tag = f'<script type="application/json" data-wsf-bootstrap="{bootstrap_type}">{_safe_json_ld(payload)}</script>'
-    return _insert_before_head_close(html_doc, tag + "\n")
+    return _insert_before_body_close(html_doc, tag + "\n")
 
 
 def _read_index_html():
@@ -615,8 +631,23 @@ def _set_appearance_attributes(html_doc):
     return _HTML_OPEN_RE.sub(_replace, html_doc, count=1)
 
 
+def _set_shell_bootstrap(html_doc):
+    """One-shot `data-wsf-bootstrap="shell"`: the public navigation,
+    settings and footer, so the React store starts with them (store/
+    index.js) and the header/footer/consent banner render their final
+    content on React's first frame, with no startup API calls."""
+    try:
+        navigation, settings, footer = _shell_payloads()
+    except Exception:  # pragma: no cover - a settings read must never break page delivery
+        db.session.rollback()
+        return html_doc
+    return _set_bootstrap_data(html_doc, "shell", {"key": "shell", "data": {
+        "navigation": navigation, "settings": settings, "footer": footer}})
+
+
 def _html_response(html_doc, status=200):
     html_doc = _set_appearance_attributes(html_doc)
+    html_doc = _set_shell_bootstrap(html_doc)
     response = Response(html_doc, status=status, mimetype="text/html")
     # Matches the Nginx template's own `location = /index.html` treatment
     # of this exact file — this is the same document, just with metadata
@@ -1041,8 +1072,17 @@ def render_homepage_shell():
     from app.services.homepage_collections import resolve_homepage_extras
 
     extras = resolve_homepage_extras(modules)
+    from app.services.first_paint import homepage_initial_data, render_homepage
+
+    module_payloads = _safe_homepage_modules_payload(modules, extras)
+    for payload in module_payloads:
+        # Exactly what each module's component fetches on mount, so React's
+        # first frame matches the server's (first_paint.homepage_initial_data).
+        initial = homepage_initial_data(payload)
+        if initial is not None:
+            payload["initial_data"] = _redact_internal_media_fields(initial)
     bootstrap_payload = {
-        "modules": _safe_homepage_modules_payload(modules, extras),
+        "modules": module_payloads,
         "leadArticle": _safe_article_summary_payload(lead_article) if lead_article is not None else None,
     }
     html_doc = _set_bootstrap_data(html_doc, "homepage", bootstrap_payload)
@@ -1054,9 +1094,11 @@ def render_homepage_shell():
 
     # AI Search / GEO Phase 3B3 — the configured homepage modules as
     # visible, crawlable HTML inside #root (same modules as the bootstrap).
-    from app.services.public_hubs import homepage_sections
-
-    html_doc = _set_root_prerender(html_doc, render_homepage_prerender(homepage_sections(modules, lead_article, extras), site_name))
+    # The prerender is drawn from the SAME bootstrap payload React renders
+    # its first frame from (services/first_paint.py mirrors the components).
+    html_doc = _set_root_prerender(
+        html_doc, render_homepage(module_payloads, bootstrap_payload["leadArticle"], site_name=site_name)
+    )
     return _html_response(html_doc)
 
 

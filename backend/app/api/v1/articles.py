@@ -295,7 +295,9 @@ class ArticleListResource(Resource):
         if topic_slug:
             query = query.filter(Article.topics.any(slug=topic_slug))
         if request.args.get("series"):
-            query = query.join(Series).filter(Series.slug == request.args["series"])
+            # Explicit onclause: series.featured_article_id is a second FK
+            # between the two tables, so a bare join(Series) is ambiguous.
+            query = query.join(Series, Article.series_id == Series.id).filter(Series.slug == request.args["series"])
         if request.args.get("author"):
             query = query.join(Author).filter(Author.slug == request.args["author"])
         if request.args.get("category"):
@@ -687,7 +689,9 @@ class ArticleCalendarResource(Resource):
         if request.args.get("topic"):
             query = query.filter(Article.topics.any(slug=request.args["topic"]))
         if request.args.get("series"):
-            query = query.join(Series).filter(Series.slug == request.args["series"])
+            # Explicit onclause: series.featured_article_id is a second FK
+            # between the two tables, so a bare join(Series) is ambiguous.
+            query = query.join(Series, Article.series_id == Series.id).filter(Series.slug == request.args["series"])
         query = query.order_by(db.func.coalesce(Article.scheduled_at, Article.publish_date)).limit(500)
 
         return success_response(admin_article_summary_schema(many=True).dump(query.all()))

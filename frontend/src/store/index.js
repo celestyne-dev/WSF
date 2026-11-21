@@ -3,7 +3,8 @@ import authReducer from '../features/auth/authSlice'
 import siteReducer, { siteInitialState } from '../features/site/siteSlice'
 import uiReducer from '../features/navigation/uiSlice'
 import newsletterReducer from '../features/newsletter/newsletterSlice'
-import { mapHomepageModule } from '../api/site'
+import { mapHomepageModule, mapNavigation, mapSiteSettings } from '../api/site'
+import { mapPublicFooter } from '../api/footer'
 import { mapArticle } from '../api/articles'
 import { readBootstrap, consumeBootstrap } from '../utils/bootstrap'
 
@@ -21,18 +22,41 @@ import { readBootstrap, consumeBootstrap } from '../utils/bootstrap'
 // this is also where the bootstrap script tag actually gets consumed
 // (see utils/bootstrap.js's own docstring for why that's deliberately
 // NOT coupled to readBootstrap itself).
-function buildPreloadedState() {
+// Every server-rendered HTML page also carries a one-shot "shell"
+// bootstrap (spa_shell._set_shell_bootstrap): the exact GET
+// /public/navigation, /public/settings and /public/footer bodies. Seeding
+// them here lets the header, footer and consent banner render their final
+// content on React's first frame (matching the server's first-paint
+// header, backend services/first_paint.py) and skips those three startup
+// requests. Statuses are 'succeeded', so PublicLayout's idle guards never
+// refetch them; in-app behavior after the hard load is unchanged.
+function shellState() {
+  const bootstrap = readBootstrap('shell', 'shell')
+  if (!bootstrap?.data) return {}
+  consumeBootstrap('shell')
+  const { navigation, settings, footer } = bootstrap.data
+  const state = {}
+  if (navigation) Object.assign(state, { navigation: mapNavigation(navigation), navigationStatus: 'succeeded' })
+  if (settings) Object.assign(state, { settings: mapSiteSettings(settings), settingsStatus: 'succeeded' })
+  if (footer) Object.assign(state, { footer: mapPublicFooter(footer), footerStatus: 'succeeded' })
+  return state
+}
+
+function homepageState() {
   const bootstrap = readBootstrap('homepage')
-  if (!bootstrap) return undefined
+  if (!bootstrap) return {}
   consumeBootstrap('homepage')
   return {
-    site: {
-      ...siteInitialState,
-      homepageModules: (bootstrap.modules || []).map(mapHomepageModule),
-      homepageStatus: 'succeeded',
-      leadArticle: bootstrap.leadArticle ? mapArticle(bootstrap.leadArticle) : null,
-    },
+    homepageModules: (bootstrap.modules || []).map(mapHomepageModule),
+    homepageStatus: 'succeeded',
+    leadArticle: bootstrap.leadArticle ? mapArticle(bootstrap.leadArticle) : null,
   }
+}
+
+export function buildPreloadedState() {
+  const site = { ...shellState(), ...homepageState() }
+  if (!Object.keys(site).length) return undefined
+  return { site: { ...siteInitialState, ...site } }
 }
 
 export const store = configureStore({

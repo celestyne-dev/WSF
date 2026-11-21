@@ -65,16 +65,56 @@ class HomepageResource(Resource):
         return success_response(public_homepage_modules_payload(modules), meta=meta)
 
 
+def public_navigation_payload():
+    """GET /public/navigation's body; also embedded once in every server
+    HTML page (spa_shell shell bootstrap) so the header's first frame
+    already has the real navigation."""
+    menus = {menu.key: serialize_public_menu(menu) for menu in Menu.query.all()}
+    # Only visible social links: MobileNav reads socialLinks here and must
+    # honor the Footer CMS visibility toggle.
+    social_links = SocialLink.query.filter_by(visible=True).order_by(SocialLink.sort_order).all()
+    return {"menus": menus, "socialLinks": social_link_schema.dump(social_links, many=True)}
+
+
 class NavigationResource(Resource):
     def get(self):
-        menus = {menu.key: serialize_public_menu(menu) for menu in Menu.query.all()}
-        # `visible` was added to SocialLink for Footer CMS (the only public
-        # consumer of a *hidden* social link's non-existence, until now) —
-        # filtered here too since MobileNav also reads this endpoint's
-        # socialLinks for its own social row and must honor the same
-        # visibility toggle Footer CMS's admin UI controls.
-        social_links = SocialLink.query.filter_by(visible=True).order_by(SocialLink.sort_order).all()
-        return success_response({"menus": menus, "socialLinks": social_link_schema.dump(social_links, many=True)})
+        return success_response(public_navigation_payload())
+
+
+def public_settings_payload():
+    """GET /public/settings' body; also embedded in every server HTML page
+    (spa_shell shell bootstrap)."""
+    identity = get_site_identity_resolved()
+    social_links = get_visible_social_links()
+    return (
+        {
+            "site": {
+                "name": identity["site_name"],
+                "shortName": identity["short_name"],
+                "tagline": identity["tagline"],
+                # The canonical public origin stays environment-controlled
+                # (FRONTEND_URL) — never an admin-editable field, so a typo
+                # in Site Settings can never break routing/CORS. This is
+                # the display-only value CMS consumers (canonical links,
+                # JSON-LD) read.
+                "url": current_app.config["FRONTEND_URL"],
+            },
+            "branding": {"logo": _public_media_ref(identity["logo"])},
+            "contact": {"email": identity["contact_email"]},
+            "social": social_link_schema.dump(social_links, many=True),
+            # Controlled design presets only (app/services/appearance.py).
+            "appearance": public_appearance_payload(),
+            # Plain-text, validated engagement settings
+            # (app/services/engagement_settings.py). No scripts or IDs.
+            "newsletterPopup": get_newsletter_popup(),
+            "cookieConsent": get_cookie_consent(),
+            "seo": {
+                "defaultTitle": identity["seo_default_title"],
+                "defaultDescription": identity["seo_default_description"],
+                "defaultOgImage": _public_media_ref(identity["og_image"]),
+            },
+        }
+    )
 
 
 class SiteSettingsResource(Resource):
@@ -91,37 +131,7 @@ class SiteSettingsResource(Resource):
     """
 
     def get(self):
-        identity = get_site_identity_resolved()
-        social_links = get_visible_social_links()
-        return success_response(
-            {
-                "site": {
-                    "name": identity["site_name"],
-                    "shortName": identity["short_name"],
-                    "tagline": identity["tagline"],
-                    # The canonical public origin stays environment-controlled
-                    # (FRONTEND_URL) — never an admin-editable field, so a typo
-                    # in Site Settings can never break routing/CORS. This is
-                    # the display-only value CMS consumers (canonical links,
-                    # JSON-LD) read.
-                    "url": current_app.config["FRONTEND_URL"],
-                },
-                "branding": {"logo": _public_media_ref(identity["logo"])},
-                "contact": {"email": identity["contact_email"]},
-                "social": social_link_schema.dump(social_links, many=True),
-                # Controlled design presets only (app/services/appearance.py).
-                "appearance": public_appearance_payload(),
-                # Plain-text, validated engagement settings
-                # (app/services/engagement_settings.py). No scripts or IDs.
-                "newsletterPopup": get_newsletter_popup(),
-                "cookieConsent": get_cookie_consent(),
-                "seo": {
-                    "defaultTitle": identity["seo_default_title"],
-                    "defaultDescription": identity["seo_default_description"],
-                    "defaultOgImage": _public_media_ref(identity["og_image"]),
-                },
-            }
-        )
+        return success_response(public_settings_payload())
 
 
 class FooterResource(Resource):

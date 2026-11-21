@@ -1,9 +1,8 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef } from 'react'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import PublicLayout from '../layouts/PublicLayout'
-import AccountLayout from '../layouts/AccountLayout'
-import AdminLayout from '../layouts/AdminLayout'
 import PageLoader from '../components/ui/PageLoader'
+import { releaseFirstPaintSnapshot } from '../utils/firstPaintSnapshot'
 // WSF SEO Phase 2D — these two are the only routes the server ever embeds
 // a bootstrap for ("/" and the flat article "/:slug"), and they're the
 // two routes the measured PageSpeed runs were against. Loading them
@@ -24,6 +23,14 @@ import FlatSlugPage from '../pages/FlatSlugPage'
 // chunk downloads), adding a visible blank-spinner frame. The page module
 // itself is small (~4 kB gzip); see the commit message for measurements.
 import AuthorProfilePage from '../pages/AuthorProfilePage'
+
+// The account and Studio shells are never part of a public page's first
+// paint: their pages are already lazy, so loading the layouts lazily too
+// keeps Studio chrome (navigation config, notification bell) out of the
+// public entry bundle. Both render inside the Suspense boundary below,
+// exactly like their child pages.
+const AccountLayout = lazy(() => import('../layouts/AccountLayout'))
+const AdminLayout = lazy(() => import('../layouts/AdminLayout'))
 
 const TopicsIndexPage = lazy(() => import('../pages/TopicsIndexPage'))
 const TopicDetailPage = lazy(() => import('../pages/TopicDetailPage'))
@@ -177,8 +184,16 @@ function ArticleLegacyRedirect() {
 }
 
 export default function AppRoutes() {
+  // The server's first paint stands in for loaders only on the hard-loaded
+  // URL; the first client navigation retires it for good.
+  const location = useLocation()
+  const firstKey = useRef(location.key)
+  useEffect(() => {
+    if (location.key !== firstKey.current) releaseFirstPaintSnapshot()
+  }, [location.key])
+
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<PageLoader asRoot />}>
       <Routes>
         {/* Standalone — deliberately NOT inside PublicLayout. The raw
             password-reset token lives in this route's URL fragment; see

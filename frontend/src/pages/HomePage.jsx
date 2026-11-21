@@ -51,6 +51,7 @@ const MODULE_COMPONENTS = {
 export default function HomePage() {
   const dispatch = useDispatch()
   const { homepageModules, homepageStatus } = useSelector((s) => s.site)
+  const siteName = useSelector((s) => s.site.settings?.site?.name) || 'Women Shaping Futures'
 
   useEffect(() => {
     if (homepageStatus === 'idle') dispatch(loadHomepageModules())
@@ -83,8 +84,15 @@ export default function HomePage() {
 
   if (homepageStatus === 'loading' || homepageStatus === 'idle') return <PageLoader />
 
+  // The hero names the page (lead story or manual heading, an <h1>); without
+  // one, a visually hidden <h1> does. Same rule as the server first paint
+  // (backend services/first_paint.py render_homepage).
+  const hero = homepageModules.find((m) => m.type === 'hero')
+  const heroHasH1 = Boolean(hero && (hero.leadArticleSlug || hero.heading))
+
   return (
     <div>
+      {!heroHasH1 && <h1 className="sr-only">{siteName}</h1>}
       {homepageModules.map((module) => {
         const Component = MODULE_COMPONENTS[module.type]
         if (!Component) return null

@@ -59,7 +59,11 @@ def _canonical(html):
 
 
 def _assert_visible_and_not_cloaked(root_html):
-    lowered = root_html.lower()
+    # Decorative icons/separators and responsive `hidden lg:block` pairs
+    # mirror the React page exactly; everything else must be visible.
+    from tests.test_spa_shell_geo_phase3b3 import _without_decoration
+
+    lowered = _without_decoration(root_html).lower()
     for marker in (" hidden", "display:none", "display: none", "visibility:hidden", "visibility: hidden", 'aria-hidden="true"', "opacity:0"):
         assert marker not in lowered, marker
 
@@ -206,7 +210,10 @@ def test_hostile_content_cannot_escape(client, app):
     root = _root(html)
     assert '<a href="https://example.com/ok">good</a>' in root
     # A non-public image path written into block JSON is never rendered.
-    assert "/srv/private" not in root and "<img" not in root
+    # (The only images are ArticlePage's own byline/hero slots, never one
+    # taken from block JSON.)
+    body = root.split("<section>", 1)[1]
+    assert "/srv/private" not in root and "<img" not in body
 
 
 @pytest.mark.parametrize("status_value", ["draft", "archived"])

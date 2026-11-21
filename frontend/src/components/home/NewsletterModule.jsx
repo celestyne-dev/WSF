@@ -3,9 +3,11 @@ import { fetchNewsletterArchive } from '../../api/newsletter'
 import NewsletterForm from '../ui/NewsletterForm'
 
 export default function NewsletterModule({ module }) {
-  const [subscriberCount, setSubscriberCount] = useState(null)
+  const initialCount = module.initialData?.subscriberCount
+  const [subscriberCount, setSubscriberCount] = useState(initialCount ?? null)
 
   useEffect(() => {
+    if (initialCount != null) return undefined
     let active = true
     fetchNewsletterArchive()
       .then((data) => active && setSubscriberCount(data.stats?.subscriberCount ?? null))
@@ -13,7 +15,7 @@ export default function NewsletterModule({ module }) {
     return () => {
       active = false
     }
-  }, [])
+  }, [initialCount])
 
   return (
     <section className="border-t border-taupe-200 bg-charcoal py-16 text-ivory sm:py-20">

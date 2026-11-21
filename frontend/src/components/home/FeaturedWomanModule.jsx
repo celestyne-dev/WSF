@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Quote } from 'lucide-react'
-import { fetchPersonBySlug } from '../../api/people'
+import { fetchPersonBySlug, mapPerson } from '../../api/people'
 import MediaImage from '../ui/MediaImage'
 import { resolveAltText } from '../../utils/media'
 
 export default function FeaturedWomanModule({ module }) {
-  const [person, setPerson] = useState(undefined)
+  // Hard load of "/": the server already fetched this; `person: null` is
+  // its 404 answer (nothing to show), exactly like fetchPersonBySlug's.
+  const hasInitial = Boolean(module.initialData) && 'person' in module.initialData
+  const initial = module.initialData?.person
+  const [person, setPerson] = useState(() => (hasInitial ? (initial ? mapPerson(initial) : null) : undefined))
 
   useEffect(() => {
-    if (!module.personSlug) return
+    if (!module.personSlug || hasInitial) return
     let active = true
     fetchPersonBySlug(module.personSlug)
       .then((data) => active && setPerson(data))
@@ -17,7 +21,7 @@ export default function FeaturedWomanModule({ module }) {
     return () => {
       active = false
     }
-  }, [module.personSlug])
+  }, [module.personSlug, hasInitial])
 
   if (!module.personSlug || !person) return null
 

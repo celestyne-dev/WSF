@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchRelatedArticles } from '../../api/articles'
+import { fetchRelatedArticles, mapArticle } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 import SectionHeading from '../ui/SectionHeading'
 
@@ -11,9 +11,11 @@ import SectionHeading from '../ui/SectionHeading'
  * the grid instead of rendering a broken card.
  */
 export default function FeaturedStoriesModule({ module }) {
-  const [items, setItems] = useState([])
+  const initial = module.initialData?.articles
+  const [items, setItems] = useState(() => (initial ? initial.map(mapArticle) : []))
 
   useEffect(() => {
+    if (initial) return undefined
     let active = true
     if (!module.articleSlugs?.length) {
       setItems([])
@@ -25,7 +27,7 @@ export default function FeaturedStoriesModule({ module }) {
     return () => {
       active = false
     }
-  }, [module.articleSlugs])
+  }, [module.articleSlugs, initial])
 
   if (!items.length) return null
 

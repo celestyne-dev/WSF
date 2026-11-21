@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react'
-import { fetchResources } from '../../api/resources'
+import { fetchResources, mapResource } from '../../api/resources'
 import ResourceCard from '../cards/ResourceCard'
 import SectionHeading from '../ui/SectionHeading'
 
 export default function ResourcesModule({ module }) {
-  const [items, setItems] = useState([])
+  // Hard load of "/": the server already fetched this (module.initialData).
+  const initial = module.initialData?.items
+  const [items, setItems] = useState(() => (initial ? initial.map(mapResource) : []))
   // 'loading' | 'error' | 'success' — only a confirmed successful fetch
   // that came back empty hides the section; a slow or failed fetch keeps
   // rendering the section exactly as before (no flash of "nothing here"
   // while still loading, and an error is never treated as empty).
-  const [status, setStatus] = useState('loading')
+  const [status, setStatus] = useState(initial ? 'success' : 'loading')
 
   useEffect(() => {
+    if (initial) return undefined
     let active = true
     fetchResources({ featured: true, pageSize: module.itemCount || 3 })
       .then((res) => {
@@ -23,7 +26,7 @@ export default function ResourcesModule({ module }) {
     return () => {
       active = false
     }
-  }, [module.itemCount])
+  }, [module.itemCount, initial])
 
   if (status === 'success' && items.length === 0) return null
 

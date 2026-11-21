@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { fetchArticleBySlug, fetchRelatedArticles } from '../../api/articles'
+import { fetchArticleBySlug, fetchRelatedArticles, mapArticle } from '../../api/articles'
 import ArticleCard from '../cards/ArticleCard'
 import MediaImage from '../ui/MediaImage'
 import CtaLink from '../ui/CtaLink'
@@ -33,7 +33,8 @@ export default function HeroModule({ module }) {
     if (matchesBootstrap) return bootstrapLeadArticle
     return module.leadArticleSlug ? undefined : null
   })
-  const [secondary, setSecondary] = useState([])
+  const initialSecondary = module.initialData?.secondary
+  const [secondary, setSecondary] = useState(() => (initialSecondary ? initialSecondary.map(mapArticle) : []))
 
   useEffect(() => {
     let active = true
@@ -47,7 +48,7 @@ export default function HeroModule({ module }) {
     // else: matchesBootstrap — `lead` is already the resolved Article
     // from the lazy initializer above; no fetch needed.
 
-    if (module.secondaryArticleSlugs?.length) {
+    if (module.secondaryArticleSlugs?.length && !initialSecondary) {
       fetchRelatedArticles(module.secondaryArticleSlugs)
         .then((items) => active && setSecondary(items))
         .catch(() => {})
@@ -55,7 +56,7 @@ export default function HeroModule({ module }) {
     return () => {
       active = false
     }
-  }, [module.leadArticleSlug, module.secondaryArticleSlugs, matchesBootstrap])
+  }, [module.leadArticleSlug, module.secondaryArticleSlugs, matchesBootstrap, initialSecondary])
 
   if (lead === undefined) return null // still resolving the lead article
 
@@ -64,7 +65,7 @@ export default function HeroModule({ module }) {
       <section className="border-b border-taupe-200 bg-ivory py-10 sm:py-14">
         <div className="container-editorial grid grid-cols-1 gap-10 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <ArticleCard article={module.heading ? { ...lead, title: module.heading } : lead} variant="lead" />
+            <ArticleCard article={module.heading ? { ...lead, title: module.heading } : lead} variant="lead" headingLevel={1} />
             {module.ctaLabel && module.ctaUrl && (
               <CtaLink to={module.ctaUrl} className="btn-outline mt-4 inline-flex">
                 {module.ctaLabel}
