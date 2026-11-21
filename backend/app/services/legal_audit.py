@@ -34,7 +34,10 @@ TECHNOLOGY_INVENTORY = (
     {"name": "WSF analytics events (POST /api/v1/analytics/events)", "provider": "WSF (first party)", "category": "analytics",
      "purpose": "Counts engagement events (e.g. clicks, sign-ups) in WSF's own database.", "storage": "none (server request)",
      "duration": "Not stored in the browser.", "consentRequired": True},
-    {"name": "Embedded video players (YouTube no-cookie, Vimeo, Wistia, Loom)", "provider": "Third party", "category": "marketing",
+    # Functional media the visitor came for (not advertising): Preferences.
+    # Loaded automatically only with Preferences consent; otherwise only for
+    # the one video the visitor presses Play on.
+    {"name": "Embedded video players (YouTube no-cookie, Vimeo, Wistia, Loom)", "provider": "Third party", "category": "preferences",
      "purpose": "Plays lesson and event videos. The provider may set its own cookies/storage.", "storage": "third-party",
      "duration": "Set by the provider (not controlled by WSF).", "consentRequired": True},
 )

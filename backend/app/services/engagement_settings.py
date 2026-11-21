@@ -46,7 +46,7 @@ CONSENT_DEFAULTS = {
     "version": "1",
     "title": "We use cookies",
     "body": ("We use essential technologies to make WSF work. With your permission, we may also use analytics "
-             "and marketing technologies to understand how the site is used and improve our content."),
+             "and optional embedded media to understand how the site is used and provide third-party content."),
 }
 _CONSENT_TEXT = {"title": 80, "body": 400}
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$")

@@ -44,7 +44,8 @@ def _opp(app, slug, **kw):
     from app.models.opportunity import Opportunity
 
     fields = dict(title=slug.replace("-", " ").title(), status="published", access_type="public", organization_name="Org",
-                  application_url="https://example.com/apply", description=[{"type": "paragraph", "text": "Call."}], type="Grant")
+                  application_url="https://example.com/apply", description=[{"type": "paragraph", "text": "Call."}], type="Grant",
+                  published_date=D(-3))
     fields.update(kw)
     with app.app_context():
         opp = Opportunity(slug=slug, **fields)
@@ -304,3 +305,75 @@ def test_lifecycle_unit_rules():
     assert opportunity_state(J(status="closed", opening_date=None, deadline=D(9), expiry_date=None)) == "closed"
     assert closing_info(TODAY)["daysLeft"] == 0 and closing_info(TODAY)["closingSoon"] is True
     assert closing_info(D(8))["closingSoon"] is False
+
+
+# --- Publication-history boundary (a closed record must have been public) -------------------
+
+def _make_status(app, model, slug, status):
+    from app.extensions import db
+    from app.models.opportunity import Job, Opportunity
+
+    with app.app_context():
+        row = (Job if model == "job" else Opportunity).query.filter_by(slug=slug).first()
+        row.status = status
+        db.session.commit()
+
+
+def _public(client, path):
+    return client.get(f"/api/v1/{path}").status_code, client.get(f"/{path}").status_code
+
+
+def test_job_publication_history_boundary(client, app):
+    # published -> expired: historical closed detail stays reachable, no destination.
+    _job(app, "hist-job", deadline=D(10), application_email="hr@example.com")
+    _make_status(app, "job", "hist-job", "expired")
+    assert _public(client, "jobs/hist-job") == (200, 200)
+    data = client.get("/api/v1/jobs/hist-job").get_json()["data"]
+    assert data["is_closed"] is True and "application_url" not in data and "application_email" not in data
+    assert client.post("/api/v1/jobs/hist-job/access").status_code == 409
+    # draft -> expired with no published_date: never public.
+    _job(app, "never-job", status="draft", published_date=None)
+    _make_status(app, "job", "never-job", "expired")
+    assert _public(client, "jobs/never-job") == (404, 404)
+    assert client.post("/api/v1/jobs/never-job/access").status_code == 404
+    # expired with a future publication date: never public.
+    _job(app, "future-exp-job", status="expired", published_date=D(5))
+    assert _public(client, "jobs/future-exp-job") == (404, 404)
+    # archived: private even with history.
+    _job(app, "arch-job", status="archived")
+    assert _public(client, "jobs/arch-job") == (404, 404)
+
+
+def test_opportunity_publication_history_boundary(client, app):
+    _opp(app, "hist-opp", deadline=D(10), application_url="https://secret.example/apply")
+    _make_status(app, "opp", "hist-opp", "closed")
+    assert _public(client, "opportunities/hist-opp") == (200, 200)
+    data = client.get("/api/v1/opportunities/hist-opp").get_json()["data"]
+    assert data["state"] == "closed" and "application_url" not in data
+    resp = client.post("/api/v1/opportunities/hist-opp/access")
+    assert resp.status_code == 409 and "secret.example" not in resp.get_data(as_text=True)
+    # draft -> closed with no published_date does NOT publish it.
+    _opp(app, "never-opp", status="draft", published_date=None)
+    _make_status(app, "opp", "never-opp", "closed")
+    assert _public(client, "opportunities/never-opp") == (404, 404)
+    assert client.post("/api/v1/opportunities/never-opp/access").status_code == 404
+    _opp(app, "future-closed-opp", status="closed", published_date=D(5))
+    assert _public(client, "opportunities/future-closed-opp") == (404, 404)
+    _opp(app, "arch-opp", status="archived")
+    assert _public(client, "opportunities/arch-opp") == (404, 404)
+    assert client.post("/api/v1/opportunities/arch-opp/access").status_code == 404
+
+
+def test_publication_history_unit_rule():
+    from types import SimpleNamespace as R
+
+    from app.services.listing_lifecycle import job_is_reachable, opportunity_is_reachable
+
+    assert job_is_reachable(R(status="expired", published_date=D(-1)))
+    assert not job_is_reachable(R(status="expired", published_date=None))
+    assert not job_is_reachable(R(status="expired", published_date=D(1)))
+    assert job_is_reachable(R(status="published", published_date=None))  # legacy published rows stay public
+    assert not job_is_reachable(R(status="archived", published_date=D(-9)))
+    assert opportunity_is_reachable(R(status="closed", published_date=TODAY))
+    assert not opportunity_is_reachable(R(status="closed", published_date=None))
+    assert not opportunity_is_reachable(R(status="draft", published_date=D(-9)))

@@ -60,12 +60,12 @@ export async function subscribeToNewsletter(payload) {
   if (!USE_MOCK) {
     try {
       const { data } = await apiClient.post('/newsletter/subscribe', payload)
-      return { success: true, message: 'You’re subscribed to WSF Weekly.', subscriber: data }
+      return { success: true, message: 'Thanks for signing up. Your WSF Weekly signup has been received.', subscriber: data }
     } catch (err) {
       return { success: false, message: err.apiError?.message || 'Something went wrong. Please try again.' }
     }
   }
-  return delay({ success: true, message: 'You’re subscribed to WSF Weekly.' }, 500)
+  return delay({ success: true, message: 'Thanks for signing up. Your WSF Weekly signup has been received.' }, 500)
 }
 
 export async function unsubscribeByEmail(email) {

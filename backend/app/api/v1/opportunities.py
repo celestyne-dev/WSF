@@ -443,7 +443,10 @@ class OpportunityAccessResource(Resource):
         # closed/archived ARE known — they just answer "application
         # closed" (409) rather than 404, so the distinct code reaches the
         # caller (spec section G, cases 1-2).
-        if opportunity is None or (opportunity.status == "draft" and not _can_edit_or_none()):
+        # Private (404) unless publicly reachable by the shared lifecycle rule
+        # (published, or closed WITH publication history). A historical
+        # closed record answers 409 "application closed" below.
+        if opportunity is None or (not opportunity_is_reachable(opportunity) and not _can_edit_or_none()):
             raise ApiError("Opportunity not found.", 404, code="not_found")
 
         viewer = _viewer_for_access_check()

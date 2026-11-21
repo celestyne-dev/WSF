@@ -75,3 +75,11 @@ export function videoLinkHint(url) {
   if (info.state === 'link') return { tone: 'info', text: 'Not a YouTube, Vimeo, Wistia or Loom link: it will open as a link on its own site rather than play on the page.' }
   return null
 }
+
+/** Whether an embedded player may be shown: only for an allowlisted player
+ * URL, and only with Preferences consent or after the visitor pressed Play
+ * on this video. Marketing consent is irrelevant (videos are functional
+ * media, not advertising). */
+export function shouldShowPlayer(embedUrl, { preferencesConsent = false, playRequested = false } = {}) {
+  return isAllowedEmbedUrl(embedUrl) && (preferencesConsent || playRequested)
+}

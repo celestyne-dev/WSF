@@ -630,7 +630,8 @@ def test_52_expiry_passed_application_closed(client, app, user_a_token):
 
 def test_53_closed_status_cannot_access_application(client, app, user_a_token):
     _give_active_circle(app, USER_A["email"])
-    opportunity_id = _make_opportunity(app, access_type="circle_only", status="closed")
+    # A historical closed record (it was published) answers "closed".
+    opportunity_id = _make_opportunity(app, access_type="circle_only", status="closed", published_date=date.today() - timedelta(days=30))
     slug = _opportunity_slug(app, opportunity_id)
     resp = client.post(f"/api/v1/opportunities/{slug}/access", headers=auth_headers(user_a_token), )
     assert resp.status_code == 409
@@ -639,11 +640,11 @@ def test_53_closed_status_cannot_access_application(client, app, user_a_token):
 
 def test_54_archived_cannot_access(client, app, manager_token, user_a_token):
     _give_active_circle(app, USER_A["email"])
-    opportunity_id = _make_opportunity(app, access_type="circle_only", status="archived")
+    opportunity_id = _make_opportunity(app, access_type="circle_only", status="archived", published_date=date.today() - timedelta(days=30))
     slug = _opportunity_slug(app, opportunity_id)
     resp = client.post(f"/api/v1/opportunities/{slug}/access", headers=auth_headers(user_a_token))
-    assert resp.status_code == 409
-    assert resp.get_json()["error"]["code"] == "application_closed"
+    # Archived is private (listing_lifecycle): never known publicly.
+    assert resp.status_code == 404
 
 
 def test_55_draft_cannot_access(client, app, user_a_token):
@@ -655,9 +656,9 @@ def test_55_draft_cannot_access(client, app, user_a_token):
 
 
 def test_56_closed_published_metadata_stays_truthful(client, app, manager_token):
-    opportunity_id = _make_opportunity(app, access_type="public", status="closed")
+    opportunity_id = _make_opportunity(app, access_type="public", status="closed", published_date=date.today() - timedelta(days=30))
     slug = _opportunity_slug(app, opportunity_id)
-    # A closed Opportunity keeps its public URL as a closed record
+    # A closed Opportunity that was published keeps its public URL as a closed record
     # (listing_lifecycle): truthful is_closed, and no application target.
     anon = client.get(f"/api/v1/opportunities/{slug}")
     assert anon.status_code == 200

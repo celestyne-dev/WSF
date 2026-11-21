@@ -41,3 +41,12 @@ def test_invalid_values_rejected(client, app):
         {"cookie_consent": {"version": "has spaces!"}},
     ):
         assert _put(client, token, body).status_code == 422, body
+
+
+def test_default_banner_copy_is_truthful_and_saved_text_is_kept(client, app):
+    data = client.get("/api/v1/public/settings").get_json()["data"]["cookieConsent"]
+    assert "optional embedded media" in data["body"] and "marketing" not in data["body"]
+    token = _register_with_role(client, app, ADMIN, "admin")
+    custom = "Our own wording about cookies."
+    assert _put(client, token, {"cookie_consent": {"body": custom}}).status_code == 200
+    assert client.get("/api/v1/public/settings").get_json()["data"]["cookieConsent"]["body"] == custom

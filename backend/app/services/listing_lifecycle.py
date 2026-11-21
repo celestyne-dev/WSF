@@ -10,8 +10,10 @@ the server's calendar date (date.today()).
 
 JOBS
   reachable  the detail URL answers: published, scheduled once its
-             published_date has arrived, or expired (shown as closed).
-             draft/review/future-scheduled/archived never answer.
+             published_date has arrived, or expired WITH publication history
+             (published_date set and arrived), shown as closed.
+             draft/review/future-scheduled/archived, and expired-but-never-
+             published, never answer.
   live       reachable AND not expired AND the effective close date
              (the earlier of deadline / expiry_date) has not passed.
              Only live Jobs appear in listings, homepage modules, hubs,
@@ -19,7 +21,9 @@ JOBS
              a live Job's application destination is ever served.
 
 OPPORTUNITIES
-  reachable  published or closed (closed is shown as closed).
+  reachable  published, or closed WITH publication history (published_date
+             set and arrived), shown as closed. draft/archived, and closed-but-
+             never-published, never answer.
   state      draft | archived | closed | upcoming | open
              closed:   status closed, or deadline/expiry_date passed
              upcoming: published, opening_date in the future
@@ -58,11 +62,25 @@ def job_close_date(job):
     return _earliest(job.deadline, job.expiry_date)
 
 
+def _was_published(record, on):
+    """Publication history = a published_date that exists and has arrived.
+    It is set when a listing is published (or scheduled), so a record an
+    editor moved straight from draft to expired/closed has none and stays
+    private. No extra column."""
+    return bool(record.published_date) and record.published_date <= on
+
+
 def job_is_reachable(job, on=None):
+    """published, or scheduled and due -> reachable; expired -> reachable as
+    a historical closed listing ONLY if it was public before (see
+    _was_published). draft/review/future-scheduled/archived, and expired
+    without publication history -> private (404)."""
     on = on or today()
-    if job.status in ("published", "expired"):
+    if job.status == "published":
         return True
-    return job.status == "scheduled" and bool(job.published_date) and job.published_date <= on
+    if job.status in ("scheduled", "expired"):
+        return _was_published(job, on)
+    return False
 
 
 def job_is_live(job, on=None):
@@ -101,8 +119,15 @@ def opportunity_state(opportunity, on=None):
     return "open"
 
 
-def opportunity_is_reachable(opportunity):
-    return opportunity.status in ("published", "closed")
+def opportunity_is_reachable(opportunity, on=None):
+    """published -> reachable; closed -> reachable as a historical record
+    ONLY with publication history (a draft moved straight to closed is never
+    published by that). draft/archived -> private."""
+    if opportunity.status == "published":
+        return True
+    if opportunity.status == "closed":
+        return _was_published(opportunity, on or today())
+    return False
 
 
 def opportunity_is_open(opportunity, on=None):

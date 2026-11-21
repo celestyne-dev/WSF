@@ -29,8 +29,8 @@ const POLICY_CHECKLISTS = {
   cookies: [
     'Essential technologies (sign-in, security, checkout, consent choice)',
     'Analytics technologies, only if enabled (WSF’s own events; no third-party analytics is active)',
-    'Marketing technologies, only if enabled (embedded video players)',
-    'Preference storage',
+    'Marketing technologies, only if enabled (none is currently active)',
+    'Preferences, including embedded media (lesson and event video players)',
     'Provider of each technology',
     'Purpose of each technology',
     'Duration where known (do not invent cookie names or expiry times)',

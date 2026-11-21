@@ -856,10 +856,10 @@ def test_72_expiry_passed_application_closed(client, app, user_a_token):
 
 def test_73_expired_status_not_discoverable_through_access_endpoint(client, app, user_a_token):
     _give_active_circle(app, USER_A["email"])
-    job_id = _make_job(app, access_type="circle_only", status="expired")
+    job_id = _make_job(app, access_type="circle_only", status="expired", published_date=date.today() - timedelta(days=30))
     slug = _job_slug(app, job_id)
     resp = client.post(f"/api/v1/jobs/{slug}/access", headers=auth_headers(user_a_token))
-    # An expired Job keeps its public URL (shown as "Applications closed",
+    # An expired Job that was published keeps its public URL (shown as "Applications closed",
     # listing_lifecycle) so access answers "closed", never the destination,
     # even for an entitled Circle member.
     assert resp.status_code == 409

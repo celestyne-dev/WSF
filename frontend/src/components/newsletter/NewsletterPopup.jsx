@@ -115,8 +115,11 @@ function PopupDialog({ settings, onClose }) {
         </button>
         {status === 'done' ? (
           <div role="status" className="pr-8">
-            <h2 id="newsletter-popup-title" className="font-serif text-2xl font-semibold text-charcoal">You’re in.</h2>
-            <p id="newsletter-popup-body" className="mt-2 text-sm text-charcoal-700">Thanks for joining {settings.title}. Look out for it in your inbox.</p>
+            {/* Neutral on purpose: the subscribe API answers the same way for
+                every address (no list-state disclosure), so this never promises
+                delivery. */}
+            <h2 id="newsletter-popup-title" className="font-serif text-2xl font-semibold text-charcoal">Thanks for signing up.</h2>
+            <p id="newsletter-popup-body" className="mt-2 text-sm text-charcoal-700">Your {settings.title} signup has been received.</p>
             <button type="button" onClick={onClose} className="btn-secondary mt-5 !px-4 !py-2.5">Close</button>
           </div>
         ) : (

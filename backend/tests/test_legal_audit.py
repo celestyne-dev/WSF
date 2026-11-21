@@ -60,3 +60,12 @@ def test_every_frontend_storage_key_is_in_the_inventory():
     assert keys, "no storage keys found"
     for key in keys:
         assert key in listed, f"{key} is written by the frontend but missing from TECHNOLOGY_INVENTORY"
+
+
+def test_video_players_are_preferences_and_ad_trackers_inactive():
+    from app.services.legal_audit import INACTIVE_INTEGRATIONS, TECHNOLOGY_INVENTORY
+
+    video = next(t for t in TECHNOLOGY_INVENTORY if t["name"].startswith("Embedded video players"))
+    assert video["category"] == "preferences" and video["consentRequired"] is True
+    assert not any(t["category"] == "marketing" for t in TECHNOLOGY_INVENTORY)
+    assert {"Google Analytics", "Meta Pixel", "LinkedIn Insight Tag"} <= set(INACTIVE_INTEGRATIONS)

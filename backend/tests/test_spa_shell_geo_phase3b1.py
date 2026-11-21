@@ -111,7 +111,8 @@ def test_job_private_application_channel_and_hidden_salary_never_leak(client, ap
 def test_expired_and_future_jobs_get_no_prerender(client, app):
     from app.models.opportunity import Job
 
-    _add(app, Job(slug="expired-job", title="Expired Job Title", company_name="X", status="expired", description=_body("EXPIRED-BODY")))
+    _add(app, Job(slug="expired-job", title="Expired Job Title", company_name="X", status="expired", description=_body("EXPIRED-BODY"),
+                  published_date=date.today() - timedelta(days=30)))
     _add(app, Job(slug="future-job", title="Future Job Title", company_name="X", status="scheduled",
                   published_date=date.today() + timedelta(days=5), description=_body("FUTURE-BODY")))
     # Future-scheduled: still a true 404 with nothing leaked.

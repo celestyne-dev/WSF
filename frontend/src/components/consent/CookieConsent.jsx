@@ -11,12 +11,12 @@ import useDialogFocus from '../../hooks/useDialogFocus'
 
 const DEFAULT_TITLE = 'We use cookies'
 const DEFAULT_BODY =
-  'We use essential technologies to make WSF work. With your permission, we may also use analytics and marketing technologies to understand how the site is used and improve our content.'
+  'We use essential technologies to make WSF work. With your permission, we may also use analytics and optional embedded media to understand how the site is used and provide third-party content.'
 
 const CATEGORIES = [
-  ['preferences', 'Preferences', 'Remember optional choices that make the site more convenient.'],
+  ['preferences', 'Preferences', 'Remembers optional choices and allows embedded media such as lesson and event videos. Without it, a video loads only when you press Play.'],
   ['analytics', 'Analytics', 'WSF’s own measurement of how pages and features are used (for example which links are clicked), to improve the site.'],
-  ['marketing', 'Marketing', 'Third-party content that may set its own cookies, such as embedded video players. Without it, videos load only when you press play.'],
+  ['marketing', 'Marketing', 'Advertising or campaign-measurement technologies, when enabled. WSF does not currently load any marketing trackers.'],
 ]
 
 // First-party consent banner + "Manage choices" dialog. The banner is a

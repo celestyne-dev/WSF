@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink, Play } from 'lucide-react'
 import { hasConsent, onConsentChange, openConsentManager } from '../../utils/consent'
-import { isAllowedEmbedUrl, videoProviderLabel } from '../../utils/videoEmbed'
+import { isAllowedEmbedUrl, shouldShowPlayer, videoProviderLabel } from '../../utils/videoEmbed'
 import MediaImage from './MediaImage'
 
 // One external video (WSF hosts none). Renders a sandboxed, lazy iframe
@@ -9,17 +9,18 @@ import MediaImage from './MediaImage'
 // otherwise a plain outbound "Watch" link. Transcript and captions links
 // render only when provided.
 //
-// The provider's player can set its own cookies/storage, so the iframe
-// loads only with Marketing consent (utils/consent) or when the visitor
-// presses play for this one video. Withdrawing consent unloads a player
-// that was loaded by consent (one the visitor started stays).
+// Functional media the visitor came for, not advertising: the provider's
+// player can still set its own storage, so the iframe loads automatically
+// only with Preferences consent (utils/consent), or for this one video when
+// the visitor presses Play. Withdrawing Preferences unloads a player that
+// was loaded by stored consent (one the visitor started stays).
 export default function VideoEmbed({ title, url, embedUrl, provider, transcript, captionsUrl, thumbnail }) {
   const canEmbed = isAllowedEmbedUrl(embedUrl)
   const providerLabel = videoProviderLabel(provider)
-  const [allowed, setAllowed] = useState(() => hasConsent('marketing'))
+  const [allowed, setAllowed] = useState(() => hasConsent('preferences'))
   const [clicked, setClicked] = useState(false)
-  useEffect(() => onConsentChange((snap) => setAllowed(snap.marketing)), [])
-  const showPlayer = canEmbed && (allowed || clicked)
+  useEffect(() => onConsentChange((snap) => setAllowed(snap.preferences)), [])
+  const showPlayer = shouldShowPlayer(embedUrl, { preferencesConsent: allowed, playRequested: clicked })
   return (
     <div className="space-y-2">
       {canEmbed && !showPlayer && (
