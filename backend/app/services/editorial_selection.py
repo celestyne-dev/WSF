@@ -22,6 +22,11 @@ from app.models.article import Article
 
 # Upper bound on candidates any one ranked selection may examine.
 RANKED_POOL = 60
+# Filtered selection (an eligibility rule that needs Python, e.g. "has a
+# public expert") reads candidates in batches of this size, and never more
+# than MAX_FILTER_SCAN of them per section.
+FILTER_BATCH = 20
+MAX_FILTER_SCAN = 200
 
 
 def public_articles():
@@ -64,18 +69,22 @@ class EditorialSelection:
         return article_id in self.used
 
     # --- selection ---------------------------------------------------------------------
-    def pick_manual(self, slugs, limit, label):
-        """Editor-picked slugs in the editor's order: unpublished, missing
-        or already-placed Articles are skipped, never replaced by a repeat."""
+    def pick_manual(self, slugs, limit, label, eligible=None, query=None):
+        """Editor-picked slugs in the editor's order: unpublished, missing,
+        already-placed or (with `eligible`) ineligible Articles are skipped,
+        never replaced by a repeat. Eligibility is decided before anything
+        is reserved."""
         slugs = [s for s in (slugs or []) if isinstance(s, str) and s]
         if not slugs or limit <= 0:
             return []
-        rows = public_articles().filter(Article.slug.in_(slugs)).all()
+        rows = (query if query is not None else public_articles()).filter(Article.slug.in_(slugs)).all()
         by_slug = {row.slug: row for row in rows}
         picked = []
         for slug in slugs:
             row = by_slug.get(slug)
             if row is None or row.id in self.used or row in picked:
+                continue
+            if eligible is not None and not eligible(row):
                 continue
             picked.append(row)
             if len(picked) >= limit:
@@ -91,6 +100,28 @@ class EditorialSelection:
         if self.used:
             query = query.filter(Article.id.notin_(self.used))
         return self.reserve(query.limit(limit).all(), label)
+
+    def pick_query_where(self, query, eligible, limit, label, batch=FILTER_BATCH, max_scan=MAX_FILTER_SCAN):
+        """Like pick_query, for a rule SQL cannot express by itself: read the
+        ordered, not-yet-placed candidates in bounded batches, keep those
+        `eligible` accepts (checked BEFORE reserving), until `limit` are
+        found or `max_scan` candidates were examined."""
+        if limit <= 0:
+            return []
+        if self.used:
+            query = query.filter(Article.id.notin_(self.used))
+        picked, offset = [], 0
+        while len(picked) < limit and offset < max_scan:
+            rows = query.offset(offset).limit(batch).all()
+            if not rows:
+                break
+            offset += len(rows)
+            for row in rows:
+                if eligible(row):
+                    picked.append(row)
+                    if len(picked) >= limit:
+                        break
+        return self.reserve(picked, label)
 
     def pick_ranked(self, query, score, limit, label, pool=RANKED_POOL):
         """Deterministic relevance: examine at most `pool` unplaced

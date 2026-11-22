@@ -9,7 +9,9 @@
   Existing rows get {}.
 - homepage_modules type check widened for the new module types.
 
-Nothing existing is rewritten.
+Nothing existing is rewritten. Downgrade refuses to run (and changes
+nothing) while any homepage module of a new type exists; it never deletes
+or converts editor configuration.
 
 Revision ID: c9f1e3a5b7d2
 Revises: b8e4d2f6a1c3
@@ -63,10 +65,28 @@ def upgrade():
     op.create_check_constraint("ck_homepage_modules_type", "homepage_modules", _type_check(_NEW_TYPES))
 
 
+class NewHomepageModulesExist(RuntimeError):
+    pass
+
+
 def downgrade():
-    # Rows of the new module types cannot satisfy the old check; they are
-    # disabled-and-removed only by this explicit downgrade.
-    op.execute("DELETE FROM homepage_modules WHERE " + " OR ".join(f"type = '{t}'" for t in _NEW_TYPES[len(_OLD_TYPES):]))
+    # Rollback guard: never delete or rewrite editor configuration. Homepage
+    # modules of the new types cannot satisfy the old type check, so while
+    # any exist the downgrade stops BEFORE changing anything, and an editor
+    # removes or exports them intentionally first.
+    new_types = _NEW_TYPES[len(_OLD_TYPES):]
+    rows = op.get_bind().execute(
+        sa.text("SELECT id, type FROM homepage_modules WHERE type IN :types ORDER BY id").bindparams(
+            sa.bindparam("types", expanding=True)),
+        {"types": list(new_types)},
+    ).fetchall()
+    if rows:
+        listed = ", ".join(f"#{row.id} ({row.type})" for row in rows)
+        raise NewHomepageModulesExist(
+            "Downgrade stopped: these homepage modules use types introduced by revision c9f1e3a5b7d2 "
+            f"and would violate the older module-type rule: {listed}. Remove or export them in Studio "
+            "(Homepage Builder) deliberately, then run the downgrade again. Nothing was changed."
+        )
     op.drop_constraint("ck_homepage_modules_type", "homepage_modules", type_="check")
     op.create_check_constraint("ck_homepage_modules_type", "homepage_modules", _type_check(_OLD_TYPES))
     op.drop_column("topics", "hub")

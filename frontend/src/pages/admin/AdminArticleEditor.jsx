@@ -19,7 +19,7 @@ import {
 import { fetchAuthors, fetchTopics, fetchCategories, fetchSeries } from '../../api/taxonomies'
 import { fetchPeople } from '../../api/people'
 import ArticleProvenanceFields from '../../components/cms/ArticleProvenanceFields'
-import { expertRowsFromArticle, expertRowsToPayload } from '../../utils/articleProvenance'
+import { editorialUpdatedAtToPayload, expertRowsFromArticle, expertRowsToPayload } from '../../utils/articleProvenance'
 import { fetchSponsors } from '../../api/admin'
 import { RESERVED_SLUGS } from '../../constants/routes'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
@@ -397,7 +397,7 @@ export default function AdminArticleEditor() {
       tagSlugs: form.tagSlugs,
       relatedPersonSlugs: form.relatedPersonSlugs,
       experts: expertRowsToPayload(form.experts),
-      editorialUpdatedAt: form.editorialUpdatedAt ? new Date(`${form.editorialUpdatedAt}T12:00:00Z`).toISOString() : null,
+      editorialUpdatedAt: editorialUpdatedAtToPayload(form.editorialUpdatedAt),
       status: isNew ? 'draft' : form.status,
       featured: form.featured,
       promoted: form.promoted,

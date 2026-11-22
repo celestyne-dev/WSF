@@ -200,6 +200,17 @@ def _article_collection(module, selection, label):
     config = _config(module)
     source = config.get("source") or ARTICLE_COLLECTION_SOURCES[module.type][0]
     limit = _limit(module, DEFAULT_ITEMS.get(module.type, 4), 8)
+    if module.type == "expert_guidance":
+        # Expert-Backed Guidance: only Articles with at least one PUBLIC
+        # reviewer / fact checker / expert contributor, decided before a slot
+        # is taken (manual picks keep their order; no substitution).
+        from app.services.article_experts import has_public_expert, with_experts_loaded
+
+        if source == "manual":
+            return selection.pick_manual(config.get("articleSlugs"), limit, label, eligible=has_public_expert,
+                                         query=with_experts_loaded(public_articles()))
+        candidates = newest_first(with_experts_loaded(public_articles()).filter(Article.experts.any()))
+        return selection.pick_query_where(candidates, has_public_expert, limit, label)
     if source == "manual":
         return selection.pick_manual(config.get("articleSlugs"), limit, label)
     if source == "topic":
@@ -212,8 +223,6 @@ def _article_collection(module, selection, label):
         # Community stories are Articles an editor published from a reader's
         # Story Submission (Article.source_submission_id); never raw submissions.
         return selection.pick_query(newest_first(public_articles().filter(Article.source_submission_id.isnot(None))), limit, label)
-    if source == "expert":
-        return selection.pick_query(newest_first(public_articles().filter(Article.experts.any())), limit, label)
     if source == "editorial":
         # Handpicked by WSF: the editor's picks, then featured/promoted, then
         # the newest; always after every Article placed above.

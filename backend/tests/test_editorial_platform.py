@@ -410,7 +410,7 @@ def test_reviewer_and_fact_checker_shown_only_when_recorded(client, app, admin):
                "topicSlugs": ["careers"], "experts": [{"role": "reviewed_by", "personSlug": "rev"},
                                                       {"role": "fact_checked_by", "authorSlug": "fc"},
                                                       {"role": "expert_contributor", "personSlug": "secret"}],
-               "editorialUpdatedAt": (NOW + timedelta(days=1)).isoformat()}
+               "editorialUpdatedAt": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()}
     assert client.put("/api/v1/articles/a-1", json=payload, headers=admin).status_code == 200
     public = client.get("/api/v1/articles/a-1").get_json()["data"]
     assert [(e["label"], e["name"]) for e in public["experts"]] == [("Reviewed by", "Rita Reviewer"), ("Fact checked by", "Fiona Checker")]
@@ -531,3 +531,241 @@ def test_homepage_query_count_is_bounded(client, app):
     # One bounded query per selection plus batched card relations; the number
     # does not grow with the number of cards (no N+1).
     assert counter["n"] < 150, counter["n"]
+
+
+# --- production hardening: Expert-Backed Guidance needs a PUBLIC expert -----------------------------
+
+
+def _experts_fixture(app):
+    """a-1..a-8 published. Provenance:
+    a-2 active Author reviewer | a-3 published Person reviewer
+    a-4 inactive Author only   | a-5 draft Person only
+    a-6 draft Person + active Author (mixed) | a-7 published Person fact-checker"""
+    from app.models.article import Article, ArticleExpert
+    from app.models.people import Author, Person
+
+    _seed(app, 8)
+    with app.app_context():
+        profiles = {
+            "pub-author": Author(slug="pub-author", name="Public Author Reviewer", status="active", role="Editor"),
+            "old-author": Author(slug="old-author", name="Inactive Author Secret", status="archived"),
+            "pub-person": Person(slug="pub-person", name="Public Person Reviewer", status="published", title="HR Director"),
+            "draft-person": Person(slug="draft-person", name="Draft Person Secret", status="draft", title="Hidden Title"),
+        }
+        db.session.add_all(profiles.values())
+        db.session.flush()
+
+        def add(slug, role, key):
+            article = Article.query.filter_by(slug=slug).first()
+            profile = profiles[key]
+            is_author = isinstance(profile, Author)
+            db.session.add(ArticleExpert(article_id=article.id, role=role, position=len(article.experts),
+                                         author_id=profile.id if is_author else None, person_id=None if is_author else profile.id))
+            db.session.flush()
+
+        add("a-2", "reviewed_by", "pub-author")
+        add("a-3", "reviewed_by", "pub-person")
+        add("a-4", "reviewed_by", "old-author")
+        add("a-5", "expert_contributor", "draft-person")
+        add("a-6", "reviewed_by", "draft-person")
+        add("a-6", "fact_checked_by", "pub-author")
+        add("a-7", "fact_checked_by", "pub-person")
+        db.session.commit()
+
+
+def _expert_module(client):
+    module = next(m for m in _public(client) if m["type"] == "expert_guidance")
+    return module, module.get("initial_data", {}).get("articles", [])
+
+
+def test_dynamic_expert_module_only_public_experts_and_backfills(client, app):
+    _experts_fixture(app)
+    _modules(app, ("expert_guidance", {"source": "expert", "itemCount": 4}, {"heading": "Expert-Backed Guidance"}))
+    _module, cards = _expert_module(client)
+    # Newest first among eligible: a-2 (author), a-3 (person), a-6 (mixed), a-7; a-4/a-5 never qualify.
+    assert [c["slug"] for c in cards] == ["a-2", "a-3", "a-6", "a-7"]
+    assert all(len(c["experts"]) >= 1 for c in cards)
+    mixed = next(c for c in cards if c["slug"] == "a-6")
+    assert [e["name"] for e in mixed["experts"]] == ["Public Author Reviewer"]
+    html = client.get("/").get_data(as_text=True)
+    for secret in ("Inactive Author Secret", "Draft Person Secret", "Hidden Title", "old-author", "draft-person"):
+        assert secret not in html
+
+
+def test_expert_eligibility_is_checked_before_a_slot_is_taken(client, app):
+    _experts_fixture(app)
+    # Latest takes a-1..a-3 first; the expert module must still fill from
+    # the remaining eligible stories (a-6, a-7), never an ineligible one.
+    _modules(app, ("latest_stories", {"itemCount": 3}, {}),
+             ("expert_guidance", {"source": "expert", "itemCount": 3}, {"heading": "E"}),
+             ("latest_stories", {"itemCount": 8}, {}))
+    latest, expert, below = _public(client)
+    assert _slugs(expert) == ["a-6", "a-7"]
+    assert "a-4" in _slugs(below) and "a-5" in _slugs(below)  # ineligible stories were never reserved by the expert module
+
+
+def test_no_eligible_expert_omits_the_section(client, app):
+    from app.models.article import Article, ArticleExpert
+    from app.models.people import Person
+
+    _seed(app, 3)
+    with app.app_context():
+        person = Person(slug="only-draft", name="Only Draft Expert", status="draft")
+        db.session.add(person)
+        db.session.flush()
+        db.session.add(ArticleExpert(article_id=Article.query.filter_by(slug="a-1").first().id, role="reviewed_by", person_id=person.id))
+        db.session.commit()
+    _modules(app, ("expert_guidance", {"source": "expert", "itemCount": 3}, {"heading": "Expert-Backed Guidance"}))
+    _module, cards = _expert_module(client)
+    assert cards == []
+    root = client.get("/").get_data(as_text=True).split('data-wsf-prerender="home"', 1)[1].split("</main>", 1)[0]
+    assert "Expert-Backed Guidance" not in root and "Only Draft Expert" not in root
+
+
+def test_manual_expert_module_skips_ineligible_and_keeps_order(client, app, admin):
+    _experts_fixture(app)
+    _modules(app, ("expert_guidance", {"source": "manual", "articleSlugs": ["a-7", "a-1", "a-5", "a-4", "a-2"], "itemCount": 4},
+                   {"heading": "E"}))
+    _module, cards = _expert_module(client)
+    # a-1 (no expert), a-5 (draft-only), a-4 (inactive-only) are skipped; no substitute is added.
+    assert [c["slug"] for c in cards] == ["a-7", "a-2"]
+    warnings = next(m for m in client.get("/api/v1/admin/homepage", headers=admin).get_json()["data"]
+                    if m["type"] == "expert_guidance")["warnings"]
+    for slug in ("a-1", "a-5", "a-4"):
+        assert any(f'"{slug}" has no public reviewer, fact checker or expert contributor' in w for w in warnings), slug
+    assert not any('"a-7"' in w or '"a-2"' in w for w in warnings)
+    assert "Draft Person Secret" not in json.dumps(warnings)
+
+
+def test_manual_expert_pick_whose_reviewer_becomes_private_disappears(client, app):
+    from app.models.people import Person
+
+    _experts_fixture(app)
+    _modules(app, ("expert_guidance", {"source": "manual", "articleSlugs": ["a-3"], "itemCount": 2}, {"heading": "E"}))
+    assert [c["slug"] for c in _expert_module(client)[1]] == ["a-3"]
+    with app.app_context():
+        Person.query.filter_by(slug="pub-person").first().status = "draft"
+        db.session.commit()
+    assert _expert_module(client)[1] == []
+    assert "Public Person Reviewer" not in client.get("/").get_data(as_text=True)
+
+
+# --- production hardening: the editorial "Updated" date is never in the future -------------------
+
+
+def _article_payload(article, **extra):
+    return {"title": article["title"], "authorSlug": "ed-author", "status": "published",
+            "content": [{"type": "paragraph", "text": "Body."}], "topicSlugs": ["careers"], **extra}
+
+
+def test_future_updated_date_is_rejected_and_past_one_shown(client, app, admin):
+    _seed(app, 2)
+    article = client.get("/api/v1/articles/a-1", headers=admin).get_json()["data"]
+    future = client.put("/api/v1/articles/a-1", headers=admin,
+                        json=_article_payload(article, editorialUpdatedAt=(datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()))
+    assert future.status_code == 422 and "can't be in the future" in json.dumps(future.get_json())
+    naive_future = (datetime.utcnow() + timedelta(days=3)).replace(microsecond=0).isoformat()  # no timezone: treated as UTC
+    assert client.put("/api/v1/articles/a-1", headers=admin,
+                      json=_article_payload(article, editorialUpdatedAt=naive_future)).status_code == 422
+
+    past = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    assert client.put("/api/v1/articles/a-1", headers=admin, json=_article_payload(article, editorialUpdatedAt=past)).status_code == 200
+    assert client.get("/api/v1/articles/a-1").get_json()["data"]["editorial_updated_at"]
+    assert "Updated " in client.get("/a-1").get_data(as_text=True)
+
+
+def test_stored_future_or_missing_updated_date_is_never_presented(client, app):
+    from app.models.article import Article
+
+    _seed(app, 3)
+    with app.app_context():
+        Article.query.filter_by(slug="a-1").first().editorial_updated_at = datetime.now(timezone.utc) + timedelta(days=30)
+        # a-2: updated BEFORE publication -> not an "update"
+        a2 = Article.query.filter_by(slug="a-2").first()
+        a2.editorial_updated_at = a2.publish_date - timedelta(days=1)
+        db.session.commit()
+    assert client.get("/api/v1/articles/a-1").get_json()["data"]["editorial_updated_at"] is None
+    for slug in ("a-1", "a-2", "a-3"):  # future / before publication / never recorded
+        root = client.get(f"/{slug}").get_data(as_text=True).split('<div id="root">', 1)[1]
+        assert "Updated " not in root, slug
+    with app.app_context():  # reading never rewrites the stored value
+        assert Article.query.filter_by(slug="a-1").first().editorial_updated_at is not None
+
+
+# --- production hardening: Resource recommendations by public visibility ----------------------------
+
+
+def test_keep_building_skips_future_and_nonpublic_resources_and_backfills(client, app):
+    from datetime import date
+
+    from app.models.resource import Resource
+    from app.models.taxonomy import Topic
+
+    _seed(app, 2)
+    with app.app_context():
+        topic = Topic.query.filter_by(slug="careers").first()
+        rows = []
+        # Featured future-scheduled rows sort first and used to fill the candidate window.
+        for i in range(10):
+            rows.append(Resource(slug=f"future-{i}", name=f"Future {i}", status="scheduled", featured=True,
+                                 published_date=date.today() + timedelta(days=5 + i), topics=[topic]))
+        for status in ("draft", "review", "archived"):
+            rows.append(Resource(slug=f"hidden-{status}", name=f"Hidden {status}", status=status, featured=True,
+                                 published_date=date.today() - timedelta(days=1), topics=[topic]))
+        rows.append(Resource(slug="visible-old", name="Visible Old", status="published",
+                             published_date=date.today() - timedelta(days=9), topics=[topic]))
+        rows.append(Resource(slug="visible-new", name="Visible New", status="published",
+                             published_date=date.today() - timedelta(days=2), topics=[topic]))
+        rows.append(Resource(slug="due-scheduled", name="Due Scheduled", status="scheduled",
+                             published_date=date.today() - timedelta(days=4), topics=[topic]))
+        db.session.add_all(rows)
+        db.session.commit()
+    recs = client.get("/api/v1/articles/a-1/recommendations").get_json()["data"]
+    assert [r["slug"] for r in recs["resources"]] == ["visible-new", "due-scheduled"]
+    hub = client.get("/api/v1/topics/careers/hub").get_json()["data"]
+    assert [r["slug"] for r in hub["resources"]] == ["visible-new", "due-scheduled", "visible-old"]
+    body = json.dumps(recs) + json.dumps(hub)
+    assert "future-" not in body and "hidden-" not in body
+
+
+# --- production hardening: the migration downgrade never deletes editor configuration --------------
+
+
+def test_migration_downgrade_refuses_while_new_module_rows_exist(app):
+    import importlib
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import text
+
+    module = importlib.import_module("migrations.versions.c9f1e3a5b7d2_editorial_platform")
+    assert module.down_revision == "b8e4d2f6a1c3"
+    with app.app_context():
+        with db.engine.connect() as conn:
+            outer = conn.begin()
+            try:
+                conn.execute(text("CREATE SCHEMA mig_c9f1"))
+                conn.execute(text("SET LOCAL search_path TO mig_c9f1"))
+                for table in ("articles", "authors", "people", "topics"):
+                    conn.execute(text(f"CREATE TABLE {table} (id SERIAL PRIMARY KEY)"))
+                conn.execute(text("CREATE TABLE homepage_modules (id SERIAL PRIMARY KEY, type VARCHAR(50) NOT NULL, "
+                                  "CONSTRAINT ck_homepage_modules_type CHECK (" + module._type_check(module._OLD_TYPES) + "))"))
+                conn.execute(text("INSERT INTO homepage_modules (type) VALUES ('hero')"))
+
+                def run(step):
+                    with Operations.context(MigrationContext.configure(conn)):
+                        step()
+
+                run(module.upgrade)    # b8e4d2f6a1c3 -> c9f1e3a5b7d2
+                run(module.downgrade)  # no new-type rows: clean
+                run(module.upgrade)    # and up again
+                conn.execute(text("INSERT INTO homepage_modules (type) VALUES ('mission')"))
+                with pytest.raises(module.NewHomepageModulesExist) as excinfo:
+                    run(module.downgrade)
+                assert "mission" in str(excinfo.value) and "Nothing was changed" in str(excinfo.value)
+                # The row and the new schema are untouched.
+                assert conn.execute(text("SELECT type FROM homepage_modules ORDER BY id")).scalars().all() == ["hero", "mission"]
+                assert conn.execute(text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'mig_c9f1' "
+                                         "AND table_name = 'article_experts'")).scalar() == 1
+            finally:
+                outer.rollback()

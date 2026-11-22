@@ -243,6 +243,9 @@ def _apply_fields(article, data, relations):
 
         set_article_experts(article, data["experts"])
     if "editorial_updated_at" in data:
+        from app.services.article_experts import validate_editorial_updated_at
+
+        validate_editorial_updated_at(data["editorial_updated_at"])
         article.editorial_updated_at = data["editorial_updated_at"]
 
 

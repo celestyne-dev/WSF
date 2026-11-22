@@ -123,6 +123,12 @@ class PublicArticleSchema(ArticleSchema):
         from app.services.public_visibility import filter_dumped, public_article_dump, public_sponsor_disclosure
 
         public_article_dump(data, original)
+        # A future "Updated" date (an old/bad stored value) is never presented.
+        if "editorial_updated_at" in data:
+            from app.services.article_experts import is_displayable_update
+
+            if data["editorial_updated_at"] and not is_displayable_update(original.editorial_updated_at, None):
+                data["editorial_updated_at"] = None
         # A linked Sponsor campaign is a public relationship too: only an
         # eligible campaign, in a minimal disclosure shape, and never the
         # internal Sponsor id. The freeform `sponsor` disclosure stored on

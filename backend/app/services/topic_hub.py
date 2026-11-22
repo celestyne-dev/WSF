@@ -41,6 +41,12 @@ def _shelf(entity, topic, limit):
     return _build_collection_items(entity, rows, limit)
 
 
+def _topic_resources(topic):
+    from app.services.article_recommendations import public_topic_resources
+
+    return public_topic_resources([topic.id], SHELF_COUNT)
+
+
 def topic_hub(topic, selection=None):
     selection = selection or EditorialSelection()
     config = _hub_config(topic)
@@ -56,7 +62,7 @@ def topic_hub(topic, selection=None):
         "latest": article_cards(latest),
         "editorsPicks": article_cards(picks),
         "learning": _shelf("learning", topic, SHELF_COUNT),
-        "resources": _shelf("resources", topic, SHELF_COUNT),
+        "resources": _topic_resources(topic),
         "opportunities": _shelf("opportunities", topic, SHELF_COUNT),
     }
 

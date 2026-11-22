@@ -1355,7 +1355,7 @@ def homepage_initial_data(module):
 ARTICLE_LINK_CLASSES = ("[&_a]:text-burgundy-600 [&_a]:underline [&_a]:decoration-burgundy-300 [&_a]:underline-offset-2 "
                         "hover:[&_a]:decoration-burgundy-600")
 ARTICLE_H1 = "mt-4 max-w-[820px] font-serif text-[2.75rem] font-semibold leading-[1.05] text-charcoal sm:text-[3.5rem] lg:text-[3.75rem]"
-ARTICLE_BYLINE_ROW = "mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 sm:flex-row sm:items-center sm:justify-between"
+ARTICLE_BYLINE_ROW = "mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 lg:flex-row lg:items-center lg:justify-between"
 ARTICLE_WITH_SIDEBAR = "mx-auto max-w-[1064px] lg:grid lg:grid-cols-[minmax(0,720px)_280px] lg:gap-16"
 _ARTICLE_HEADING_SIZES = {2: "text-[1.75rem] leading-[1.15] sm:text-3xl lg:text-[2.125rem]",
                           3: "text-xl leading-snug sm:text-2xl", 4: "text-lg leading-snug sm:text-xl"}
@@ -1408,6 +1408,20 @@ def _long_date(value):
     """formatDate default: en-US {month: long, day: numeric, year: numeric}."""
     d = _parse_date(value)
     return f"{_MONTHS_LONG[d.month - 1]} {d.day}, {d.year}" if d else ""
+
+
+def _is_displayable_update_iso(updated, published):
+    """Same rule as article_experts.is_displayable_update, on the ISO strings
+    the payload carries (ArticlePage.jsx applies it too)."""
+    from app.services.article_experts import is_displayable_update
+
+    def parse(value):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else None
+        except ValueError:
+            return None
+
+    return parse(updated) is not None and is_displayable_update(parse(updated), parse(published))
 
 
 def _hero_aspect(media):
@@ -1507,18 +1521,18 @@ def render_article(payload, body_html, sponsor_html="", recommendations=None):
     date_html = f'<time datetime="{_a(published)}">{_t(_long_date(published))}</time>' if published else ""
     updated = payload.get("editorial_updated_at")
     updated_html = ""
-    if updated and (not published or (_parse_date(updated) and _parse_date(published) and updated > published)):
+    if updated and _is_displayable_update_iso(updated, published):
         updated_html = f'<span aria-hidden="true">&middot;</span><span>Updated {_t(_long_date(updated))}</span>'
     recs = recommendations or {}
     byline = (
-        f'<div class="{ARTICLE_BYLINE_ROW}"><div class="flex items-center gap-3">{photo}<div class="text-sm">'
+        f'<div class="{ARTICLE_BYLINE_ROW}"><div class="flex min-w-0 items-center gap-3">{photo}<div class="min-w-0 text-sm">'
         f'<p class="font-semibold text-charcoal">By {names}</p>'
         + (f'<p class="text-xs text-charcoal-600/70">{_t(author["role"])}</p>' if author and author.get("role") else "")
-        + f'<p class="mt-0.5 flex items-center gap-2 text-charcoal-600"><span>{date_html}</span>{updated_html}<span aria-hidden="true">&middot;</span>'
+        + f'<p class="mt-0.5 flex flex-wrap items-center gap-x-2 text-charcoal-600"><span>{date_html}</span>{updated_html}<span aria-hidden="true">&middot;</span>'
         f'<span class="inline-flex items-center gap-1">{ICONS["clock13"]} {reading_time(payload)} min read</span></p></div></div>'
         # Save/share controls arrive with React; their row height (the h-9
         # share buttons) is reserved so nothing below moves on mobile.
-        '<div class="flex items-center gap-4"><span class="block h-9"></span></div></div>'
+        '<div class="flex shrink-0 items-center gap-4"><span class="block h-9"></span></div></div>'
     )
     ai = ""
     if payload.get("ai_disclosure_required"):

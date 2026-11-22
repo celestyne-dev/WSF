@@ -2,7 +2,7 @@
 // recorded role (Reviewed by / Fact checked by / Expert contribution by)
 // pointing at an existing Author or Person, never a typed name. Nothing is
 // shown publicly unless a row exists here and that profile is public.
-import { EXPERT_ROLES } from '../../utils/articleProvenance'
+import { EXPERT_ROLES, todayInputValue } from '../../utils/articleProvenance'
 
 const selectClass = 'w-full border border-taupe-300 bg-white px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
 
@@ -51,7 +51,7 @@ export default function ArticleProvenanceFields({ rows, onChange, authors, peopl
       )}
       <label className="block text-xs font-semibold uppercase tracking-wide text-charcoal-600">
         Updated on <span className="normal-case text-charcoal-600/60">— only for a substantive update; shown as “Updated”</span>
-        <input type="date" value={updatedAt} onChange={(e) => onUpdatedAtChange(e.target.value)} className={`mt-1.5 ${selectClass} sm:max-w-xs`} />
+        <input type="date" max={todayInputValue()} value={updatedAt} onChange={(e) => onUpdatedAtChange(e.target.value)} className={`mt-1.5 ${selectClass} sm:max-w-xs`} />
       </label>
     </div>
   )

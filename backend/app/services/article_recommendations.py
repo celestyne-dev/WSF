@@ -67,18 +67,42 @@ def _learning(topic_ids):
     return _build_collection_items("learning", rows, LEARNING_COUNT)
 
 
-def _resources(topic_ids):
+RESOURCE_BATCH = 12
+RESOURCE_MAX_SCAN = 120
+
+
+def public_topic_resources(topic_ids, limit):
+    """Up to `limit` Resources linked to one of `topic_ids` that the ONE
+    Resource visibility rule (Resource.is_publicly_visible) accepts:
+    featured first, then newest published. Future-scheduled or otherwise
+    non-public rows never use up a slot: candidates are read in bounded
+    batches until enough visible ones are found (never an unbounded scan)."""
+    from sqlalchemy.orm import selectinload
+
     from app.models.resource import Resource
+    from app.models.taxonomy import Topic
     from app.services.homepage_collections import _build_collection_items
 
-    if not topic_ids:
+    if not topic_ids or limit <= 0:
         return []
-    from app.models.taxonomy import Topic
+    query = (Resource.query.options(selectinload(Resource.images), selectinload(Resource.topics), selectinload(Resource.tags),
+                                    selectinload(Resource.author), selectinload(Resource.sponsor), selectinload(Resource.cover_media))
+             # Narrow to the statuses that can ever be public; the visibility
+             # decision itself stays with Resource.is_publicly_visible().
+             .filter(Resource.status.in_(["published", "scheduled"]), Resource.topics.any(Topic.id.in_(topic_ids)))
+             .order_by(Resource.featured.desc(), Resource.published_date.desc().nullslast(), Resource.id.desc()))
+    visible, offset = [], 0
+    while len(visible) < limit and offset < RESOURCE_MAX_SCAN:
+        rows = query.offset(offset).limit(RESOURCE_BATCH).all()
+        if not rows:
+            break
+        offset += len(rows)
+        visible.extend(r for r in rows if r.is_publicly_visible())
+    return _build_collection_items("resources", visible[:limit], limit)
 
-    rows = (Resource.query.filter(Resource.status.in_(["published", "scheduled"]), Resource.topics.any(Topic.id.in_(topic_ids)))
-            .order_by(Resource.featured.desc(), Resource.published_date.desc().nullslast(), Resource.id.desc())
-            .limit(RESOURCE_COUNT * 3).all())
-    return _build_collection_items("resources", rows, RESOURCE_COUNT)
+
+def _resources(topic_ids):
+    return public_topic_resources(topic_ids, RESOURCE_COUNT)
 
 
 def article_recommendations(article, selection=None):

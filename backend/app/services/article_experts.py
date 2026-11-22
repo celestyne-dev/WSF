@@ -75,6 +75,29 @@ def public_experts(article, with_credentials=True):
     return out
 
 
+def has_public_expert(article):
+    """Eligibility for Expert-Backed Guidance: at least one provenance row
+    whose linked profile is public (is_public_author / is_public_person,
+    the one visibility rule). A row pointing at a private profile counts
+    as nothing, and nothing about it is exposed."""
+    for row in getattr(article, "experts", None) or []:
+        if row.author_id is not None and is_public_author(row.author):
+            return True
+        if row.person_id is not None and is_public_person(row.person):
+            return True
+    return False
+
+
+def with_experts_loaded(query):
+    """Batch-load provenance rows and their profiles (no N+1)."""
+    from sqlalchemy.orm import selectinload
+
+    from app.models.article import Article
+
+    return query.options(selectinload(Article.experts).selectinload(ArticleExpert.author),
+                         selectinload(Article.experts).selectinload(ArticleExpert.person))
+
+
 def admin_experts(article):
     return [
         {"role": row.role, "authorSlug": row.author.slug if row.author else None,
@@ -117,3 +140,34 @@ def set_article_experts(article, entries):
         rows.append(ArticleExpert(role=role, author_id=profile.id if author_slug else None,
                                   person_id=profile.id if person_slug else None, position=index))
     article.experts = rows
+
+
+# --- editorial "Updated" date --------------------------------------------------------------
+
+
+def _aware(value):
+    from datetime import timezone
+
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def validate_editorial_updated_at(value):
+    """Save-time rule (authoritative, whatever the browser sent): an
+    editorial update can never be dated in the future."""
+    from datetime import datetime, timezone
+
+    if value is not None and _aware(value) > datetime.now(timezone.utc):
+        raise ValidationError("The editorial update date can't be in the future.", field_name="editorialUpdatedAt")
+
+
+def is_displayable_update(updated, published):
+    """Shown as "Updated" only when recorded, not in the future, and after
+    publication. Read-only: a bad stored value is simply not shown."""
+    from datetime import datetime, timezone
+
+    updated, published = _aware(updated), _aware(published)
+    if updated is None or updated > datetime.now(timezone.utc):
+        return False
+    return published is None or updated > published

@@ -167,6 +167,15 @@ def compute_module_warnings(module):
         for slug in _slug_list(config.get("articleSlugs")):
             if _article_missing(slug):
                 warnings.append(f'Article "{slug}" is no longer published.')
+        if mtype == "expert_guidance" and config.get("source") == "manual":
+            from app.services.article_experts import has_public_expert
+
+            for slug in _slug_list(config.get("articleSlugs")):
+                article = Article.query.filter_by(slug=slug, status="published").first()
+                if article is not None and not has_public_expert(article):
+                    warnings.append(
+                        f'"{slug}" has no public reviewer, fact checker or expert contributor and will not '
+                        "appear in Expert-Backed Guidance.")
         if config.get("source") == "topic":
             live = Topic.query.filter(Topic.slug.in_(_slug_list(config.get("topicSlugs"))), Topic.status == "published").count()
             if not live:

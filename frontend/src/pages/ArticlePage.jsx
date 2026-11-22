@@ -19,6 +19,7 @@ import ShareBar from '../components/ui/ShareBar'
 import ArticleContent, { CtaBlock } from '../components/article/ArticleContent'
 import NewsletterForm from '../components/ui/NewsletterForm'
 import { buildArticleToc } from '../utils/headingToc'
+import { isDisplayableUpdate } from '../utils/articleProvenance'
 import { CTA_PRESETS } from '../constants/ctaPresets'
 import SourceReferences from '../components/article/SourceReferences'
 import SponsorPlacementStrip from '../components/sponsors/SponsorPlacementStrip'
@@ -360,8 +361,9 @@ export default function ArticlePage() {
   const coAuthors = article.coAuthors || []
   const topic = article.topic
   const heroAspect = getMediaAspect(article.heroMedia)
-  // Shown only when an editor recorded a substantive update after publishing.
-  const showUpdated = Boolean(article.editorialUpdatedAt) && (!article.publishDate || new Date(article.editorialUpdatedAt) > new Date(article.publishDate))
+  // Shown only when an editor recorded a substantive update after publishing,
+  // and never a future date (same rule as the server first paint).
+  const showUpdated = isDisplayableUpdate(article.editorialUpdatedAt, article.publishDate)
   const tocEntries = toc.entries
   const hasToc = tocEntries.length > 0
   const hasSidebarContent = popular.length > 0 || hasSponsorSidebar || hasToc
@@ -412,12 +414,12 @@ export default function ArticlePage() {
                 a filled "toolbar" box. Author info first on every
                 breakpoint; actions sit opposite on desktop and move
                 cleanly beneath on mobile instead of compressing. */}
-            <div className="mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
+            <div className="mt-8 flex flex-col gap-5 border-y border-taupe-200 py-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
                 {author && (
                   <MediaImage media={author.photoMedia} variant="thumbnail" mediaPath={author.photo} alt={resolveAltText(author.photoMedia, author.name)} width={96} height={96} aspect={1} sizes="48px" className="h-12 w-12 rounded-full object-cover" />
                 )}
-                <div className="text-sm">
+                <div className="min-w-0 text-sm">
                   <p className="font-semibold text-charcoal">
                     By{' '}
                     {author && (
@@ -436,7 +438,7 @@ export default function ArticlePage() {
                     ))}
                   </p>
                   {author?.role && <p className="text-xs text-charcoal-600/70">{author.role}</p>}
-                  <p className="mt-0.5 flex items-center gap-2 text-charcoal-600">
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-charcoal-600">
                     <span>{formatDate(article.publishDate)}</span>
                     {showUpdated && (
                       <>
@@ -451,7 +453,7 @@ export default function ArticlePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex shrink-0 items-center gap-4">
                 <SaveButton contentType="article" contentId={article.id} className={BYLINE_SAVE_BUTTON_CLASS} />
                 <span aria-hidden="true" className="hidden h-5 w-px bg-taupe-300 sm:block" />
                 <ShareBar title={article.title} url={canonicalUrl} trackEventName="article_share_click" trackPayload={{ articleSlug: article.slug }} />
