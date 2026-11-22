@@ -684,12 +684,40 @@ def test_stored_future_or_missing_updated_date_is_never_presented(client, app):
         a2 = Article.query.filter_by(slug="a-2").first()
         a2.editorial_updated_at = a2.publish_date - timedelta(days=1)
         db.session.commit()
-    assert client.get("/api/v1/articles/a-1").get_json()["data"]["editorial_updated_at"] is None
+    for slug in ("a-1", "a-2", "a-3"):  # the raw public API carries the same truthful value
+        assert client.get(f"/api/v1/articles/{slug}").get_json()["data"]["editorial_updated_at"] is None, slug
     for slug in ("a-1", "a-2", "a-3"):  # future / before publication / never recorded
         root = client.get(f"/{slug}").get_data(as_text=True).split('<div id="root">', 1)[1]
         assert "Updated " not in root, slug
     with app.app_context():  # reading never rewrites the stored value
         assert Article.query.filter_by(slug="a-1").first().editorial_updated_at is not None
+        assert Article.query.filter_by(slug="a-2").first().editorial_updated_at is not None
+
+
+def test_public_api_and_server_first_paint_apply_one_updated_rule(client, app):
+    """For each (published, updated) case the public API value and the
+    server's Updated label agree, both driven by is_displayable_update."""
+    from app.models.article import Article
+    from app.services.article_experts import is_displayable_update
+
+    _seed(app, 3)
+    now = datetime.now(timezone.utc)
+    cases = {  # slug: (publish_date, editorial_updated_at, expected shown)
+        "a-1": (now - timedelta(days=21), now - timedelta(days=2), True),    # valid: after publication
+        "a-2": (now - timedelta(days=2), now - timedelta(days=21), False),   # before publication
+        "a-3": (now - timedelta(days=2), now + timedelta(days=9), False),    # future
+    }
+    with app.app_context():
+        for slug, (published, updated, _) in cases.items():
+            row = Article.query.filter_by(slug=slug).first()
+            row.publish_date, row.editorial_updated_at = published, updated
+        db.session.commit()
+    for slug, (published, updated, shown) in cases.items():
+        assert is_displayable_update(updated, published) is shown
+        api_value = client.get(f"/api/v1/articles/{slug}").get_json()["data"]["editorial_updated_at"]
+        root = client.get(f"/{slug}").get_data(as_text=True).split('<div id="root">', 1)[1]
+        assert (api_value is not None) is shown, slug
+        assert ("Updated " in root) is shown, slug
 
 
 # --- production hardening: Resource recommendations by public visibility ----------------------------
