@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { X } from 'lucide-react'
 import {
-  acceptAllConsent, configureConsentVersion, consentSnapshot, consentVersionKnown, getConsent, onConsentChange, onOpenConsentManager,
+  acceptAllConsent, configureConsentVersion, consentSnapshot, consentVersionKnown, getConsent, gpcActive, onConsentChange, onOpenConsentManager,
   rejectAllConsent, saveConsent,
 } from '../../utils/consent'
 import { clearAnalyticsStorage } from '../../utils/analytics'
@@ -62,7 +62,7 @@ export default function CookieConsent() {
   const [managerOpen, setManagerOpen] = useState(false)
 
   useEffect(() => {
-    if (snap.decided) syncToAccount({ userId, choice: getConsent() })
+    if (snap.decided) syncToAccount({ userId, choice: getConsent(), gpc: gpcActive() })
   }, [snap, userId])
 
   useEffect(() => {

@@ -95,9 +95,40 @@ export function consentExpiresAt(timestamp) {
   return expires
 }
 
+// The 12 months run from the visitor's own decision. A GPC normalization
+// (below) is a new record with a new timestamp, but keeps the original
+// decision time in `expiresFrom`, so it never extends the visitor's
+// Preferences/Analytics choice without them deciding again.
 function isExpired(choice, now) {
-  const expires = consentExpiresAt(choice.timestamp)
+  const expires = consentExpiresAt(choice.expiresFrom || choice.timestamp)
   return !expires || now.getTime() >= expires.getTime()
+}
+
+function store(record) {
+  memoryChoice = record
+  try {
+    storage?.setItem(CONSENT_STORAGE_KEY, JSON.stringify(record))
+  } catch {
+    /* storage unavailable: the record lasts for this page only */
+  }
+}
+
+/** A stored Marketing=true while the browser sends Global Privacy Control is
+ * not what WSF applies. It is rewritten ONCE as a new decision: same consent
+ * version, Preferences and Analytics unchanged, Marketing false, a new
+ * decision timestamp (so a signed-in member gets a new account history row;
+ * earlier server rows are never edited). Switching GPC off later does NOT
+ * bring the old Marketing=true back: Marketing must be granted again. */
+function normalizeForGpc(choice) {
+  if (choice.marketing !== true || !gpcActive()) return choice
+  const normalized = {
+    ...choice,
+    marketing: false,
+    timestamp: clock().toISOString(),
+    expiresFrom: choice.expiresFrom || choice.timestamp,
+  }
+  store(normalized)
+  return normalized
 }
 
 function forget() {
@@ -151,7 +182,8 @@ export function getConsent() {
     forget() // expired: removed, never silently renewed
     return null
   }
-  return choice.version === configuredVersion ? choice : null
+  if (choice.version !== configuredVersion) return null
+  return normalizeForGpc(choice)
 }
 
 /** True once the consent version is known (from the server), i.e. once
@@ -167,8 +199,8 @@ export function needsConsentDecision() {
 export function hasConsent(category) {
   if (category === 'essential') return true
   if (!OPTIONAL_CATEGORIES.includes(category)) return false
+  const choice = getConsent() // normalizes a stale Marketing=true under GPC
   if (category === 'marketing' && gpcActive()) return false
-  const choice = getConsent()
   return Boolean(choice && choice[category] === true)
 }
 
@@ -180,12 +212,7 @@ export function saveConsent(choices, now = clock()) {
     ...Object.fromEntries(OPTIONAL_CATEGORIES.map((c) => [c, choices?.[c] === true])),
   }
   if (gpcActive()) record.marketing = false // GPC: Marketing is recorded as rejected
-  memoryChoice = record
-  try {
-    storage?.setItem(CONSENT_STORAGE_KEY, JSON.stringify(record))
-  } catch {
-    /* storage unavailable: the choice lasts for this page only */
-  }
+  store(record)
   notify()
   return record
 }

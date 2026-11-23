@@ -45,11 +45,7 @@ def test_missing_page_highlighted(app):
     assert "[editorial-policy] MISSING" in out.output and 'HIGHLIGHT: The "privacy" page does not exist' in out.output
 
 
-def test_every_frontend_storage_key_is_in_the_inventory():
-    from app.services.legal_audit import TECHNOLOGY_INVENTORY
-
-    src = Path(__file__).resolve().parents[2] / "frontend" / "src"
-    listed = " ".join(t["name"] for t in TECHNOLOGY_INVENTORY)
+def _frontend_storage_keys(src):
     keys = set()
     for path in src.rglob("*.js*"):
         if ".test." in path.name:
@@ -57,9 +53,22 @@ def test_every_frontend_storage_key_is_in_the_inventory():
         text = path.read_text()
         keys |= set(re.findall(r"""(?:KEY|_KEY)\s*=\s*['"](wsf[\w-]*)['"]""", text))
         keys |= {m.split(":")[0] for m in re.findall(r"`(wsf-[\w-]+):", text)}
+    return keys
+
+
+def _keys_missing_from_inventory(keys):
+    from app.services.legal_audit import TECHNOLOGY_INVENTORY
+
+    # A key may be named in an entry's name or, when one key has several
+    # storage modes, in each mode's storage field ("sessionStorage (key)").
+    listed = " ".join(f"{t['name']} {t['storage']}" for t in TECHNOLOGY_INVENTORY)
+    return sorted(k for k in keys if k not in listed)
+
+
+def test_every_frontend_storage_key_is_in_the_inventory():
+    keys = _frontend_storage_keys(Path(__file__).resolve().parents[2] / "frontend" / "src")
     assert keys, "no storage keys found"
-    for key in keys:
-        assert key in listed, f"{key} is written by the frontend but missing from TECHNOLOGY_INVENTORY"
+    assert _keys_missing_from_inventory(keys) == []
 
 
 def test_video_players_are_preferences_and_ad_trackers_inactive():
@@ -75,3 +84,25 @@ def test_video_players_are_preferences_and_ad_trackers_inactive():
     assert INACTIVE_INTEGRATIONS == ("Google Search Console",)
     ga = next(t for t in TECHNOLOGY_INVENTORY if t["name"].startswith("Google Analytics 4"))
     assert ga["category"] == "analytics" and ga["consentRequired"] is True and ga["configKey"] == "ga4MeasurementId"
+
+
+def test_newsletter_popup_is_listed_in_both_storage_modes():
+    from app.services.legal_audit import TECHNOLOGY_INVENTORY
+
+    modes = [t for t in TECHNOLOGY_INVENTORY if "(wsf_newsletter_popup)" in t["storage"]]
+    by_storage = {t["storage"].split(" ")[0]: t for t in modes}
+    assert set(by_storage) == {"sessionStorage", "localStorage"} and len(modes) == 2
+    session, local = by_storage["sessionStorage"], by_storage["localStorage"]
+    assert (session["category"], session["consentRequired"]) == ("essential", False)
+    assert "does not persist across visits" in session["purpose"]
+    assert (local["category"], local["consentRequired"]) == ("preferences", True)
+    assert "default 14 days" in local["duration"] and "default 365 days" in local["duration"]
+    assert "Effective:" in local["duration"] and "Physical:" in local["duration"]
+
+
+def test_unknown_frontend_storage_keys_are_still_caught(tmp_path):
+    """Matching names OR storage fields must not let an unlisted key through."""
+    (tmp_path / "thing.js").write_text("export const THING_KEY = 'wsf_unlisted_thing'\n")
+    keys = _frontend_storage_keys(tmp_path)
+    assert keys == {"wsf_unlisted_thing"}
+    assert _keys_missing_from_inventory(keys) == ["wsf_unlisted_thing"]

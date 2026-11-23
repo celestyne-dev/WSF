@@ -24,13 +24,26 @@ TECHNOLOGY_INVENTORY = (
      "duration": ("12 calendar months from the choice, then removed and the visitor is asked again; "
                   "asked again immediately if the consent version changes sooner."),
      "consentRequired": False},
-    {"name": "wsf_newsletter_popup", "provider": "WSF (first party)", "category": "preferences",
-     "purpose": "Remembers that the visitor closed or completed the newsletter popup, so it is not shown again.",
-     "storage": ("localStorage only with Preferences consent; otherwise sessionStorage (this browser session). "
-                 "Withdrawing Preferences deletes the localStorage copy."),
-     "duration": ("localStorage: kept until cleared; it suppresses the popup for the dismissal period (default 14 days) "
-                  "or the post-signup period (default 365 days) set in Studio. sessionStorage: until the browser "
-                  "session ends."),
+    # One browser key, two storage modes (frontend/src/utils/newsletterPopup.js
+    # popupStorageFor / syncPopupStorage): sessionStorage without Preferences
+    # consent, localStorage with it. Each mode is its own inventory entry.
+    {"name": "WSF newsletter popup \u2014 session state", "provider": "WSF (first party)", "category": "essential",
+     "purpose": ("Prevents the newsletter popup from interrupting again during the current browser session when "
+                 "persistent Preferences storage has not been allowed. It does not persist across visits."),
+     "storage": "sessionStorage (wsf_newsletter_popup)",
+     "duration": "Until the browser tab/session ends (the browser then deletes it).",
+     "consentRequired": False},
+    {"name": "WSF newsletter popup \u2014 persistent preference", "provider": "WSF (first party)",
+     "category": "preferences",
+     "purpose": ("Remembers across visits that the visitor closed the newsletter popup or signed up, so it is not "
+                 "shown again for the configured period. Used only with Preferences consent; withdrawing "
+                 "Preferences deletes it (a session-only copy is kept instead)."),
+     "storage": "localStorage (wsf_newsletter_popup)",
+     "duration": ("Effective: suppresses the popup for the Studio dismissal period after closing it (default 14 days, "
+                  "configurable 1-365) or the post-signup period after signing up (default 365 days, configurable "
+                  "1-3650). Physical: the browser keeps the stored value until it is cleared, Preferences is "
+                  "withdrawn, or the next close/signup overwrites it; after its period it no longer suppresses "
+                  "anything."),
      "consentRequired": True},
     {"name": "wsf-reflection:* / wsf-checklist:*", "provider": "WSF (first party)", "category": "essential",
      "purpose": "Saves a learner's own reflection answers and checklist ticks on their device (never sent to WSF).",

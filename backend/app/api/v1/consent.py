@@ -52,9 +52,10 @@ def _parse_decided_at(value):
     return parsed
 
 
-def record_consent(user, data):
+def record_consent(user, data, gpc=False):
     """Store one decision for `user`. Returns (record, created). The
-    version must be the consent version currently configured in Studio."""
+    version must be the consent version currently configured in Studio.
+    `gpc`: the request carried Global Privacy Control (Sec-GPC: 1)."""
     if not isinstance(data, dict):
         raise ApiError("Invalid consent payload.", 422, code="validation_error")
     version = data.get("consentVersion")
@@ -67,6 +68,11 @@ def record_consent(user, data):
             raise ApiError(f"{category} must be true or false.", 422, code="validation_error")
         choices[category] = value
     decided_at = _parse_decided_at(data.get("decidedAt"))
+    # Global Privacy Control: a browser with GPC on also sends "Sec-GPC: 1".
+    # WSF applies Marketing=false then, so that is what the history records,
+    # whatever the payload says (the browser already sends false).
+    if gpc:
+        choices["marketing"] = False
 
     existing = ConsentRecord.query.filter_by(user_id=user.id, decided_at=decided_at, consent_version=version).first()
     if existing is not None:
@@ -86,7 +92,8 @@ class ConsentRecordResource(Resource):
 
     @active_user_required
     def post(self):
-        record, created = record_consent(current_user, request.get_json(silent=True))
+        gpc = request.headers.get("Sec-GPC", "").strip() == "1"
+        record, created = record_consent(current_user, request.get_json(silent=True), gpc=gpc)
         return success_response(serialize(record), status=201 if created else 200)
 
 

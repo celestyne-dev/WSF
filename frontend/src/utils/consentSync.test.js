@@ -31,3 +31,32 @@ test('a failed send is retried on the next call', async () => {
   fail = false
   assert.equal(sync({ userId: 7, choice }), true)
 })
+
+test('GPC review: the account sync payload is the effective choice (Marketing false under GPC)', async () => {
+  const { effectiveChoice } = await import('./consentSync.js')
+  const sent = []
+  const sync = createConsentSync((c) => sent.push(c))
+  const stale = { ...choice, marketing: true }
+  sync({ userId: 7, choice: stale, gpc: true })
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(sent[0].marketing, false)
+  assert.equal(sent[0].analytics, true) // other categories untouched
+  assert.equal(effectiveChoice(stale, false).marketing, true)
+  assert.equal(effectiveChoice(null, true), null)
+})
+
+test('GPC review: account sync of a normalized stored choice sends Marketing=false', async () => {
+  const consent = await import('./consent.js')
+  const data = {}
+  consent._setStorageForTests({ getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v }, removeItem: (k) => { delete data[k] } })
+  consent.configureConsentVersion('1')
+  consent.acceptAllConsent()
+  consent._setGpcForTests(true)
+  const sent = []
+  const sync = createConsentSync((c) => sent.push(c))
+  sync({ userId: 9, choice: consent.getConsent(), gpc: consent.gpcActive() })
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].marketing, false)
+  assert.deepEqual([sent[0].preferences, sent[0].analytics], [true, true])
+})

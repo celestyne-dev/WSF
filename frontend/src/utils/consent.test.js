@@ -136,3 +136,71 @@ test('Global Privacy Control: Marketing is rejected and cannot be enabled; other
   _setGpcForTests(true)
   assert.equal(hasConsent('marketing'), false)
 })
+
+// --- Batch 1 review: GPC is reflected in what is stored and synced ------------------------
+test('GPC review: stored Marketing=true is effective only while GPC is off', async () => {
+  const { _setGpcForTests, _setClockForTests } = await import('./consent.js')
+  const store = fakeStorage()
+  _setStorageForTests(store)
+  _setClockForTests(() => new Date('2026-11-22T10:00:00Z'))
+  configureConsentVersion('1')
+  acceptAllConsent()
+  _setGpcForTests(false)
+  assert.equal(hasConsent('marketing'), true) // GPC off: effective true
+  assert.equal(getConsent().marketing, true)
+
+  _setClockForTests(() => new Date('2026-11-23T09:00:00Z'))
+  _setGpcForTests(true)
+  assert.equal(hasConsent('marketing'), false) // GPC on: effective false
+  const normalized = getConsent()
+  assert.deepEqual(
+    { v: normalized.version, p: normalized.preferences, a: normalized.analytics, m: normalized.marketing },
+    { v: '1', p: true, a: true, m: false },
+  )
+  // A new decision: new timestamp, original decision kept as the expiry basis.
+  assert.equal(normalized.timestamp, '2026-11-23T09:00:00.000Z')
+  assert.equal(normalized.expiresFrom, '2026-11-22T10:00:00.000Z')
+  assert.equal(JSON.parse(store.data[CONSENT_STORAGE_KEY]).marketing, false) // stored choice no longer claims true
+  // Normalizing twice is a no-op (no second new decision).
+  assert.equal(getConsent().timestamp, '2026-11-23T09:00:00.000Z')
+})
+
+test('GPC review: normalization never extends the 12 months from the original decision', async () => {
+  const { _setGpcForTests, _setClockForTests } = await import('./consent.js')
+  _setStorageForTests(fakeStorage())
+  _setClockForTests(() => new Date('2025-12-01T00:00:00Z'))
+  configureConsentVersion('1')
+  acceptAllConsent()
+  _setGpcForTests(true)
+  _setClockForTests(() => new Date('2026-11-01T00:00:00Z'))
+  getConsent() // normalized on 2026-11-01
+  _setClockForTests(() => new Date('2026-12-01T00:00:01Z')) // 12 months after the ORIGINAL decision
+  assert.equal(getConsent(), null)
+})
+
+test('GPC review: Accept all with GPC stores Marketing=false; Preferences/Analytics exactly as chosen', async () => {
+  const { _setGpcForTests } = await import('./consent.js')
+  const store = fakeStorage()
+  _setStorageForTests(store)
+  configureConsentVersion('1')
+  _setGpcForTests(true)
+  acceptAllConsent()
+  assert.deepEqual(JSON.parse(store.data[CONSENT_STORAGE_KEY]).marketing, false)
+  saveConsent({ preferences: false, analytics: true, marketing: true })
+  const c = getConsent()
+  assert.deepEqual([c.preferences, c.analytics, c.marketing], [false, true, false])
+})
+
+test('GPC review: switching GPC off later does not resurrect Marketing', async () => {
+  const { _setGpcForTests } = await import('./consent.js')
+  _setStorageForTests(fakeStorage())
+  configureConsentVersion('1')
+  _setGpcForTests(false)
+  acceptAllConsent()
+  _setGpcForTests(true)
+  assert.equal(hasConsent('marketing'), false) // normalized here
+  _setGpcForTests(false)
+  assert.equal(hasConsent('marketing'), false) // still rejected: must be granted again
+  saveConsent({ preferences: true, analytics: true, marketing: true }) // explicit new grant
+  assert.equal(hasConsent('marketing'), true)
+})

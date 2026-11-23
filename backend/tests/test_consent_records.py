@@ -77,3 +77,19 @@ def test_records_survive_account_removal_without_the_link(client, app):
         db.session.commit()
         row = ConsentRecord.query.one()
         assert row.user_id is None
+
+
+def test_gpc_request_is_recorded_as_marketing_false_and_history_is_kept(client, app):
+    token = _register(client)
+    headers = auth_headers(token)
+    # Yesterday, without GPC: Marketing allowed.
+    assert client.post("/api/v1/consent", json=_decision(marketing=True, decidedAt="2026-11-22T10:00:00Z"),
+                       headers=headers).status_code == 201
+    # Today the browser sends GPC: even a payload claiming Marketing=true is stored as false.
+    res = client.post("/api/v1/consent", json=_decision(preferences=True, analytics=True, marketing=True,
+                                                         decidedAt="2026-11-23T10:00:00Z"),
+                      headers={**headers, "Sec-GPC": "1"})
+    assert res.status_code == 201
+    assert res.get_json()["data"] == {**res.get_json()["data"], "preferences": True, "analytics": True, "marketing": False}
+    history = client.get("/api/v1/consent/me", headers=headers).get_json()["data"]
+    assert [(h["decidedAt"][:10], h["marketing"]) for h in history] == [("2026-11-23", False), ("2026-11-22", True)]
