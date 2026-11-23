@@ -120,7 +120,9 @@ export function saveConsent(choices, now = new Date()) {
 }
 
 export const acceptAllConsent = (now) => saveConsent({ preferences: true, analytics: true, marketing: true }, now)
-export const rejectOptionalConsent = (now) => saveConsent({ preferences: false, analytics: false, marketing: false }, now)
+// "Reject all": every optional category off (Essential cannot be refused).
+export const rejectAllConsent = (now) => saveConsent({ preferences: false, analytics: false, marketing: false }, now)
+export const rejectOptionalConsent = rejectAllConsent
 
 /** Subscribe to consent changes; called with a snapshot
  * {preferences, analytics, marketing, decided}. Returns an unsubscribe. */

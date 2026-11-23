@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { X } from 'lucide-react'
 import {
-  acceptAllConsent, configureConsentVersion, consentSnapshot, onConsentChange, onOpenConsentManager,
-  rejectOptionalConsent, saveConsent,
+  acceptAllConsent, configureConsentVersion, consentSnapshot, getConsent, onConsentChange, onOpenConsentManager,
+  rejectAllConsent, saveConsent,
 } from '../../utils/consent'
 import { clearAnalyticsStorage } from '../../utils/analytics'
+import { createConsentSync } from '../../utils/consentSync'
+import { recordConsent } from '../../api/consent'
 import useDialogFocus from '../../hooks/useDialogFocus'
 
 const DEFAULT_TITLE = 'We use cookies'
@@ -19,13 +21,26 @@ const CATEGORIES = [
   ['marketing', 'Marketing', 'Advertising or campaign-measurement technologies, when enabled. WSF does not currently load any marketing trackers.'],
 ]
 
+// The three primary choices share ONE class: same height, padding, weight
+// and emphasis, so none of them is visually dominant (no nudging).
+const CHOICE = 'btn-secondary w-full !px-4 !py-2.5 sm:w-auto'
+
+// Signed-in members: each distinct decision is also recorded server-side.
+const syncToAccount = createConsentSync(recordConsent)
+
 // First-party consent banner + "Manage choices" dialog. The banner is a
 // fixed overlay (no layout shift) shown only while no valid choice exists
-// for the current consent version. Accept and Reject have equal weight.
+// for the current consent version. Until a choice is made only Essential
+// technologies run: every optional integration asks hasConsent() first.
 export default function CookieConsent() {
   const config = useSelector((s) => s.site.settings?.cookieConsent)
+  const userId = useSelector((s) => s.auth.user?.id ?? null)
   const [snap, setSnap] = useState(consentSnapshot)
   const [managerOpen, setManagerOpen] = useState(false)
+
+  useEffect(() => {
+    if (snap.decided) syncToAccount({ userId, choice: getConsent() })
+  }, [snap, userId])
 
   useEffect(() => {
     if (config?.version) configureConsentVersion(config.version)
@@ -65,14 +80,14 @@ export default function CookieConsent() {
                   </Link>
                 </p>
               </div>
-              <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                <button type="button" onClick={() => rejectOptionalConsent()} className="btn-primary !px-4 !py-2.5">
-                  Reject optional
-                </button>
-                <button type="button" onClick={() => acceptAllConsent()} className="btn-primary !px-4 !py-2.5">
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <button type="button" onClick={() => acceptAllConsent()} className={CHOICE}>
                   Accept all
                 </button>
-                <button type="button" onClick={() => setManagerOpen(true)} className="btn-secondary col-span-2 !px-4 !py-2.5">
+                <button type="button" onClick={() => rejectAllConsent()} className={CHOICE}>
+                  Reject all
+                </button>
+                <button type="button" onClick={() => setManagerOpen(true)} className={CHOICE}>
                   Manage choices
                 </button>
               </div>
@@ -147,9 +162,9 @@ function ConsentManager({ snap, onClose }) {
           ))}
         </ul>
         <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <button type="button" onClick={() => finish(() => saveConsent(choices))} className="btn-primary !px-4 !py-2.5">Save choices</button>
-          <button type="button" onClick={() => finish(rejectOptionalConsent)} className="btn-secondary !px-4 !py-2.5">Reject optional</button>
-          <button type="button" onClick={() => finish(acceptAllConsent)} className="btn-secondary !px-4 !py-2.5">Accept all</button>
+          <button type="button" onClick={() => finish(acceptAllConsent)} className={CHOICE}>Accept all</button>
+          <button type="button" onClick={() => finish(rejectAllConsent)} className={CHOICE}>Reject all</button>
+          <button type="button" onClick={() => finish(() => saveConsent(choices))} className={CHOICE}>Save choices</button>
         </div>
         <p className="mt-4 text-xs text-charcoal-600">
           Read our <Link to="/cookies" onClick={onClose} className="font-semibold text-burgundy-600 underline underline-offset-2">Cookie Policy</Link> and{' '}

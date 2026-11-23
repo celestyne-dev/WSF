@@ -64,6 +64,7 @@ from app.models.learning_enrollment import LearningEnrollment, LearningLessonPro
 from app.models.learning_certificate import LearningCertificate  # noqa: F401
 from app.models.circle import CirclePlan, CircleSubscription  # noqa: F401
 from app.models.entity_redirect import EntityRedirect  # noqa: F401
+from app.models.consent import ConsentRecord  # noqa: F401
 
 __all__ = [
     "Country",
