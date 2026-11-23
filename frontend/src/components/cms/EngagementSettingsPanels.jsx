@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react'
-import { toast } from 'react-toastify'
-import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
+import useSettingsSection from '../../hooks/useSettingsSection'
 
 // Studio -> Settings -> "Newsletter popup" and "Cookie consent". Plain text
 // and bounded numbers only, validated again server-side (backend
@@ -9,34 +7,6 @@ import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 
 const input = 'rounded-control w-full border border-taupe-300 px-3 py-2 text-sm focus:border-burgundy-500 focus:outline-none'
 const label = 'text-xs font-semibold uppercase tracking-wide text-charcoal-600'
-
-function useSettingsSection(key) {
-  const [value, setValue] = useState(null)
-  const [error, setError] = useState(null)
-  const [saving, setSaving] = useState(false)
-  useEffect(() => {
-    let active = true
-    fetchAdminSettings()
-      .then((data) => active && setValue(data[key] || {}))
-      .catch(() => active && setError('Could not load these settings. Please try again.'))
-    return () => {
-      active = false
-    }
-  }, [key])
-  async function save(next) {
-    setSaving(true)
-    try {
-      const data = await saveAdminSettings({ [key]: next })
-      setValue(data?.[key] || next)
-      toast.success('Saved. Public pages use it from their next load.')
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || err?.apiError?.message || 'Could not save. Please check the values.')
-    } finally {
-      setSaving(false)
-    }
-  }
-  return { value, setValue, error, saving, save }
-}
 
 function NumberField({ id, text, hint, value, onChange, min, max }) {
   return (

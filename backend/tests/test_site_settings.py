@@ -252,7 +252,9 @@ class TestPublicSerializerMinimization:
 
         assert "audience_stats" not in public
         assert set(public.keys()) == {"site", "branding", "contact", "social", "seo", "appearance", "newsletterPopup", "cookieConsent",
-                                      "newsletterPage"}
+                                      "newsletterPage", "tracking"}
+        # Only configured tracker IDs (none here): never secrets or scripts.
+        assert public["tracking"] == {}
         assert public["appearance"] == {"cornerStyle": "square"}
         # Media is dumped through the same public-safe schema every other
         # public endpoint already uses — never a raw filesystem path.

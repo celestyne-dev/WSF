@@ -260,6 +260,10 @@ def register_cli(app):
         for tech in TECHNOLOGY_INVENTORY:
             click.echo(f"  - {tech['name']} | {tech['provider']} | {tech['category']} | {tech['storage']} | "
                        f"consent {'required' if tech['consentRequired'] else 'not required'} | {tech['purpose']} | {tech['duration']}")
+        from app.services.legal_audit import configurable_status
+
+        for name, configured in configurable_status():
+            click.echo(f"Configurable integration: {name}: {'CONFIGURED (runs only with consent)' if configured else 'not configured (inactive)'}")
         click.echo(f"Configured but NOT active (no runtime integration): {', '.join(INACTIVE_INTEGRATIONS)}")
 
     @app.cli.command("production-check")

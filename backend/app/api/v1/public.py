@@ -10,6 +10,7 @@ from app.services.homepage import get_enabled_homepage_modules, public_homepage_
 from app.services.navigation import serialize_public_menu
 from app.services.appearance import public_appearance_payload
 from app.services.engagement_settings import get_cookie_consent, get_newsletter_page, get_newsletter_popup
+from app.services.tracking_settings import active_trackers
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
 from app.utils.responses import success_response
 
@@ -136,6 +137,9 @@ def public_settings_payload():
             "newsletterPopup": get_newsletter_popup(),
             "newsletterPage": get_newsletter_page(),
             "cookieConsent": get_cookie_consent(),
+            # Configured third-party measurement IDs only (inactive ones are
+            # absent). Consent still decides whether they run in the browser.
+            "tracking": active_trackers(),
             "seo": {
                 "defaultTitle": identity["seo_default_title"],
                 "defaultDescription": identity["seo_default_description"],

@@ -10,6 +10,7 @@ import { restoreSession } from '../features/auth/authSlice'
 import { captureAcquisitionContext } from '../utils/analytics'
 import { onConsentChange } from '../utils/consent'
 import CookieConsent from '../components/consent/CookieConsent'
+import TrackingManager from '../components/consent/TrackingManager'
 import NewsletterPopup from '../components/newsletter/NewsletterPopup'
 import useSiteStructuredData from '../hooks/useSiteStructuredData'
 import { applyCornerStyle } from '../utils/appearance'
@@ -82,6 +83,7 @@ export default function PublicLayout() {
       <Footer />
       <NewsletterPopup />
       <CookieConsent />
+      <TrackingManager />
     </div>
   )
 }

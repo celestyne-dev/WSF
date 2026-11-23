@@ -4,7 +4,9 @@ Storage: rows in the existing generic SiteSetting key/value table (no new
 table, no migration), like Appearance and Payments. Strictly validated:
 numbers within ranges, plain text only (any markup is refused, never
 stripped), unknown keys rejected. There is deliberately NO field for a
-script, snippet, tag ID or URL: nothing an admin types here can execute.
+script, snippet, tag ID or URL here: nothing an admin types here can
+execute. Optional measurement IDs live in app/services/tracking_settings.py
+(bare, format-validated IDs only; fixed script URLs in the frontend).
 
 Essential cookies cannot be switched off: the consent setting has no such
 option. Only the banner copy and the consent VERSION are editable; raising

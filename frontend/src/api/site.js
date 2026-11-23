@@ -117,6 +117,7 @@ export function mapSiteSettings(data) {
     newsletterPopup: data.newsletterPopup || null,
     newsletterPage: data.newsletterPage || null,
     cookieConsent: data.cookieConsent || null,
+    tracking: data.tracking || {},
   }
 }
 

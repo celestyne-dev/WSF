@@ -6,6 +6,7 @@ import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import MediaPicker from '../../components/cms/MediaPicker'
 import AppearanceSettingsPanel from '../../components/cms/AppearanceSettingsPanel'
 import { CookieConsentSettingsPanel, NewsletterPageSettingsPanel, NewsletterPopupSettingsPanel } from '../../components/cms/EngagementSettingsPanels'
+import TrackingSettingsPanel from '../../components/cms/TrackingSettingsPanel'
 import PaymentSettingsPanel from '../../components/cms/PaymentSettingsPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
@@ -368,20 +369,7 @@ export default function AdminSettings() {
 
         {tab === 'Payments' && <PaymentSettingsPanel />}
 
-        {tab === 'Integrations' && (
-          <div className="space-y-4">
-            <p className="text-sm text-charcoal-600">
-              None of these integrations is active: no Google, Meta or LinkedIn script loads on the site, and these fields are not
-              saved. Connecting one later must go through the cookie-consent gate (Analytics or Marketing) before it can run.
-            </p>
-            {['Google Analytics ID', 'Google Search Console', 'Meta Pixel ID', 'LinkedIn Insight Tag'].map((label) => (
-              <div key={label}>
-                <label className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">{label}</label>
-                <input disabled placeholder="Not connected" className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm text-charcoal-600/50 focus:border-burgundy-500 focus:outline-none" />
-              </div>
-            ))}
-          </div>
-        )}
+        {tab === 'Integrations' && <TrackingSettingsPanel />}
 
         {tab === 'Media Kit' && (
           <button type="button" onClick={handleSave} disabled={saving} className="btn-primary mt-6 disabled:opacity-60">

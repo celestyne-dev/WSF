@@ -42,6 +42,7 @@ from app.services.engagement_settings import (
     save_newsletter_popup,
 )
 from app.services.appearance import APPEARANCE_KEY, AppearanceError, public_appearance_payload, save_appearance
+from app.services.tracking_settings import TRACKING_KEY, TrackingSettingsError, get_tracking_settings, save_tracking_settings
 from app.services.audit import log_action
 from app.services.cms import (
     replace_footer_groups,
@@ -397,7 +398,7 @@ class AdminFooterResource(Resource):
         return success_response(_dump_footer())
 
 
-ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY,
+ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY, TRACKING_KEY,
                       NEWSLETTER_PAGE_KEY}
 
 
@@ -479,6 +480,15 @@ class AdminSettingsResource(Resource):
                     raise ApiError(str(exc), 422, code="validation_error")
                 log_action(current_user, "settings.update", "SiteSetting", entity_id=key, changes=saved)
 
+        if TRACKING_KEY in settings_data:
+            # Bare provider IDs only, format-validated; never a script or URL
+            # (app/services/tracking_settings.py). Each stays inactive until set.
+            try:
+                tracking = save_tracking_settings(settings_data[TRACKING_KEY])
+            except TrackingSettingsError as exc:
+                raise ApiError(str(exc), 422, code="validation_error")
+            log_action(current_user, "settings.update", "SiteSetting", entity_id=TRACKING_KEY, changes=tracking)
+
         if "audience_stats" in settings_data:
             audience_value = settings_data["audience_stats"]
             if not isinstance(audience_value, dict):
@@ -500,6 +510,7 @@ class AdminSettingsResource(Resource):
             NEWSLETTER_POPUP_KEY: get_newsletter_popup(),
             COOKIE_CONSENT_KEY: get_cookie_consent(),
             NEWSLETTER_PAGE_KEY: get_newsletter_page(),
+            TRACKING_KEY: get_tracking_settings(),
         }
 
 

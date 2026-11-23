@@ -56,10 +56,31 @@ TECHNOLOGY_INVENTORY = (
                  "consent no player loads until the visitor presses Play on that video."),
      "storage": "third-party",
      "duration": "Set by the provider (not controlled by WSF).", "consentRequired": True},
+    # Configurable third party: present in the code but INACTIVE until an ID is
+    # saved in Studio (app/services/tracking_settings.py); `configKey` says
+    # which setting switches it on. Runs only with its consent category.
+    {"name": "Google Analytics 4 (_ga, _ga_<container-id> cookies)", "provider": "Google (third party)",
+     "category": "analytics", "configKey": "ga4MeasurementId",
+     "purpose": ("Measures how the site is used. Loaded only after Analytics consent, with Consent Mode v2 "
+                 "(ad_storage, analytics_storage, ad_user_data, ad_personalization default to denied; only "
+                 "analytics_storage is granted). Google Signals and ad personalization are off."),
+     "storage": "cookies set by Google's script on WSF's domain (_ga, _ga_*)",
+     "duration": ("Set by Google's script, not by WSF code. On withdrawal WSF stops measurement and deletes "
+                  "the site's _ga and _ga_* cookies."),
+     "consentRequired": True},
 )
 
 # Integrations that have a Studio label but NO runtime code.
-INACTIVE_INTEGRATIONS = ("Google Analytics", "Google Search Console", "Meta Pixel", "LinkedIn Insight Tag")
+INACTIVE_INTEGRATIONS = ("Google Search Console", "Meta Pixel", "LinkedIn Insight Tag")
+
+
+def configurable_status():
+    """[(inventory name, configured?)] for integrations switched on by a
+    Studio setting. Requires an app context."""
+    from app.services.tracking_settings import active_trackers
+
+    active = active_trackers()
+    return [(t["name"], t["configKey"] in active) for t in TECHNOLOGY_INVENTORY if t.get("configKey")]
 
 
 def _headings(blocks):
