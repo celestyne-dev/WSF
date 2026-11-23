@@ -3,7 +3,14 @@
 // browser still refuses to iframe anything that is not https on one of
 // those players' own hosts. Everything else is a plain outbound link.
 
-const EMBED_HOSTS = new Set(['www.youtube-nocookie.com', 'player.vimeo.com', 'fast.wistia.net', 'www.loom.com'])
+// Allowlisted player host -> the provider that serves it.
+const EMBED_HOST_PROVIDERS = {
+  'www.youtube-nocookie.com': 'youtube',
+  'player.vimeo.com': 'vimeo',
+  'fast.wistia.net': 'wistia',
+  'www.loom.com': 'loom',
+}
+const EMBED_HOSTS = new Set(Object.keys(EMBED_HOST_PROVIDERS))
 
 export const VIDEO_PROVIDER_OPTIONS = [
   { value: '', label: 'Detect from link' },
@@ -28,6 +35,13 @@ export function isAllowedEmbedUrl(url) {
   } catch {
     return false
   }
+}
+
+/** The provider name for an allowlisted player URL, read from the URL's own
+ * host (never from editor-supplied text), or null when it isn't one. */
+export function embedProviderLabel(embedUrl) {
+  if (!isAllowedEmbedUrl(embedUrl)) return null
+  return videoProviderLabel(EMBED_HOST_PROVIDERS[new URL(embedUrl).hostname])
 }
 
 export const VIDEO_LESSON_TYPES = ['video', 'recording']

@@ -167,6 +167,15 @@ export function saveConsent(choices, now = clock()) {
   return record
 }
 
+/** Turns one optional category on and keeps every other stored choice as it
+ * is (e.g. "Always allow videos" grants Preferences only). */
+export function grantConsentCategory(category, now) {
+  if (!OPTIONAL_CATEGORIES.includes(category)) return null
+  const current = getConsent()
+  const choices = Object.fromEntries(OPTIONAL_CATEGORIES.map((c) => [c, Boolean(current?.[c])]))
+  return saveConsent({ ...choices, [category]: true }, now)
+}
+
 export const acceptAllConsent = (now) => saveConsent({ preferences: true, analytics: true, marketing: true }, now)
 // "Reject all": every optional category off (Essential cannot be refused).
 export const rejectAllConsent = (now) => saveConsent({ preferences: false, analytics: false, marketing: false }, now)

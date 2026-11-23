@@ -47,10 +47,14 @@ TECHNOLOGY_INVENTORY = (
      "purpose": "Counts engagement events (e.g. clicks, sign-ups) in WSF's own database.", "storage": "none (server request)",
      "duration": "Not stored in the browser.", "consentRequired": True},
     # Functional media the visitor came for (not advertising): Preferences.
-    # Loaded automatically only with Preferences consent; otherwise only for
-    # the one video the visitor presses Play on.
+    # Loaded automatically only with Preferences consent; otherwise a
+    # placeholder ("This video is hosted by {provider}. Playing it may set
+    # cookies.") offers "Play video" (this one video only, no consent change)
+    # and "Always allow videos" (grants Preferences).
     {"name": "Embedded video players (YouTube no-cookie, Vimeo, Wistia, Loom)", "provider": "Third party", "category": "preferences",
-     "purpose": "Plays lesson and event videos. The provider may set its own cookies/storage.", "storage": "third-party",
+     "purpose": ("Plays lesson and event videos. The provider may set its own cookies/storage. Without Preferences "
+                 "consent no player loads until the visitor presses Play on that video."),
+     "storage": "third-party",
      "duration": "Set by the provider (not controlled by WSF).", "consentRequired": True},
 )
 

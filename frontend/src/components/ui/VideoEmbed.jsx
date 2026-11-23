@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ExternalLink, Play } from 'lucide-react'
-import { hasConsent, onConsentChange, openConsentManager } from '../../utils/consent'
-import { isAllowedEmbedUrl, shouldShowPlayer, videoProviderLabel } from '../../utils/videoEmbed'
+import { grantConsentCategory, hasConsent, onConsentChange } from '../../utils/consent'
+import { embedProviderLabel, isAllowedEmbedUrl, shouldShowPlayer, videoProviderLabel } from '../../utils/videoEmbed'
 import MediaImage from './MediaImage'
 
 // One external video (WSF hosts none). Renders a sandboxed, lazy iframe
@@ -14,29 +14,73 @@ import MediaImage from './MediaImage'
 // only with Preferences consent (utils/consent), or for this one video when
 // the visitor presses Play. Withdrawing Preferences unloads a player that
 // was loaded by stored consent (one the visitor started stays).
+//
+// Without Preferences the placeholder names the provider (from the player
+// URL's own allowlisted host) and offers two choices:
+//   Play video           loads THIS video only; consent is not changed
+//   Always allow videos  grants Preferences (other choices unchanged), so
+//                        every video player may load from then on
+// Nothing autoplays: the embed URLs carry no autoplay parameter, and the
+// player only receives focus after the visitor asked for it.
 export default function VideoEmbed({ title, url, embedUrl, provider, transcript, captionsUrl, thumbnail }) {
   const canEmbed = isAllowedEmbedUrl(embedUrl)
   const providerLabel = videoProviderLabel(provider)
+  const hostLabel = embedProviderLabel(embedUrl) || 'an external provider'
   const [allowed, setAllowed] = useState(() => hasConsent('preferences'))
   const [clicked, setClicked] = useState(false)
+  const frameRef = useRef(null)
+  const noticeId = useId()
   useEffect(() => onConsentChange((snap) => setAllowed(snap.preferences)), [])
   const showPlayer = shouldShowPlayer(embedUrl, { preferencesConsent: allowed, playRequested: clicked })
+
+  function play() {
+    setClicked(true)
+  }
+  function alwaysAllow() {
+    // Load this video now even if the consent version hasn't loaded yet.
+    setClicked(true)
+    grantConsentCategory('preferences')
+  }
+  // Keyboard users who chose to play land on the player, not back at the top.
+  useEffect(() => {
+    if (clicked && showPlayer) frameRef.current?.focus()
+  }, [clicked, showPlayer])
+
   return (
     <div className="space-y-2">
       {canEmbed && !showPlayer && (
-        <div className="relative flex aspect-video w-full flex-col items-center justify-center gap-3 overflow-hidden border border-taupe-200 bg-charcoal px-6 text-center text-ivory">
-          <button type="button" onClick={() => setClicked(true)} className="btn-light">
-            <Play size={16} aria-hidden="true" /> Play video
-          </button>
-          <p className="max-w-md text-xs text-ivory/80">
-            Loads the player from {providerLabel || 'the video provider'}, which may set its own cookies.{' '}
-            <button type="button" onClick={openConsentManager} className="font-semibold underline underline-offset-2">Cookie settings</button>
+        <div
+          role="group"
+          aria-label={title ? `Video: ${title}` : 'Video'}
+          className="relative flex aspect-video w-full flex-col items-center justify-center gap-3 overflow-hidden border border-taupe-200 bg-charcoal px-6 text-center text-ivory"
+        >
+          <p id={noticeId} className="max-w-md text-sm text-ivory">
+            This video is hosted by {hostLabel}. Playing it may set cookies.
           </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={play}
+              aria-describedby={noticeId}
+              className="btn-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ivory"
+            >
+              <Play size={16} aria-hidden="true" /> Play video
+            </button>
+            <button
+              type="button"
+              onClick={alwaysAllow}
+              aria-describedby={noticeId}
+              className="btn-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ivory"
+            >
+              Always allow videos
+            </button>
+          </div>
         </div>
       )}
       {showPlayer && (
         <div className="relative aspect-video w-full overflow-hidden border border-taupe-200 bg-charcoal">
           <iframe
+            ref={frameRef}
             src={embedUrl}
             title={title || 'Video'}
             loading="lazy"
@@ -56,7 +100,7 @@ export default function VideoEmbed({ title, url, embedUrl, provider, transcript,
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         {url && (
           <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-burgundy-600 hover:underline">
-            {canEmbed ? `Open on ${providerLabel || 'the provider'}` : `Watch${providerLabel && provider !== 'other' ? ` on ${providerLabel}` : ''}`}
+            {canEmbed ? `Open on ${embedProviderLabel(embedUrl) || providerLabel || 'the provider'}` : `Watch${providerLabel && provider !== 'other' ? ` on ${providerLabel}` : ''}`}
             <ExternalLink size={12} aria-hidden="true" />
           </a>
         )}
