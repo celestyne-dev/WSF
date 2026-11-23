@@ -30,6 +30,11 @@ TECHNOLOGY_INVENTORY = (
     {"name": "wsf-reflection:* / wsf-checklist:*", "provider": "WSF (first party)", "category": "essential",
      "purpose": "Saves a learner's own reflection answers and checklist ticks on their device (never sent to WSF).",
      "storage": "localStorage", "duration": "Until cleared by the learner.", "consentRequired": False},
+    {"name": "Self-hosted web fonts (Fraunces, Inter)", "provider": "WSF (first party)", "category": "essential",
+     "purpose": ("Typefaces for the site, served from WSF's own server (no request to Google or any other "
+                 "font service). Licensed under the SIL Open Font License 1.1."),
+     "storage": "none (static file; the browser's ordinary HTTP cache)",
+     "duration": "Not stored by WSF in the browser; the files are cached like any page asset.", "consentRequired": False},
     {"name": "wsf_acquisition", "provider": "WSF (first party)", "category": "analytics",
      "purpose": "Records how the visitor arrived (referrer/UTM) for WSF's own analytics events.",
      "storage": "sessionStorage", "duration": "Browser session.", "consentRequired": True},
