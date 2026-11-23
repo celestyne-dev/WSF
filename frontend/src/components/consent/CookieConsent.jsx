@@ -16,11 +16,24 @@ const DEFAULT_TITLE = 'We use cookies'
 const DEFAULT_BODY =
   'We use essential technologies to make WSF work. With your permission, we may also use analytics and optional embedded media to understand how the site is used and provide third-party content.'
 
-const CATEGORIES = [
-  ['preferences', 'Preferences', 'Remembers optional choices and allows embedded media such as lesson and event videos. Without it, a video loads only when you press Play.'],
-  ['analytics', 'Analytics', 'WSF’s own measurement of how pages and features are used (for example which links are clicked), to improve the site.'],
-  ['marketing', 'Marketing', 'Advertising or campaign-measurement technologies, when enabled. WSF does not currently load any marketing trackers.'],
-]
+const GPC_NOTICE = 'Your browser’s Global Privacy Control is on, so Marketing is off and can’t be turned on here.'
+
+// Category descriptions name only what is actually configured in Studio
+// (public settings `tracking`), so they never claim more or less than runs.
+function categories(tracking = {}) {
+  const analytics = tracking.ga4MeasurementId
+    ? 'WSF’s own measurement of how pages and features are used, and Google Analytics 4 (no advertising features).'
+    : 'WSF’s own measurement of how pages and features are used (for example which links are clicked), to improve the site.'
+  const marketingTools = [tracking.linkedinPartnerId && 'LinkedIn Insight Tag', tracking.metaPixelId && 'Meta Pixel'].filter(Boolean)
+  const marketing = marketingTools.length
+    ? `Campaign measurement by ${marketingTools.join(' and ')}, which may set their own cookies.`
+    : 'Advertising or campaign-measurement technologies, when enabled. WSF does not currently load any marketing trackers.'
+  return [
+    ['preferences', 'Preferences', 'Remembers optional choices and allows embedded media such as lesson and event videos. Without it, a video loads only when you press Play.'],
+    ['analytics', 'Analytics', analytics],
+    ['marketing', 'Marketing', marketing],
+  ]
+}
 
 // The three primary choices share ONE class: same height, padding, weight
 // and emphasis, so none of them is visually dominant (no nudging).
@@ -43,6 +56,7 @@ const syncToAccount = createConsentSync(recordConsent)
 // technologies run: every optional integration asks hasConsent() first.
 export default function CookieConsent() {
   const config = useSelector((s) => s.site.settings?.cookieConsent)
+  const tracking = useSelector((s) => s.site.settings?.tracking)
   const userId = useSelector((s) => s.auth.user?.id ?? null)
   const [snap, setSnap] = useState(consentSnapshot)
   const [managerOpen, setManagerOpen] = useState(false)
@@ -94,6 +108,7 @@ export default function CookieConsent() {
                     Cookie Policy
                   </Link>
                 </p>
+                {snap.gpc && <p className="mt-2 text-sm text-charcoal-700">{GPC_NOTICE}</p>}
               </div>
               <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                 <button type="button" onClick={() => acceptAllConsent()} className={CHOICE}>
@@ -110,12 +125,12 @@ export default function CookieConsent() {
           </div>
         </section>
       )}
-      {managerOpen && <ConsentManager snap={snap} onClose={() => setManagerOpen(false)} />}
+      {managerOpen && <ConsentManager snap={snap} tracking={tracking} onClose={() => setManagerOpen(false)} />}
     </>
   )
 }
 
-function ConsentManager({ snap, onClose }) {
+function ConsentManager({ snap, tracking, onClose }) {
   const ref = useRef(null)
   const [choices, setChoices] = useState(() => ({ preferences: snap.preferences, analytics: snap.analytics, marketing: snap.marketing }))
   useDialogFocus(ref, true, onClose)
@@ -155,26 +170,34 @@ function ConsentManager({ snap, onClose }) {
             </div>
             <span className="shrink-0 text-xs font-semibold text-charcoal-600">Always active</span>
           </li>
-          {CATEGORIES.map(([key, label, help]) => (
-            <li key={key} className="flex items-start justify-between gap-4 py-4">
-              <div>
-                <label htmlFor={`consent-${key}`} className="text-sm font-semibold text-charcoal">{label}</label>
-                <p id={`consent-${key}-help`} className="mt-0.5 text-xs leading-relaxed text-charcoal-600">{help}</p>
-              </div>
-              <button
-                id={`consent-${key}`}
-                type="button"
-                role="switch"
-                aria-checked={choices[key]}
-                aria-describedby={`consent-${key}-help`}
-                onClick={() => setChoices((c) => ({ ...c, [key]: !c[key] }))}
-                className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${choices[key] ? 'border-plum-600 bg-plum-600' : 'border-charcoal-600/60 bg-taupe-100'}`}
-              >
-                <span className="sr-only">{choices[key] ? 'On' : 'Off'}</span>
-                <span aria-hidden="true" className={`inline-block h-4 w-4 rounded-full bg-ivory shadow transition-transform motion-reduce:transition-none ${choices[key] ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </li>
-          ))}
+          {categories(tracking || {}).map(([key, label, help]) => {
+            // Global Privacy Control: Marketing is shown as off and locked.
+            const locked = key === 'marketing' && snap.gpc
+            const on = locked ? false : choices[key]
+            return (
+              <li key={key} className="flex items-start justify-between gap-4 py-4">
+                <div>
+                  <label htmlFor={`consent-${key}`} className="text-sm font-semibold text-charcoal">{label}</label>
+                  <p id={`consent-${key}-help`} className="mt-0.5 text-xs leading-relaxed text-charcoal-600">{help}</p>
+                  {locked && <p id="consent-marketing-gpc" className="mt-1 text-xs font-semibold leading-relaxed text-charcoal-700">{GPC_NOTICE}</p>}
+                </div>
+                <button
+                  id={`consent-${key}`}
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  aria-disabled={locked || undefined}
+                  disabled={locked}
+                  aria-describedby={locked ? `consent-${key}-help consent-marketing-gpc` : `consent-${key}-help`}
+                  onClick={() => setChoices((c) => ({ ...c, [key]: !c[key] }))}
+                  className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${on ? 'border-plum-600 bg-plum-600' : 'border-charcoal-600/60 bg-taupe-100'}`}
+                >
+                  <span className="sr-only">{on ? 'On' : 'Off'}</span>
+                  <span aria-hidden="true" className={`inline-block h-4 w-4 rounded-full bg-ivory shadow transition-transform motion-reduce:transition-none ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </li>
+            )
+          })}
         </ul>
         <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <button type="button" onClick={() => finish(acceptAllConsent)} className={CHOICE}>Accept all</button>

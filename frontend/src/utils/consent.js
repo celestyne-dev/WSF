@@ -14,6 +14,10 @@
 // raising that version asks everyone again. Missing, unreadable, malformed
 // or outdated data always means "no optional consent" (never yes).
 //
+// Global Privacy Control: while the browser sends it
+// (navigator.globalPrivacyControl === true), Marketing counts as REJECTED
+// and cannot be turned on; Preferences and Analytics are unaffected.
+//
 // A choice also EXPIRES 12 calendar months after it was made
 // (CONSENT_MAX_AGE_MONTHS): an expired record is removed from storage and
 // the visitor is asked again. A version change re-asks immediately, even
@@ -31,6 +35,7 @@ let memoryChoice = null // used when storage is unavailable (private mode)
 const listeners = new Set()
 const openListeners = new Set()
 let clock = () => new Date()
+let gpcOverride = null
 
 function readServerVersion() {
   try {
@@ -57,6 +62,22 @@ export function _setStorageForTests(fake) {
   listeners.clear()
   openListeners.clear()
   clock = () => new Date()
+  gpcOverride = null
+}
+
+// Test seam: simulate the browser's Global Privacy Control signal.
+export function _setGpcForTests(value) {
+  gpcOverride = value
+}
+
+/** True while the browser sends Global Privacy Control. */
+export function gpcActive() {
+  if (gpcOverride !== null) return gpcOverride
+  try {
+    return typeof navigator !== 'undefined' && navigator.globalPrivacyControl === true
+  } catch {
+    return false
+  }
 }
 
 // Test seam: a fixed "now".
@@ -146,6 +167,7 @@ export function needsConsentDecision() {
 export function hasConsent(category) {
   if (category === 'essential') return true
   if (!OPTIONAL_CATEGORIES.includes(category)) return false
+  if (category === 'marketing' && gpcActive()) return false
   const choice = getConsent()
   return Boolean(choice && choice[category] === true)
 }
@@ -157,6 +179,7 @@ export function saveConsent(choices, now = clock()) {
     timestamp: now.toISOString(),
     ...Object.fromEntries(OPTIONAL_CATEGORIES.map((c) => [c, choices?.[c] === true])),
   }
+  if (gpcActive()) record.marketing = false // GPC: Marketing is recorded as rejected
   memoryChoice = record
   try {
     storage?.setItem(CONSENT_STORAGE_KEY, JSON.stringify(record))
@@ -192,7 +215,8 @@ function snapshot() {
   const choice = getConsent()
   return {
     decided: Boolean(choice),
-    ...Object.fromEntries(OPTIONAL_CATEGORIES.map((c) => [c, Boolean(choice && choice[c])])),
+    gpc: gpcActive(),
+    ...Object.fromEntries(OPTIONAL_CATEGORIES.map((c) => [c, hasConsent(c)])),
   }
 }
 

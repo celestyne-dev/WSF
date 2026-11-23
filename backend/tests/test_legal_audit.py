@@ -67,7 +67,11 @@ def test_video_players_are_preferences_and_ad_trackers_inactive():
 
     video = next(t for t in TECHNOLOGY_INVENTORY if t["name"].startswith("Embedded video players"))
     assert video["category"] == "preferences" and video["consentRequired"] is True
-    assert not any(t["category"] == "marketing" for t in TECHNOLOGY_INVENTORY)
-    assert {"Meta Pixel", "LinkedIn Insight Tag"} <= set(INACTIVE_INTEGRATIONS)
+    # Every Marketing technology is a configurable third party (inactive until
+    # its ID is set) that requires consent.
+    marketing = [t for t in TECHNOLOGY_INVENTORY if t["category"] == "marketing"]
+    assert {t["configKey"] for t in marketing} == {"linkedinPartnerId", "metaPixelId"}
+    assert all(t["consentRequired"] for t in marketing)
+    assert INACTIVE_INTEGRATIONS == ("Google Search Console",)
     ga = next(t for t in TECHNOLOGY_INVENTORY if t["name"].startswith("Google Analytics 4"))
     assert ga["category"] == "analytics" and ga["consentRequired"] is True and ga["configKey"] == "ga4MeasurementId"

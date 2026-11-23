@@ -9,6 +9,8 @@ in Studio can make the site load arbitrary code.
 Consent still decides whether a configured integration runs in a visitor's
 browser (frontend/src/utils/consent.js):
 - Google Analytics 4: Analytics consent.
+- LinkedIn Insight Tag and Meta Pixel: Marketing consent, and never while
+  the browser sends Global Privacy Control.
 
 IDs are not secrets (they are visible in any page that loads the tag), so
 they are part of the public settings payload.
@@ -22,11 +24,16 @@ TRACKING_KEY = "tracking"
 
 TRACKING_DEFAULTS = {
     "ga4MeasurementId": "",
+    "linkedinPartnerId": "",
+    "metaPixelId": "",
 }
 
 _FORMATS = {
     # GA4 web data stream Measurement ID, e.g. G-ABC123XYZ9.
     "ga4MeasurementId": (re.compile(r"^G-[A-Z0-9]{4,20}$"), "a GA4 Measurement ID such as G-ABC123XYZ9"),
+    # Numeric IDs shown in each provider's own tag setup screen.
+    "linkedinPartnerId": (re.compile(r"^[0-9]{4,12}$"), "the numeric LinkedIn Insight Tag Partner ID"),
+    "metaPixelId": (re.compile(r"^[0-9]{6,20}$"), "the numeric Meta Pixel ID"),
 }
 
 

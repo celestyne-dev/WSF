@@ -112,3 +112,27 @@ test('a version change re-asks before 12 months; unreadable timestamps never cou
   assert.equal(hasConsent('analytics'), false)
   assert.equal(store.data[CONSENT_STORAGE_KEY], undefined)
 })
+
+test('Global Privacy Control: Marketing is rejected and cannot be enabled; other categories unaffected', async () => {
+  const { _setGpcForTests, consentSnapshot } = await import('./consent.js')
+  const store = fakeStorage()
+  _setStorageForTests(store)
+  configureConsentVersion('1')
+  _setGpcForTests(true)
+  acceptAllConsent()
+  assert.equal(JSON.parse(store.data[CONSENT_STORAGE_KEY]).marketing, false) // recorded as rejected
+  assert.equal(hasConsent('marketing'), false)
+  assert.equal(hasConsent('analytics'), true)
+  assert.equal(hasConsent('preferences'), true)
+  saveConsent({ marketing: true })
+  assert.equal(hasConsent('marketing'), false)
+  assert.equal(consentSnapshot().gpc, true)
+  assert.equal(consentSnapshot().marketing, false)
+
+  // A choice stored before GPC was switched on still can't grant Marketing.
+  _setGpcForTests(false)
+  acceptAllConsent()
+  assert.equal(hasConsent('marketing'), true)
+  _setGpcForTests(true)
+  assert.equal(hasConsent('marketing'), false)
+})

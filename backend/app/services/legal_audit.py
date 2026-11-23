@@ -68,10 +68,26 @@ TECHNOLOGY_INVENTORY = (
      "duration": ("Set by Google's script, not by WSF code. On withdrawal WSF stops measurement and deletes "
                   "the site's _ga and _ga_* cookies."),
      "consentRequired": True},
+    {"name": "LinkedIn Insight Tag", "provider": "LinkedIn (third party)", "category": "marketing",
+     "configKey": "linkedinPartnerId",
+     "purpose": ("Campaign measurement. Loaded only with Marketing consent and never while the browser sends "
+                 "Global Privacy Control."),
+     "storage": "cookies/storage set by LinkedIn's script",
+     "duration": ("Set by LinkedIn, not by WSF code. LinkedIn's tag has no off switch, so on withdrawal WSF "
+                  "reloads the page to unload it; it never loads again without consent."),
+     "consentRequired": True},
+    {"name": "Meta Pixel (_fbp, _fbc cookies)", "provider": "Meta (third party)", "category": "marketing",
+     "configKey": "metaPixelId",
+     "purpose": ("Campaign measurement. Loaded only with Marketing consent and never with Global Privacy "
+                 "Control; automatic collection of button and page details (autoConfig) is off."),
+     "storage": "cookies set by Meta's script on WSF's domain (_fbp, _fbc) and Meta's own storage",
+     "duration": ("Set by Meta's script, not by WSF code. On withdrawal WSF revokes consent in the pixel, "
+                  "deletes the site's _fbp and _fbc cookies and reloads the page."),
+     "consentRequired": True},
 )
 
 # Integrations that have a Studio label but NO runtime code.
-INACTIVE_INTEGRATIONS = ("Google Search Console", "Meta Pixel", "LinkedIn Insight Tag")
+INACTIVE_INTEGRATIONS = ("Google Search Console",)
 
 
 def configurable_status():
