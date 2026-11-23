@@ -21,7 +21,9 @@ TECHNOLOGY_INVENTORY = (
      "duration": "Until sign-out; the tokens inside expire per the server's JWT settings.", "consentRequired": False},
     {"name": "wsf_cookie_consent", "provider": "WSF (first party)", "category": "essential",
      "purpose": "Remembers the visitor's cookie choices (version, time, categories).", "storage": "localStorage",
-     "duration": "Until cleared, or until the consent version changes.", "consentRequired": False},
+     "duration": ("12 calendar months from the choice, then removed and the visitor is asked again; "
+                  "asked again immediately if the consent version changes sooner."),
+     "consentRequired": False},
     {"name": "wsf_newsletter_popup", "provider": "WSF (first party)", "category": "essential",
      "purpose": "Remembers that the visitor closed or completed the newsletter popup, so it is not shown again.",
      "storage": "localStorage", "duration": "The dismissal/success period set in Studio.", "consentRequired": False},

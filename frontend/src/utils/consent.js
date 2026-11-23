@@ -13,9 +13,15 @@
 // the consent version configured in Studio (Settings -> Cookie consent), so
 // raising that version asks everyone again. Missing, unreadable, malformed
 // or outdated data always means "no optional consent" (never yes).
+//
+// A choice also EXPIRES 12 calendar months after it was made
+// (CONSENT_MAX_AGE_MONTHS): an expired record is removed from storage and
+// the visitor is asked again. A version change re-asks immediately, even
+// before 12 months.
 
 export const CONSENT_STORAGE_KEY = 'wsf_cookie_consent'
 export const OPTIONAL_CATEGORIES = ['preferences', 'analytics', 'marketing']
+export const CONSENT_MAX_AGE_MONTHS = 12
 
 let storage = typeof window !== 'undefined' ? safeLocalStorage() : null
 // The server writes the configured version onto <html> (spa_shell), so an
@@ -24,6 +30,7 @@ let configuredVersion = readServerVersion()
 let memoryChoice = null // used when storage is unavailable (private mode)
 const listeners = new Set()
 const openListeners = new Set()
+let clock = () => new Date()
 
 function readServerVersion() {
   try {
@@ -49,6 +56,36 @@ export function _setStorageForTests(fake) {
   configuredVersion = null
   listeners.clear()
   openListeners.clear()
+  clock = () => new Date()
+}
+
+// Test seam: a fixed "now".
+export function _setClockForTests(fn) {
+  clock = fn
+}
+
+/** When a choice made at `timestamp` stops counting (12 calendar months
+ * later, in UTC). Invalid timestamps count as already expired. */
+export function consentExpiresAt(timestamp) {
+  const made = new Date(timestamp)
+  if (Number.isNaN(made.getTime())) return null
+  const expires = new Date(made.getTime())
+  expires.setUTCMonth(expires.getUTCMonth() + CONSENT_MAX_AGE_MONTHS)
+  return expires
+}
+
+function isExpired(choice, now) {
+  const expires = consentExpiresAt(choice.timestamp)
+  return !expires || now.getTime() >= expires.getTime()
+}
+
+function forget() {
+  memoryChoice = null
+  try {
+    storage?.removeItem(CONSENT_STORAGE_KEY)
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 function isChoice(value) {
@@ -88,7 +125,12 @@ export function configureConsentVersion(version) {
 export function getConsent() {
   if (!configuredVersion) return null
   const choice = readRaw()
-  return choice && choice.version === configuredVersion ? choice : null
+  if (!choice) return null
+  if (isExpired(choice, clock())) {
+    forget() // expired: removed, never silently renewed
+    return null
+  }
+  return choice.version === configuredVersion ? choice : null
 }
 
 export function needsConsentDecision() {
@@ -102,7 +144,7 @@ export function hasConsent(category) {
   return Boolean(choice && choice[category] === true)
 }
 
-export function saveConsent(choices, now = new Date()) {
+export function saveConsent(choices, now = clock()) {
   if (!configuredVersion) return null
   const record = {
     version: configuredVersion,

@@ -77,3 +77,38 @@ test('storage that throws keeps the choice in memory for the page', () => {
   saveConsent({ analytics: true })
   assert.equal(hasConsent('analytics'), true)
 })
+
+test('a choice expires 12 calendar months after it was made and is removed', async () => {
+  const { _setClockForTests, consentExpiresAt } = await import('./consent.js')
+  const store = fakeStorage()
+  _setStorageForTests(store)
+  configureConsentVersion('1')
+  _setClockForTests(() => new Date('2025-11-23T09:00:00Z'))
+  acceptAllConsent()
+  assert.equal(consentExpiresAt('2025-11-23T09:00:00Z').toISOString(), '2026-11-23T09:00:00.000Z')
+
+  _setClockForTests(() => new Date('2026-11-23T08:59:59Z')) // one second before expiry
+  assert.equal(hasConsent('analytics'), true)
+  assert.equal(needsConsentDecision(), false)
+
+  _setClockForTests(() => new Date('2026-11-23T09:00:00Z')) // expired
+  assert.equal(hasConsent('analytics'), false)
+  assert.equal(needsConsentDecision(), true)
+  assert.equal(store.data[CONSENT_STORAGE_KEY], undefined) // removed, not just ignored
+})
+
+test('a version change re-asks before 12 months; unreadable timestamps never count', async () => {
+  const { _setClockForTests } = await import('./consent.js')
+  const store = fakeStorage()
+  _setStorageForTests(store)
+  _setClockForTests(() => new Date('2026-02-01T00:00:00Z'))
+  configureConsentVersion('1')
+  acceptAllConsent(new Date('2026-01-01T00:00:00Z'))
+  assert.equal(hasConsent('analytics'), true)
+  configureConsentVersion('2')
+  assert.equal(needsConsentDecision(), true)
+
+  store.data[CONSENT_STORAGE_KEY] = JSON.stringify({ version: '2', timestamp: 'garbage', preferences: true, analytics: true, marketing: true })
+  assert.equal(hasConsent('analytics'), false)
+  assert.equal(store.data[CONSENT_STORAGE_KEY], undefined)
+})
