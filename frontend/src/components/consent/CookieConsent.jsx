@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { X } from 'lucide-react'
 import {
-  acceptAllConsent, configureConsentVersion, consentSnapshot, getConsent, onConsentChange, onOpenConsentManager,
+  acceptAllConsent, configureConsentVersion, consentSnapshot, consentVersionKnown, getConsent, onConsentChange, onOpenConsentManager,
   rejectAllConsent, saveConsent,
 } from '../../utils/consent'
 import { clearAnalyticsStorage } from '../../utils/analytics'
+import { syncPopupStorage } from '../../utils/newsletterPopup'
 import { createConsentSync } from '../../utils/consentSync'
 import { recordConsent } from '../../api/consent'
 import useDialogFocus from '../../hooks/useDialogFocus'
@@ -24,6 +25,14 @@ const CATEGORIES = [
 // The three primary choices share ONE class: same height, padding, weight
 // and emphasis, so none of them is visually dominant (no nudging).
 const CHOICE = 'btn-secondary w-full !px-4 !py-2.5 sm:w-auto'
+
+function browserStorages() {
+  try {
+    return { local: window.localStorage, session: window.sessionStorage }
+  } catch {
+    return {}
+  }
+}
 
 // Signed-in members: each distinct decision is also recorded server-side.
 const syncToAccount = createConsentSync(recordConsent)
@@ -46,15 +55,21 @@ export default function CookieConsent() {
     if (config?.version) configureConsentVersion(config.version)
   }, [config?.version])
 
-  useEffect(
-    () =>
-      onConsentChange((next) => {
-        setSnap(next)
-        // Withdrawal takes effect at once: stop and forget analytics data.
-        if (!next.analytics) clearAnalyticsStorage()
-      }),
-    [],
-  )
+  useEffect(() => {
+    const apply = (next) => {
+      // Withdrawal takes effect at once: stop and forget analytics data.
+      if (!next.analytics) clearAnalyticsStorage()
+      // Preferences decides whether popup state may persist in localStorage.
+      // Only once the consent version is known: before that, "not granted"
+      // just means "not loaded yet".
+      if (consentVersionKnown()) syncPopupStorage(next.preferences, browserStorages())
+    }
+    apply(consentSnapshot())
+    return onConsentChange((next) => {
+      setSnap(next)
+      apply(next)
+    })
+  }, [])
   useEffect(() => onOpenConsentManager(() => setManagerOpen(true)), [])
 
   const showBanner = Boolean(config?.version) && config.bannerEnabled !== false && !snap.decided && !managerOpen

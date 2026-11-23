@@ -24,9 +24,14 @@ TECHNOLOGY_INVENTORY = (
      "duration": ("12 calendar months from the choice, then removed and the visitor is asked again; "
                   "asked again immediately if the consent version changes sooner."),
      "consentRequired": False},
-    {"name": "wsf_newsletter_popup", "provider": "WSF (first party)", "category": "essential",
+    {"name": "wsf_newsletter_popup", "provider": "WSF (first party)", "category": "preferences",
      "purpose": "Remembers that the visitor closed or completed the newsletter popup, so it is not shown again.",
-     "storage": "localStorage", "duration": "The dismissal/success period set in Studio.", "consentRequired": False},
+     "storage": ("localStorage only with Preferences consent; otherwise sessionStorage (this browser session). "
+                 "Withdrawing Preferences deletes the localStorage copy."),
+     "duration": ("localStorage: kept until cleared; it suppresses the popup for the dismissal period (default 14 days) "
+                  "or the post-signup period (default 365 days) set in Studio. sessionStorage: until the browser "
+                  "session ends."),
+     "consentRequired": True},
     {"name": "wsf-reflection:* / wsf-checklist:*", "provider": "WSF (first party)", "category": "essential",
      "purpose": "Saves a learner's own reflection answers and checklist ticks on their device (never sent to WSF).",
      "storage": "localStorage", "duration": "Until cleared by the learner.", "consentRequired": False},

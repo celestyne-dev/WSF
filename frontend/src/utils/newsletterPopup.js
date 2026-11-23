@@ -40,6 +40,32 @@ export function writePopupState(storage, state) {
   }
 }
 
+// Where the popup's own state lives depends on Preferences consent:
+//   granted      -> localStorage   (remembered across visits for the
+//                                   dismissDays / successDays windows)
+//   not granted  -> sessionStorage (this browser tab session only)
+// Showing the popup and signing up never depend on this; only how long
+// "closed" / "signed up" is remembered does.
+export function popupStorageFor(preferencesGranted, { local, session }) {
+  return preferencesGranted ? local : session
+}
+
+/** Moves the popup state to the storage the current Preferences choice
+ * allows. Withdrawing (or never giving) Preferences removes the persistent
+ * copy and keeps a session-only one, so the popup doesn't reappear in the
+ * same session; granting it carries the session state into localStorage. */
+export function syncPopupStorage(preferencesGranted, { local, session }) {
+  const from = preferencesGranted ? session : local
+  const to = preferencesGranted ? local : session
+  try {
+    const raw = from?.getItem(POPUP_STORAGE_KEY)
+    if (raw && !to?.getItem(POPUP_STORAGE_KEY)) to?.setItem(POPUP_STORAGE_KEY, raw)
+    from?.removeItem(POPUP_STORAGE_KEY)
+  } catch {
+    /* storage unavailable: nothing persisted */
+  }
+}
+
 function within(iso, days, now) {
   const t = Date.parse(iso)
   return Number.isFinite(t) && now - t < days * DAY_MS

@@ -4,18 +4,20 @@ import { useSelector } from 'react-redux'
 import { X } from 'lucide-react'
 import { subscribeToNewsletter } from '../../api/newsletter'
 import { withAcquisitionMetadata } from '../../utils/analytics'
-import { consentSnapshot, onConsentChange } from '../../utils/consent'
+import { consentSnapshot, hasConsent, onConsentChange } from '../../utils/consent'
 import {
-  isPopupExcludedPath, isPopupSuppressed, popupTriggerReached, readPopupState, scrollPercentOf, writePopupState,
+  isPopupExcludedPath, isPopupSuppressed, popupStorageFor, popupTriggerReached, readPopupState, scrollPercentOf, writePopupState,
 } from '../../utils/newsletterPopup'
 import useDialogFocus from '../../hooks/useDialogFocus'
 
 const DEFAULTS = { enabled: true, delaySeconds: 15, scrollPercent: 45, dismissDays: 14, successDays: 365, title: 'WSF Weekly',
   body: 'Career moves, opportunities and women worth knowing, delivered to your inbox.', ctaLabel: 'Join WSF Weekly' }
 
+// localStorage only with Preferences consent, otherwise sessionStorage
+// (utils/newsletterPopup.js popupStorageFor).
 function store() {
   try {
-    return window.localStorage
+    return popupStorageFor(hasConsent('preferences'), { local: window.localStorage, session: window.sessionStorage })
   } catch {
     return null
   }

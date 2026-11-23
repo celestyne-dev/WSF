@@ -133,6 +133,12 @@ export function getConsent() {
   return choice.version === configuredVersion ? choice : null
 }
 
+/** True once the consent version is known (from the server), i.e. once
+ * "no valid choice" really means "not decided" rather than "not loaded". */
+export function consentVersionKnown() {
+  return Boolean(configuredVersion)
+}
+
 export function needsConsentDecision() {
   return Boolean(configuredVersion) && getConsent() === null
 }

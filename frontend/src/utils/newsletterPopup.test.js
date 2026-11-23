@@ -42,3 +42,41 @@ test('state storage is tolerant', () => {
   assert.deepEqual(readPopupState({ getItem: () => '{bad' }), {})
   assert.deepEqual(readPopupState({ getItem: () => { throw new Error('x') } }), {})
 })
+
+// --- storage depends on Preferences consent ---------------------------------------------
+import { POPUP_STORAGE_KEY as KEY, popupStorageFor, syncPopupStorage } from './newsletterPopup.js'
+
+function memStore(initial = {}) {
+  const data = { ...initial }
+  return { data, getItem: (k) => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v) }, removeItem: (k) => { delete data[k] } }
+}
+
+test('popup state uses localStorage only with Preferences consent', () => {
+  const local = memStore(), session = memStore()
+  assert.equal(popupStorageFor(true, { local, session }), local)
+  assert.equal(popupStorageFor(false, { local, session }), session)
+})
+
+test('withdrawing Preferences removes the persistent copy and keeps a session one', () => {
+  const state = JSON.stringify({ dismissedAt: '2026-11-20T10:00:00.000Z' })
+  const local = memStore({ [KEY]: state }), session = memStore()
+  syncPopupStorage(false, { local, session })
+  assert.equal(local.data[KEY], undefined)
+  assert.equal(session.data[KEY], state)
+})
+
+test('granting Preferences carries the session state into localStorage', () => {
+  const state = JSON.stringify({ subscribedAt: '2026-11-20T10:00:00.000Z' })
+  const local = memStore(), session = memStore({ [KEY]: state })
+  syncPopupStorage(true, { local, session })
+  assert.equal(local.data[KEY], state)
+  assert.equal(session.data[KEY], undefined)
+})
+
+test('an existing destination value is kept, and missing storage is harmless', () => {
+  const local = memStore({ [KEY]: '{"dismissedAt":"old"}' }), session = memStore({ [KEY]: '{"dismissedAt":"new"}' })
+  syncPopupStorage(false, { local, session })
+  assert.equal(session.data[KEY], '{"dismissedAt":"new"}')
+  assert.equal(local.data[KEY], undefined)
+  assert.doesNotThrow(() => syncPopupStorage(true, {}))
+})
