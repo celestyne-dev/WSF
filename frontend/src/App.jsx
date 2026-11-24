@@ -4,6 +4,11 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { store } from './store'
 import AppRoutes from './routes/AppRoutes'
+import { readCspNonce } from './utils/cspNonce'
+
+// react-toastify inserts one <style> element; the server's CSP nonce lets it
+// through without allowing inline styles in general.
+const cspNonce = readCspNonce()
 
 function App() {
   return (
@@ -15,6 +20,7 @@ function App() {
           autoClose={3500}
           hideProgressBar
           toastClassName="!font-sans !text-sm !rounded-none"
+          nonce={cspNonce}
         />
       </BrowserRouter>
     </Provider>

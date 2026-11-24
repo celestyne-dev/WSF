@@ -266,6 +266,24 @@ def register_cli(app):
             click.echo(f"Configurable integration: {name}: {'CONFIGURED (runs only with consent)' if configured else 'not configured (inactive)'}")
         click.echo(f"Configured but NOT active (no runtime integration): {', '.join(INACTIVE_INTEGRATIONS)}")
 
+    @app.cli.command("csp-report-summary")
+    @click.option("--days", default=7, show_default=True, help="Only violations seen in the last N days.")
+    def csp_report_summary_command(days):
+        """Read-only: CSP violations reported by browsers (aggregated, no
+        personal data), newest first, and the current CSP mode. Use before
+        switching CSP_MODE from report-only to enforce."""
+        from datetime import datetime, timedelta, timezone
+
+        from app.models.csp_violation import CspViolation
+
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        rows = (CspViolation.query.filter(CspViolation.last_seen >= since)
+                .order_by(CspViolation.count.desc(), CspViolation.last_seen.desc()).all())
+        click.echo(f"CSP mode: {app.config.get('CSP_MODE')} | violations seen in the last {days} day(s): {len(rows)}")
+        for row in rows:
+            click.echo(f"  {row.count:>6}  {row.directive:<16} {row.blocked:<45} on {row.page_path} "
+                       f"(first {row.first_seen:%Y-%m-%d}, last {row.last_seen:%Y-%m-%d %H:%M})")
+
     @app.cli.command("production-check")
     def production_check_command():
         """Read-only pre-flight check for a production deployment. Verifies

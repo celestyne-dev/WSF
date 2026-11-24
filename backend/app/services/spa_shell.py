@@ -326,6 +326,17 @@ _HEADER_RESERVE_STYLE = (
 )
 
 
+def _reserve_style():
+    """The reserve rule above, carrying this request's CSP nonce so the
+    policy can stay style-src 'self' + nonce (app/services/security_headers.py)."""
+    from app.services.security_headers import csp_nonce
+
+    nonce = csp_nonce()
+    if not nonce:
+        return _HEADER_RESERVE_STYLE
+    return _HEADER_RESERVE_STYLE.replace("<style ", f'<style nonce="{nonce}" ', 1)
+
+
 def _shell_payloads():
     """The public navigation/settings/footer bodies, exactly as their GET
     /public/* endpoints return them (one source of truth)."""
@@ -347,7 +358,7 @@ def _header_placeholder_html(navigation=None):
     if navigation is None:
         navigation = _shell_payloads()[0]
     pathname = request.path if has_request_context() else "/"
-    return _HEADER_RESERVE_STYLE + render_header(navigation, logo_url=logo_url, site_name=site_name, pathname=pathname)
+    return _reserve_style() + render_header(navigation, logo_url=logo_url, site_name=site_name, pathname=pathname)
 
 
 def _set_root_prerender(html_doc, inner_html):

@@ -478,6 +478,58 @@ task does not issue a certificate**. Add the HSTS header
 end-to-end; sending it prematurely can lock returning visitors' browsers
 out of ever falling back to plain HTTP for the header's `max-age`.
 
+### 15a. Security headers and the Content Security Policy
+
+The app sets these itself (`backend/app/services/security_headers.py`);
+nginx adds only the static-file copies in the `/assets/` and `/media/`
+blocks of `deploy/nginx/womenshapingfutures.conf.example`.
+
+| Header | Where | Value |
+|---|---|---|
+| `Strict-Transport-Security` | production (`ProductionConfig.HSTS_ENABLED`), HTTPS requests only | `max-age=31536000; includeSubDomains` (no `preload`) |
+| `X-Content-Type-Options` | every response | `nosniff` |
+| `Referrer-Policy` | every response | `strict-origin-when-cross-origin` |
+| `X-Frame-Options` | every response | `DENY` |
+| `Permissions-Policy` | every response | unused powerful features `=()`; fullscreen, picture-in-picture, encrypted-media allowed only for WSF and the four video players |
+| `Content-Security-Policy-Report-Only` | HTML pages | built per request; see below |
+
+`includeSubDomains` applies HSTS to every subdomain of
+womenshapingfutures.org. Before the first production deploy, confirm every
+subdomain in use (if any) serves HTTPS. Do not add `preload` unless that
+is a deliberate, separate decision: preload lists are hard to leave.
+
+**CSP collection.** Browsers send violations to
+`POST /api/v1/security/csp-report`; they are stored aggregated (directive,
+blocked origin, page path, count; no IP, no query strings). Review with:
+
+```bash
+flask --app run:app csp-report-summary --days 7
+```
+
+**Switching from Report-Only to enforced** (after at least one week of
+normal traffic with no unexplained violations):
+
+1. Run `flask --app run:app csp-report-summary --days 7`. Every row must be
+   explained: browser extensions (`chrome-extension`, `moz-extension`
+   origins) and blocked third parties that WSF does not use are expected
+   and harmless. Anything on a WSF page from a WSF feature is not:
+   fix the code or add the exact origin to `build_csp()` and redeploy, then
+   wait another week.
+2. Also check after any change in Studio -> Settings -> Integrations
+   (GA4, LinkedIn, Meta): each adds its own origins to the policy only when
+   configured, so give each newly configured integration a report-only
+   period too.
+3. Add `CSP_MODE=enforce` to the backend environment file and restart the
+   service (`sudo systemctl restart womenshapingfutures`).
+4. Confirm: `curl -sI https://womenshapingfutures.org/ | grep -i content-security-policy`
+   shows `Content-Security-Policy:` (not `-Report-Only`), then load the home
+   page, an Article, a page with a video, /account, Studio, and complete a
+   Paystack checkout in test mode; the browser console must show no CSP
+   errors. Reports keep arriving in enforced mode, so keep checking the
+   summary.
+5. To roll back instantly: remove `CSP_MODE` (or set `report-only`) and
+   restart. No deploy is needed.
+
 ## 16. Scheduled publishing
 
 The app already has `flask publish-due-content` (see
@@ -617,6 +669,11 @@ draft/private content):
   deliberately lacks it and confirm a 403.
 - Hitting `/api/...` with a path that doesn't exist returns the app's own
   JSON 404, not a Flask/Werkzeug HTML debug page, and never a stack trace.
+- `curl -sI https://womenshapingfutures.org/` shows
+  `Strict-Transport-Security: max-age=31536000; includeSubDomains`,
+  `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy`
+  and `Content-Security-Policy-Report-Only` (see §15a).
 - `https://womenshapingfutures.org/.env` and
   `https://womenshapingfutures.org/.git/config` both return 404 (blocked
   by the Nginx config in §15).

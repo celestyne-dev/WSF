@@ -68,6 +68,12 @@ class Config:
     REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
     REFRESH_COOKIE_SECURE = True
     REFRESH_SESSION_LIFETIME = timedelta(days=30)
+    # Security headers (app/services/security_headers.py). HSTS only in
+    # production (ProductionConfig) and only on HTTPS requests. The CSP is
+    # report-only until CSP_MODE=enforce is set deliberately (see
+    # DEPLOYMENT.md, "Content Security Policy").
+    HSTS_ENABLED = False
+    CSP_MODE = os.environ.get("CSP_MODE", "report-only").strip().lower()
     JWT_ERROR_MESSAGE_KEY = "message"
     # PyJWT's `iat`/`nbf`/`exp` checks (flask_jwt_extended.config.Config.leeway
     # -> JWT_DECODE_LEEWAY, passed straight through to jwt.decode()'s `leeway`)
@@ -310,6 +316,7 @@ class TestingConfig(Config):
 
 
 class ProductionConfig(Config):
+    HSTS_ENABLED = True
     ENV = "production"
     DEBUG = False
     # No fallback for SECRET_KEY/JWT_SECRET_KEY (inherited as None from

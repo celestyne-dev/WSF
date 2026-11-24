@@ -135,6 +135,7 @@ def create_app(config_name="development"):
     from app.api.v1.redirects import redirects_bp
     from app.api.v1.resources import resources_bp
     from app.api.v1.saved import saved_bp
+    from app.api.v1.security import security_bp
     from app.api.v1.search import search_bp
     from app.api.v1.sponsors import sponsors_bp
     from app.api.v1.submissions import submissions_bp
@@ -186,6 +187,7 @@ def create_app(config_name="development"):
     app.register_blueprint(notifications_bp, url_prefix="/api/v1/admin/notifications")
     app.register_blueprint(saved_bp, url_prefix="/api/v1/saved")
     app.register_blueprint(consent_bp, url_prefix="/api/v1/consent")
+    app.register_blueprint(security_bp, url_prefix="/api/v1/security")
     app.register_blueprint(webhooks_bp, url_prefix="/api/v1/webhooks")
     app.register_blueprint(payments_bp, url_prefix="/api/v1/payments")
 
@@ -284,19 +286,13 @@ def create_app(config_name="development"):
 
     @app.after_request
     def set_security_headers(response):
-        # A conservative, framework-agnostic baseline that doesn't risk
-        # breaking the app (see task spec: "do not blindly add a CSP that
-        # breaks the application" — none is set here; Nginx is the right
-        # place to add one later, tested against the real production
-        # build). These are all safe to apply unconditionally to every
-        # response, JSON or otherwise.
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        # This API is never meant to be framed; equivalent to
-        # frame-ancestors 'none' for browsers that don't honor CSP.
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
-        return response
+        # nosniff, Referrer-Policy, X-Frame-Options, Permissions-Policy on
+        # every response; HSTS in production over HTTPS; the CSP
+        # (Report-Only unless CSP_MODE=enforce) on HTML documents. See
+        # app/services/security_headers.py.
+        from app.services.security_headers import apply_security_headers
+
+        return apply_security_headers(response)
 
     if app.debug:
         # Convenience only: in local development Flask can serve MEDIA_URL

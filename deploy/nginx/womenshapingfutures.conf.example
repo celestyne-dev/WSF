@@ -38,11 +38,14 @@ server {
     ssl_certificate     /etc/letsencrypt/live/womenshapingfutures.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/womenshapingfutures.org/privkey.pem;
 
-    # Only add this once HTTPS is confirmed working end-to-end — an HSTS
-    # header sent before TLS is solid can lock out visitors' browsers from
-    # ever falling back to plain HTTP for the max-age duration. See
-    # DEPLOYMENT.md's HSTS note.
-    # add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+    # HSTS and the other security headers for responses Flask produces
+    # (pages, API) are set by the app itself (backend
+    # app/services/security_headers.py; HSTS only with ProductionConfig and
+    # only over HTTPS). Do NOT add them here at server level as well:
+    # nginx would send a second copy on proxied responses. Files nginx
+    # serves directly (/assets/, /media/) get them in their own location
+    # blocks below (an add_header inside a location replaces server-level
+    # ones, so each such block lists the full set).
 
     # www -> apex canonical redirect, matching this app's existing
     # canonical-domain convention (see PUBLIC_SITE_URL in backend/.env.example
@@ -65,6 +68,9 @@ server {
     # content change.
     location /assets/ {
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         try_files $uri =404;
     }
 
@@ -157,6 +163,9 @@ server {
     location /media/ {
         alias /var/lib/womenshapingfutures/media/;
         add_header Cache-Control "public, max-age=604800";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         # Never execute anything here as a script — this directory holds
         # user-uploaded images only (validated/re-encoded to WebP by
         # app/services/media.py), and Nginx's default `location` block
