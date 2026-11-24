@@ -39,6 +39,7 @@ def _bare_app(**config_overrides):
     app.config["PAYSTACK_ENABLED"] = False
     app.config["PAYSTACK_SECRET_KEY"] = None
     app.config["MEDIA_ROOT"] = "/var/lib/womenshapingfutures/media"
+    app.config["REFRESH_COOKIE_SECURE"] = True
     app.config.update(config_overrides)
     return app
 
@@ -430,3 +431,8 @@ def test_indexnow_enabled_with_malformed_key_fails_without_echoing_it(bad_key):
 
 def test_indexnow_enabled_with_valid_key_passes():
     require_production_settings(_bare_app(INDEXNOW_ENABLED=True, INDEXNOW_KEY="a1b2c3d4-e5f6-7890-abcd-ef1234567890"))
+
+
+def test_insecure_refresh_cookie_is_refused_in_production():
+    with pytest.raises(RuntimeError, match="REFRESH_COOKIE_SECURE"):
+        require_production_settings(_bare_app(REFRESH_COOKIE_SECURE=False))
