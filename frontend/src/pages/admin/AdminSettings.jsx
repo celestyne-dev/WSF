@@ -19,6 +19,7 @@ const DEFAULT_IDENTITY = {
   shortName: '',
   tagline: '',
   contactEmail: '',
+  postalAddress: '',
   seoDefaultTitle: '',
   seoDefaultDescription: '',
 }
@@ -56,6 +57,7 @@ export default function AdminSettings() {
           shortName: savedIdentity.shortName || '',
           tagline: savedIdentity.tagline || '',
           contactEmail: savedIdentity.contactEmail || '',
+          postalAddress: savedIdentity.postalAddress || '',
           seoDefaultTitle: savedIdentity.seoDefaultTitle || '',
           seoDefaultDescription: savedIdentity.seoDefaultDescription || '',
         })
@@ -104,6 +106,7 @@ export default function AdminSettings() {
         shortName: savedIdentity.shortName || '',
         tagline: savedIdentity.tagline || '',
         contactEmail: savedIdentity.contactEmail || '',
+        postalAddress: savedIdentity.postalAddress || '',
         seoDefaultTitle: savedIdentity.seoDefaultTitle || '',
         seoDefaultDescription: savedIdentity.seoDefaultDescription || '',
       })
@@ -216,6 +219,24 @@ export default function AdminSettings() {
                 />
                 <p className="mt-1 text-xs text-charcoal-500">
                   A genuinely public address only — never a personal or internal staff email.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="settings-postal-address" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
+                  Postal address for email footers
+                </label>
+                <textarea
+                  id="settings-postal-address"
+                  rows={2}
+                  maxLength={300}
+                  value={identity.postalAddress}
+                  onChange={(e) => updateIdentity('postalAddress', e.target.value)}
+                  aria-describedby="settings-postal-address-hint"
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none"
+                />
+                <p id="settings-postal-address-hint" className="mt-1 text-xs text-charcoal-500">
+                  Shown in the footer of every WSF email (“Women Shaping Futures · address · Privacy Policy”). Plain text,
+                  your organisation’s real address. While blank, footers omit it; complete it before sending newsletter marketing.
                 </p>
               </div>
             </div>

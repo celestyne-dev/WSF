@@ -142,6 +142,7 @@ class SiteIdentitySchema(ma.Schema):
     short_name = fields.String(data_key="shortName", allow_none=True)
     tagline = fields.String(allow_none=True)
     contact_email = fields.String(data_key="contactEmail", allow_none=True)
+    postal_address = fields.String(data_key="postalAddress", allow_none=True)
     seo_default_title = fields.String(data_key="seoDefaultTitle", allow_none=True)
     seo_default_description = fields.String(data_key="seoDefaultDescription", allow_none=True)
     logo = fields.Nested(MediaSchema, allow_none=True)
@@ -153,6 +154,8 @@ class SiteIdentityInputSchema(ma.Schema):
     short_name = fields.String(required=False, allow_none=True, data_key="shortName", validate=validate.Length(max=40))
     tagline = fields.String(required=False, allow_none=True, validate=validate.Length(max=160))
     contact_email = fields.Email(required=False, allow_none=True, data_key="contactEmail")
+    postal_address = fields.String(required=False, allow_none=True, data_key="postalAddress",
+                                   validate=validate.Length(max=300))
     logo_media_id = fields.Integer(required=False, allow_none=True, data_key="logoMediaId")
     og_image_media_id = fields.Integer(required=False, allow_none=True, data_key="ogImageMediaId")
     seo_default_title = fields.String(
@@ -173,6 +176,7 @@ class SiteIdentityInputSchema(ma.Schema):
     def validate_site_identity(self, data, **kwargs):
         reject_html(data.get("site_name"), "siteName", 80)
         reject_html(data.get("short_name"), "shortName", 40)
+        reject_html(data.get("postal_address"), "postalAddress", 300)
         reject_html(data.get("tagline"), "tagline", 160)
         reject_html(data.get("seo_default_title"), "seoDefaultTitle", 70)
         reject_html(data.get("seo_default_description"), "seoDefaultDescription", 300)

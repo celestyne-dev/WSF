@@ -13,7 +13,7 @@ from app.extensions import db
 from app.models.learning import LearningLesson
 from app.models.learning_enrollment import LearningEnrollment
 from app.schemas.learning import LearningModuleSchema, learning_program_summary_schema
-from app.services.email import send_email
+from app.services.email import TRANSACTIONAL, send_email
 from app.services.learning_enrollments import (
     enroll,
     fetch_program_or_404,
@@ -65,7 +65,8 @@ def _send_enrollment_confirmation_email(user, program):
         f"<p>You're enrolled in <strong>{program.title}</strong> with Women Shaping Futures.</p>"
         f'<p><a href="{my_learning_url}">View it in My Learning</a></p>'
     )
-    if not send_email(to=user.email, subject=f"You're enrolled: {program.title}", text_body=text_body, html_body=html_body):
+    if not send_email(to=user.email, subject=f"You're enrolled: {program.title}", text_body=text_body, html_body=html_body,
+                      category=TRANSACTIONAL):
         current_app.logger.error(
             "Learning enrollment confirmation email delivery failed for user_id=%s program_id=%s.",
             user.id,

@@ -39,6 +39,9 @@ DEFAULT_SITE_IDENTITY = {
     "short_name": None,
     "tagline": None,
     "contact_email": None,
+    # Organisation postal address for the common email footer (Step 15).
+    # Never invented: blank until staff enter it (legal-pages-audit flags it).
+    "postal_address": None,
     "logo_media_id": None,
     "og_image_media_id": None,
     "seo_default_title": None,
@@ -80,6 +83,7 @@ def save_site_identity(data):
         "short_name": data.get("short_name"),
         "tagline": data.get("tagline"),
         "contact_email": data.get("contact_email"),
+        "postal_address": data.get("postal_address"),
         "logo_media_id": data.get("logo_media_id"),
         "og_image_media_id": data.get("og_image_media_id"),
         "seo_default_title": data.get("seo_default_title"),

@@ -188,7 +188,22 @@ def _newsletter_facts():
     ]
 
 
-FACT_SECTIONS = [("Newsletter", _newsletter_facts)]
+def _email_facts():
+    from app.services.site_settings import get_site_identity_raw
+
+    address = (get_site_identity_raw().get("postal_address") or "").strip()
+    return [
+        "Email classes: transactional (password reset, sign-in security, event registration, learning enrolment, "
+        "newsletter confirmation; no unsubscribe action) and optional (comment reply notifications; opt-in, footer "
+        "unsubscribe link + List-Unsubscribe with RFC 8058 one-click). Every email carries the common footer "
+        "(organisation name, postal address, Privacy Policy link).",
+        ("Email footer postal address: set in Studio." if address else
+         "WARNING: email footer postal address is NOT SET (Studio -> Settings -> Site Identity -> Postal address). "
+         "Complete it before any newsletter marketing is sent; it is never invented."),
+    ]
+
+
+FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts)]
 
 
 def implementation_facts():

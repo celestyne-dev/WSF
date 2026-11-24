@@ -117,3 +117,17 @@ def test_implementation_facts_cover_the_newsletter(app):
     assert "double opt-in" in text and "only confirmed subscribers are exported" in text
     assert "provider-neutral" in text and "legacy_unconfirmed=" in text
     assert "@" not in text  # counts only, never addresses
+
+
+def test_implementation_facts_flag_a_missing_footer_address(app):
+    from app.extensions import db
+    from app.services.legal_audit import implementation_facts
+    from app.services.site_settings import save_site_identity
+
+    with app.app_context():
+        email_lines = [line for section, line in implementation_facts() if section == "Email"]
+        assert any(line.startswith("WARNING: email footer postal address is NOT SET") for line in email_lines)
+        save_site_identity({"site_name": "Women Shaping Futures", "postal_address": "Illustrative Street 1"})
+        db.session.commit()
+        email_lines = [line for section, line in implementation_facts() if section == "Email"]
+        assert "Email footer postal address: set in Studio." in email_lines

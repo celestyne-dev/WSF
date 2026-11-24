@@ -27,7 +27,7 @@ from app.extensions import db
 from app.models.password_reset import PasswordResetToken
 from app.models.user import User
 from app.services.audit import log_action
-from app.services.email import send_email
+from app.services.email import TRANSACTIONAL, send_email
 from app.utils.responses import ApiError
 
 # Deliberately short: a password-reset link is a bearer credential that's
@@ -125,6 +125,7 @@ def _send_reset_email(user, raw_token):
         subject="Reset your Women Shaping Futures password",
         text_body=text_body,
         html_body=html_body,
+        category=TRANSACTIONAL,  # security email: never carries an unsubscribe action
     )
 
 

@@ -132,7 +132,7 @@ def _send_confirmation(subscriber, *, consent_version, source, reconfirm=False):
         subscriber_id=subscriber.id, token_hash=_hash(raw), consent_at=now, consent_version=consent_version,
         consent_source=source, expires_at=now + CONFIRMATION_LIFETIME))
     db.session.flush()
-    from app.services.email import send_email
+    from app.services.email import TRANSACTIONAL, send_email
 
     base = current_app.config["FRONTEND_URL"].rstrip("/")
     link = f"{base}/newsletter/confirm/{raw}"
@@ -148,7 +148,8 @@ def _send_confirmation(subscriber, *, consent_version, source, reconfirm=False):
         tail = "If this wasn't you, ignore this email: you won't be subscribed."
     text = (f"{intro}\n\n{link}\n\nThis link works for {days} days. {tail}\n\n"
             f"How we use your email: {base}/privacy\n")
-    send_email(subscriber.email, subject, text)
+    # Transactional: it answers the person's own signup request.
+    send_email(subscriber.email, subject, text, category=TRANSACTIONAL)
 
 
 def confirm_subscription(raw_token):

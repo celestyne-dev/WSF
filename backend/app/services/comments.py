@@ -589,12 +589,19 @@ def unsubscribe_by_token(token):
 
 def notify_reply(comment):
     """Email the parent comment's author about a newly PUBLISHED reply, if
-    they opted in. At most once per reply; never to yourself; never for a
-    reply that isn't public. Best effort: a mail failure never blocks."""
+    they opted in. Never to yourself; never for a reply that isn't public.
+
+    reply_notified_at means "handed off to the email service" (Step 15):
+      * not eligible (no opt-in, notifications off, own reply, ...): nothing
+        is sent and nothing is marked;
+      * eligible: the reply is CLAIMED with one conditional UPDATE (only one
+        of two concurrent approvals can win), then sent;
+      * delivery failed: the claim is released (reply_notified_at back to
+        NULL), so it is never recorded as sent. Best effort: a failure
+        never blocks the moderation action that triggered it.
+    Returns True only when an email was handed off."""
     if comment.parent_id is None or comment.status != "published" or comment.reply_notified_at is not None:
         return False
-    comment.reply_notified_at = _now()
-    db.session.commit()
     settings = get_comment_settings()
     parent = db.session.get(Comment, comment.parent_id)
     owner = parent.user if parent is not None else None
@@ -604,18 +611,29 @@ def notify_reply(comment):
     pref = db.session.get(CommentNotificationPreference, owner.id)
     if pref is None or not pref.reply_emails:
         return False
-    from app.services.email import send_email
+    claimed_at = _now()
+    claimed = (Comment.query.filter(Comment.id == comment.id, Comment.reply_notified_at.is_(None))
+               .update({"reply_notified_at": claimed_at}, synchronize_session=False))
+    db.session.commit()
+    if claimed != 1:
+        return False  # another request is sending (or sent) it
+    from app.services.email import OPTIONAL, send_email
 
     base = current_app.config["FRONTEND_URL"].rstrip("/")
     article = comment.article
     link = f"{base}/{article.slug}#comment-{comment.id}"
-    unsubscribe = f"{base}/comments/unsubscribe/{pref.unsubscribe_token}"
     replier = display_name(comment.user)
     text = (f"{replier} replied to your comment on \"{article.title}\".\n\n"
             f"Read the reply: {link}\n\n"
-            "You get these emails because you asked to be told about replies to your comments.\n"
-            f"Stop these emails: {unsubscribe}\n")
-    send_email(owner.email, "New reply to your comment on Women Shaping Futures", text)
+            "You get these emails because you asked to be told about replies to your comments.\n")
+    sent = send_email(owner.email, "New reply to your comment on Women Shaping Futures", text, category=OPTIONAL,
+                      unsubscribe_url=f"{base}/comments/unsubscribe/{pref.unsubscribe_token}",
+                      one_click_url=f"{base}/api/v1/comments/notifications/one-click/{pref.unsubscribe_token}")
+    if not sent:
+        Comment.query.filter(Comment.id == comment.id, Comment.reply_notified_at == claimed_at).update(
+            {"reply_notified_at": None}, synchronize_session=False)
+        db.session.commit()
+        return False
     return True
 
 

@@ -610,7 +610,8 @@ def _outbox(monkeypatch):
     sent = []
     import app.services.email as email
 
-    monkeypatch.setattr(email, "send_email", lambda to, subject, text, html=None: sent.append((to, subject, text)))
+    monkeypatch.setattr(email, "send_email",
+                        lambda to, subject, text, html=None, **kw: sent.append((to, subject, text, kw)) or True)
     return sent
 
 
@@ -629,7 +630,10 @@ def test_reply_emails_are_opt_in_and_unsubscribable(client, app, clock, mod, mon
     assert len(sent) == 1 and sent[0][0] == "author@example.invalid"
     with app.app_context():
         token = db.session.get(CommentNotificationPreference, a_id).unsubscribe_token
-    assert f"/comments/unsubscribe/{token}" in sent[0][2] and "Bea replied" in sent[0][2]
+    assert "Bea replied" in sent[0][2]
+    assert sent[0][3]["category"] == "optional"
+    assert sent[0][3]["unsubscribe_url"].endswith(f"/comments/unsubscribe/{token}")
+    assert sent[0][3]["one_click_url"].endswith(f"/api/v1/comments/notifications/one-click/{token}")
     for _ in range(2):  # idempotent, works signed out
         assert client.post(f"{BASE}/notifications/unsubscribe", json={"token": token}).status_code == 200
     assert client.post(f"{BASE}/notifications/unsubscribe", json={"token": "nope"}).status_code == 404

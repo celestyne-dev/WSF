@@ -11,6 +11,7 @@ Public (/api/v1/comments):
   GET    /notifications                  {replyEmails}
   PUT    /notifications                  {replyEmails}
   POST   /notifications/unsubscribe      {token}  works signed out
+  POST   /notifications/one-click/<token> RFC 8058 List-Unsubscribe one-click
 Moderation (/api/v1/admin/comments, permission "comments.moderate"):
   GET    ?queue=pending|reported|hidden|removed|published|all&page=
   GET    /<id>                           comment + reports + history
@@ -185,6 +186,18 @@ class CommentNotificationsResource(Resource):
         return success_response({"replyEmails": svc.set_reply_emails(current_user, value)})
 
 
+class CommentOneClickUnsubscribeResource(Resource):
+    """RFC 8058 one-click target of the reply email's List-Unsubscribe
+    header: mail clients POST "List-Unsubscribe=One-Click" here without any
+    sign-in, cookie or page. Idempotent; same token as the footer link."""
+
+    @limiter.limit(limit("newsletter_unsubscribe_link"))
+    def post(self, token):
+        if not svc.unsubscribe_by_token(token):
+            raise ApiError("This unsubscribe link isn't valid.", 404, code="not_found")
+        return success_response(None, message="Unsubscribed from comment reply emails.")
+
+
 class CommentUnsubscribeResource(Resource):
     @limiter.limit(limit("newsletter_unsubscribe_link"))
     def post(self):
@@ -199,6 +212,7 @@ api.add_resource(CommentResource, "/<int:comment_id>")
 api.add_resource(CommentReportResource, "/<int:comment_id>/report")
 api.add_resource(CommentNotificationsResource, "/notifications")
 api.add_resource(CommentUnsubscribeResource, "/notifications/unsubscribe")
+api.add_resource(CommentOneClickUnsubscribeResource, "/notifications/one-click/<string:token>")
 
 
 # --- moderation --------------------------------------------------------------------------------

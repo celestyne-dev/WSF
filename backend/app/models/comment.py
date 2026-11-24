@@ -82,8 +82,10 @@ class Comment(db.Model):
     removed_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     removal_reason = db.Column(db.String(500))
     deleted_at = db.Column(db.DateTime(timezone=True))
-    # Set once a reply-notification email has been considered for this reply,
-    # so approving it later never sends twice.
+    # Set only when the reply-notification email was HANDED OFF to the email
+    # service (claimed atomically, released again if delivery fails), so a
+    # later approval/restore never sends it twice and a failure is never
+    # recorded as sent (app/services/comments.py notify_reply).
     reply_notified_at = db.Column(db.DateTime(timezone=True))
 
     # Abuse prevention only: HMAC-SHA256(server key, normalized client IP).

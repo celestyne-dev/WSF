@@ -18,7 +18,7 @@ from app.auth.decorators import active_user_required
 from app.extensions import db
 from app.models.event_registration import EventRegistration
 from app.models.opportunity import Event
-from app.services.email import send_email
+from app.services.email import TRANSACTIONAL, send_email
 from app.services.event_access import event_access_state
 from app.services.event_registrations import (
     fetch_visible_event_or_404,
@@ -80,7 +80,8 @@ def _send_registration_confirmation_email(user, event):
         f"<p><strong>When:</strong> {when}<br><strong>Where:</strong> {where}</p>"
         f'<p><a href="{my_events_url}">Manage your registration</a></p>'
     )
-    if not send_email(to=user.email, subject=f"You're registered: {event.title}", text_body=text_body, html_body=html_body):
+    if not send_email(to=user.email, subject=f"You're registered: {event.title}", text_body=text_body, html_body=html_body,
+                      category=TRANSACTIONAL):
         current_app.logger.error(
             "Event registration confirmation email delivery failed for user_id=%s event_id=%s.", user.id, event.id
         )
