@@ -42,6 +42,13 @@ from app.services.engagement_settings import (
     save_newsletter_popup,
 )
 from app.services.appearance import APPEARANCE_KEY, AppearanceError, public_appearance_payload, save_appearance
+from app.services.comment_settings import (
+    COMMENTS_KEY,
+    CommentSettingsError,
+    audit_summary as comment_settings_audit_summary,
+    get_comment_settings,
+    save_comment_settings,
+)
 from app.services.tracking_settings import TRACKING_KEY, TrackingSettingsError, get_tracking_settings, save_tracking_settings
 from app.services.audit import log_action
 from app.services.cms import (
@@ -399,7 +406,7 @@ class AdminFooterResource(Resource):
 
 
 ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY, TRACKING_KEY,
-                      NEWSLETTER_PAGE_KEY}
+                      NEWSLETTER_PAGE_KEY, COMMENTS_KEY}
 
 
 class AdminSettingsResource(Resource):
@@ -489,6 +496,17 @@ class AdminSettingsResource(Resource):
                 raise ApiError(str(exc), 422, code="validation_error")
             log_action(current_user, "settings.update", "SiteSetting", entity_id=TRACKING_KEY, changes=tracking)
 
+        if COMMENTS_KEY in settings_data:
+            # Article comments (app/services/comment_settings.py): bounded
+            # numbers, booleans and a blocked-words list. Audited without the
+            # list itself (count only).
+            try:
+                comment_settings = save_comment_settings(settings_data[COMMENTS_KEY])
+            except CommentSettingsError as exc:
+                raise ApiError(str(exc), 422, code="validation_error")
+            log_action(current_user, "settings.update", "SiteSetting", entity_id=COMMENTS_KEY,
+                       changes=comment_settings_audit_summary(comment_settings))
+
         if "audience_stats" in settings_data:
             audience_value = settings_data["audience_stats"]
             if not isinstance(audience_value, dict):
@@ -511,6 +529,7 @@ class AdminSettingsResource(Resource):
             COOKIE_CONSENT_KEY: get_cookie_consent(),
             NEWSLETTER_PAGE_KEY: get_newsletter_page(),
             TRACKING_KEY: get_tracking_settings(),
+            COMMENTS_KEY: get_comment_settings(),
         }
 
 

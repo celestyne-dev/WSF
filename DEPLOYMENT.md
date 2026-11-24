@@ -85,6 +85,7 @@ ones that matter most for going to production safely:
 | `JWT_SECRET_KEY` | Required, same rule as `SECRET_KEY`. Use a **different** random value, not the same one. |
 | `REDIS_URL` | Required. The shared rate-limit store, e.g. `redis://127.0.0.1:6379/0` (or `redis://:PASSWORD@127.0.0.1:6379/0` when Redis has a password). The app refuses to start without it; see §15b. |
 | `CSP_MODE` | Optional. `report-only` (default) or `enforce`; see §15a. |
+| `COMMENT_IP_HASH_KEY` | Optional. Secret key for the comment IP hash (HMAC-SHA256). When unset, a key derived from `SECRET_KEY` is used. Changing either only makes older hashes unmatchable (they expire after 90 days anyway). |
 | `TWO_FACTOR_ENCRYPTION_KEY` | Required. Fernet key that encrypts stored two-factor secrets. Generate once with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it in the root-readable env file and the backup secrets store: losing it makes every enrolled authenticator unreadable (each account then needs a Super Admin reset). |
 | `DATABASE_URL` | Required. Must point at the real production database — the app refuses to start if it still contains `wsf_dev`/`wsf_test`. |
 | `CORS_ORIGINS` | Required. Comma-separated exact origin(s), e.g. `https://womenshapingfutures.org`. The app refuses to start if this includes `localhost`/`127.0.0.1`. |
@@ -676,6 +677,11 @@ Opportunities past theirs become `closed` (idempotent, never deletes or
 archives; listings without dates are untouched). The public site already
 hides them by date, so this only keeps Studio accurate; no extra timer is
 needed. `flask --app run:app expire-closed-listings` runs just that step.
+
+It also clears article-comment IP hashes older than 90 days (comments keep
+only an HMAC-SHA256 hash of the client address, for abuse review; never the
+address itself). `flask --app run:app comments-purge-ip-hashes` runs just
+that step; both are idempotent.
 
 Read-only checks, safe on production at any time:
 `flask --app run:app legal-pages-audit` (legal Pages and the browser

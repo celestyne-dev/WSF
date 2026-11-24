@@ -242,6 +242,12 @@ def _apply_fields(article, data, relations):
         from app.services.article_experts import set_article_experts
 
         set_article_experts(article, data["experts"])
+    if "comments_close_after_days" in data:
+        article.comments_close_after_days = data["comments_close_after_days"]
+    if "comments_mode" in data:
+        article.comments_mode = data["comments_mode"]
+    if (article.comments_mode or "on") == "close_after" and not article.comments_close_after_days:
+        raise ApiError('"Close comments after" needs a number of days.', 422, code="validation_error")
     if "editorial_updated_at" in data:
         from app.services.article_experts import validate_editorial_updated_at
 

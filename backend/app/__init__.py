@@ -137,6 +137,7 @@ def create_app(config_name="development"):
     from app.api.v1.saved import saved_bp
     from app.api.v1.security import security_bp
     from app.api.v1.two_factor import admin_two_factor_bp, two_factor_bp
+    from app.api.v1.comments import admin_comments_bp, comments_bp
     from app.api.v1.search import search_bp
     from app.api.v1.sponsors import sponsors_bp
     from app.api.v1.submissions import submissions_bp
@@ -191,6 +192,8 @@ def create_app(config_name="development"):
     app.register_blueprint(security_bp, url_prefix="/api/v1/security")
     app.register_blueprint(two_factor_bp, url_prefix="/api/v1/auth/2fa")
     app.register_blueprint(admin_two_factor_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(comments_bp, url_prefix="/api/v1/comments")
+    app.register_blueprint(admin_comments_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(webhooks_bp, url_prefix="/api/v1/webhooks")
     app.register_blueprint(payments_bp, url_prefix="/api/v1/payments")
 

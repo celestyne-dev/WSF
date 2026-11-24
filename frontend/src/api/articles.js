@@ -143,6 +143,9 @@ export function mapArticle(a) {
     // an editor with permission to edit this article, so it's simply
     // undefined here on a public read; the CMS editor (which loads through
     // the same authenticated GET) receives it normally.
+    // Per-article comments (backend app/services/comments.py comment_state).
+    commentsMode: a.comments_mode || 'on',
+    commentsCloseAfterDays: a.comments_close_after_days ?? null,
     aiInvolvement: a.ai_involvement || 'none',
     humanReviewed: !!a.human_reviewed,
     aiDisclosureRequired: !!a.ai_disclosure_required,

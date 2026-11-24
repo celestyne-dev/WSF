@@ -75,6 +75,10 @@ class Config:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     TWO_FACTOR_REQUIRED_ROLES = ("super_admin", "admin", "editor")
     TWO_FACTOR_ENCRYPTION_KEY = os.environ.get("TWO_FACTOR_ENCRYPTION_KEY") or None
+    # Article comments keep HMAC-SHA256(key, client IP) for 90 days for abuse
+    # review (app/services/comments.py). Optional: unset -> a sub-key derived
+    # from SECRET_KEY.
+    COMMENT_IP_HASH_KEY = os.environ.get("COMMENT_IP_HASH_KEY") or None
     # Security headers (app/services/security_headers.py). HSTS only in
     # production (ProductionConfig) and only on HTTPS requests. The CSP is
     # report-only until CSP_MODE=enforce is set deliberately (see

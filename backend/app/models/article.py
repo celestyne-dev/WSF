@@ -22,6 +22,15 @@ _STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{status}'" for status in ARTICL
 AI_INVOLVEMENT_VALUES = ("none", "ai_assisted", "ai_generated_reviewed")
 _AI_INVOLVEMENT_CHECK_SQL = "ai_involvement IN (" + ", ".join(f"'{v}'" for v in AI_INVOLVEMENT_VALUES) + ")"
 
+# Per-article comments (app/services/comments.py comment_state):
+#   on          new comments and replies allowed (normal moderation rules)
+#   off         no new comments or replies; existing published ones stay visible
+#   close_after new comments allowed until publish_date + comments_close_after_days,
+#               then closed (existing ones stay visible). No publish_date -> closed.
+COMMENTS_MODES = ("on", "off", "close_after")
+_COMMENTS_MODE_CHECK_SQL = "comments_mode IN (" + ", ".join(f"'{v}'" for v in COMMENTS_MODES) + ")"
+COMMENTS_CLOSE_AFTER_MAX_DAYS = 3650
+
 article_topics = db.Table(
     "article_topics",
     db.Column("article_id", db.Integer, db.ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True),
@@ -67,6 +76,12 @@ class Article(db.Model):
     __table_args__ = (
         db.CheckConstraint(_STATUS_CHECK_SQL, name="ck_articles_status"),
         db.CheckConstraint(_AI_INVOLVEMENT_CHECK_SQL, name="ck_articles_ai_involvement"),
+        db.CheckConstraint(_COMMENTS_MODE_CHECK_SQL, name="ck_articles_comments_mode"),
+        db.CheckConstraint(
+            "comments_mode <> 'close_after' OR (comments_close_after_days BETWEEN 1 AND "
+            f"{COMMENTS_CLOSE_AFTER_MAX_DAYS})",
+            name="ck_articles_comments_close_after_days",
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -97,6 +112,8 @@ class Article(db.Model):
     sponsor_id = db.Column(db.Integer, db.ForeignKey("sponsors.id"), nullable=True)
 
     status = db.Column(db.String(20), nullable=False, default="draft")
+    comments_mode = db.Column(db.String(20), nullable=False, default="on", server_default="on")
+    comments_close_after_days = db.Column(db.Integer, nullable=True)
     seo = db.Column(db.JSON)  # {title, description, ogImageMediaId, canonical, robots}
     content = db.Column(db.JSON, nullable=False, default=list)  # ordered block list
     # AI Search / GEO Phase 3A — the editorial evidence behind the article,

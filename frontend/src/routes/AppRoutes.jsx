@@ -159,6 +159,8 @@ const AdminStorySubmissionDetail = lazy(() => import('../pages/admin/AdminStoryS
 const AdminNominations = lazy(() => import('../pages/admin/AdminNominations'))
 const AdminNominationDetail = lazy(() => import('../pages/admin/AdminNominationDetail'))
 const AdminContactInquiries = lazy(() => import('../pages/admin/AdminContactInquiries'))
+const AdminComments = lazy(() => import('../pages/admin/AdminComments'))
+const CommentUnsubscribePage = lazy(() => import('../pages/CommentUnsubscribePage'))
 const AdminContactInquiryDetail = lazy(() => import('../pages/admin/AdminContactInquiryDetail'))
 const AdminDirectoryListings = lazy(() => import('../pages/admin/AdminDirectoryListings'))
 const AdminDirectoryListingDetail = lazy(() => import('../pages/admin/AdminDirectoryListingDetail'))
@@ -240,6 +242,7 @@ export default function AppRoutes() {
 
           <Route path="/newsletter" element={<NewsletterPage />} />
           <Route path="/newsletter/unsubscribe/:token" element={<NewsletterUnsubscribePage />} />
+          <Route path="/comments/unsubscribe/:token" element={<CommentUnsubscribePage />} />
           <Route path="/newsletter/:slug" element={<NewsletterIssuePage />} />
           <Route path="/partnerships" element={<PartnershipsPage />} />
           <Route path="/advertise" element={<AdvertisePage />} />
@@ -380,6 +383,7 @@ export default function AppRoutes() {
           <Route path="nominations" element={<AdminNominations />} />
           <Route path="nominations/:id" element={<AdminNominationDetail />} />
           <Route path="contact" element={<AdminContactInquiries />} />
+          <Route path="comments" element={<AdminComments />} />
           <Route path="contact/:id" element={<AdminContactInquiryDetail />} />
           <Route path="directory/listings" element={<AdminDirectoryListings />} />
           <Route path="directory/listings/:id" element={<AdminDirectoryListingDetail />} />

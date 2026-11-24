@@ -168,6 +168,20 @@ def register_cli(app):
         # close date has passed get their stored status updated (the public
         # site already hides them by date; this keeps Studio accurate).
         _echo_expired(expire_closed_listings())
+        # And: comment IP hashes past their 90 days are cleared.
+        _echo_purged_ip_hashes()
+
+    def _echo_purged_ip_hashes():
+        from app.services.comments import purge_expired_ip_hashes
+
+        click.echo(f"Cleared {purge_expired_ip_hashes()} expired comment IP hash(es).")
+
+    @app.cli.command("comments-purge-ip-hashes")
+    def comments_purge_ip_hashes_command():
+        """Idempotent: clears comment IP hashes older than 90 days (their
+        ip_hash_expires_at has passed). Also runs inside publish-due-content,
+        the scheduled maintenance command."""
+        _echo_purged_ip_hashes()
 
     def _echo_expired(changed):
         click.echo(f"Expired {len(changed['jobs'])} job(s); closed {len(changed['opportunities'])} opportunity(ies).")

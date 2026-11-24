@@ -2912,8 +2912,9 @@ def _public_detail_prerender(prefix, entity):
     return None
 
 
-def _render_unsubscribe_shell():
-    """/newsletter/unsubscribe/<token> — a real, working React route
+def _render_unsubscribe_shell(title="Unsubscribe | Women Shaping Futures"):
+    """/newsletter/unsubscribe/<token> (and, with its own title, the comment
+    reply-email link /comments/unsubscribe/<token>) — a real, working React route
     (NewsletterUnsubscribePage.jsx: title "Unsubscribe | Women Shaping
     Futures", robots "noindex, nofollow"). The token is a private,
     per-subscriber secret: it is never looked up here (so a valid and an
@@ -2925,7 +2926,7 @@ def _render_unsubscribe_shell():
     site_name = site_identity.get("site_name") or "Women Shaping Futures"
     html_doc = _apply_base_seo(
         _read_index_html(),
-        title="Unsubscribe | Women Shaping Futures",
+        title=title,
         description=None,
         canonical=None,
         robots="noindex, nofollow",
@@ -3160,6 +3161,10 @@ def resolve_spa_response(subpath):
 
     if len(segments) == 3 and segments[0] == "newsletter" and segments[1] == "unsubscribe" and segments[2]:
         return _render_unsubscribe_shell()
+
+    if len(segments) == 3 and segments[0] == "comments" and segments[1] == "unsubscribe" and segments[2]:
+        # CommentUnsubscribePage.jsx: same noindex, token-free treatment.
+        return _render_unsubscribe_shell("Reply emails | Women Shaping Futures")
 
     if len(segments) == 3 and segments[0] == "certificates" and segments[1] == "verify" and segments[2]:
         return _render_certificate_verification_shell(segments[2])

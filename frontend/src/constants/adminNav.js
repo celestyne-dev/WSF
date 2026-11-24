@@ -36,6 +36,7 @@ import {
   History,
   ShieldCheck,
   MessageSquare,
+  MessagesSquare,
   Library,
   Route,
   Bell,
@@ -74,6 +75,7 @@ export const NAV_GROUPS = [
     heading: 'Content',
     items: [
       { to: '/admin/articles', icon: Newspaper, label: 'Articles', permission: ['articles.manage', 'articles.edit_own'] },
+      { to: '/admin/comments', icon: MessagesSquare, label: 'Comments', permission: ['comments.moderate'] },
       { to: '/admin/editorial-calendar', icon: CalendarDays, label: 'Editorial Calendar', permission: ['articles.create', 'articles.edit_own', 'articles.manage', 'articles.publish'] },
       { to: '/admin/homepage', icon: LayoutTemplate, label: 'Homepage', permission: ['homepage.manage'] },
       { to: '/admin/navigation', icon: Compass, label: 'Navigation', permission: ['navigation.manage'] },

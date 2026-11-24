@@ -78,7 +78,8 @@ TECHNOLOGY_INVENTORY = (
     {"name": "Rate-limit counters (Redis, database fallback)", "provider": "WSF (first party, server-side)",
      "category": "essential",
      "purpose": ("Limits how often one network address can sign in, sign up, reset a password, unsubscribe or "
-                 "send forms, to stop abuse. Server-side only: nothing is stored on the visitor's device."),
+                 "send forms, and how often one account can post, edit or report comments, to stop abuse. "
+                 "Server-side only: nothing is stored on the visitor's device."),
      "storage": "server-side (Redis; PostgreSQL only while Redis is unavailable)",
      "duration": "Each counter lasts one rate-limit window (one minute to one day), then expires.",
      "consentRequired": False},

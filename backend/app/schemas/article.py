@@ -1,7 +1,13 @@
 from marshmallow import fields, post_dump, validate
 
 from app.extensions import db, ma
-from app.models.article import AI_INVOLVEMENT_VALUES, ARTICLE_STATUSES, Article
+from app.models.article import (
+    AI_INVOLVEMENT_VALUES,
+    ARTICLE_STATUSES,
+    COMMENTS_CLOSE_AFTER_MAX_DAYS,
+    COMMENTS_MODES,
+    Article,
+)
 from app.models.media import Media
 from app.schemas.commerce import SponsorSchema
 from app.schemas.media import MediaSchema
@@ -270,6 +276,12 @@ class ArticleInputSchema(ma.Schema):
     # update payload omits them (articles.py _apply_fields).
     experts = fields.List(fields.Dict(), required=False)
     editorial_updated_at = fields.DateTime(required=False, allow_none=True, data_key="editorialUpdatedAt")
+
+    # Comments (app/services/comments.py comment_state). Omitted -> unchanged.
+    comments_mode = fields.String(required=False, data_key="commentsMode", validate=validate.OneOf(COMMENTS_MODES))
+    comments_close_after_days = fields.Integer(
+        required=False, allow_none=True, data_key="commentsCloseAfterDays",
+        validate=validate.Range(min=1, max=COMMENTS_CLOSE_AFTER_MAX_DAYS))
 
 
 # ---------------------------------------------------------------------------

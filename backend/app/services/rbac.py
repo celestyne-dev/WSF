@@ -56,6 +56,7 @@ ROLE_PERMISSIONS = {
         "directory.manage",
         "learning.manage",
         "circle.manage",
+        "comments.moderate",
     ],
     "editor": [
         "articles.manage",
@@ -75,6 +76,8 @@ ROLE_PERMISSIONS = {
         "nominations.manage",
         "directory.manage",
         "learning.manage",
+        # Article comments sit under articles Editors run.
+        "comments.moderate",
         # Editorial analytics (Content/Search performance) is useful to an
         # Editor's own day-to-day work; commercial/Sponsor analytics stays
         # restricted to analytics.commercial below, which Editor never gets.
@@ -87,7 +90,10 @@ ROLE_PERMISSIONS = {
     # only (see "community_manager" below), matching how newsletter.export
     # is withheld from newsletter_manager: bulk personal-data export is
     # gated more strictly than day-to-day member administration.
-    "moderator": ["submissions.manage", "nominations.manage", "contact.manage", "community.manage", "mentorship.manage"],
+    # Article comments (Step 13): approve/hide/remove and comment suspensions/
+    # bans — the same public-input review work as submissions.
+    "moderator": ["submissions.manage", "nominations.manage", "contact.manage", "community.manage", "mentorship.manage",
+                  "comments.moderate"],
     # analytics.commercial is reserved for a commercial-analytics view
     # (Sponsor CTR, Advertise inquiries, Partnership pipeline, Orders/
     # revenue) that does not exist yet — every endpoint under

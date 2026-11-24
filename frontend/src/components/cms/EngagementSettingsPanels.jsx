@@ -130,3 +130,47 @@ export function NewsletterPageSettingsPanel() {
     </div>
   )
 }
+
+// Studio -> Settings -> "Comments" (backend app/services/comment_settings.py).
+// Bounded numbers, switches and a blocked-words list only; no secrets.
+export function CommentSettingsPanel() {
+  const { value, setValue, error, saving, save } = useSettingsSection('comments')
+  if (error) return <p className="text-sm text-burgundy-600">{error}</p>
+  if (!value) return <p className="text-sm text-charcoal-600">Loading…</p>
+  const set = (k) => (v) => setValue({ ...value, [k]: v })
+  const words = (value.blockedWords || []).join('\n')
+  return (
+    <div className="max-w-2xl space-y-5">
+      <p className="text-sm text-charcoal-600">
+        Signed-in members can comment on articles. A member’s first comments wait for a moderator; comments with more than two
+        links or a blocked word always wait, even from trusted members. Each article can also turn comments off or close them
+        after a number of days (Article editor).
+      </p>
+      <label className="flex items-center gap-2 text-sm font-medium text-charcoal">
+        <input type="checkbox" checked={value.enabled} onChange={(e) => set('enabled')(e.target.checked)} /> Allow new comments on articles
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <NumberField id="cm-trust" text="Approved comments for trusted status" hint="Until a member has this many published comments, each new one waits for approval." value={value.trustedThreshold} onChange={set('trustedThreshold')} min={1} max={50} />
+        <NumberField id="cm-reports" text="Reports that hide a comment" hint="Unique members reporting the same comment. It is hidden for review, never deleted." value={value.reportHideThreshold} onChange={set('reportHideThreshold')} min={1} max={50} />
+        <NumberField id="cm-min" text="Minimum time to write (seconds)" hint="Faster submissions are refused as automated." value={value.minSubmitSeconds} onChange={set('minSubmitSeconds')} min={1} max={60} />
+      </div>
+      <div>
+        <label htmlFor="cm-words" className={label}>Blocked words and phrases</label>
+        <textarea id="cm-words" rows={6} value={words} className={`${input} mt-1.5 font-mono`}
+          onChange={(e) => set('blockedWords')(e.target.value.split('\n'))} aria-describedby="cm-words-hint" />
+        <p id="cm-words-hint" className="mt-1 text-xs text-charcoal-600">
+          One per line. Matches whole words, ignoring case (“scam” does not match “scammer”; write “scam*” to match words starting with it).
+          A match holds the comment for review; nothing is deleted.
+        </p>
+      </div>
+      <label className="flex items-center gap-2 text-sm font-medium text-charcoal">
+        <input type="checkbox" checked={value.replyNotificationsEnabled} onChange={(e) => set('replyNotificationsEnabled')(e.target.checked)} />
+        Let members opt in to an email when someone replies to their comment (off for each member until they choose it)
+      </label>
+      <button type="button" disabled={saving} className="btn-primary disabled:opacity-60"
+        onClick={() => save({ ...value, blockedWords: (value.blockedWords || []).map((w) => w.trim()).filter(Boolean) })}>
+        {saving ? 'Saving…' : 'Save comment settings'}
+      </button>
+    </div>
+  )
+}

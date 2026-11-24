@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { ArrowRight, ChevronDown, Clock, Sparkles } from 'lucide-react'
@@ -29,6 +29,10 @@ import PersonCard from '../components/cards/PersonCard'
 import LearningProgramCard from '../components/cards/LearningProgramCard'
 import ResourceCard from '../components/cards/ResourceCard'
 import GeneralPage from './GeneralPage'
+
+// Comments load after the article, in their own chunk, below the article
+// body: never part of the server first paint or the first React commit.
+const CommentsSection = lazy(() => import('../components/comments/CommentsSection'))
 
 const SITE_ORIGIN = 'https://womenshapingfutures.org'
 
@@ -550,6 +554,9 @@ export default function ArticlePage() {
                 )}
               </div>
             )}
+            <Suspense fallback={null}>
+              <CommentsSection slug={article.slug} />
+            </Suspense>
           </div>
 
           <aside className={hasSidebarContent ? 'mt-14 space-y-10 lg:mt-0 lg:self-start lg:sticky lg:top-28' : 'mt-14 space-y-10'}>

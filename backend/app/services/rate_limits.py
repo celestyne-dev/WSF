@@ -4,8 +4,9 @@ Strings use Flask-Limiter syntax; several limits separated by ";" all apply.
 Counters are per client IP and live in Redis (database fallback), see
 app/services/rate_limit_storage.py.
 
-COMMENT_* are prepared for the Batch 3 comment system and are not attached
-to any endpoint yet.
+comment_* are used by the article comments API (app/api/v1/comments.py), keyed per
+signed-in account rather than per client IP (comments require sign-in, and people
+sharing an office or mobile network should not share one budget).
 """
 
 LIMITS = {

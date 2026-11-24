@@ -85,6 +85,8 @@ function blankForm(defaultAuthorSlug) {
     seoDescription: '',
     seoCanonical: '',
     seoOgMedia: null,
+    commentsMode: 'on',
+    commentsCloseAfterDays: 30,
     aiInvolvement: 'none',
     humanReviewed: false,
     aiDisclosureRequired: false,
@@ -131,6 +133,8 @@ function toForm(article) {
     seoOgMedia: article.seo?.ogImageMediaId
       ? { id: article.seo.ogImageMediaId, mediaPath: article.seo.ogImage, altText: article.seo.ogImageAlt || '' }
       : null,
+    commentsMode: article.commentsMode || 'on',
+    commentsCloseAfterDays: article.commentsCloseAfterDays || 30,
     aiInvolvement: article.aiInvolvement || 'none',
     humanReviewed: !!article.humanReviewed,
     aiDisclosureRequired: !!article.aiDisclosureRequired,
@@ -413,6 +417,8 @@ export default function AdminArticleEditor() {
       },
       content: form.content,
       sources: sourcesToPayload(form.sources),
+      commentsMode: form.commentsMode,
+      commentsCloseAfterDays: form.commentsMode === 'close_after' ? Number(form.commentsCloseAfterDays) || null : undefined,
       aiInvolvement: form.aiInvolvement,
       humanReviewed: form.humanReviewed,
       aiDisclosureRequired: form.aiDisclosureRequired,
@@ -765,6 +771,33 @@ export default function AdminArticleEditor() {
               <button type="button" onClick={handleSave} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
                 <Save size={13} /> {saving ? 'Saving…' : 'Save'}
               </button>
+            </div>
+          </div>
+
+          <div className="border border-taupe-200 bg-white p-5">
+            <h2 className="font-serif text-lg font-semibold text-charcoal">Comments</h2>
+            <p className="mt-1 text-xs text-charcoal-600/70">
+              Existing published comments stay visible when comments are off or closed; only new ones stop.
+            </p>
+            <div className="mt-3 space-y-3">
+              <div>
+                <label htmlFor="article-comments-mode" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">New comments</label>
+                <select id="article-comments-mode" value={form.commentsMode} onChange={(e) => updateField('commentsMode', e.target.value)}
+                  className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-xs">
+                  <option value="on">Comments on</option>
+                  <option value="off">Comments off</option>
+                  <option value="close_after">Close after a number of days</option>
+                </select>
+              </div>
+              {form.commentsMode === 'close_after' && (
+                <div>
+                  <label htmlFor="article-comments-days" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Days after publication</label>
+                  <input id="article-comments-days" type="number" min="1" max="3650" value={form.commentsCloseAfterDays}
+                    onChange={(e) => updateField('commentsCloseAfterDays', e.target.value)}
+                    className="mt-1.5 w-full border border-taupe-300 px-3 py-2 text-xs" aria-describedby="article-comments-days-hint" />
+                  <p id="article-comments-days-hint" className="mt-1 text-xs text-charcoal-600/70">Counted from the publish date; an article without one stays closed.</p>
+                </div>
+              )}
             </div>
           </div>
 
