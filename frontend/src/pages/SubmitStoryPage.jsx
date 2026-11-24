@@ -8,6 +8,7 @@ import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import CountrySelect from '../components/ui/CountrySelect'
 import { CAREER_OUTCOME_TYPES } from '../constants/workplace'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 const MAX_IMAGES = 3
 
@@ -298,6 +299,7 @@ export default function SubmitStoryPage() {
             <input type="checkbox" checked={form.newsletterOptIn} onChange={(e) => setField('newsletterOptIn', e.target.checked)} className="mt-1" />
             Also subscribe me to the Women Shaping Futures newsletter
           </label>
+          <CollectionNotice kind="story" />
 
           <button type="submit" disabled={submitting} className="btn-primary disabled:opacity-60">
             {submitting ? 'Submitting…' : 'Submit story'}

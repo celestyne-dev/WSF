@@ -23,6 +23,7 @@ import NotFoundPage from './NotFoundPage'
 import CheckoutPriceSelector from '../components/ui/CheckoutPriceSelector'
 import { UNAVAILABLE_CURRENCY_MESSAGE, canCheckoutPrice, pickDefaultPrice } from '../utils/money'
 import LifetimeValueNote from '../components/learning/LifetimeValueNote'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 // Checkout Phase 1: a premium Resource's display price is its selected (or
 // server-default) price option's server-formatted text; legacy whole-unit
@@ -166,6 +167,7 @@ function EmailGateModal({ resource, onClose, onSuccess }) {
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" />
             Also subscribe me to the Women Shaping Futures newsletter.
           </label>
+          <CollectionNotice kind="resourceDownload" />
           <button type="submit" disabled={submitting} aria-busy={submitting} className="btn-primary w-full !py-2.5 text-sm disabled:opacity-60">
             {submitting ? 'Preparing your download…' : 'Get the download'}
           </button>

@@ -10,6 +10,7 @@ import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import PageLoader from '../components/ui/PageLoader'
 import ArticleContent from '../components/article/ArticleContent'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 function blankForm(programId, role) {
   return {
@@ -268,6 +269,7 @@ export default function MentorshipPage() {
                 <input type="checkbox" checked={form.subscribeNewsletter} onChange={(e) => handleFieldChange('subscribeNewsletter', e.target.checked)} className="mt-0.5" />
                 Also subscribe me to the Women Shaping Futures newsletter
               </label>
+                <CollectionNotice kind="mentorship" />
               <label className="flex items-start gap-2 text-sm text-charcoal-600">
                 <input required type="checkbox" checked={form.consentGiven} onChange={(e) => handleFieldChange('consentGiven', e.target.checked)} className="mt-0.5" />
                 I confirm the information above may be used by Women Shaping Futures to process this application.

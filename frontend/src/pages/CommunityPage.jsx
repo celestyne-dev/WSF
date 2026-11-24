@@ -20,6 +20,7 @@ import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 function blankForm() {
   return {
@@ -155,6 +156,7 @@ function AccountJoinForm({ user, countries, topics, onJoined }) {
         <input required type="checkbox" checked={form.consentGiven} onChange={(e) => update('consentGiven', e.target.checked)} className="mt-0.5" />
         I confirm the information above may be used by Women Shaping Futures to process this request.
       </label>
+      <CollectionNotice kind="community" />
 
       <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-60">
         {submitting ? 'Joining…' : 'Join the WSF Community'}
@@ -511,6 +513,7 @@ export default function CommunityPage() {
                 <input required type="checkbox" checked={form.consentGiven} onChange={(e) => handleFieldChange('consentGiven', e.target.checked)} className="mt-0.5" />
                 I confirm the information above may be used by Women Shaping Futures to process this request.
               </label>
+              <CollectionNotice kind="community" />
 
               <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-60">
                 {submitting ? 'Joining…' : page.ctaButtonLabel || 'Join WSF'}

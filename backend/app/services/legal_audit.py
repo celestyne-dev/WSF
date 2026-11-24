@@ -246,8 +246,24 @@ def _retention_facts():
     ]
 
 
+# Mirrors frontend src/utils/collectionNotices.js (its test checks each
+# placement on the real form); kept here so the audit lists where notices are.
+COLLECTION_NOTICE_FORMS = (
+    "signup (Terms + Privacy)", "newsletter forms and popup (Privacy)", "contact (Privacy acknowledgement)",
+    "comments (Community Guidelines/Terms + Privacy)", "story submission (Privacy + Terms)",
+    "event registration (Privacy)", "learning enrolment (Privacy)", "nomination (Privacy)",
+    "mentorship application (Privacy)", "community join (Privacy)", "resource download (Privacy)",
+    "directory submission (Privacy + Terms)", "partnership enquiry (Privacy)", "advertising enquiry (Privacy)",
+)
+
+
+def _notice_facts():
+    return ["Point-of-collection notices with a Privacy Policy link: " + "; ".join(COLLECTION_NOTICE_FORMS) + ". "
+            "Forms with an optional newsletter box also say a confirmation link is emailed first."]
+
+
 FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts), ("Account", _account_facts),
-                 ("Retention", _retention_facts)]
+                 ("Retention", _retention_facts), ("Notices", _notice_facts)]
 
 
 def implementation_facts():

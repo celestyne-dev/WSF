@@ -7,6 +7,7 @@ import { NOMINEE_AWARENESS_VALUES, NOMINEE_AWARENESS_LABELS } from '../constants
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import CountrySelect from '../components/ui/CountrySelect'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 function initialForm() {
   return {
@@ -218,6 +219,7 @@ export default function NominatePage() {
             <input type="checkbox" checked={form.newsletterOptIn} onChange={(e) => setField('newsletterOptIn', e.target.checked)} className="mt-1" />
             Also subscribe me to the Women Shaping Futures newsletter
           </label>
+          <CollectionNotice kind="nomination" />
 
           <button type="submit" disabled={submitting} className="btn-primary disabled:opacity-60">
             {submitting ? 'Submitting…' : 'Submit nomination'}

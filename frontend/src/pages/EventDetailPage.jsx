@@ -21,6 +21,7 @@ import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import NotFoundPage from './NotFoundPage'
 import VideoEmbed from '../components/ui/VideoEmbed'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 // Post-event content: a recording reference plus links to existing,
 // published WSF content. The backend sends `postEvent` only when at least
@@ -302,9 +303,12 @@ function WsfRegistrationCta({ event, registrationClosed, registration, pending, 
     )
   }
   return (
-    <button type="button" onClick={onRegister} disabled={pending} className="btn-primary mt-5 flex w-full disabled:opacity-60">
-      {pending ? 'Registering…' : 'Register free'}
-    </button>
+    <>
+      <button type="button" onClick={onRegister} disabled={pending} className="btn-primary mt-5 flex w-full disabled:opacity-60">
+        {pending ? 'Registering…' : 'Register free'}
+      </button>
+      <CollectionNotice kind="eventRegistration" className="mt-2" />
+    </>
   )
 }
 
@@ -389,9 +393,12 @@ function CircleRegistrationCta({ event, registrationClosed, registration, pendin
     return <RegisteredState event={event} registration={registration} />
   }
   return (
-    <button type="button" onClick={onRegister} disabled={pending} className="btn-primary mt-5 flex w-full disabled:opacity-60">
-      {pending ? 'Registering…' : 'Register'}
-    </button>
+    <>
+      <button type="button" onClick={onRegister} disabled={pending} className="btn-primary mt-5 flex w-full disabled:opacity-60">
+        {pending ? 'Registering…' : 'Register'}
+      </button>
+      <CollectionNotice kind="eventRegistration" className="mt-2" />
+    </>
   )
 }
 

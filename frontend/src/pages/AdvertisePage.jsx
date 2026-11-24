@@ -11,6 +11,7 @@ import PageLoader from '../components/ui/PageLoader'
 import EmptyState from '../components/ui/EmptyState'
 import MediaImage from '../components/ui/MediaImage'
 import ArticleContent from '../components/article/ArticleContent'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 function blankForm(offeringName) {
   return {
@@ -295,6 +296,7 @@ export default function AdvertisePage() {
               I confirm the information above may be used by Women Shaping Futures to respond to this inquiry.
             </label>
 
+            <CollectionNotice kind="advertise" />
             <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-60">
               {submitting ? 'Sending…' : 'Send inquiry'}
             </button>

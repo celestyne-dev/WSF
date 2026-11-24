@@ -8,6 +8,7 @@ import { withAcquisitionMetadata, trackEvent } from '../utils/analytics'
 import { PARTNERSHIP_TYPES, PAID_PARTNERSHIP_TYPES, OTHER_PARTNERSHIP_TYPES } from '../constants/partnerships'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 const fmt = (n) => new Intl.NumberFormat('en-US').format(n)
 
@@ -245,6 +246,7 @@ export default function PartnershipsPage() {
               I confirm the information above may be used by Women Shaping Futures to respond to this inquiry.
             </label>
 
+            <CollectionNotice kind="partnership" />
             <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-60">
               {submitting ? 'Sending…' : 'Send inquiry'}
             </button>

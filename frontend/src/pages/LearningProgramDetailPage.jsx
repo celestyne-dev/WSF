@@ -23,6 +23,7 @@ import FinalAssessment from '../components/learning/FinalAssessment'
 import LifetimeValueNote from '../components/learning/LifetimeValueNote'
 import useLifetimeOffer from '../hooks/useLifetimeOffer'
 import { premiumCourseState, programAccessLabel } from '../utils/learningAccess'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 // The primary call to action, from the backend's own access answers.
 function CourseCta({ course, program, onSignIn }) {
@@ -105,9 +106,12 @@ function CourseCta({ course, program, onSignIn }) {
     )
   }
   return (
-    <button type="button" onClick={start} disabled={busy} className="btn-primary disabled:opacity-60">
-      {busy ? 'Please wait…' : enrollment?.status === 'withdrawn' ? 'Resume course' : 'Start course'}
-    </button>
+    <div>
+      <button type="button" onClick={start} disabled={busy} className="btn-primary disabled:opacity-60">
+        {busy ? 'Please wait…' : enrollment?.status === 'withdrawn' ? 'Resume course' : 'Start course'}
+      </button>
+      <CollectionNotice kind="learningEnrolment" className="mt-2 max-w-md" />
+    </div>
   )
 }
 

@@ -148,3 +148,12 @@ def test_implementation_facts_cover_retention(app):
         text = " ".join(line for section, line in implementation_facts() if section == "Retention")
     assert "Analytics events: 14 months" in text and "Payment records: 6 years" in text
     assert "unverified-accounts rule (30 days) is NOT active" in text
+
+
+def test_implementation_facts_list_collection_notices(app):
+    from app.services.legal_audit import implementation_facts
+
+    with app.app_context():
+        text = " ".join(line for section, line in implementation_facts() if section == "Notices")
+    for form in ("signup", "story submission", "event registration", "learning enrolment", "comments", "contact"):
+        assert form in text

@@ -12,6 +12,7 @@ import {
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 import CountrySelect from '../components/ui/CountrySelect'
+import CollectionNotice from '../components/legal/CollectionNotice'
 
 function blankForm() {
   return {
@@ -222,6 +223,7 @@ export default function DirectorySubmitPage() {
               <input placeholder="Your role at this business (optional)" value={form.submitterRole} onChange={(e) => setField('submitterRole', e.target.value)} className="w-full border border-taupe-300 px-4 py-3 text-sm focus:border-burgundy-500 focus:outline-none" />
             </section>
 
+            <CollectionNotice kind="directory" />
             <button type="submit" disabled={status === 'submitting'} className="btn-primary w-full disabled:opacity-60">
               {status === 'submitting' ? 'Submitting…' : 'Submit for review'}
             </button>
