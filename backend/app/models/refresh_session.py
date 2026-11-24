@@ -26,3 +26,6 @@ class RefreshSession(db.Model):
     last_used_at = db.Column(db.DateTime(timezone=True))
     revoked_at = db.Column(db.DateTime(timezone=True))
     revoked_reason = db.Column(db.String(30))
+    # True when sign-in completed a TOTP or recovery-code check. A session
+    # without it can't be refreshed for an account whose role requires 2FA.
+    two_factor_verified = db.Column(db.Boolean, nullable=False, default=False, server_default="false")

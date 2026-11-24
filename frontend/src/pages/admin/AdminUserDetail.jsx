@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
-import { Save, KeyRound } from 'lucide-react'
+import { Save, KeyRound, ShieldOff } from 'lucide-react'
+import { adminResetTwoFactor } from '../../api/twoFactor'
 import {
   fetchAdminUser,
   createAdminUser,
@@ -177,6 +178,16 @@ export default function AdminUserDetail() {
     }
   }
 
+  // Super Admin only (enforced server-side too): clears this account's 2FA
+  // after a lost device; it is set up again at the next sign-in when the
+  // role requires it, and every session of the account ends now.
+  async function handleResetTwoFactor() {
+    const res = await adminResetTwoFactor(id)
+    setConfirmAction(null)
+    if (res.success) toast.success('Two-factor authentication reset. The account signs in again and sets it up afresh.')
+    else toast.error(res.message)
+  }
+
   async function handleResetPassword() {
     try {
       const pw = await resetAdminUserPassword(id)
@@ -320,6 +331,15 @@ export default function AdminUserDetail() {
                   >
                     <KeyRound size={13} /> Reset password
                   </button>
+                  {canGrantSuperAdmin && !isSelf && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction('reset-two-factor')}
+                      className="btn-secondary !px-4 !py-2 text-xs"
+                    >
+                      <ShieldOff size={13} /> Reset two-factor
+                    </button>
+                  )}
                 </div>
                 <p className="mt-2 text-xs text-charcoal-600/60">
                   Resetting generates a new temporary password shown once — there is no automated reset-email flow in this app.
@@ -347,6 +367,16 @@ export default function AdminUserDetail() {
           confirmLabel={confirmAction === 'deactivate' ? 'Deactivate' : 'Activate'}
           danger={confirmAction === 'deactivate'}
           onConfirm={handleToggleStatus}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+      {confirmAction === 'reset-two-factor' && (
+        <ConfirmDialog
+          title="Reset this account's two-factor authentication?"
+          description="Use this only when the person has lost their authenticator device and recovery codes, after confirming who they are. Their sessions end now; a role that requires two-factor sets it up again at the next sign-in. This is recorded in the audit log."
+          confirmLabel="Reset two-factor"
+          danger
+          onConfirm={handleResetTwoFactor}
           onCancel={() => setConfirmAction(null)}
         />
       )}

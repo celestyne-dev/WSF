@@ -44,13 +44,14 @@ def hash_token(raw):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def create_session(user):
+def create_session(user, two_factor_verified=False):
     """New session for `user`. Returns (raw token for the cookie, session)."""
     raw = secrets.token_urlsafe(TOKEN_BYTES)
     session = RefreshSession(
         user_id=user.id,
         token_hash=hash_token(raw),
         auth_version=user.auth_version,
+        two_factor_verified=bool(two_factor_verified),
         expires_at=_now() + current_app.config["REFRESH_SESSION_LIFETIME"],
     )
     db.session.add(session)

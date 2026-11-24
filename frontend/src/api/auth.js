@@ -15,7 +15,7 @@ async function loadMockAdmin() {
 // items (see utils/permissions.js) — a staff member can legitimately
 // hold more than one role (e.g. editor + partnerships_manager), and a
 // UI check must see all of them, not just the first.
-function mapUser(u) {
+export function mapUser(u) {
   if (!u) return null
   const roles = (u.roles || []).map((r) => r.name)
   const permissions = [...new Set((u.roles || []).flatMap((r) => (r.permissions || []).map((p) => p.name)))]
@@ -52,6 +52,8 @@ export async function login({ email, password }) {
   if (!USE_MOCK) {
     try {
       const { data } = await apiClient.post('/auth/login', { email, password })
+      // Two-factor: the password was right but no session exists yet.
+      if (data.two_factor) return { success: true, twoFactor: { mode: data.two_factor, token: data.two_factor_token } }
       return { success: true, accessToken: data.access_token, user: mapUser(data.user) }
     } catch (err) {
       return { success: false, message: err.apiError?.message || 'Invalid email or password.' }

@@ -68,6 +68,13 @@ class Config:
     REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
     REFRESH_COOKIE_SECURE = True
     REFRESH_SESSION_LIFETIME = timedelta(days=30)
+    # TOTP two-factor authentication (app/services/two_factor.py). Accounts
+    # holding one of these roles (names from app/services/rbac.py) must use
+    # it; anyone else may opt in. The encryption key protects stored TOTP
+    # secrets: a Fernet key, required in production. Generate with
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    TWO_FACTOR_REQUIRED_ROLES = ("super_admin", "editor")
+    TWO_FACTOR_ENCRYPTION_KEY = os.environ.get("TWO_FACTOR_ENCRYPTION_KEY") or None
     # Security headers (app/services/security_headers.py). HSTS only in
     # production (ProductionConfig) and only on HTTPS requests. The CSP is
     # report-only until CSP_MODE=enforce is set deliberately (see
@@ -309,6 +316,10 @@ class TestingConfig(Config):
     )
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
     TRUSTED_PROXY_COUNT = 0
+    # The suite's many staff fixtures sign in with a password only; the 2FA
+    # tests (tests/test_two_factor.py) switch the production role list on
+    # explicitly and assert the production default.
+    TWO_FACTOR_REQUIRED_ROLES = ()
     # Tests never talk to the real IndexNow API, whatever the shell sets —
     # the IndexNow tests enable it explicitly with the HTTP layer mocked.
     INDEXNOW_ENABLED = False
@@ -401,6 +412,17 @@ def require_production_settings(app):
     # an operator can fix CORS_ORIGINS and still leave FRONTEND_URL at its
     # http://localhost:5173 default, and every one of those links would
     # silently keep pointing at localhost in production.
+    two_factor_key = app.config.get("TWO_FACTOR_ENCRYPTION_KEY")
+    if not two_factor_key:
+        problems.append("TWO_FACTOR_ENCRYPTION_KEY is not set (it encrypts stored two-factor secrets).")
+    else:
+        try:
+            from cryptography.fernet import Fernet
+
+            Fernet(two_factor_key)
+        except Exception:
+            problems.append("TWO_FACTOR_ENCRYPTION_KEY is not a valid Fernet key.")
+
     if not app.config.get("REDIS_URL"):
         problems.append("REDIS_URL is not set (Redis is the shared rate-limit store in production).")
 

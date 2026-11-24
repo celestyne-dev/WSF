@@ -24,6 +24,7 @@ from app.schemas.user import (
     SelfProfileUpdateSchema,
     UserSchema,
 )
+from app.services import two_factor
 from app.services.audit import log_action
 from app.services.password_reset import request_password_reset, reset_password
 from app.services.rate_limits import limit
@@ -44,10 +45,10 @@ auth_bp = Blueprint("auth", __name__)
 api = Api(auth_bp)
 
 
-def _signed_in_response(user, status=200):
+def signed_in_response(user, status=200, two_factor_verified=False):
     """Body: the user + a short-lived access token (kept in memory by the
     browser). The refresh credential goes ONLY into the HttpOnly cookie."""
-    raw, session = create_session(user)
+    raw, session = create_session(user, two_factor_verified=two_factor_verified)
     db.session.commit()
     body = {"success": True, "data": {"user": user_schema.dump(user), "access_token": create_access_token(identity=user)}}
     return set_refresh_cookie(make_response(jsonify(body), status), raw, session)
@@ -99,7 +100,7 @@ class RegisterResource(Resource):
         db.session.commit()
         log_action(user, "user.register", "User", user.id)
 
-        return _signed_in_response(user, status=201)
+        return signed_in_response(user, status=201)
 
 
 class LoginResource(Resource):
@@ -120,11 +121,22 @@ class LoginResource(Resource):
         if not user.is_active:
             return error_response("This account has been deactivated.", 403, code="account_inactive")
 
+        # Two-factor (app/services/two_factor.py): the password alone never
+        # creates a session for an account that has, or must have, 2FA.
+        if two_factor.is_enabled(user):
+            log_action(user, "2fa.challenge_issued", "User", user.id)
+            return success_response({"two_factor": "challenge",
+                                     "two_factor_token": two_factor.issue_token(user, "challenge")})
+        if two_factor.is_required(user):
+            log_action(user, "2fa.setup_required", "User", user.id)
+            return success_response({"two_factor": "setup",
+                                     "two_factor_token": two_factor.issue_token(user, "setup")})
+
         user.last_login_at = datetime.now(timezone.utc)
         db.session.commit()
         log_action(user, "user.login", "User", user.id)
 
-        return _signed_in_response(user)
+        return signed_in_response(user)
 
 
 class RefreshResource(Resource):
@@ -147,6 +159,12 @@ class RefreshResource(Resource):
             session, user = validate_session(raw)
         except RefreshSessionError as exc:
             return _error_clearing_cookie("Your session has ended. Please sign in again.", 401, f"session_{exc}")
+        if two_factor.is_required(user) and not session.two_factor_verified:
+            # A role that requires 2FA was granted after this sign-in: sign in again.
+            revoke(session, "two_factor_required")
+            db.session.commit()
+            return _error_clearing_cookie("Two-factor authentication is now required. Please sign in again.", 401,
+                                          "session_two_factor_required")
         session.last_used_at = datetime.now(timezone.utc)
         db.session.commit()
         return success_response({"user": user_schema.dump(user), "access_token": create_access_token(identity=user)})

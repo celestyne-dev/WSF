@@ -85,6 +85,7 @@ ones that matter most for going to production safely:
 | `JWT_SECRET_KEY` | Required, same rule as `SECRET_KEY`. Use a **different** random value, not the same one. |
 | `REDIS_URL` | Required. The shared rate-limit store, e.g. `redis://127.0.0.1:6379/0` (or `redis://:PASSWORD@127.0.0.1:6379/0` when Redis has a password). The app refuses to start without it; see §15b. |
 | `CSP_MODE` | Optional. `report-only` (default) or `enforce`; see §15a. |
+| `TWO_FACTOR_ENCRYPTION_KEY` | Required. Fernet key that encrypts stored two-factor secrets. Generate once with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it in the root-readable env file and the backup secrets store: losing it makes every enrolled authenticator unreadable (each account then needs a Super Admin reset). |
 | `DATABASE_URL` | Required. Must point at the real production database — the app refuses to start if it still contains `wsf_dev`/`wsf_test`. |
 | `CORS_ORIGINS` | Required. Comma-separated exact origin(s), e.g. `https://womenshapingfutures.org`. The app refuses to start if this includes `localhost`/`127.0.0.1`. |
 | `MEDIA_ROOT` | Absolute path entirely outside the deployment checkout (not a subdirectory of wherever `backend/`/`frontend/` live), e.g. `/var/lib/womenshapingfutures/media`. The app refuses to start if this resolves inside the checkout root. |
@@ -479,6 +480,17 @@ task does not issue a certificate**. Add the HSTS header
 (`Strict-Transport-Security`) only after confirming HTTPS works correctly
 end-to-end; sending it prematurely can lock returning visitors' browsers
 out of ever falling back to plain HTTP for the header's `max-age`.
+
+### 15c. Staff two-factor authentication (first deploy)
+
+Accounts with the `super_admin` or `editor` role must use TOTP two-factor
+authentication (`TWO_FACTOR_REQUIRED_ROLES` in `backend/config.py`). Nobody is
+locked out by the deploy: at their next sign-in these staff see a set-up
+screen (QR code + manual key), confirm one code, save their 10 recovery
+codes, and are signed in. If someone loses both the authenticator and the
+recovery codes, a Super Admin uses Studio -> Users -> the account -> "Reset
+two-factor" (audited), after confirming who they are. Members can turn
+two-factor on in Account -> Security.
 
 ### 15b. Redis (shared rate-limit store)
 

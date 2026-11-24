@@ -41,6 +41,7 @@ def _bare_app(**config_overrides):
     app.config["MEDIA_ROOT"] = "/var/lib/womenshapingfutures/media"
     app.config["REFRESH_COOKIE_SECURE"] = True
     app.config["REDIS_URL"] = "redis://127.0.0.1:6379/0"
+    app.config["TWO_FACTOR_ENCRYPTION_KEY"] = "yWl6m3wVQ3v1r8f0b2cX9JcQ1Ewv2HqSdQ6mJm1Kc2A="
     app.config.update(config_overrides)
     return app
 
@@ -284,6 +285,7 @@ def test_create_app_production_boots_when_config_is_valid(monkeypatch):
     monkeypatch.setattr(ProductionConfig, "FRONTEND_URL", "https://womenshapingfutures.org")
     monkeypatch.setattr(ProductionConfig, "MEDIA_ROOT", "/var/lib/womenshapingfutures/media")
     monkeypatch.setattr(ProductionConfig, "REDIS_URL", "redis://127.0.0.1:6379/0")
+    monkeypatch.setattr(ProductionConfig, "TWO_FACTOR_ENCRYPTION_KEY", "yWl6m3wVQ3v1r8f0b2cX9JcQ1Ewv2HqSdQ6mJm1Kc2A=")
     # A valid production config also keeps protected Resource files outside the checkout.
     monkeypatch.setattr(ProductionConfig, "PROTECTED_MEDIA_ROOT", "/var/lib/womenshapingfutures/protected_media")
 
@@ -380,6 +382,7 @@ def test_production_check_cli_passes_with_valid_production_config(monkeypatch):
     monkeypatch.setattr(ProductionConfig, "FRONTEND_URL", "https://womenshapingfutures.org")
     monkeypatch.setattr(ProductionConfig, "MEDIA_ROOT", "/var/lib/womenshapingfutures/media")
     monkeypatch.setattr(ProductionConfig, "REDIS_URL", "redis://127.0.0.1:6379/0")
+    monkeypatch.setattr(ProductionConfig, "TWO_FACTOR_ENCRYPTION_KEY", "yWl6m3wVQ3v1r8f0b2cX9JcQ1Ewv2HqSdQ6mJm1Kc2A=")
     # A valid production config also keeps protected Resource files outside the checkout.
     monkeypatch.setattr(ProductionConfig, "PROTECTED_MEDIA_ROOT", "/var/lib/womenshapingfutures/protected_media")
 

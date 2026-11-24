@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 import { loginUser } from '../features/auth/authSlice'
 import useSeo from '../hooks/useSeo'
 import { getPostLoginRoute, sanitizeReturnTo } from '../utils/permissions'
+import TwoFactorSignIn from '../components/auth/TwoFactorSignIn'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -13,25 +14,39 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const status = useSelector((s) => s.auth.status)
+  // {mode: 'challenge'|'setup', token} after a correct password when the
+  // account has, or must set up, two-factor authentication.
+  const [twoFactorStep, setTwoFactorStep] = useState(null)
 
   useSeo({ title: 'Login | Women Shaping Futures', description: 'Sign in to your Women Shaping Futures account.', robots: 'noindex, follow' })
 
   async function handleSubmit(e) {
     e.preventDefault()
     const result = await dispatch(loginUser({ email, password }))
+    if (result.meta.requestStatus === 'fulfilled' && result.payload.twoFactor) {
+      setTwoFactorStep(result.payload.twoFactor)
+      setPassword('')
+      return
+    }
     if (result.meta.requestStatus === 'fulfilled') {
-      const user = result.payload.user
-      toast.success(`Welcome back, ${user.name.split(' ')[0]}.`)
-      // A page the visitor was sent here from (see e.g. CirclePage.jsx,
-      // ResourceDetailPage.jsx) takes priority over the ordinary default
-      // route — but never ahead of a forced password change, and never an
-      // unsafe/external target (sanitizeReturnTo only ever returns a
-      // same-app path or null — see its own docstring in utils/permissions.js).
-      const returnTo = user.mustChangePassword ? null : sanitizeReturnTo(location.state?.from)
-      navigate(returnTo || getPostLoginRoute(user))
+      goOn(result.payload.user)
     } else {
       toast.error(result.payload || 'Login failed')
     }
+  }
+
+  function goOn(user, recoveryCodesRemaining) {
+    toast.success(`Welcome back, ${user.name.split(' ')[0]}.`)
+    if (typeof recoveryCodesRemaining === 'number' && recoveryCodesRemaining <= 3) {
+      toast.warn(`You have ${recoveryCodesRemaining} recovery code${recoveryCodesRemaining === 1 ? '' : 's'} left. Create new ones in Account → Security.`)
+    }
+    // A page the visitor was sent here from (see e.g. CirclePage.jsx,
+    // ResourceDetailPage.jsx) takes priority over the ordinary default
+    // route — but never ahead of a forced password change, and never an
+    // unsafe/external target (sanitizeReturnTo only ever returns a
+    // same-app path or null — see its own docstring in utils/permissions.js).
+    const returnTo = user.mustChangePassword ? null : sanitizeReturnTo(location.state?.from)
+    navigate(returnTo || getPostLoginRoute(user))
   }
 
   return (
@@ -39,6 +54,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <p className="eyebrow text-center">Welcome back</p>
         <h1 className="mt-2 text-center font-serif text-3xl font-semibold text-charcoal">Sign in to WSF</h1>
+        {twoFactorStep ? (
+          <div className="mt-8">
+            <TwoFactorSignIn step={twoFactorStep} onSignedIn={goOn} onCancel={() => setTwoFactorStep(null)} />
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
           <div>
             <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">
@@ -61,6 +81,7 @@ export default function LoginPage() {
             {status === 'loading' ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        )}
         <p className="mt-6 text-center text-xs text-charcoal-600">
           New to WSF?{' '}
           {/* Carries the same `from` return path forward — e.g. Circle ->

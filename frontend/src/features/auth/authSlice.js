@@ -12,6 +12,7 @@ import { USE_MOCK, setAccessToken, waitForSession } from '../../api/client'
 export const loginUser = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   const res = await loginApi(credentials)
   if (!res.success) return rejectWithValue(res.message)
+  if (res.twoFactor) return res // a second step is needed; no session yet
   setAccessToken(res.accessToken)
   return res
 })
@@ -75,6 +76,14 @@ const authSlice = createSlice({
     setUser(state, action) {
       state.user = action.payload
     },
+    // A two-factor sign-in step (challenge or set-up) completed: the server
+    // has set the refresh cookie and returned the user + access token.
+    signedIn(state, action) {
+      state.user = action.payload.user
+      state.accessToken = action.payload.accessToken
+      state.status = 'succeeded'
+      setAccessToken(action.payload.accessToken)
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -83,6 +92,10 @@ const authSlice = createSlice({
         state.error = null
       })
       .addCase(loginUser.fulfilled, (state, action) => {
+        if (action.payload.twoFactor) {
+          state.status = 'idle' // the login page shows the two-factor step
+          return
+        }
         state.status = 'succeeded'
         state.user = action.payload.user
         state.accessToken = action.payload.accessToken
@@ -117,5 +130,5 @@ const authSlice = createSlice({
   },
 })
 
-export const { logout, setUser, sessionTokenChanged } = authSlice.actions
+export const { logout, setUser, sessionTokenChanged, signedIn } = authSlice.actions
 export default authSlice.reducer

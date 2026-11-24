@@ -15,6 +15,9 @@ LIMITS = {
     "password_reset_request": "5 per hour",
     "password_reset_submit": "10 per hour",
     "session_refresh": "60 per minute",
+    "two_factor_challenge": "5 per minute; 30 per hour",
+    "two_factor_setup": "10 per minute; 60 per hour",
+    "two_factor_manage": "10 per minute",
     # Newsletter
     "newsletter_subscribe": "5 per minute",
     "newsletter_unsubscribe": "5 per minute; 30 per hour",
