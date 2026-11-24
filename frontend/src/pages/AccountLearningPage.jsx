@@ -82,12 +82,15 @@ function CertificateNamePreference({ sampleName, onChange }) {
 
   async function choose(next) {
     if (next === mode || saving) return
+    const previous = mode
+    setMode(next) // optimistic: the radio follows the click; reverted if the save fails
     setSaving(true)
     try {
       setMode(await saveCertificateNameMode(next))
       onChange?.()
       toast.success('Saved. Verification links now show your choice.')
     } catch {
+      setMode(previous)
       toast.error('We couldn’t save that. Please try again.')
     } finally {
       setSaving(false)
