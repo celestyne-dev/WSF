@@ -203,3 +203,25 @@ export function RetentionSettingsPanel() {
     </div>
   )
 }
+
+// Minimum signup age (Step 18; backend app/services/account_policy.py).
+// Whole years, 16–21: it can be raised, never set below the approved 16.
+export function AccountPolicySettingsPanel() {
+  const { value, setValue, error, saving, save } = useSettingsSection('account_policy')
+  if (error) return <p className="text-sm text-burgundy-600">{error}</p>
+  if (!value || !value.bounds) return <p className="text-sm text-charcoal-600">Loading…</p>
+  const { min, max, default: fallback } = value.bounds
+  return (
+    <div className="max-w-2xl space-y-5">
+      <p className="text-sm text-charcoal-600">
+        People must tick “I confirm that I am at least {value.minimumAge} years old.” to create an account. WSF never asks
+        for a date of birth. Changes are audited.
+      </p>
+      <NumberField id="acct-min-age" text="Minimum age (years)" hint={`Default ${fallback}; allowed ${min}–${max}.`}
+        value={value.minimumAge} onChange={(v) => setValue({ ...value, minimumAge: v })} min={min} max={max} />
+      <button type="button" disabled={saving} className="btn-primary disabled:opacity-60" onClick={() => save({ minimumAge: value.minimumAge })}>
+        {saving ? 'Saving…' : 'Save minimum age'}
+      </button>
+    </div>
+  )
+}

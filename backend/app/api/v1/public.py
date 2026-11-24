@@ -9,6 +9,7 @@ from app.services.footer import build_public_footer
 from app.services.homepage import get_enabled_homepage_modules, public_homepage_modules_payload
 from app.services.navigation import serialize_public_menu
 from app.services.appearance import public_appearance_payload
+from app.services.account_policy import get_account_policy
 from app.services.engagement_settings import get_cookie_consent, get_newsletter_page, get_newsletter_popup
 from app.services.tracking_settings import active_trackers
 from app.services.site_settings import get_site_identity_resolved, get_visible_social_links
@@ -137,6 +138,8 @@ def public_settings_payload():
             "newsletterPopup": get_newsletter_popup(),
             "newsletterPage": get_newsletter_page(),
             "cookieConsent": get_cookie_consent(),
+            # Minimum signup age only (Step 18), for the signup checkbox text.
+            "accountPolicy": get_account_policy(),
             # Configured third-party measurement IDs only (inactive ones are
             # absent). Consent still decides whether they run in the browser.
             "tracking": active_trackers(),

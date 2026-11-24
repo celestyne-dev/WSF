@@ -187,6 +187,11 @@ def build_export(user):
         "email_verified": user.is_verified, "roles": sorted(user.role_names()),
         "career_goals": user.career_goals, "two_factor_enabled": is_enabled(user),
         "avatar_url": user.avatar.public_url if user.avatar else None,
+        "age_confirmed_at": _value(user.age_confirmed_at),
+        "age_confirmed_minimum": user.age_confirmed_minimum,
+        "terms_version_accepted": user.terms_version_accepted,
+        "privacy_version_accepted": user.privacy_version_accepted,
+        "legal_accepted_at": _value(user.legal_accepted_at),
     }
     enrollments = _rows("learning_enrollments", "user_id", user.id)
     for e in enrollments:

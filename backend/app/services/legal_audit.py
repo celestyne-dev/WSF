@@ -218,7 +218,18 @@ def _account_facts():
         + ". Payment records are kept and detached; comments become 'Former member' (or are removed on request); "
           "published reader stories are anonymised; the audit log keeps actions without the identity link.",
         "Privacy requests: Studio log (access, correction, deletion, other) with a 30-day operational target.",
+        _signup_age_fact(),
     ]
+
+
+def _signup_age_fact():
+    from app.services.account_policy import get_account_policy
+
+    age = get_account_policy()["minimumAge"]
+    return (f"Minimum age at signup: {age} (Studio setting, 16-21). Explicit unticked confirmation "
+            f"'I confirm that I am at least {age} years old.'; no date of birth collected; the confirmation time, the "
+            "age confirmed and the Terms/Privacy versions in force are stored on the account (null for accounts "
+            "created before this rule or by staff).")
 
 
 def _retention_facts():

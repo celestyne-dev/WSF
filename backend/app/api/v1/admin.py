@@ -49,6 +49,12 @@ from app.services.comment_settings import (
     get_comment_settings,
     save_comment_settings,
 )
+from app.services.account_policy import (
+    ACCOUNT_POLICY_KEY,
+    AccountPolicyError,
+    account_policy_payload,
+    save_account_policy,
+)
 from app.services.retention import (
     RETENTION_KEY,
     RetentionSettingsError,
@@ -412,7 +418,7 @@ class AdminFooterResource(Resource):
 
 
 ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY, TRACKING_KEY,
-                      NEWSLETTER_PAGE_KEY, COMMENTS_KEY, RETENTION_KEY}
+                      NEWSLETTER_PAGE_KEY, COMMENTS_KEY, RETENTION_KEY, ACCOUNT_POLICY_KEY}
 
 
 class AdminSettingsResource(Resource):
@@ -522,6 +528,15 @@ class AdminSettingsResource(Resource):
                 raise ApiError(str(exc), 422, code="validation_error")
             log_action(current_user, "settings.update", "SiteSetting", entity_id=RETENTION_KEY, changes=retention)
 
+        if ACCOUNT_POLICY_KEY in settings_data:
+            # Minimum signup age (app/services/account_policy.py): whole
+            # years, 16–21; never below the approved 16.
+            try:
+                policy = save_account_policy(settings_data[ACCOUNT_POLICY_KEY])
+            except AccountPolicyError as exc:
+                raise ApiError(str(exc), 422, code="validation_error")
+            log_action(current_user, "settings.update", "SiteSetting", entity_id=ACCOUNT_POLICY_KEY, changes=policy)
+
         if "audience_stats" in settings_data:
             audience_value = settings_data["audience_stats"]
             if not isinstance(audience_value, dict):
@@ -546,6 +561,7 @@ class AdminSettingsResource(Resource):
             TRACKING_KEY: get_tracking_settings(),
             COMMENTS_KEY: get_comment_settings(),
             RETENTION_KEY: retention_settings_payload(),
+            ACCOUNT_POLICY_KEY: account_policy_payload(),
         }
 
 

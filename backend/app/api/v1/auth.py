@@ -25,6 +25,7 @@ from app.schemas.user import (
     UserSchema,
 )
 from app.services import two_factor
+from app.services.account_policy import get_account_policy, legal_document_version
 from app.services.audit import log_action
 from app.services.password_reset import request_password_reset, reset_password
 from app.services.rate_limits import limit
@@ -81,6 +82,14 @@ class RegisterResource(Resource):
         data = register_schema.load(request.get_json(silent=True) or {})
         email = data["email"].lower()
 
+        # Minimum age (Step 18): explicit, unticked-by-default confirmation,
+        # checked before any lookup or write so nothing about the person is
+        # stored when it's missing. No date of birth is collected.
+        minimum_age = get_account_policy()["minimumAge"]
+        if data.get("age_confirmed") is not True:
+            raise ApiError(f"You must confirm that you are at least {minimum_age} years old to create an account.",
+                           422, code="age_confirmation_required")
+
         if User.query.filter_by(email=email).first():
             return error_response("An account with this email already exists.", 409, code="email_taken")
 
@@ -98,6 +107,12 @@ class RegisterResource(Resource):
             last_name=data["last_name"],
             country_code=country_code,
         )
+        accepted_at = datetime.now(timezone.utc)
+        user.age_confirmed_at = accepted_at
+        user.age_confirmed_minimum = minimum_age
+        user.terms_version_accepted = legal_document_version("terms")
+        user.privacy_version_accepted = legal_document_version("privacy")
+        user.legal_accepted_at = accepted_at
         user.set_password(data["password"])
 
         member_role = Role.query.filter_by(name="member").first()

@@ -1,5 +1,6 @@
 import { apiClient, endSession, refreshSession, USE_MOCK } from './client'
 import { delay } from './mockUtils'
+import { registerAgePayload } from '../utils/accountPolicy'
 
 // The mock admin users list is only needed when VITE_USE_MOCK=true —
 // dynamic-imported so a real-mode production build never fetches it.
@@ -138,7 +139,7 @@ export async function changePassword({ currentPassword, newPassword, confirmPass
 // field -> [messages] map the backend validation_error response carries
 // (see RegisterSchema), so RegisterPage can show it per-field instead of
 // only a single toast.
-export async function register({ firstName, lastName, email, password, countryCode }) {
+export async function register({ firstName, lastName, email, password, countryCode, ageConfirmed }) {
   if (USE_MOCK) {
     return { success: false, message: 'Account creation is not available in demo mode.' }
   }
@@ -149,6 +150,7 @@ export async function register({ firstName, lastName, email, password, countryCo
       email,
       password,
       country_code: countryCode || undefined,
+      ...registerAgePayload(ageConfirmed),
     })
     return { success: true, accessToken: data.access_token, user: mapUser(data.user) }
   } catch (err) {

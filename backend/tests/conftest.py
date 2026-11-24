@@ -1,3 +1,4 @@
+from flask.testing import FlaskClient
 import pytest
 from sqlalchemy import text
 
@@ -69,9 +70,31 @@ def _teardown_db():
         _db.engine.dispose()
 
 
+RAW_REGISTER_HEADER = "X-Test-Raw-Register"
+
+
+class _AgeConfirmingClient(FlaskClient):
+    """Step 18 made the "at least N years old" confirmation mandatory at
+    signup. Existing tests register users only as setup, so this client adds
+    ``age_confirmed: true`` to /auth/register bodies that don't mention it.
+    Tests of the age gate itself either set ``age_confirmed`` explicitly or
+    send RAW_REGISTER_HEADER to have the body passed through untouched."""
+
+    def open(self, *args, **kwargs):
+        path = args[0] if args and isinstance(args[0], str) else kwargs.get("path", "")
+        headers = kwargs.get("headers") or {}
+        raw = RAW_REGISTER_HEADER in headers
+        body = kwargs.get("json")
+        if (str(path).split("?")[0].rstrip("/") == "/api/v1/auth/register" and not raw
+                and isinstance(body, dict) and "age_confirmed" not in body):
+            kwargs["json"] = {**body, "age_confirmed": True}
+        return super().open(*args, **kwargs)
+
+
 @pytest.fixture()
 def app():
     application = create_app("testing")
+    application.test_client_class = _AgeConfirmingClient
     with application.app_context():
         try:
             _db.create_all()

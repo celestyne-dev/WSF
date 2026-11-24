@@ -252,7 +252,7 @@ class TestPublicSerializerMinimization:
 
         assert "audience_stats" not in public
         assert set(public.keys()) == {"site", "branding", "contact", "social", "seo", "appearance", "newsletterPopup", "cookieConsent",
-                                      "newsletterPage", "tracking"}
+                                      "newsletterPage", "tracking", "accountPolicy"}
         # Only configured tracker IDs (none here): never secrets or scripts.
         assert public["tracking"] == {}
         assert public["appearance"] == {"cornerStyle": "square"}

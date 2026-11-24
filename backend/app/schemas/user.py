@@ -67,7 +67,11 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         load_instance = False
         # career_goals are private personalization data served only by
         # GET /career-hub/me/goals, never in any user dump.
-        exclude = ("password_hash", "career_goals", "career_goals_prompted_at")
+        # Signup confirmations (Step 18) stay out of general dumps too; the
+        # member sees them in their own data export.
+        exclude = ("password_hash", "career_goals", "career_goals_prompted_at",
+                   "age_confirmed_at", "age_confirmed_minimum", "terms_version_accepted",
+                   "privacy_version_accepted", "legal_accepted_at")
 
 
 class RegisterSchema(ma.Schema):
@@ -76,6 +80,9 @@ class RegisterSchema(ma.Schema):
     first_name = fields.String(required=True, validate=validate.Length(min=1, max=100))
     last_name = fields.String(required=True, validate=validate.Length(min=1, max=100))
     country_code = fields.String(required=False, allow_none=True, validate=validate.Length(min=2, max=10))
+    # Step 18: only a JSON ``true`` counts (Raw, so "yes"/1 never coerce);
+    # RegisterResource checks it before anything is stored.
+    age_confirmed = fields.Raw(required=False, load_default=None)
 
 
 class LoginSchema(ma.Schema):

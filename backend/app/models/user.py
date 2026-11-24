@@ -84,6 +84,15 @@ class User(db.Model):
     # Retention (Step 17): when the "account will be deleted for inactivity"
     # email was handed off; cleared when the member uses the account again.
     inactivity_warning_sent_at = db.Column(db.DateTime(timezone=True))
+    # Signup confirmations (Step 18; app/services/account_policy.py). No date
+    # of birth is ever collected: only the explicit "at least N years old"
+    # confirmation, the age it was confirmed against, and the Terms/Privacy
+    # versions accepted. Null for accounts created before Step 18 or by staff.
+    age_confirmed_at = db.Column(db.DateTime(timezone=True))
+    age_confirmed_minimum = db.Column(db.SmallInteger)
+    terms_version_accepted = db.Column(db.String(120))
+    privacy_version_accepted = db.Column(db.String(120))
+    legal_accepted_at = db.Column(db.DateTime(timezone=True))
     # Private career-goal preferences (Career Hub CAREER_GOALS keys, at
     # most 3), used only to personalize this user's own Career Hub. Never
     # exposed publicly. `career_goals_prompted_at` records that the

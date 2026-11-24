@@ -6,9 +6,11 @@ import { registerUser } from '../features/auth/authSlice'
 import { getPostLoginRoute, sanitizeReturnTo } from '../utils/permissions'
 import useSeo from '../hooks/useSeo'
 import CountrySelect from '../components/ui/CountrySelect'
+import { ageConfirmationLabel, minimumAgeOf } from '../utils/accountPolicy'
 
 function blankForm() {
-  return { firstName: '', lastName: '', email: '', countryCode: '', password: '', confirmPassword: '' }
+  // ageConfirmed starts unticked (Step 18): it must be an explicit choice.
+  return { firstName: '', lastName: '', email: '', countryCode: '', password: '', confirmPassword: '', ageConfirmed: false }
 }
 
 // Creates a WSF account — login + CMS infrastructure (see api/auth.js),
@@ -22,6 +24,7 @@ export default function RegisterPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const status = useSelector((s) => s.auth.status)
+  const minimumAge = useSelector((s) => minimumAgeOf(s.site.settings))
 
   // A plan she chose on /circle before being sent here to create an
   // account (see CirclePage.jsx's anonymous plan CTA) — used only to add
@@ -51,6 +54,10 @@ export default function RegisterPage() {
       setFieldError('Password and confirmation do not match.')
       return
     }
+    if (!form.ageConfirmed) {
+      setFieldError(`You must confirm that you are at least ${minimumAge} years old to create an account.`)
+      return
+    }
 
     const result = await dispatch(
       registerUser({
@@ -59,6 +66,7 @@ export default function RegisterPage() {
         email: form.email,
         password: form.password,
         countryCode: form.countryCode,
+        ageConfirmed: form.ageConfirmed,
       }),
     )
 
@@ -179,7 +187,19 @@ export default function RegisterPage() {
             />
           </div>
 
-          {fieldError && <p className="text-sm text-burgundy-600">{fieldError}</p>}
+          <label htmlFor="age-confirmed" className="flex items-start gap-2 text-sm text-charcoal">
+            <input
+              id="age-confirmed"
+              type="checkbox"
+              required
+              checked={form.ageConfirmed}
+              onChange={(e) => setForm((f) => ({ ...f, ageConfirmed: e.target.checked }))}
+              className="mt-1"
+            />
+            <span>{ageConfirmationLabel(minimumAge)}</span>
+          </label>
+
+          {fieldError && <p role="alert" className="text-sm text-burgundy-600">{fieldError}</p>}
 
           <button type="submit" disabled={status === 'loading'} className="btn-primary w-full disabled:opacity-60">
             {status === 'loading' ? 'Creating account…' : 'Create account'}
