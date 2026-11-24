@@ -27,7 +27,7 @@ from app.models.user import User
 from app.services import two_factor
 from app.services.audit import log_action
 from app.services.rate_limits import limit
-from app.services.refresh_sessions import revoke_all_for_user
+from app.services.refresh_sessions import invalidate_user_sessions
 from app.services.two_factor import TwoFactorError
 from app.utils.responses import ApiError, error_response, success_response
 
@@ -70,7 +70,10 @@ def _complete_sign_in(user, extra=None):
 
     user.last_login_at = datetime.now(timezone.utc)
     log_action(user, "user.login", "User", user.id, changes={"two_factor": True})
-    response = signed_in_response(user, two_factor_verified=True)
+    return _with_extra(signed_in_response(user, two_factor_verified=True), extra)
+
+
+def _with_extra(response, extra):
     if extra:
         import json
 
@@ -136,12 +139,23 @@ class SetupConfirmResource(Resource):
         except TwoFactorError as exc:
             db.session.rollback()
             return error_response(str(exc), 422 if exc.code == "invalid_two_factor_code" else 400, code=exc.code)
+        # Turning 2FA on is a security boundary: every access token and
+        # session issued before it (none of which passed 2FA) ends, so an old
+        # session can't keep working around the new protection.
+        invalidate_user_sessions(user, "two_factor_enabled")
         db.session.commit()
         log_action(user, "2fa.enabled", "User", user.id)
         if via_token:
             # Required set-up at sign-in: finishing it signs the member in.
             return _complete_sign_in(user, {"recovery_codes": codes})
-        return success_response({"recovery_codes": codes})
+        # Optional set-up from account settings: this browser just proved the
+        # password-backed session AND a code from the new authenticator, so it
+        # gets a fresh two-factor-verified session in place of the ended one
+        # (new cookie + access token). Every other browser must sign in again.
+        from app.api.v1.auth import signed_in_response
+
+        response = signed_in_response(user, two_factor_verified=True)
+        return _with_extra(response, {"recovery_codes": codes})
 
 
 class StatusResource(Resource):
@@ -209,7 +223,7 @@ class AdminResetResource(Resource):
         if target is None:
             return error_response("User not found.", 404, code="not_found")
         two_factor.disable(target)
-        revoke_all_for_user(target.id, "two_factor_reset")
+        invalidate_user_sessions(target, "two_factor_reset")
         db.session.commit()
         log_action(current_user, "2fa.reset_by_admin", "User", target.id)
         return success_response({"user_id": target.id, "enabled": False,

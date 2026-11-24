@@ -23,8 +23,10 @@ def register_jwt_callbacks(app):
             # Stamped into every newly issued access/refresh token (this
             # loader is used by both create_access_token() and
             # create_refresh_token() for any identity) — see
-            # check_if_revoked below, and app/services/password_reset.py,
-            # which is the only thing that ever bumps User.auth_version.
+            # check_if_revoked below. User.auth_version is bumped only by
+            # app/services/refresh_sessions.py's invalidate_user_sessions()
+            # (role change, deactivation, password reset by link or by an
+            # administrator, two-factor enabled or reset).
             claims["auth_version"] = identity_user.auth_version
         return claims
 

@@ -192,12 +192,19 @@ def register_cli(app):
             return
 
         user = User.query.filter_by(email=email.lower()).first()
+        existing = user is not None
         if user is None:
             user = User(email=email.lower(), first_name=first_name, last_name=last_name, is_verified=True)
             db.session.add(user)
         user.set_password(password)
         if role not in user.roles:
             user.roles.append(role)
+        if existing:
+            # New password and possibly a new role: credentials issued before
+            # now end (app/services/refresh_sessions.py).
+            from app.services.refresh_sessions import invalidate_user_sessions
+
+            invalidate_user_sessions(user, "superadmin_cli")
 
         db.session.commit()
         click.echo(f"Super admin ready: {email}")

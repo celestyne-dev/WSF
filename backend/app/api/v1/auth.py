@@ -54,6 +54,13 @@ def signed_in_response(user, status=200, two_factor_verified=False):
     return set_refresh_cookie(make_response(jsonify(body), status), raw, session)
 
 
+def needs_two_factor(user, session):
+    """A session that did not pass two-factor can't be used by an account
+    that has two-factor turned on (optional or required) or whose role
+    requires it."""
+    return (two_factor.is_enabled(user) or two_factor.is_required(user)) and not session.two_factor_verified
+
+
 def _error_clearing_cookie(message, status, code):
     payload, status = error_response(message, status, code=code)
     return clear_refresh_cookie(make_response(jsonify(payload), status))
@@ -107,9 +114,9 @@ class LoginResource(Resource):
     # Login brute-force protection (see task spec's RATE LIMITING/LOGIN
     # BRUTE FORCE sections): conservative enough to not bother a real user
     # mistyping a password a few times, tight enough to make scripted
-    # credential-stuffing slow. Per-IP, in-memory (see app/extensions.py's
-    # limiter setup for the multi-worker-process caveat) — this is not
-    # account lockout (no account-level state is written), so it can't be
+    # credential-stuffing slow. Per-IP, counted in the shared store (Redis,
+    # PostgreSQL while Redis is down; app/services/rate_limit_storage.py),
+    # so all workers share one count — this is not account lockout (no account-level state is written), so it can't be
     # used to lock a legitimate user out by repeatedly failing their login.
     @limiter.limit(limit("login"))
     def post(self):
@@ -159,8 +166,10 @@ class RefreshResource(Resource):
             session, user = validate_session(raw)
         except RefreshSessionError as exc:
             return _error_clearing_cookie("Your session has ended. Please sign in again.", 401, f"session_{exc}")
-        if two_factor.is_required(user) and not session.two_factor_verified:
-            # A role that requires 2FA was granted after this sign-in: sign in again.
+        if needs_two_factor(user, session):
+            # Defence in depth: turning 2FA on or changing roles already ends
+            # older sessions (invalidate_user_sessions); this also covers a
+            # deploy that adds a role to TWO_FACTOR_REQUIRED_ROLES.
             revoke(session, "two_factor_required")
             db.session.commit()
             return _error_clearing_cookie("Two-factor authentication is now required. Please sign in again.", 401,
@@ -309,8 +318,7 @@ class ForgotPasswordResource(Resource):
     # Conservative but not punitive: a real user mistyping/retrying a
     # forgot-password request a couple of times in an hour is fine; a
     # script trying to enumerate accounts or mail-bomb an address is not.
-    # Same per-IP, in-memory limiter as LoginResource above (see
-    # app/extensions.py).
+    # Same per-IP shared-store limiter as LoginResource above.
     @limiter.limit(limit("password_reset_request"))
     def post(self):
         data = forgot_password_schema.load(request.get_json(silent=True) or {})

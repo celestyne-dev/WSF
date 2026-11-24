@@ -106,19 +106,30 @@ def set_user_status(user, is_active, *, actor):
             "or promote someone else, before deactivating this account.",
             code="last_super_admin",
         )
-    user.is_active = is_active
-    if not is_active:
-        from app.services.refresh_sessions import revoke_all_for_user
+    if user.is_active and not is_active:
+        # Active -> inactive ends every credential for good: bumping
+        # auth_version means a token issued before now stays invalid even if
+        # the account is reactivated before that token would have expired.
+        # Reactivation itself changes nothing: the member signs in again.
+        from app.services.refresh_sessions import invalidate_user_sessions
 
-        revoke_all_for_user(user.id, "deactivated")
+        invalidate_user_sessions(user, "deactivated")
+    user.is_active = is_active
     db.session.commit()
     return user
 
 
 def reset_user_password(user):
+    """Administrator-issued credential reset: every access token and refresh
+    session issued before it ends (same semantics as the self-service reset
+    in app/services/password_reset.py); the member must sign in with the
+    temporary password and then choose a new one."""
+    from app.services.refresh_sessions import invalidate_user_sessions
+
     temporary_password = generate_temporary_password()
     user.set_password(temporary_password)
     user.must_change_password = True
+    invalidate_user_sessions(user, "admin_password_reset")
     db.session.commit()
     return temporary_password
 
@@ -161,6 +172,16 @@ def assign_user_roles(user, role_names, *, actor):
             code="last_super_admin",
         )
 
-    user.roles = new_roles
+    # Any actual change to the role set is an authentication boundary:
+    # permissions are re-read from the database on every request, so a token
+    # issued before a promotion would otherwise carry the new privileges
+    # without the new role's requirements (e.g. required two-factor). Old
+    # access tokens and refresh sessions end; the member signs in again under
+    # the new roles. Re-saving the same set changes nothing.
+    if {r.name for r in user.roles} != {r.name for r in new_roles}:
+        from app.services.refresh_sessions import invalidate_user_sessions
+
+        user.roles = new_roles
+        invalidate_user_sessions(user, "roles_changed")
     db.session.commit()
     return user

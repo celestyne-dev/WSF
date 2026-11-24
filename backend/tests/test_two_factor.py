@@ -165,6 +165,9 @@ def test_member_optional_2fa_enable_challenge_disable(client, app, monkeypatch):
     secret = client.post("/api/v1/auth/2fa/setup/start", json={}, headers=h).get_json()["data"]["secret"]
     res = client.post("/api/v1/auth/2fa/setup/confirm", json={"code": two_factor.code_for(secret)}, headers=h)
     assert res.status_code == 200 and len(res.get_json()["data"]["recovery_codes"]) == 10
+    # Turning 2FA on ends the pre-2FA token; this browser gets a new one.
+    assert client.get("/api/v1/auth/2fa", headers=h).status_code == 401
+    h = auth_headers(res.get_json()["data"]["access_token"])
     assert _login(client, "member@example.com").get_json()["data"]["two_factor"] == "challenge"
     import time as _time
 

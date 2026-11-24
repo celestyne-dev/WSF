@@ -91,11 +91,28 @@ def revoke(session, reason):
 
 
 def revoke_all_for_user(user_id, reason):
-    """Ends every active session of a user (password reset, deactivation)."""
+    """Ends every active refresh session of a user. Prefer
+    invalidate_user_sessions(), which also ends the access tokens."""
     count = (RefreshSession.query
              .filter(RefreshSession.user_id == user_id, RefreshSession.revoked_at.is_(None))
              .update({"revoked_at": _now(), "revoked_reason": reason}, synchronize_session=False))
     return count
+
+
+def invalidate_user_sessions(user, reason):
+    """Security boundary for any change to how far an account is trusted
+    (roles, deactivation, password, two-factor state). Everything issued
+    before it stops working:
+      * access tokens: User.auth_version is bumped, and every JWT carries the
+        version it was issued at (app/auth/jwt_callbacks.py rejects a
+        mismatch with 401 token_revoked) — this also voids an unused
+        two-factor sign-in token (app/services/two_factor.py);
+      * refresh sessions: all are revoked with `reason` (and each records the
+        version it was created at, so validate_session() rejects it anyway).
+    The caller commits, in the same transaction as the change itself.
+    Returns the number of refresh sessions revoked."""
+    user.auth_version = (user.auth_version or 0) + 1
+    return revoke_all_for_user(user.id, reason)
 
 
 # --- cookie --------------------------------------------------------------------------------

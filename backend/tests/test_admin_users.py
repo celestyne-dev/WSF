@@ -214,8 +214,11 @@ class TestActivationDeactivation:
             target_id = target.id
         client.patch(f"/api/v1/admin/users/{target_id}/status", json={"is_active": False}, headers=admin_headers)
 
+        # Deactivation also bumps auth_version (app/services/user_admin.py),
+        # so the token is revoked outright, not merely refused while inactive.
         me_again = client.get("/api/v1/auth/me", headers=auth_headers(token))
-        assert me_again.status_code == 403
+        assert me_again.status_code == 401
+        assert me_again.get_json()["error"]["code"] == "token_revoked"
 
     def test_deactivated_user_cannot_refresh(self, client, app):
         client.post(
@@ -382,9 +385,12 @@ class TestStaleRoleToken:
         client.put(f"/api/v1/admin/users/{target_id}/roles", json={"role_names": []}, headers=actor_headers)
 
         # Same still-unexpired, still-cryptographically-valid access token —
-        # only the DB role set changed. Must now be denied.
+        # only the DB role set changed. Must now be denied: a role change
+        # bumps auth_version (app/services/user_admin.py), so the token itself
+        # is revoked (permissions are still re-read from the DB per request).
         now_denied = client.get("/api/v1/admin/users", headers=auth_headers(privileged_token))
-        assert now_denied.status_code == 403
+        assert now_denied.status_code == 401
+        assert now_denied.get_json()["error"]["code"] == "token_revoked"
 
 
 class TestPasswordReset:

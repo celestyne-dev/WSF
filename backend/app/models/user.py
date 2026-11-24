@@ -61,9 +61,11 @@ class User(db.Model):
     # POST /auth/change-password herself. Never cleared by logging in —
     # see app/auth/decorators.py's centralized enforcement.
     must_change_password = db.Column(db.Boolean, nullable=False, default=False)
-    # Bumped by a successful password recovery (see
-    # app/services/password_reset.py) to invalidate every access/refresh
-    # JWT issued before that point — see app/auth/jwt_callbacks.py's
+    # Bumped by app/services/refresh_sessions.py's invalidate_user_sessions()
+    # whenever the account's trust changes (role change, deactivation,
+    # password reset by link or by an administrator, two-factor enabled or
+    # reset) to invalidate every access token and refresh
+    # session issued before that point — see app/auth/jwt_callbacks.py's
     # check_if_revoked, which rejects a token whose auth_version claim
     # doesn't match this column. A token with no auth_version claim at all
     # (issued before this column existed) is treated as version 0, so

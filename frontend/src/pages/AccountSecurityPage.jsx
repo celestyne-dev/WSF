@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
+import { useDispatch } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import useSeo from '../hooks/useSeo'
 import {
   confirmTwoFactorSetup, disableTwoFactor, fetchTwoFactorStatus, regenerateRecoveryCodes, startTwoFactorSetup,
 } from '../api/twoFactor'
+import { mapUser } from '../api/auth'
 import { CodeField, RecoveryCodes, TwoFactorQr } from '../components/auth/TwoFactorParts'
+import { signedIn } from '../features/auth/authSlice'
 
 // Password (the form itself lives only at /change-password, also used for
 // the forced-change flow) and two-factor authentication. 2FA is optional
@@ -31,6 +34,7 @@ export default function AccountSecurityPage() {
 }
 
 function TwoFactorSection() {
+  const dispatch = useDispatch()
   const [status, setStatus] = useState(null)
   const [mode, setMode] = useState(null) // 'setup' | 'codes' | 'disable' | 'show-codes'
   const [setup, setSetup] = useState(null)
@@ -70,6 +74,9 @@ function TwoFactorSection() {
     e.preventDefault()
     const res = await run(() => confirmTwoFactorSetup({ code }))
     if (!res.success) return setError(res.message)
+    // Turning 2FA on ends every older session; the server hands this browser
+    // a new two-factor-verified one (cookie + access token).
+    if (res.data.access_token) dispatch(signedIn({ user: mapUser(res.data.user), accessToken: res.data.access_token }))
     setCodes(res.data.recovery_codes)
     setMode('show-codes')
     return undefined
