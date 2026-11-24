@@ -37,6 +37,7 @@ from app.services.newsletter import upsert_subscriber
 from app.services.media import MediaService
 from app.services.notifications import notify_story_submission_received
 from app.services.flat_slugs import generate_flat_slug
+from app.services.rate_limits import limit
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -108,7 +109,7 @@ class SubmissionListResource(Resource):
 
     # Public, unauthenticated write endpoint — see task spec's RATE
     # LIMITING section.
-    @limiter.limit("5 per minute")
+    @limiter.limit(limit("story_submission"))
     def post(self):
         """The public submission endpoint — write-only besides a small
         confirmation. Never returns the submission's id or any stored
@@ -186,6 +187,7 @@ class SubmissionMediaUploadResource(Resource):
     the CMS media library listing until an editor deliberately reuses it.
     """
 
+    @limiter.limit(limit("story_image_upload"))
     def post(self):
         service = MediaService()
         media = service.save(
@@ -193,6 +195,7 @@ class SubmissionMediaUploadResource(Resource):
             uploaded_by=None,
             caption=request.form.get("caption"),
             credit=request.form.get("credit"),
+            strict=True,  # anonymous upload: strict checks, re-encoded, metadata stripped
         )
         return success_response({"id": media.id, "publicUrl": media.public_url}, status=201)
 

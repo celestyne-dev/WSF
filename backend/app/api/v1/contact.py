@@ -29,6 +29,7 @@ from app.schemas.contact import (
 from app.services.audit import log_action
 from app.services.contact import generate_contact_reference, is_valid_contact_status_transition
 from app.services.notifications import notify_contact_received
+from app.services.rate_limits import limit
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -93,7 +94,7 @@ class ContactInquiryListResource(Resource):
     # LIMITING section. Conservative per-IP limit against scripted spam;
     # the honeypot/timing check below already catches obvious bots, this
     # is a backstop against a burst of genuinely form-shaped requests.
-    @limiter.limit("5 per minute")
+    @limiter.limit(limit("contact"))
     def post(self):
         """The public submission endpoint — write-only besides a small
         {reference, status} confirmation. Never returns the inquiry's id,

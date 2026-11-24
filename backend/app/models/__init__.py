@@ -67,6 +67,7 @@ from app.models.entity_redirect import EntityRedirect  # noqa: F401
 from app.models.consent import ConsentRecord  # noqa: F401
 from app.models.refresh_session import RefreshSession  # noqa: F401
 from app.models.csp_violation import CspViolation  # noqa: F401
+from app.models.rate_limit import RateLimitCounter  # noqa: F401
 
 __all__ = [
     "Country",

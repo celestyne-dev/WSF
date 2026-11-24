@@ -26,6 +26,7 @@ from app.schemas.user import (
 )
 from app.services.audit import log_action
 from app.services.password_reset import request_password_reset, reset_password
+from app.services.rate_limits import limit
 from app.services.refresh_sessions import (
     RefreshSessionError,
     clear_refresh_cookie,
@@ -66,6 +67,7 @@ reset_password_schema = ResetPasswordSchema()
 
 
 class RegisterResource(Resource):
+    @limiter.limit(limit("signup"))
     def post(self):
         data = register_schema.load(request.get_json(silent=True) or {})
         email = data["email"].lower()
@@ -108,7 +110,7 @@ class LoginResource(Resource):
     # limiter setup for the multi-worker-process caveat) — this is not
     # account lockout (no account-level state is written), so it can't be
     # used to lock a legitimate user out by repeatedly failing their login.
-    @limiter.limit("10 per minute")
+    @limiter.limit(limit("login"))
     def post(self):
         data = login_schema.load(request.get_json(silent=True) or {})
         user = User.query.filter_by(email=data["email"].lower()).first()
@@ -130,6 +132,8 @@ class RefreshResource(Resource):
     Path). POST: a fresh access token + the user (silent refresh on page
     load). DELETE: sign out. Both are CSRF-checked (header + Origin, see
     app/services/refresh_sessions.py)."""
+
+    decorators = [limiter.limit(limit("session_refresh"))]
 
     def post(self):
         problem = csrf_problem()
@@ -289,7 +293,7 @@ class ForgotPasswordResource(Resource):
     # script trying to enumerate accounts or mail-bomb an address is not.
     # Same per-IP, in-memory limiter as LoginResource above (see
     # app/extensions.py).
-    @limiter.limit("5 per hour")
+    @limiter.limit(limit("password_reset_request"))
     def post(self):
         data = forgot_password_schema.load(request.get_json(silent=True) or {})
         request_password_reset(data["email"])
@@ -307,6 +311,7 @@ class ResetPasswordResource(Resource):
     start, and the user should prove the new password back at /login).
     """
 
+    @limiter.limit(limit("password_reset_submit"))
     def post(self):
         data = reset_password_schema.load(request.get_json(silent=True) or {})
 

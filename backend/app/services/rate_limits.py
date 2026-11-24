@@ -1,0 +1,36 @@
+"""Named rate limits for public, abuse-prone endpoints (one place to review).
+
+Strings use Flask-Limiter syntax; several limits separated by ";" all apply.
+Counters are per client IP and live in Redis (database fallback), see
+app/services/rate_limit_storage.py.
+
+COMMENT_* are prepared for the Batch 3 comment system and are not attached
+to any endpoint yet.
+"""
+
+LIMITS = {
+    # Accounts and sessions
+    "login": "10 per minute; 100 per day",
+    "signup": "5 per minute; 20 per hour",
+    "password_reset_request": "5 per hour",
+    "password_reset_submit": "10 per hour",
+    "session_refresh": "60 per minute",
+    # Newsletter
+    "newsletter_subscribe": "5 per minute",
+    "newsletter_unsubscribe": "5 per minute; 30 per hour",
+    "newsletter_unsubscribe_link": "30 per minute",
+    # Public forms
+    "contact": "5 per minute; 30 per day",
+    "story_submission": "5 per minute; 20 per day",
+    "story_image_upload": "10 per minute; 60 per day",
+    # Comments (Batch 3)
+    "comment_create": "6 per minute; 60 per day",
+    "comment_edit": "20 per minute",
+    "comment_report": "10 per minute; 50 per day",
+}
+
+
+def limit(name):
+    """The limit string for `name` (KeyError for an unknown name, so a typo
+    can never silently disable a limit)."""
+    return LIMITS[name]

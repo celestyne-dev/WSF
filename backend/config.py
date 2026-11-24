@@ -73,6 +73,16 @@ class Config:
     # report-only until CSP_MODE=enforce is set deliberately (see
     # DEPLOYMENT.md, "Content Security Policy").
     HSTS_ENABLED = False
+    # Rate limiting (app/services/rate_limit_storage.py): Redis is the shared
+    # store; the database is used only while Redis is unavailable (logged as
+    # a WARNING). In-memory fallback is never used. Production refuses to
+    # start without REDIS_URL.
+    REDIS_URL = os.environ.get("REDIS_URL") or None
+    RATELIMIT_STORAGE_URI = "wsf-ratelimit://"
+    RATELIMIT_STORAGE_OPTIONS = {"redis_url": REDIS_URL}
+    RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = False
+    RATELIMIT_SWALLOW_ERRORS = False
+    RATELIMIT_STRATEGY = "fixed-window"
     CSP_MODE = os.environ.get("CSP_MODE", "report-only").strip().lower()
     JWT_ERROR_MESSAGE_KEY = "message"
     # PyJWT's `iat`/`nbf`/`exp` checks (flask_jwt_extended.config.Config.leeway
@@ -391,6 +401,9 @@ def require_production_settings(app):
     # an operator can fix CORS_ORIGINS and still leave FRONTEND_URL at its
     # http://localhost:5173 default, and every one of those links would
     # silently keep pointing at localhost in production.
+    if not app.config.get("REDIS_URL"):
+        problems.append("REDIS_URL is not set (Redis is the shared rate-limit store in production).")
+
     if app.config.get("REFRESH_COOKIE_SECURE") is not True:
         problems.append("REFRESH_COOKIE_SECURE must be True in production (the refresh cookie is HTTPS-only).")
 

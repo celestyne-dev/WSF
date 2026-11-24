@@ -30,6 +30,7 @@ from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.engagement_settings import NEWSLETTER_CONSENT_VERSION
 from app.services.newsletter import audience_query, count_audience, upsert_subscriber
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
+from app.services.rate_limits import limit
 from app.utils.filtering import apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -119,7 +120,7 @@ def _validate_issue_readiness(issue):
 class SubscribeResource(Resource):
     # Public, unauthenticated write endpoint — see task spec's RATE
     # LIMITING section.
-    @limiter.limit("5 per minute")
+    @limiter.limit(limit("newsletter_subscribe"))
     def post(self):
         data = SubscribeInputSchema().load(request.get_json(silent=True) or {})
         subscriber, created, reactivated = upsert_subscriber(
@@ -151,6 +152,7 @@ class UnsubscribeResource(Resource):
     subscriber via a guessable link" mechanism the token route avoids.
     """
 
+    @limiter.limit(limit("newsletter_unsubscribe"))
     def post(self):
         data = UnsubscribeInputSchema().load(request.get_json(silent=True) or {})
         subscriber = NewsletterSubscriber.query.filter_by(email=data["email"].strip().lower()).first()
@@ -171,6 +173,7 @@ class UnsubscribeByTokenResource(Resource):
     behavior.
     """
 
+    @limiter.limit(limit("newsletter_unsubscribe_link"))
     def get(self, token):
         subscriber = NewsletterSubscriber.query.filter_by(unsubscribe_token=token).first()
         if subscriber is None:

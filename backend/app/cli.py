@@ -317,6 +317,16 @@ def register_cli(app):
             f"-> ENV={current_app.config.get('ENV')!r}, DEBUG={current_app.debug}"
         )
 
+        # Which store rate limiting is really using right now (never a
+        # password). "database" in production means Redis is down or
+        # unreachable: a WARNING, not silently accepted.
+        from app.services.rate_limit_storage import rate_limit_status
+
+        rl = rate_limit_status()
+        click.echo(f"Rate-limit store: {rl['backend']} (Redis: {rl['redis']}); CSP mode: {current_app.config.get('CSP_MODE')}")
+        if rl["backend"] != "redis":
+            warnings.append(f"Rate limiting is using the {rl['backend']} store, not Redis. Check REDIS_URL and the Redis service.")
+
         try:
             require_production_settings(current_app)
         except RuntimeError as exc:

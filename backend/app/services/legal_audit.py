@@ -75,6 +75,13 @@ TECHNOLOGY_INVENTORY = (
                  "consent no player loads until the visitor presses Play on that video."),
      "storage": "third-party",
      "duration": "Set by the provider (not controlled by WSF).", "consentRequired": True},
+    {"name": "Rate-limit counters (Redis, database fallback)", "provider": "WSF (first party, server-side)",
+     "category": "essential",
+     "purpose": ("Limits how often one network address can sign in, sign up, reset a password, unsubscribe or "
+                 "send forms, to stop abuse. Server-side only: nothing is stored on the visitor's device."),
+     "storage": "server-side (Redis; PostgreSQL only while Redis is unavailable)",
+     "duration": "Each counter lasts one rate-limit window (one minute to one day), then expires.",
+     "consentRequired": False},
     # Configurable third party: present in the code but INACTIVE until an ID is
     # saved in Studio (app/services/tracking_settings.py); `configKey` says
     # which setting switches it on. Runs only with its consent category.

@@ -83,6 +83,8 @@ ones that matter most for going to production safely:
 | `FLASK_CONFIG` | `production` |
 | `SECRET_KEY` | Required. No default exists for `ProductionConfig` — the app refuses to start without a real value (see `config.py:require_production_settings`). Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. |
 | `JWT_SECRET_KEY` | Required, same rule as `SECRET_KEY`. Use a **different** random value, not the same one. |
+| `REDIS_URL` | Required. The shared rate-limit store, e.g. `redis://127.0.0.1:6379/0` (or `redis://:PASSWORD@127.0.0.1:6379/0` when Redis has a password). The app refuses to start without it; see §15b. |
+| `CSP_MODE` | Optional. `report-only` (default) or `enforce`; see §15a. |
 | `DATABASE_URL` | Required. Must point at the real production database — the app refuses to start if it still contains `wsf_dev`/`wsf_test`. |
 | `CORS_ORIGINS` | Required. Comma-separated exact origin(s), e.g. `https://womenshapingfutures.org`. The app refuses to start if this includes `localhost`/`127.0.0.1`. |
 | `MEDIA_ROOT` | Absolute path entirely outside the deployment checkout (not a subdirectory of wherever `backend/`/`frontend/` live), e.g. `/var/lib/womenshapingfutures/media`. The app refuses to start if this resolves inside the checkout root. |
@@ -477,6 +479,51 @@ task does not issue a certificate**. Add the HSTS header
 (`Strict-Transport-Security`) only after confirming HTTPS works correctly
 end-to-end; sending it prematurely can lock returning visitors' browsers
 out of ever falling back to plain HTTP for the header's `max-age`.
+
+### 15b. Redis (shared rate-limit store)
+
+Rate limits (sign-in, sign-up, password reset, unsubscribe, contact, story
+submission and image upload, and later comments; the full list is in
+`backend/app/services/rate_limits.py`) are counted in Redis so every
+Gunicorn worker shares one count. While Redis is unavailable the app counts
+in PostgreSQL (`rate_limit_counters`) and logs `RATE LIMITING IS USING THE
+DATABASE FALLBACK` (at most once a minute); it retries Redis every 30
+seconds. It never falls back to per-process memory.
+
+Install and secure it on the VPS (Ubuntu/Debian):
+
+```bash
+sudo apt-get install -y redis-server
+```
+
+In `/etc/redis/redis.conf`:
+
+- `bind 127.0.0.1 ::1` and `protected-mode yes` (never expose port 6379).
+- `requirepass <long random value>` (generate with
+  `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`), then use
+  `REDIS_URL=redis://:<that value>@127.0.0.1:6379/0`.
+- Persistence is not required: counters are short-lived. `save ""` and
+  `appendonly no` are fine; losing counters on a Redis restart only resets
+  the current windows.
+- `maxmemory 64mb` and `maxmemory-policy volatile-ttl` (every counter has
+  an expiry).
+
+```bash
+sudo systemctl enable --now redis-server
+```
+
+```bash
+redis-cli -a '<password>' ping
+```
+
+Then confirm the app uses it:
+
+```bash
+flask --app run:app production-check
+```
+
+It prints `Rate-limit store: redis`; `database` there means Redis is not
+reachable and is reported as a warning.
 
 ### 15a. Security headers and the Content Security Policy
 

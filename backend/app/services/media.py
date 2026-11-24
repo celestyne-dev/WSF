@@ -29,7 +29,15 @@ class MediaService:
         os.makedirs(path, exist_ok=True)
         return path
 
-    def validate(self, file_storage):
+    # Public, anonymous uploads (story submission photos) use strict=True:
+    # the decoded image format must be one of these and match the
+    # extension; the declared MIME type must agree; the pixel count is
+    # capped (decompression bombs). The extension is only a first filter.
+    STRICT_FORMATS = {"jpg": "JPEG", "jpeg": "JPEG", "png": "PNG", "webp": "WEBP"}
+    STRICT_MIME = {"JPEG": {"image/jpeg"}, "PNG": {"image/png"}, "WEBP": {"image/webp"}}
+    STRICT_MAX_PIXELS = 40_000_000
+
+    def validate(self, file_storage, strict=False):
         if not file_storage or not file_storage.filename:
             raise ApiError("No file provided.", 400, code="no_file")
 
@@ -46,21 +54,59 @@ class MediaService:
 
         try:
             image = Image.open(file_storage.stream)
+            image_format = image.format
+            pixels = image.size[0] * image.size[1]
             image.verify()
         except Exception as exc:
             raise ApiError("File is not a valid image.", 415, code="invalid_image") from exc
         file_storage.stream.seek(0)
 
+        if strict:
+            expected = self.STRICT_FORMATS.get(ext)
+            if expected is None or image_format != expected:
+                raise ApiError("The file's contents don't match its type. Upload a JPEG, PNG or WebP image.",
+                               415, code="invalid_image")
+            declared = (file_storage.mimetype or "").lower()
+            if declared and declared not in self.STRICT_MIME[expected]:
+                raise ApiError("The file's declared type doesn't match the image.", 415, code="invalid_image")
+            if pixels > self.STRICT_MAX_PIXELS:
+                raise ApiError("This image is too large. Upload one under 40 megapixels.", 413, code="file_too_large")
+            # Decode fully once: truncated or corrupt pixel data fails here,
+            # not later during variant generation.
+            try:
+                with Image.open(file_storage.stream) as full:
+                    full.load()
+            except Exception as exc:
+                raise ApiError("File is not a valid image.", 415, code="invalid_image") from exc
+            file_storage.stream.seek(0)
+
         return ext
 
-    def save(self, file_storage, uploaded_by=None, alt_text=None, caption=None, credit=None):
-        ext = self.validate(file_storage)
+    @staticmethod
+    def _save_reencoded(file_storage, path, image_format):
+        with Image.open(file_storage.stream) as image:
+            clean = ImageOps.exif_transpose(image)
+            if image_format == "JPEG" and clean.mode not in ("RGB", "L"):
+                clean = clean.convert("RGB")
+            options = {"quality": 90} if image_format in ("JPEG", "WEBP") else {}
+            clean.save(path, image_format, **options)
+        file_storage.stream.seek(0)
+
+    def save(self, file_storage, uploaded_by=None, alt_text=None, caption=None, credit=None, strict=False):
+        """`strict=True` (public uploads): strict validation, and the stored
+        "original" is re-encoded from the decoded pixels instead of copied
+        byte for byte, so anything appended to the file (polyglot payloads)
+        and all metadata (EXIF, including GPS location) are dropped."""
+        ext = self.validate(file_storage, strict=strict)
         original_filename = secure_filename(file_storage.filename)
         file_uuid = str(uuid_lib.uuid4())
         stored_filename = f"{file_uuid}.{ext}"
 
         original_path = os.path.join(self._variant_dir("originals"), stored_filename)
-        file_storage.save(original_path)
+        if strict:
+            self._save_reencoded(file_storage, original_path, self.STRICT_FORMATS[ext])
+        else:
+            file_storage.save(original_path)
 
         base_image = ImageOps.exif_transpose(Image.open(original_path))
         width, height = base_image.size
