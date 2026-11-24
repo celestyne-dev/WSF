@@ -678,6 +678,20 @@ archives; listings without dates are untouched). The public site already
 hides them by date, so this only keeps Studio accurate; no extra timer is
 needed. `flask --app run:app expire-closed-listings` runs just that step.
 
+It also runs the retention engine once a day (`app/services/retention.py`;
+`flask --app run:app retention-run --dry-run` shows what it would remove):
+analytics events 14 months, sign-in/sign-up IP and browser 12 months,
+contact inquiries 2 years, inactive accounts 3 years (warning email 30 days
+before), declined story submissions 12 months, password-reset tokens 24
+hours, payment records 6 years, consent records 2 years after account
+deletion, moderator-removed comment text 12 months. Periods are editable in
+Studio -> Settings -> Retention (bounded). The "unverified accounts: 30 days"
+rule is NOT active: WSF has no email-verification flow yet.
+
+Server/error logs (90 days) are not application-controlled: install
+`deploy/journald/90-womenshapingfutures-retention.conf.example` and
+`deploy/logrotate/womenshapingfutures.example` (cron log file).
+
 It also clears article-comment IP hashes older than 90 days (comments keep
 only an HMAC-SHA256 hash of the client address, for abuse review; never the
 address itself). `flask --app run:app comments-purge-ip-hashes` runs just

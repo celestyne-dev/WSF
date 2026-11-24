@@ -5,14 +5,14 @@ import { fetchAdminSettings, saveAdminSettings } from '../../api/admin'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import MediaPicker from '../../components/cms/MediaPicker'
 import AppearanceSettingsPanel from '../../components/cms/AppearanceSettingsPanel'
-import { CookieConsentSettingsPanel, NewsletterPageSettingsPanel, NewsletterPopupSettingsPanel, CommentSettingsPanel } from '../../components/cms/EngagementSettingsPanels'
+import { CookieConsentSettingsPanel, NewsletterPageSettingsPanel, NewsletterPopupSettingsPanel, CommentSettingsPanel, RetentionSettingsPanel } from '../../components/cms/EngagementSettingsPanels'
 import TrackingSettingsPanel from '../../components/cms/TrackingSettingsPanel'
 import PaymentSettingsPanel from '../../components/cms/PaymentSettingsPanel'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 import { mapMediaRef } from '../../utils/media'
 
-const TABS = ['Site Identity', 'Appearance', 'Navigation', 'Footer', 'Newsletter', 'Newsletter popup', 'Cookie consent', 'Comments', 'Media Kit', 'Payments', 'Integrations']
+const TABS = ['Site Identity', 'Appearance', 'Navigation', 'Footer', 'Newsletter', 'Newsletter popup', 'Cookie consent', 'Comments', 'Retention', 'Media Kit', 'Payments', 'Integrations']
 
 const DEFAULT_IDENTITY = {
   siteName: 'Women Shaping Futures',
@@ -325,6 +325,8 @@ export default function AdminSettings() {
         {tab === 'Cookie consent' && <CookieConsentSettingsPanel />}
 
         {tab === 'Comments' && <CommentSettingsPanel />}
+
+        {tab === 'Retention' && <RetentionSettingsPanel />}
 
         {tab === 'Media Kit' && (
           <div className="space-y-4">

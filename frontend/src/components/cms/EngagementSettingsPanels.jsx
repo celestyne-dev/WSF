@@ -174,3 +174,32 @@ export function CommentSettingsPanel() {
     </div>
   )
 }
+
+// Studio -> Settings -> "Retention" (backend app/services/retention.py).
+// Bounded whole numbers only; the server rejects anything outside the range.
+export function RetentionSettingsPanel() {
+  const { value, setValue, error, saving, save } = useSettingsSection('retention')
+  if (error) return <p className="text-sm text-burgundy-600">{error}</p>
+  if (!value || !value.values) return <p className="text-sm text-charcoal-600">Loading…</p>
+  const set = (k) => (v) => setValue({ ...value, values: { ...value.values, [k]: v } })
+  return (
+    <div className="max-w-2xl space-y-5">
+      <p className="text-sm text-charcoal-600">
+        How long WSF keeps personal data before the daily maintenance job removes or reduces it. Changes are audited.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {Object.entries(value.rules).map(([key, rule]) => (
+          <NumberField key={key} id={`ret-${key}`} text={`${rule.label} (${rule.unit})`}
+            hint={`Default ${rule.default}; allowed ${rule.min}–${rule.max}.${key === 'unverifiedAccountDays' ? ' Not active: WSF has no email verification yet.' : ''}`}
+            value={value.values[key]} onChange={set(key)} min={rule.min} max={rule.max} />
+        ))}
+      </div>
+      <ul className="list-disc pl-5 text-xs text-charcoal-600">
+        {Object.entries(value.fixed).map(([key, f]) => <li key={key}>{f.label}: {f.value} days (fixed)</li>)}
+      </ul>
+      <button type="button" disabled={saving} className="btn-primary disabled:opacity-60" onClick={() => save({ values: value.values })}>
+        {saving ? 'Saving…' : 'Save retention periods'}
+      </button>
+    </div>
+  )
+}

@@ -221,7 +221,22 @@ def _account_facts():
     ]
 
 
-FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts), ("Account", _account_facts)]
+def _retention_facts():
+    from app.services.retention import FIXED_RULES, RETENTION_RULES, get_retention_settings
+
+    values = get_retention_settings()
+    periods = [f"{RETENTION_RULES[k][4]}: {v} {RETENTION_RULES[k][3]}" for k, v in values.items()
+               if k != "unverifiedAccountDays"]
+    periods += [f"{label}: {value} days" for value, label in FIXED_RULES.values()]
+    return [
+        "Retention (daily, logged counts only): " + "; ".join(periods) + ".",
+        "WARNING: the unverified-accounts rule (30 days) is NOT active: WSF has no email-verification flow, "
+        "so every member is unverified and the rule would delete them all.",
+    ]
+
+
+FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts), ("Account", _account_facts),
+                 ("Retention", _retention_facts)]
 
 
 def implementation_facts():

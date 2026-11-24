@@ -81,6 +81,9 @@ class User(db.Model):
     deletion_requested_at = db.Column(db.DateTime(timezone=True))
     deletion_scheduled_for = db.Column(db.DateTime(timezone=True), index=True)
     deletion_remove_comments = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
+    # Retention (Step 17): when the "account will be deleted for inactivity"
+    # email was handed off; cleared when the member uses the account again.
+    inactivity_warning_sent_at = db.Column(db.DateTime(timezone=True))
     # Private career-goal preferences (Career Hub CAREER_GOALS keys, at
     # most 3), used only to personalize this user's own Career Hub. Never
     # exposed publicly. `career_goals_prompted_at` records that the

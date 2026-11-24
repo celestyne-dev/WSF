@@ -110,7 +110,7 @@ function Detail({ id, onChanged }) {
           {item.editedAt && ' · edited'}</p>
         <div className="mt-2"><StatusText status={item.status} /></div>
         <p className="mt-3 whitespace-pre-line break-words border border-taupe-200 bg-ivory p-3 text-sm">
-          {item.body ?? <em>Text erased by its author.</em>}
+          {item.body ?? <em>{item.status === 'removed' ? 'Text erased 12 months after removal (retention).' : 'Text erased by its author.'}</em>}
         </p>
         {item.heldReasons?.length > 0 && (
           <ul className="mt-2 list-disc pl-5 text-xs text-charcoal-600">

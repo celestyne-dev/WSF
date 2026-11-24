@@ -168,8 +168,12 @@ def register_cli(app):
         # close date has passed get their stored status updated (the public
         # site already hides them by date; this keeps Studio accurate).
         _echo_expired(expire_closed_listings())
-        # And: comment IP hashes past their 90 days are cleared.
-        _echo_purged_ip_hashes()
+        # And: the retention engine (at most once a day; includes the 90-day
+        # comment IP hash rule) — app/services/retention.py.
+        from app.services.retention import run_retention_if_due
+
+        results = run_retention_if_due()
+        click.echo("Retention: not due yet." if results is None else f"Retention: {results}")
         # And: accounts whose 14-day deletion grace period has ended are purged.
         _echo_purged_accounts()
 
@@ -178,6 +182,16 @@ def register_cli(app):
 
         result = purge_due()
         click.echo(f"Purged {result['purged']} account(s) scheduled for deletion; {result['skipped']} blocked.")
+
+    @app.cli.command("retention-run")
+    @click.option("--dry-run", is_flag=True, help="Count what would be removed without changing anything.")
+    def retention_run_command(dry_run):
+        """Run every retention rule now (app/services/retention.py). Idempotent;
+        prints counts only. The maintenance command runs it daily."""
+        from app.services.retention import run_retention
+
+        for rule, count in run_retention(dry_run=dry_run).items():
+            click.echo(f"{rule}: {count}")
 
     @app.cli.command("accounts-purge-due")
     def accounts_purge_due_command():

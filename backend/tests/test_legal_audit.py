@@ -139,3 +139,12 @@ def test_implementation_facts_cover_account_export_and_deletion(app):
     with app.app_context():
         text = " ".join(line for section, line in implementation_facts() if section == "Account")
     assert "14-day grace period" in text and "JSON data export" in text and "retain=5" in text
+
+
+def test_implementation_facts_cover_retention(app):
+    from app.services.legal_audit import implementation_facts
+
+    with app.app_context():
+        text = " ".join(line for section, line in implementation_facts() if section == "Retention")
+    assert "Analytics events: 14 months" in text and "Payment records: 6 years" in text
+    assert "unverified-accounts rule (30 days) is NOT active" in text

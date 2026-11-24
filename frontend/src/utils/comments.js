@@ -74,6 +74,7 @@ export const HISTORY_LABELS = {
   user_suspended: 'Member suspended from comments',
   user_banned: 'Member banned from comments',
   user_restriction_lifted: 'Comment restriction lifted',
+  body_erased: 'Text erased (retention period ended)',
 }
 
 export const MODERATION_QUEUES = [

@@ -1,0 +1,7 @@
+# Women Shaping Futures: application logs reach journald via stdout/stderr
+# (gunicorn + Flask). Keep at most 90 days (Step 17 retention). Install as
+# /etc/systemd/journald.conf.d/90-womenshapingfutures-retention.conf and run
+# `systemctl restart systemd-journald`. Note: this applies to the whole
+# journal on the VPS, not only WSF's units.
+[Journal]
+MaxRetentionSec=90day

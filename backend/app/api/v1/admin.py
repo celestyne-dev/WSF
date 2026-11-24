@@ -49,6 +49,12 @@ from app.services.comment_settings import (
     get_comment_settings,
     save_comment_settings,
 )
+from app.services.retention import (
+    RETENTION_KEY,
+    RetentionSettingsError,
+    retention_settings_payload,
+    save_retention_settings,
+)
 from app.services.tracking_settings import TRACKING_KEY, TrackingSettingsError, get_tracking_settings, save_tracking_settings
 from app.services.audit import log_action
 from app.services.cms import (
@@ -406,7 +412,7 @@ class AdminFooterResource(Resource):
 
 
 ADMIN_SETTINGS_KEYS = {"audience_stats", SITE_IDENTITY_KEY, PAYMENT_SETTINGS_KEY, APPEARANCE_KEY, NEWSLETTER_POPUP_KEY, COOKIE_CONSENT_KEY, TRACKING_KEY,
-                      NEWSLETTER_PAGE_KEY, COMMENTS_KEY}
+                      NEWSLETTER_PAGE_KEY, COMMENTS_KEY, RETENTION_KEY}
 
 
 class AdminSettingsResource(Resource):
@@ -507,6 +513,15 @@ class AdminSettingsResource(Resource):
             log_action(current_user, "settings.update", "SiteSetting", entity_id=COMMENTS_KEY,
                        changes=comment_settings_audit_summary(comment_settings))
 
+        if RETENTION_KEY in settings_data:
+            # Retention periods (app/services/retention.py): bounded whole
+            # numbers only; payments can't go below the approved 6 years.
+            try:
+                retention = save_retention_settings(settings_data[RETENTION_KEY])
+            except RetentionSettingsError as exc:
+                raise ApiError(str(exc), 422, code="validation_error")
+            log_action(current_user, "settings.update", "SiteSetting", entity_id=RETENTION_KEY, changes=retention)
+
         if "audience_stats" in settings_data:
             audience_value = settings_data["audience_stats"]
             if not isinstance(audience_value, dict):
@@ -530,6 +545,7 @@ class AdminSettingsResource(Resource):
             NEWSLETTER_PAGE_KEY: get_newsletter_page(),
             TRACKING_KEY: get_tracking_settings(),
             COMMENTS_KEY: get_comment_settings(),
+            RETENTION_KEY: retention_settings_payload(),
         }
 
 
