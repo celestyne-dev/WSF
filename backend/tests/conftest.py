@@ -47,6 +47,8 @@ AS $$
     setweight(to_tsvector('english', COALESCE(subtitle, '') || ' ' || COALESCE(excerpt, '')), 'B') ||
     setweight(to_tsvector('english', wsf_block_list_text(content::jsonb)), 'C');
 $$;
+ALTER FUNCTION wsf_block_list_text(jsonb) SET search_path = public, pg_catalog;
+ALTER FUNCTION wsf_article_search_vector(text, text, text, json) SET search_path = public, pg_catalog;
 """
 
 

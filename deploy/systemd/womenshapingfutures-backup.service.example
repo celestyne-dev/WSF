@@ -1,0 +1,19 @@
+# /etc/systemd/system/womenshapingfutures-backup.service
+# Runs one encrypted, off-site backup (deploy/backup/wsf-backup.sh).
+[Unit]
+Description=Women Shaping Futures encrypted off-site backup
+Wants=network-online.target
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=WSF_BACKUP_ENV=/etc/womenshapingfutures/backup.env
+ExecStart=/var/www/womenshapingfutures/deploy/backup/wsf-backup.sh
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/tmp
+ProtectHome=read-only
+NoNewPrivileges=true

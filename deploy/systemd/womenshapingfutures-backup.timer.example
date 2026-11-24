@@ -1,0 +1,12 @@
+# /etc/systemd/system/womenshapingfutures-backup.timer
+# Daily at about 02:30 server time; runs at the next boot if a run was missed.
+[Unit]
+Description=Daily Women Shaping Futures backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

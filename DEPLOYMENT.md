@@ -299,31 +299,102 @@ Nginx serves `dist/` directly (see `deploy/nginx/womenshapingfutures.conf.exampl
 Never run `npm run dev` in production, and never point Nginx at anything
 other than the built `dist/` directory.
 
-## 10. Backups (do this before every deploy that includes a migration)
+## 10. Backups (automated, encrypted, off-site)
 
-**Database:**
+`deploy/backup/wsf-backup.sh` runs daily from a systemd timer. Each run:
+dumps PostgreSQL (`pg_dump -Fc`, checked with `pg_restore --list`), archives
+`MEDIA_ROOT`, `PROTECTED_MEDIA_ROOT` and the backend `.env`, encrypts the
+bundle with **age** to a public key only (the VPS cannot decrypt its own
+backups), writes a SHA-256 checksum, uploads both with **rclone** to off-site
+storage, verifies the upload (size, then a full re-download hash), applies
+retention (newest **30 daily** and **12 monthly**; the monthly copy is made on
+the 1st of each month, UTC), and deletes its local working files: no backup
+stays on the VPS. Any failure exits non-zero, so systemd marks the run
+failed (`systemctl status womenshapingfutures-backup`, `journalctl -u
+womenshapingfutures-backup`).
 
-```bash
-pg_dump -U <db_user> -h <db_host> <db_name> | gzip > backup-$(date +%Y%m%d-%H%M%S).sql.gz
-```
+Restorability fix: migration `c6f2b8d0e4a7` pins `search_path` on the search
+functions. Without it, no dump of this database could be restored (the
+article search index failed during `pg_restore`); run migrations before
+relying on backups.
 
-Never put the real password inline in a script committed to this repo —
-use a `.pgpass` file or an environment variable read at run time.
+**One-time set-up on the VPS** (as root):
 
-**Media:** the database backup alone is not sufficient — uploaded files
-live on disk under `MEDIA_ROOT`, not in Postgres. Back it up separately,
-e.g.:
+1. Tools:
 
-```bash
-tar czf media-backup-$(date +%Y%m%d-%H%M%S).tar.gz -C /var/lib/womenshapingfutures media
-```
+   ```bash
+   apt-get install -y age rclone postgresql-client
+   ```
 
-**Retention** (a policy to configure, not something this repo automates):
-keep daily backups for at least a week, weekly for a month, and keep at
-least one copy off the VPS itself (a second host, object storage, etc.) —
-a backup that lives only on the machine it protects doesn't protect
-against that machine failing. Test restoring from a backup periodically;
-an untested backup is not a verified one.
+2. Keys. Create the key pair on a trusted computer, **not** the VPS, and keep
+   the private key (`AGE-SECRET-KEY-...`) in the password manager or offline:
+
+   ```bash
+   age-keygen -o wsf-backup-identity.txt
+   ```
+
+   Copy only the public key line (`age1...`, printed by `age-keygen -y
+   wsf-backup-identity.txt`) to the VPS:
+   `/etc/womenshapingfutures/backup-recipients.txt` (chmod 600).
+3. Off-site storage: an object-storage bucket (or SFTP host) with a provider
+   that is not this VPS. Configure it with `rclone config` as root (stored in
+   `/root/.config/rclone/rclone.conf`, chmod 600). Prefer credentials that can
+   only write to that bucket, and enable the provider's object versioning or
+   object lock if it offers them.
+4. Database access: a read-only role is enough. Put its password in
+   `/root/.pgpass` (chmod 600), never in a script or on a command line.
+5. Configuration: copy `deploy/backup/backup.env.example` to
+   `/etc/womenshapingfutures/backup.env`, fill it in, `chmod 600`. The script
+   refuses to run if that file is readable by others, or if the recipients
+   file contains a private key.
+6. Schedule:
+
+   ```bash
+   cp deploy/systemd/womenshapingfutures-backup.service.example /etc/systemd/system/womenshapingfutures-backup.service
+   ```
+
+   ```bash
+   cp deploy/systemd/womenshapingfutures-backup.timer.example /etc/systemd/system/womenshapingfutures-backup.timer
+   ```
+
+   ```bash
+   systemctl daemon-reload && systemctl enable --now womenshapingfutures-backup.timer
+   ```
+
+7. First run and check:
+
+   ```bash
+   systemctl start womenshapingfutures-backup.service && journalctl -u womenshapingfutures-backup -n 30
+   ```
+
+**Before every deploy that includes a migration**, also run the backup service
+once by hand (step 7) and confirm it succeeded.
+
+**Restore test** (at least once a month, and after any change to the backup
+set-up). `deploy/backup/wsf-restore-test.sh [latest | daily/<name> |
+monthly/<name>]` downloads a backup, checks its SHA-256, decrypts it with the
+private key (`AGE_IDENTITY_FILE`), checks the inner checksums, restores into
+a **temporary** database `wsf_restore_test_<timestamp>`, checks the Alembic
+revision (against `EXPECTED_ALEMBIC_HEAD` when set), prints representative
+record counts (users, articles, pages, media), confirms sampled media rows
+have their files, runs `flask --app run:app production-check` with the
+restored `.env` against the temporary database, and finally drops the
+temporary database and deletes every temporary file. It never touches the
+live database or media. Run it on a separate machine with PostgreSQL, or on
+the VPS with the private key copied in only for the test and deleted
+afterwards.
+
+**Full restore** (disaster recovery) uses the same steps as the restore test
+but into the real database name and real media paths, after stopping the
+service; follow the test's steps by hand.
+
+### Hostinger specifics that still need checking
+
+Not verified from this repository (no access to hPanel): whether the plan
+includes Hostinger's own VPS snapshots/backups, their schedule, retention and
+location, and whether they are stored off the VPS. Treat them, if present, as
+an extra layer only: they are not encrypted with WSF's key and are not
+restore-tested by this procedure.
 
 ## 11. Gunicorn
 
