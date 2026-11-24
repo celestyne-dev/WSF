@@ -128,6 +128,14 @@ class LoginResource(Resource):
             return error_response("Invalid email or password.", 401, code="invalid_credentials")
         if not user.is_active:
             return error_response("This account has been deactivated.", 403, code="account_inactive")
+        if user.deletion_scheduled_for is not None:
+            # Scheduled for deletion (Step 16): no session, only the option to
+            # cancel the deletion (app/services/account_privacy.py).
+            from app.services.account_privacy import issue_login_cancel_token
+
+            return success_response({"deletion_pending": True,
+                                     "deletion_scheduled_for": user.deletion_scheduled_for.isoformat(),
+                                     "cancel_token": issue_login_cancel_token(user)})
 
         # Two-factor (app/services/two_factor.py): the password alone never
         # creates a session for an account that has, or must have, 2FA.

@@ -75,6 +75,7 @@ from app.models.newsletter import (  # noqa: F401
     NewsletterSubscriberEvent,
     NewsletterSuppressionImport,
 )
+from app.models.privacy import PrivacyRequest  # noqa: F401
 from app.models.comment import (  # noqa: F401
     Comment,
     CommentEvent,

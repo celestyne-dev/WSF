@@ -77,7 +77,7 @@ def validate_session(raw):
     if _aware(session.expires_at) <= _now():
         raise RefreshSessionError("expired")
     user = db.session.get(User, session.user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or user.deletion_scheduled_for is not None:
         raise RefreshSessionError("inactive")
     if session.auth_version != user.auth_version:
         raise RefreshSessionError("credentials_changed")

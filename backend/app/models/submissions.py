@@ -191,6 +191,9 @@ class StorySubmission(db.Model):
 
     # --- Review / status ---
     status = db.Column(db.String(20), nullable=False, default="submitted")
+    # Set when the submitter's WSF account was deleted and this submission was
+    # anonymised (it feeds a published article); identity fields then cleared.
+    anonymised_at = db.Column(db.DateTime(timezone=True))
     editorial_assessment = db.Column(db.Text)
     assigned_editor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     reviewed_at = db.Column(db.DateTime(timezone=True))

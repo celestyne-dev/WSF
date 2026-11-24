@@ -13,6 +13,10 @@ def _require_active_user():
     # delegates to the wrapped object.
     if not current_user or not current_user.is_active:
         return error_response("Account is inactive or no longer exists.", 403, code="forbidden")
+    # Scheduled for deletion (Step 16): sessions were revoked at request time;
+    # this also refuses any token that somehow survived.
+    if current_user.deletion_scheduled_for is not None:
+        return error_response("This account is scheduled for deletion.", 403, code="account_deletion_pending")
     # A temporary/reset password forces a change before anything else —
     # checked here, ahead of the permission/role evaluation each wrapper
     # below does next, so it can't be bypassed by holding any particular

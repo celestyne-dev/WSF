@@ -229,7 +229,9 @@ class CircleSubscription(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Payment record kept for 6 years (Step 16): account deletion detaches it
+    # (SET NULL) instead of deleting it.
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     # RESTRICT (the FK default): a plan referenced by any subscription —
     # current or historical — can never be deleted, only archived (see
     # CirclePlan.status), so a subscription never loses its plan.
@@ -363,7 +365,9 @@ class CirclePayment(db.Model):
     # one key every idempotency check in later modules locks/queries on.
     reference = db.Column(db.String(100), unique=True, nullable=False, index=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Payment record kept for 6 years (Step 16): account deletion detaches it
+    # (SET NULL) instead of deleting it.
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     # RESTRICT (the FK default), same reasoning as CircleSubscription.plan_id
     # above: a plan referenced by any payment — current or historical —
     # can never be deleted, only archived.

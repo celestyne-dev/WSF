@@ -12,7 +12,7 @@ import { USE_MOCK, setAccessToken, waitForSession } from '../../api/client'
 export const loginUser = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   const res = await loginApi(credentials)
   if (!res.success) return rejectWithValue(res.message)
-  if (res.twoFactor) return res // a second step is needed; no session yet
+  if (res.twoFactor || res.deletionPending) return res // a second step is needed; no session yet
   setAccessToken(res.accessToken)
   return res
 })
@@ -91,7 +91,7 @@ const authSlice = createSlice({
         state.error = null
       })
       .addCase(loginUser.fulfilled, (state, action) => {
-        if (action.payload.twoFactor) {
+        if (action.payload.twoFactor || action.payload.deletionPending) {
           state.status = 'idle' // the login page shows the two-factor step
           return
         }

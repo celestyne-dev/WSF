@@ -24,6 +24,10 @@ LIMITS = {
     "newsletter_unsubscribe": "5 per minute; 30 per hour",
     "newsletter_unsubscribe_link": "30 per minute",
     "newsletter_confirm": "30 per minute",
+    # Step 16 account self-service (per client IP, shared store)
+    "account_export": "5 per hour",
+    "account_deletion": "10 per hour",
+    "privacy_request": "5 per day",
     # Public forms
     "contact": "5 per minute; 30 per day",
     "story_submission": "5 per minute; 20 per day",

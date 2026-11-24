@@ -203,7 +203,25 @@ def _email_facts():
     ]
 
 
-FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts)]
+def _account_facts():
+    from app.services.account_privacy import FK_TREATMENT, GRACE_PERIOD
+
+    counts = {}
+    for decision, _note in FK_TREATMENT.values():
+        counts[decision] = counts.get(decision, 0) + 1
+    return [
+        "Account self-service: JSON data export (Account -> Privacy & data) and deletion with a "
+        f"{GRACE_PERIOD.days}-day grace period (all sessions revoked at request; cancellable by signing in or the "
+        "emailed link; purged automatically by the scheduled maintenance job).",
+        f"Account deletion treatment of {len(FK_TREATMENT)} references to the account: "
+        + ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+        + ". Payment records are kept and detached; comments become 'Former member' (or are removed on request); "
+          "published reader stories are anonymised; the audit log keeps actions without the identity link.",
+        "Privacy requests: Studio log (access, correction, deletion, other) with a 30-day operational target.",
+    ]
+
+
+FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts), ("Account", _account_facts)]
 
 
 def implementation_facts():

@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutGrid, UserRound, Bookmark, CalendarDays, GraduationCap, Users, Sparkles, ShieldCheck, LogOut } from 'lucide-react'
+import { LayoutGrid, UserRound, Bookmark, CalendarDays, GraduationCap, Users, Sparkles, ShieldCheck, FileLock2, LogOut } from 'lucide-react'
 
 const NAV_GROUPS = [
   {
@@ -26,7 +26,10 @@ const NAV_GROUPS = [
   },
   {
     label: 'Settings',
-    items: [{ to: '/account/security', label: 'Security', icon: ShieldCheck }],
+    items: [
+      { to: '/account/security', label: 'Security', icon: ShieldCheck },
+      { to: '/account/privacy', label: 'Privacy & data', icon: FileLock2 },
+    ],
   },
 ]
 

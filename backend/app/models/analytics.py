@@ -20,7 +20,7 @@ class AnalyticsEvent(db.Model):
     payload = db.Column(db.JSON)
     acquisition = db.Column(db.JSON)
     session_id = db.Column(db.String(100))
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False, index=True)
 
     user = db.relationship("User", foreign_keys=[user_id])

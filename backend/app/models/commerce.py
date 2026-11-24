@@ -533,7 +533,8 @@ class Order(db.Model):
     # app/services/orders.py:generate_order_reference) and never rewritten.
     reference = db.Column(db.String(30), unique=True, nullable=True, index=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # nullable: guest checkout
+    # nullable: guest checkout; SET NULL: an order is a payment record kept 6 years after account deletion
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     email = db.Column(db.String(255), nullable=False)
     customer_name = db.Column(db.String(200))
     phone = db.Column(db.String(50))

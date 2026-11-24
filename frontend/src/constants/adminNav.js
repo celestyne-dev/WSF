@@ -186,6 +186,7 @@ export const NAV_GROUPS = [
       { to: '/admin/users', icon: Users, label: 'Users', permission: ['users.view', 'users.manage', 'roles.manage'] },
       { to: '/admin/roles', icon: ShieldCheck, label: 'Roles & Permissions', permission: ['users.view', 'users.manage', 'roles.manage'] },
       { to: '/admin/audit', icon: History, label: 'Audit Log', permission: ['audit.view'] },
+      { to: '/admin/privacy-requests', icon: ShieldCheck, label: 'Privacy requests', permission: ['users.manage'] },
       { to: '/admin/settings', icon: Settings, label: 'Settings', permission: ['settings.manage'] },
     ],
   },

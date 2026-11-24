@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { loginUser } from '../features/auth/authSlice'
+import { cancelDeletionWithLoginToken } from '../api/accountPrivacy'
 import useSeo from '../hooks/useSeo'
 import { getPostLoginRoute, sanitizeReturnTo } from '../utils/permissions'
 import TwoFactorSignIn from '../components/auth/TwoFactorSignIn'
@@ -17,12 +18,19 @@ export default function LoginPage() {
   // {mode: 'challenge'|'setup', token} after a correct password when the
   // account has, or must set up, two-factor authentication.
   const [twoFactorStep, setTwoFactorStep] = useState(null)
+  // Account scheduled for deletion: offer cancellation, no session (Step 16).
+  const [deletionStep, setDeletionStep] = useState(null)
+  const [cancelling, setCancelling] = useState(false)
 
   useSeo({ title: 'Login | Women Shaping Futures', description: 'Sign in to your Women Shaping Futures account.', robots: 'noindex, follow' })
 
   async function handleSubmit(e) {
     e.preventDefault()
     const result = await dispatch(loginUser({ email, password }))
+    if (result.meta.requestStatus === 'fulfilled' && result.payload.deletionPending) {
+      setDeletionStep(result.payload.deletionPending)
+      return
+    }
     if (result.meta.requestStatus === 'fulfilled' && result.payload.twoFactor) {
       setTwoFactorStep(result.payload.twoFactor)
       setPassword('')
@@ -54,7 +62,38 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <p className="eyebrow text-center">Welcome back</p>
         <h1 className="mt-2 text-center font-serif text-3xl font-semibold text-charcoal">Sign in to WSF</h1>
-        {twoFactorStep ? (
+        {deletionStep ? (
+          <div className="mt-8 space-y-4" role="alert">
+            <p className="text-sm text-charcoal">
+              Your account is scheduled for deletion on{' '}
+              <strong>{new Date(deletionStep.scheduledFor).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>.
+              Until then you can keep it.
+            </p>
+            <button
+              type="button"
+              disabled={cancelling}
+              className="btn-primary w-full disabled:opacity-60"
+              onClick={async () => {
+                setCancelling(true)
+                const res = await cancelDeletionWithLoginToken(deletionStep.cancelToken)
+                setCancelling(false)
+                if (!res.success) {
+                  toast.error(res.message)
+                  setDeletionStep(null)
+                  return
+                }
+                toast.success('Deletion cancelled. Welcome back.')
+                setDeletionStep(null)
+                handleSubmit({ preventDefault() {} })
+              }}
+            >
+              {cancelling ? 'Cancelling…' : 'Cancel the deletion and sign in'}
+            </button>
+            <button type="button" className="w-full text-xs font-semibold text-charcoal-600 hover:underline" onClick={() => { setDeletionStep(null); setPassword('') }}>
+              Keep the deletion
+            </button>
+          </div>
+        ) : twoFactorStep ? (
           <div className="mt-8">
             <TwoFactorSignIn step={twoFactorStep} onSignedIn={goOn} onCancel={() => setTwoFactorStep(null)} />
           </div>

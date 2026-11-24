@@ -74,6 +74,13 @@ class User(db.Model):
     # password through the normal /auth/change-password flow.
     auth_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     last_login_at = db.Column(db.DateTime(timezone=True))
+    # Self-service account deletion (Step 16, app/services/account_deletion.py):
+    # requested -> scheduled for +14 days (grace period, cancellable); every
+    # session is revoked at request time and the account can't be used;
+    # after the date it is purged automatically.
+    deletion_requested_at = db.Column(db.DateTime(timezone=True))
+    deletion_scheduled_for = db.Column(db.DateTime(timezone=True), index=True)
+    deletion_remove_comments = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
     # Private career-goal preferences (Career Hub CAREER_GOALS keys, at
     # most 3), used only to personalize this user's own Career Hub. Never
     # exposed publicly. `career_goals_prompted_at` records that the

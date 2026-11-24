@@ -54,6 +54,8 @@ export async function login({ email, password }) {
       const { data } = await apiClient.post('/auth/login', { email, password })
       // Two-factor: the password was right but no session exists yet.
       if (data.two_factor) return { success: true, twoFactor: { mode: data.two_factor, token: data.two_factor_token } }
+      // Scheduled for deletion: no session, only the option to cancel (Step 16).
+      if (data.deletion_pending) return { success: true, deletionPending: { scheduledFor: data.deletion_scheduled_for, cancelToken: data.cancel_token } }
       return { success: true, accessToken: data.access_token, user: mapUser(data.user) }
     } catch (err) {
       return { success: false, message: err.apiError?.message || 'Invalid email or password.' }

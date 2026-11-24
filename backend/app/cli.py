@@ -170,6 +170,21 @@ def register_cli(app):
         _echo_expired(expire_closed_listings())
         # And: comment IP hashes past their 90 days are cleared.
         _echo_purged_ip_hashes()
+        # And: accounts whose 14-day deletion grace period has ended are purged.
+        _echo_purged_accounts()
+
+    def _echo_purged_accounts():
+        from app.services.account_privacy import purge_due
+
+        result = purge_due()
+        click.echo(f"Purged {result['purged']} account(s) scheduled for deletion; {result['skipped']} blocked.")
+
+    @app.cli.command("accounts-purge-due")
+    def accounts_purge_due_command():
+        """Idempotent: permanently deletes accounts whose 14-day deletion
+        grace period has ended (app/services/account_privacy.py). Also runs
+        inside publish-due-content. Prints counts only."""
+        _echo_purged_accounts()
 
     def _echo_purged_ip_hashes():
         from app.services.comments import purge_expired_ip_hashes

@@ -162,6 +162,9 @@ const AdminContactInquiries = lazy(() => import('../pages/admin/AdminContactInqu
 const AdminComments = lazy(() => import('../pages/admin/AdminComments'))
 const CommentUnsubscribePage = lazy(() => import('../pages/CommentUnsubscribePage'))
 const NewsletterConfirmPage = lazy(() => import('../pages/NewsletterConfirmPage'))
+const AccountDeletionCancelPage = lazy(() => import('../pages/AccountDeletionCancelPage'))
+const AccountPrivacyPage = lazy(() => import('../pages/AccountPrivacyPage'))
+const AdminPrivacyRequests = lazy(() => import('../pages/admin/AdminPrivacyRequests'))
 const AdminContactInquiryDetail = lazy(() => import('../pages/admin/AdminContactInquiryDetail'))
 const AdminDirectoryListings = lazy(() => import('../pages/admin/AdminDirectoryListings'))
 const AdminDirectoryListingDetail = lazy(() => import('../pages/admin/AdminDirectoryListingDetail'))
@@ -245,6 +248,7 @@ export default function AppRoutes() {
           <Route path="/newsletter/unsubscribe/:token" element={<NewsletterUnsubscribePage />} />
           <Route path="/comments/unsubscribe/:token" element={<CommentUnsubscribePage />} />
           <Route path="/newsletter/confirm/:token" element={<NewsletterConfirmPage />} />
+          <Route path="/account/deletion/cancel/:token" element={<AccountDeletionCancelPage />} />
           <Route path="/newsletter/:slug" element={<NewsletterIssuePage />} />
           <Route path="/partnerships" element={<PartnershipsPage />} />
           <Route path="/advertise" element={<AdvertisePage />} />
@@ -269,6 +273,7 @@ export default function AppRoutes() {
             <Route path="community" element={<AccountCommunityPage />} />
             <Route path="membership" element={<AccountMembershipPage />} />
             <Route path="security" element={<AccountSecurityPage />} />
+            <Route path="privacy" element={<AccountPrivacyPage />} />
           </Route>
           <Route path="/submit" element={<SubmitStoryPage />} />
           <Route path="/nominate" element={<NominatePage />} />
@@ -386,6 +391,7 @@ export default function AppRoutes() {
           <Route path="nominations/:id" element={<AdminNominationDetail />} />
           <Route path="contact" element={<AdminContactInquiries />} />
           <Route path="comments" element={<AdminComments />} />
+          <Route path="privacy-requests" element={<AdminPrivacyRequests />} />
           <Route path="contact/:id" element={<AdminContactInquiryDetail />} />
           <Route path="directory/listings" element={<AdminDirectoryListings />} />
           <Route path="directory/listings/:id" element={<AdminDirectoryListingDetail />} />

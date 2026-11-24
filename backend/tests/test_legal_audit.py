@@ -131,3 +131,11 @@ def test_implementation_facts_flag_a_missing_footer_address(app):
         db.session.commit()
         email_lines = [line for section, line in implementation_facts() if section == "Email"]
         assert "Email footer postal address: set in Studio." in email_lines
+
+
+def test_implementation_facts_cover_account_export_and_deletion(app):
+    from app.services.legal_audit import implementation_facts
+
+    with app.app_context():
+        text = " ".join(line for section, line in implementation_facts() if section == "Account")
+    assert "14-day grace period" in text and "JSON data export" in text and "retain=5" in text

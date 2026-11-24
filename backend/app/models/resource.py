@@ -440,7 +440,9 @@ class ResourcePurchase(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Payment record kept for 6 years (Step 16): account deletion detaches it
+    # (SET NULL) instead of deleting it.
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     # RESTRICT (the FK default) — same reasoning as CircleSubscription.plan_id
     # in app/models/circle.py: a Resource referenced by any purchase, ever,
     # can never be hard-deleted, only archived (see Resource.status and
@@ -526,7 +528,9 @@ class ResourcePayment(db.Model):
     # locks/queries on.
     reference = db.Column(db.String(100), unique=True, nullable=False, index=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Payment record kept for 6 years (Step 16): account deletion detaches it
+    # (SET NULL) instead of deleting it.
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     # RESTRICT (the FK default) — same reasoning as ResourcePurchase.resource_id
     # above: a Resource referenced by any payment, current or historical,
     # can never be hard-deleted, only archived.

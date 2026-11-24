@@ -33,3 +33,6 @@ class ConsentRecord(db.Model):
     marketing = db.Column(db.Boolean, nullable=False)
     decided_at = db.Column(db.DateTime(timezone=True), nullable=False)
     recorded_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    # When the account it belonged to was deleted (user_id then NULL): the record
+    # is kept for 2 years after that (Step 17 retention: account lifetime + 2 years).
+    account_deleted_at = db.Column(db.DateTime(timezone=True))

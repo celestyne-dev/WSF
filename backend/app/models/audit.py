@@ -17,7 +17,9 @@ class AuditLog(db.Model):
     __table_args__ = (db.Index("ix_audit_logs_entity_type_entity_id", "entity_type", "entity_id"),)
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    # SET NULL (Step 16): deleting an account keeps its audit history (action,
+    # time, entity) and removes only the link to the person.
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     action = db.Column(db.String(100), nullable=False, index=True)  # e.g. "article.publish"
     entity_type = db.Column(db.String(100), nullable=False)
     entity_id = db.Column(db.String(100), nullable=True)
