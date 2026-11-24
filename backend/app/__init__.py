@@ -78,7 +78,10 @@ def create_app(config_name="development"):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
+    # supports_credentials: the HttpOnly refresh cookie is only ever sent to
+    # /api/v1/auth/refresh (its Path); allowed origins stay the explicit
+    # CORS_ORIGINS list (never "*"), and that endpoint is CSRF-checked.
+    cors.init_app(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}}, supports_credentials=True)
     ma.init_app(app)
     limiter.init_app(app)
 

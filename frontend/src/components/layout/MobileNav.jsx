@@ -21,8 +21,7 @@ export default function MobileNav() {
   const navigation = useSelector((s) => s.site.navigation)
   const user = useSelector((s) => s.auth.user)
   const accessToken = useSelector((s) => s.auth.accessToken)
-  // Same rules as AccountMenu: a stored token while restoreSession() is in
-  // flight counts as signed in; Studio waits for `user` permissions.
+  // Same rules as AccountMenu; Studio waits for `user` permissions.
   const isAuthenticated = Boolean(user || accessToken)
   const studioHref = user && hasCmsAccess(user) ? getDefaultCmsRoute(user) : null
   const dispatch = useDispatch()

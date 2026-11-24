@@ -1,7 +1,7 @@
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.user import Permission, Role, User
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, refresh_cookie_value, refresh_session
 
 
 def _register_and_login(client, email="jane@example.com", password="supersecret1"):
@@ -223,7 +223,8 @@ class TestActivationDeactivation:
             json={"email": "refreshvictim@example.com", "password": "supersecret1", "first_name": "R", "last_name": "V"},
         )
         login = client.post("/api/v1/auth/login", json={"email": "refreshvictim@example.com", "password": "supersecret1"})
-        refresh_token = login.get_json()["data"]["refresh_token"]
+        assert login.status_code == 200
+        victim_cookie = refresh_cookie_value(client)
 
         admin_headers = _super_admin_headers(client, app, email="deactivator2@example.com")
         with app.app_context():
@@ -231,9 +232,10 @@ class TestActivationDeactivation:
             target_id = target.id
         client.patch(f"/api/v1/admin/users/{target_id}/status", json={"is_active": False}, headers=admin_headers)
 
-        resp = client.post("/api/v1/auth/refresh", headers=auth_headers(refresh_token))
-        assert resp.status_code == 403
-        assert resp.get_json()["error"]["code"] == "account_inactive"
+        # Deactivation revokes every refresh session of the account.
+        resp = refresh_session(client, victim_cookie)
+        assert resp.status_code == 401
+        assert resp.get_json()["error"]["code"] == "session_revoked"
 
 
 class TestLastSuperAdminProtection:

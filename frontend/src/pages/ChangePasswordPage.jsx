@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { changePassword } from '../api/auth'
-import { restoreSession, setUser } from '../features/auth/authSlice'
+import { setUser } from '../features/auth/authSlice'
 import { getPostLoginRoute } from '../utils/permissions'
 import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
@@ -22,13 +22,10 @@ import PageLoader from '../components/ui/PageLoader'
 // confirms mustChangePassword is still true.
 export default function ChangePasswordPage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
+  const sessionChecked = useSelector((s) => s.auth.sessionChecked)
   const user = useSelector((s) => s.auth.user)
   const dispatch = useDispatch()
   const navigate = useNavigate()
-
-  useEffect(() => {
-    if (accessToken && !user) dispatch(restoreSession())
-  }, [accessToken, user, dispatch])
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -38,6 +35,7 @@ export default function ChangePasswordPage() {
 
   useSeo({ title: 'Change Password | Women Shaping Futures', robots: 'noindex, nofollow' })
 
+  if (!sessionChecked) return <PageLoader />
   if (!accessToken) return <Navigate to="/login" replace />
   if (!user) return <PageLoader />
 

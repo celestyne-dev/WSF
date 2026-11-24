@@ -1,60 +1,58 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
-import { login as loginApi, logout as logoutApi, register as registerApi, fetchCurrentUser } from '../../api/auth'
-import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, clearStoredAuth } from '../../api/client'
+import { login as loginApi, logout as logoutApi, register as registerApi, resumeSession } from '../../api/auth'
+import { USE_MOCK, setAccessToken, waitForSession } from '../../api/client'
 
-const storedToken = typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null
+// Session model: the access token is kept only in memory (here and in
+// api/client.js); the refresh credential is an HttpOnly cookie that
+// JavaScript never sees. On every page load restoreSession() asks the
+// server for a new access token with that cookie (silent refresh).
+// `sessionChecked` is false until that first answer arrives, so guards can
+// wait instead of bouncing a signed-in member to /login.
 
 export const loginUser = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   const res = await loginApi(credentials)
   if (!res.success) return rejectWithValue(res.message)
-  localStorage.setItem(ACCESS_TOKEN_KEY, res.accessToken)
-  if (res.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, res.refreshToken)
+  setAccessToken(res.accessToken)
   return res
 })
 
 // Same shape/convention as loginUser above — a successful public
 // registration logs the new account straight in (self-chosen password, no
-// forced change), so it persists tokens the identical way.
+// forced change): the server sets the refresh cookie the identical way.
 export const registerUser = createAsyncThunk('auth/register', async (payload, { rejectWithValue }) => {
   const res = await registerApi(payload)
   if (!res.success) return rejectWithValue(res)
-  localStorage.setItem(ACCESS_TOKEN_KEY, res.accessToken)
-  if (res.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, res.refreshToken)
+  setAccessToken(res.accessToken)
   return res
 })
 
 // Shared by the CMS header's logout button and /account's/MobileNav's
-// sign-out actions. Starts the backend blocklist request, then clears the
-// local session IMMEDIATELY — not after awaiting that request — so a
-// slow or offline backend can never leave the browser looking
-// authenticated after the user pressed Sign out. logoutApi() captures the
-// access token itself before this reads; the local `logout` reducer below
-// clears it from storage. logoutApi() never throws (see api/auth.js), so
-// the trailing await is just to let the best-effort request finish before
-// this thunk settles — it can't undo the local sign-out either way.
+// sign-out actions. Clears the local session IMMEDIATELY (not after the
+// request) so a slow or offline backend can never leave the browser looking
+// signed in; logoutApi() captures the access token first, then revokes the
+// refresh session server-side and clears the cookie (never throws).
 export const logoutUser = createAsyncThunk('auth/logout', async (_, { dispatch }) => {
   const backendLogout = logoutApi()
   dispatch(logout())
   await backendLogout
 })
 
+// Silent refresh on page load (dispatched once by store.js).
 export const restoreSession = createAsyncThunk('auth/restore', async (_, { rejectWithValue }) => {
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
-  if (!token) return rejectWithValue('No session')
-  // A 401 here is handled by apiClient's own refresh-or-clear interceptor
-  // (see api/client.js) before fetchCurrentUser's catch ever sees it, so by
-  // the time `user` comes back null, any invalid token has already been
-  // cleared from storage — this rejection just needs to reset UI state.
-  const user = await fetchCurrentUser(token)
-  if (!user) return rejectWithValue('Session expired')
-  return { user, accessToken: token }
+  const pending = resumeSession()
+  waitForSession(pending) // API calls made meanwhile wait for the answer
+  const session = await pending
+  if (!session) return rejectWithValue('No session')
+  return session
 })
 
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
     user: null,
-    accessToken: storedToken,
+    accessToken: null,
+    // Mock mode has no server session to restore.
+    sessionChecked: USE_MOCK,
     status: 'idle',
     error: null,
   },
@@ -62,7 +60,13 @@ const authSlice = createSlice({
     logout(state) {
       state.user = null
       state.accessToken = null
-      clearStoredAuth()
+      setAccessToken(null)
+    },
+    // The API client recovered (or lost) the session on its own, e.g. a 401
+    // answered by a silent refresh. Keeps this store in step with it.
+    sessionTokenChanged(state, action) {
+      state.accessToken = action.payload || null
+      if (!state.accessToken) state.user = null
     },
     // After a successful POST /auth/change-password — replaces the
     // authenticated user in place (mustChangePassword now false) with no
@@ -103,14 +107,15 @@ const authSlice = createSlice({
       .addCase(restoreSession.fulfilled, (state, action) => {
         state.user = action.payload.user
         state.accessToken = action.payload.accessToken
+        state.sessionChecked = true
       })
       .addCase(restoreSession.rejected, (state) => {
-        state.user = null
-        state.accessToken = null
-        clearStoredAuth()
+        // A sign-in that completed while the check was running wins.
+        if (!state.user) state.accessToken = null
+        state.sessionChecked = true
       })
   },
 })
 
-export const { logout, setUser } = authSlice.actions
+export const { logout, setUser, sessionTokenChanged } = authSlice.actions
 export default authSlice.reducer

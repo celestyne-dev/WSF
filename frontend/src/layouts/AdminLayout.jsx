@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { LogOut, ExternalLink } from 'lucide-react'
-import { restoreSession, logoutUser } from '../features/auth/authSlice'
+import { logoutUser } from '../features/auth/authSlice'
 import { getRoleLabel } from '../constants/roles'
 import { NAV_GROUPS } from '../constants/adminNav'
 import { hasPermission, hasCmsAccess, getDefaultCmsRoute } from '../utils/permissions'
@@ -11,15 +11,11 @@ import NotificationBell from '../components/cms/NotificationBell'
 
 export default function AdminLayout() {
   const dispatch = useDispatch()
-  const { user, accessToken } = useSelector((s) => s.auth)
+  const { user, accessToken, sessionChecked } = useSelector((s) => s.auth)
   const location = useLocation()
   const navigate = useNavigate()
   const [signingOut, setSigningOut] = useState(false)
   const mainRef = useRef(null)
-
-  useEffect(() => {
-    if (accessToken && !user) dispatch(restoreSession())
-  }, [accessToken, user, dispatch])
 
   // <main> (not the window) is the CMS scroll container, so a new admin
   // screen would otherwise open at the previous screen's scroll offset.
@@ -46,10 +42,19 @@ export default function AdminLayout() {
     )
   }
 
+  // The silent refresh (store.js) is still answering: wait rather than
+  // bounce a signed-in member to /login.
+  if (!sessionChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-taupe-100">
+        <p className="text-sm text-charcoal-600">Loading…</p>
+      </div>
+    )
+  }
+
   if (!accessToken) return <Navigate to="/login" replace />
 
-  // A token exists but the user hasn't loaded yet (restoreSession in
-  // flight) — render a loader instead of judging CMS access against a
+  // A token exists but the user hasn't loaded yet — render a loader instead of judging CMS access against a
   // still-empty user, which would incorrectly bounce a real CMS staff
   // member to "/" before their permissions arrive.
   if (!user) {

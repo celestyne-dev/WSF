@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit'
-import authReducer from '../features/auth/authSlice'
+import authReducer, { restoreSession, sessionTokenChanged } from '../features/auth/authSlice'
+import { USE_MOCK, setSessionListener } from '../api/client'
 import siteReducer, { siteInitialState } from '../features/site/siteSlice'
 import uiReducer from '../features/navigation/uiSlice'
 import newsletterReducer from '../features/newsletter/newsletterSlice'
@@ -68,3 +69,9 @@ export const store = configureStore({
   },
   preloadedState: buildPreloadedState(),
 })
+
+// Session: the API client tells the store when it recovers or loses the
+// in-memory access token by itself, and every page load starts with one
+// silent refresh from the HttpOnly cookie (features/auth/authSlice.js).
+setSessionListener((token) => store.dispatch(sessionTokenChanged(token)))
+if (typeof window !== 'undefined' && !USE_MOCK) store.dispatch(restoreSession())

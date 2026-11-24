@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { purgeLegacyTokens } from '../utils/legacyTokens'
 
 // Real backend base URL. Every endpoint below is namespaced to mirror the
 // eventual Flask API exactly (e.g. GET /api/v1/articles/{slug}), even though
@@ -16,12 +17,97 @@ export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
 })
 
-export const ACCESS_TOKEN_KEY = 'wsf_access_token'
-export const REFRESH_TOKEN_KEY = 'wsf_refresh_token'
+// ---- Session tokens ----------------------------------------------------------------------
+// The access token lives ONLY in this module's memory (never localStorage,
+// sessionStorage or a cookie): a reload drops it and the app gets a new one
+// from the HttpOnly refresh cookie (refreshSession below). JavaScript never
+// sees the refresh credential.
+let accessToken = null
+let sessionListener = null
+
+export function getAccessToken() {
+  return accessToken
+}
+
+export function setAccessToken(token) {
+  accessToken = token || null
+}
+
+/** Called with the new token (or null) whenever the client itself changes
+ * it (a 401 recovered by refresh, or a session that could not be
+ * recovered), so the auth store stays in step. */
+export function setSessionListener(fn) {
+  sessionListener = fn
+}
+
+function changeToken(token) {
+  setAccessToken(token)
+  try {
+    sessionListener?.(accessToken)
+  } catch {
+    /* the store must not break the API client */
+  }
+}
+
+// Tokens from the old design (localStorage) are deleted on load and never
+// reused (utils/legacyTokens.js).
+try {
+  purgeLegacyTokens(typeof window !== 'undefined' ? window.localStorage : null)
+} catch {
+  /* storage unavailable */
+}
 
 export function clearStoredAuth() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  changeToken(null)
+}
+
+// The one endpoint the HttpOnly refresh cookie is sent to (its Path). Every
+// call carries the CSRF header the server requires.
+export const CSRF_HEADER = { 'X-WSF-CSRF': '1' }
+
+/** POST /auth/refresh with the cookie: {accessToken, user(raw)} or null
+ * when this browser has no valid session. Never throws for "signed out". */
+export async function refreshSession() {
+  try {
+    const response = await axios.post(`${apiClient.defaults.baseURL}/auth/refresh`, null, {
+      headers: CSRF_HEADER,
+      withCredentials: true,
+    })
+    const data = response.data?.data
+    if (!data?.access_token) {
+      changeToken(null)
+      return null
+    }
+    changeToken(data.access_token)
+    return { accessToken: data.access_token, user: data.user }
+  } catch {
+    changeToken(null)
+    return null
+  }
+}
+
+/** DELETE /auth/refresh: revokes this browser's session server-side, clears
+ * the cookie and blocks the current access token. */
+export async function endSession() {
+  const token = accessToken
+  changeToken(null)
+  try {
+    await axios.delete(`${apiClient.defaults.baseURL}/auth/refresh`, {
+      headers: { ...CSRF_HEADER, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      withCredentials: true,
+    })
+  } catch {
+    /* signed out locally either way; the server session expires on its own */
+  }
+}
+
+// Requests made while the startup silent refresh is still running wait for
+// it, so a hard-loaded page (e.g. a Paystack callback) sends its first API
+// call already authenticated instead of collecting a 401 first.
+let sessionReady = Promise.resolve()
+export function waitForSession(promise) {
+  sessionReady = Promise.resolve(promise).catch(() => null)
+  return sessionReady
 }
 
 function camelToSnake(str) {
@@ -35,9 +121,10 @@ function camelToSnake(str) {
 // ...), and `pageSize` specifically must become `per_page` for pagination
 // to work at all — translating it here, once, keeps every fetch* function
 // free of that detail.
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
-  if (token) {
+apiClient.interceptors.request.use(async (config) => {
+  await sessionReady
+  const token = accessToken
+  if (token && !config.headers?.Authorization) {
     config.headers.Authorization = `Bearer ${token}`
   }
   // File uploads (media upload) pass a FormData body — it must never carry
@@ -118,9 +205,9 @@ apiClient.interceptors.response.use(
 
 // A 401 means the access token is missing, expired, or otherwise invalid
 // (JWT_ACCESS_TOKEN_EXPIRES is 30 minutes — see backend/config.py — so this
-// is routine during a normal admin session, not just at startup). Flask
-// issues a matching refresh token at login (30-day expiry); this recovers
-// silently with it exactly once before giving up, rather than leaving the
+// is routine during a normal admin session, not just at startup). The
+// HttpOnly refresh cookie (30-day session) recovers it silently exactly
+// once before giving up, rather than leaving the
 // CMS stuck re-firing the same failed request or refreshing forever:
 //   - a request that already carries a fresh access token but still 401s
 //     (revoked/deactivated user, clock skew) is retried once via refresh;
@@ -134,17 +221,9 @@ apiClient.interceptors.response.use(
 let refreshPromise = null
 
 async function refreshAccessToken() {
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
-  if (!refreshToken) throw new Error('No refresh token available.')
-  const response = await axios.post(
-    `${apiClient.defaults.baseURL}/auth/refresh`,
-    null,
-    { headers: { Authorization: `Bearer ${refreshToken}` } },
-  )
-  const accessToken = response.data?.data?.access_token
-  if (!accessToken) throw new Error('Refresh response carried no access token.')
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
-  return accessToken
+  const session = await refreshSession()
+  if (!session) throw new Error('No session to refresh.')
+  return session.accessToken
 }
 
 function redirectToLogin() {

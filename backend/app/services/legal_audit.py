@@ -16,9 +16,15 @@ LEGAL_PAGE_KEYS = ("privacy", "terms", "cookies", "editorial-policy")
 
 # category: essential | preferences | analytics | marketing
 TECHNOLOGY_INVENTORY = (
-    {"name": "wsf_access_token / wsf_refresh_token", "provider": "WSF (first party)", "category": "essential",
-     "purpose": "Keeps a signed-in member signed in (authentication).", "storage": "localStorage",
-     "duration": "Until sign-out; the tokens inside expire per the server's JWT settings.", "consentRequired": False},
+    {"name": "wsf_refresh (sign-in session cookie)", "provider": "WSF (first party)", "category": "essential",
+     "purpose": ("Keeps a signed-in member signed in: lets the site get a new short-lived access token after a "
+                 "page load. Holds only a random identifier; the server stores just its hash and can revoke it."),
+     "storage": ("cookie: HttpOnly (not readable by JavaScript), Secure, SameSite=Strict, "
+                 "Path=/api/v1/auth/refresh (sent to no other address)"),
+     "duration": ("30 days from sign-in (Max-Age), or until sign-out, a password reset or account deactivation "
+                  "revokes it. The access token itself is never stored: it lives in page memory and expires "
+                  "after 30 minutes."),
+     "consentRequired": False},
     {"name": "wsf_cookie_consent", "provider": "WSF (first party)", "category": "essential",
      "purpose": "Remembers the visitor's cookie choices (version, time, categories).", "storage": "localStorage",
      "duration": ("12 calendar months from the choice, then removed and the visitor is asked again; "

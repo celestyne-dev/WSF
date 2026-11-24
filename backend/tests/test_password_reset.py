@@ -9,7 +9,7 @@ from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.password_reset import PasswordResetToken
 from app.models.user import User
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, refresh_cookie_value, refresh_session
 
 REGISTER_PAYLOAD = {
     "email": "reset.target@example.com",
@@ -309,14 +309,15 @@ class TestJwtInvalidationAfterRecovery:
             "/api/v1/auth/login",
             json={"email": REGISTER_PAYLOAD["email"], "password": REGISTER_PAYLOAD["password"]},
         )
-        old_refresh_token = login.get_json()["data"]["refresh_token"]
+        old_cookie = refresh_cookie_value(client)
+        assert old_cookie and "refresh_token" not in login.get_json()["data"]
 
         _, raw_token, _ = _capture_reset(client)
         _reset(client, raw_token, new_password="brandnewpass1")
 
-        resp = client.post("/api/v1/auth/refresh", headers=auth_headers(old_refresh_token))
+        resp = refresh_session(client, old_cookie)
         assert resp.status_code == 401
-        assert resp.get_json()["error"]["code"] == "token_revoked"
+        assert resp.get_json()["error"]["code"] == "session_revoked"
 
     def test_tokens_issued_after_recovery_work(self, client):
         _register(client)

@@ -107,6 +107,10 @@ def set_user_status(user, is_active, *, actor):
             code="last_super_admin",
         )
     user.is_active = is_active
+    if not is_active:
+        from app.services.refresh_sessions import revoke_all_for_user
+
+        revoke_all_for_user(user.id, "deactivated")
     db.session.commit()
     return user
 

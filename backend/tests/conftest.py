@@ -100,3 +100,22 @@ def client(app):
 
 def auth_headers(access_token):
     return {"Authorization": f"Bearer {access_token}"}
+
+
+REFRESH_COOKIE = "wsf_refresh"
+REFRESH_PATH = "/api/v1/auth/refresh"
+# What the real frontend sends with every refresh-cookie request (CSRF).
+CSRF_HEADERS = {"X-WSF-CSRF": "1", "Origin": "http://localhost"}
+
+
+def refresh_cookie_value(client):
+    cookie = client.get_cookie(REFRESH_COOKIE, path=REFRESH_PATH)
+    return cookie.value if cookie else None
+
+
+def refresh_session(client, cookie_value=None, headers=None):
+    """POST /auth/refresh like the browser does; `cookie_value` replays a
+    specific session's cookie (the test client keeps only the latest)."""
+    if cookie_value is not None:
+        client.set_cookie(REFRESH_COOKIE, cookie_value, path=REFRESH_PATH)
+    return client.post(REFRESH_PATH, headers=headers if headers is not None else CSRF_HEADERS)

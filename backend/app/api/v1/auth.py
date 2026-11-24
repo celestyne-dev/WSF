@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
 
-from flask import Blueprint, request
+from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import (
     create_access_token,
-    create_refresh_token,
     current_user,
     get_jwt,
     jwt_required,
+    verify_jwt_in_request,
 )
 from flask_restful import Api, Resource
 
@@ -26,10 +26,35 @@ from app.schemas.user import (
 )
 from app.services.audit import log_action
 from app.services.password_reset import request_password_reset, reset_password
+from app.services.refresh_sessions import (
+    RefreshSessionError,
+    clear_refresh_cookie,
+    create_session,
+    csrf_problem,
+    find_session,
+    read_refresh_cookie,
+    revoke,
+    set_refresh_cookie,
+    validate_session,
+)
 from app.utils.responses import ApiError, error_response, success_response
 
 auth_bp = Blueprint("auth", __name__)
 api = Api(auth_bp)
+
+
+def _signed_in_response(user, status=200):
+    """Body: the user + a short-lived access token (kept in memory by the
+    browser). The refresh credential goes ONLY into the HttpOnly cookie."""
+    raw, session = create_session(user)
+    db.session.commit()
+    body = {"success": True, "data": {"user": user_schema.dump(user), "access_token": create_access_token(identity=user)}}
+    return set_refresh_cookie(make_response(jsonify(body), status), raw, session)
+
+
+def _error_clearing_cookie(message, status, code):
+    payload, status = error_response(message, status, code=code)
+    return clear_refresh_cookie(make_response(jsonify(payload), status))
 
 register_schema = RegisterSchema()
 login_schema = LoginSchema()
@@ -72,14 +97,7 @@ class RegisterResource(Resource):
         db.session.commit()
         log_action(user, "user.register", "User", user.id)
 
-        return success_response(
-            {
-                "user": user_schema.dump(user),
-                "access_token": create_access_token(identity=user),
-                "refresh_token": create_refresh_token(identity=user),
-            },
-            status=201,
-        )
+        return _signed_in_response(user, status=201)
 
 
 class LoginResource(Resource):
@@ -104,27 +122,60 @@ class LoginResource(Resource):
         db.session.commit()
         log_action(user, "user.login", "User", user.id)
 
-        return success_response(
-            {
-                "user": user_schema.dump(user),
-                "access_token": create_access_token(identity=user),
-                "refresh_token": create_refresh_token(identity=user),
-            }
-        )
+        return _signed_in_response(user)
 
 
 class RefreshResource(Resource):
-    @jwt_required(refresh=True)
+    """The only endpoint the HttpOnly refresh cookie is ever sent to (its
+    Path). POST: a fresh access token + the user (silent refresh on page
+    load). DELETE: sign out. Both are CSRF-checked (header + Origin, see
+    app/services/refresh_sessions.py)."""
+
     def post(self):
-        # Mirrors LoginResource's is_active check: a deactivated account
-        # must not be able to keep minting fresh access tokens off a
-        # refresh token that predates the deactivation.
-        if not current_user or not current_user.is_active:
-            return error_response("This account has been deactivated.", 403, code="account_inactive")
-        return success_response({"access_token": create_access_token(identity=current_user)})
+        problem = csrf_problem()
+        if problem:
+            return error_response("This request can't use the session cookie.", 403, code=problem)
+        raw = read_refresh_cookie()
+        if not raw:
+            # Not signed in on this browser: a normal answer, not an error.
+            return success_response(None)
+        try:
+            session, user = validate_session(raw)
+        except RefreshSessionError as exc:
+            return _error_clearing_cookie("Your session has ended. Please sign in again.", 401, f"session_{exc}")
+        session.last_used_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return success_response({"user": user_schema.dump(user), "access_token": create_access_token(identity=user)})
+
+    def delete(self):
+        problem = csrf_problem()
+        if problem:
+            return error_response("This request can't use the session cookie.", 403, code=problem)
+        session = find_session(read_refresh_cookie())
+        revoke(session, "sign_out")
+        # Also block the presented access token for its remaining minutes.
+        try:
+            verify_jwt_in_request(optional=True)
+            payload = get_jwt()
+        except Exception:  # an expired/invalid access token must not stop sign-out
+            payload = {}
+        if payload.get("jti"):
+            db.session.add(TokenBlocklist(
+                jti=payload["jti"], token_type=payload.get("type", "access"),
+                user_id=int(payload["sub"]) if payload.get("sub") else None,
+                expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+            ))
+        db.session.commit()
+        if session is not None:
+            log_action(db.session.get(User, session.user_id), "user.logout", "User", session.user_id)
+        return clear_refresh_cookie(make_response(jsonify({"success": True, "data": None, "message": "Signed out."}), 200))
 
 
 class LogoutResource(Resource):
+    """Blocks the presented access token only (kept for API clients).
+    Browsers sign out with DELETE /auth/refresh, which also revokes the
+    refresh session and clears the cookie."""
+
     @jwt_required(verify_type=False)
     def post(self):
         jwt_payload = get_jwt()

@@ -59,6 +59,15 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     JWT_TOKEN_LOCATION = ["headers"]
+    # Refresh credential: an opaque token in an HttpOnly cookie backed by a
+    # revocable server row (app/services/refresh_sessions.py). The access
+    # token stays a short-lived JWT in the Authorization header, held only in
+    # browser memory. JWT_REFRESH_TOKEN_EXPIRES above is no longer used to
+    # issue anything.
+    REFRESH_COOKIE_NAME = "wsf_refresh"
+    REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
+    REFRESH_COOKIE_SECURE = True
+    REFRESH_SESSION_LIFETIME = timedelta(days=30)
     JWT_ERROR_MESSAGE_KEY = "message"
     # PyJWT's `iat`/`nbf`/`exp` checks (flask_jwt_extended.config.Config.leeway
     # -> JWT_DECODE_LEEWAY, passed straight through to jwt.decode()'s `leeway`)
@@ -375,6 +384,9 @@ def require_production_settings(app):
     # an operator can fix CORS_ORIGINS and still leave FRONTEND_URL at its
     # http://localhost:5173 default, and every one of those links would
     # silently keep pointing at localhost in production.
+    if app.config.get("REFRESH_COOKIE_SECURE") is not True:
+        problems.append("REFRESH_COOKIE_SECURE must be True in production (the refresh cookie is HTTPS-only).")
+
     frontend_url = app.config.get("FRONTEND_URL") or ""
     if "localhost" in frontend_url or "127.0.0.1" in frontend_url:
         problems.append("FRONTEND_URL must not be localhost/127.0.0.1 in production.")

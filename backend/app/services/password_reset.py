@@ -150,6 +150,10 @@ def reset_password(raw_token, new_password):
     user.must_change_password = False
     user.auth_version += 1
     token.used_at = datetime.now(timezone.utc)
+    # Every signed-in browser (refresh cookie) ends too, not just old JWTs.
+    from app.services.refresh_sessions import revoke_all_for_user
+
+    revoke_all_for_user(user.id, "password_reset")
     db.session.commit()
 
     log_action(user, "password_reset.completed", "User", user.id)

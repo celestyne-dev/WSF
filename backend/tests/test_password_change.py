@@ -1,7 +1,7 @@
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.user import Role, User
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, refresh_session
 
 REGISTER_PAYLOAD = {
     "email": "selfreg@example.com",
@@ -125,9 +125,9 @@ class TestForcedChangeEnforcement:
         login = client.post(
             "/api/v1/auth/login", json={"email": "canrefresh@example.com", "password": temporary_password}
         )
-        refresh_token = login.get_json()["data"]["refresh_token"]
+        assert login.status_code == 200
 
-        resp = client.post("/api/v1/auth/refresh", headers=auth_headers(refresh_token))
+        resp = refresh_session(client)
         assert resp.status_code == 200
         assert resp.get_json()["data"]["access_token"]
 

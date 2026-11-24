@@ -1,4 +1,4 @@
-import { apiClient, ACCESS_TOKEN_KEY, USE_MOCK } from './client'
+import { apiClient, endSession, refreshSession, USE_MOCK } from './client'
 import { delay } from './mockUtils'
 
 // The mock admin users list is only needed when VITE_USE_MOCK=true —
@@ -52,7 +52,7 @@ export async function login({ email, password }) {
   if (!USE_MOCK) {
     try {
       const { data } = await apiClient.post('/auth/login', { email, password })
-      return { success: true, accessToken: data.access_token, refreshToken: data.refresh_token, user: mapUser(data.user) }
+      return { success: true, accessToken: data.access_token, user: mapUser(data.user) }
     } catch (err) {
       return { success: false, message: err.apiError?.message || 'Invalid email or password.' }
     }
@@ -66,7 +66,6 @@ export async function login({ email, password }) {
     {
       success: true,
       accessToken: `mock-jwt-${user.id}`,
-      refreshToken: null,
       user: mapMockUser(user),
     },
     400,
@@ -144,7 +143,7 @@ export async function register({ firstName, lastName, email, password, countryCo
       password,
       country_code: countryCode || undefined,
     })
-    return { success: true, accessToken: data.access_token, refreshToken: data.refresh_token, user: mapUser(data.user) }
+    return { success: true, accessToken: data.access_token, user: mapUser(data.user) }
   } catch (err) {
     return {
       success: false,
@@ -179,30 +178,21 @@ export async function updateProfile({ firstName, lastName, displayName, bio, cou
   }
 }
 
-// POST /api/v1/auth/logout — blocklists the current access token
-// server-side. Deliberately swallows any failure (expired/offline/etc):
-// an explicit sign-out must always clear the LOCAL session regardless of
-// whether the backend call succeeds — see authSlice.js's logoutUser thunk,
-// which dispatches the local logout reducer immediately (not after
-// awaiting this) so a slow/offline backend can never leave the browser
-// looking authenticated.
-//
-// The access token is read and attached to the Authorization header
-// explicitly, synchronously, before this function does anything async.
-// That's deliberate: the caller clears localStorage right after starting
-// this request (see logoutUser below), and apiClient's own request
-// interceptor (api/client.js) would otherwise find no token left to
-// attach by the time it runs — this request needs to carry ITS OWN
-// token regardless of what's in storage by the time it's actually sent.
+// Sign out: DELETE /api/v1/auth/refresh (api/client.js endSession) revokes
+// this browser's refresh session server-side, clears the HttpOnly cookie
+// and blocks the current access token. Never throws: an explicit sign-out
+// always clears the LOCAL session, whatever the network does.
 export async function logout() {
   if (USE_MOCK) return
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
-  if (!token) return
-  try {
-    await apiClient.post('/auth/logout', null, { headers: { Authorization: `Bearer ${token}` } })
-  } catch {
-    // Local tokens are cleared by the caller either way.
-  }
+  await endSession()
+}
+
+/** Silent refresh: restores the session from the HttpOnly cookie.
+ * {accessToken, user} or null (not signed in on this browser). */
+export async function resumeSession() {
+  if (USE_MOCK) return null
+  const session = await refreshSession()
+  return session ? { accessToken: session.accessToken, user: mapUser(session.user) } : null
 }
 
 // POST /api/v1/auth/forgot-password — always resolves { success: true,

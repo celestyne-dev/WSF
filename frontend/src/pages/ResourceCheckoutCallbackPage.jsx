@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
+import PageLoader from '../components/ui/PageLoader'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { getResourcePaymentStatus, requestResourceAccess } from '../api/resources'
@@ -27,6 +28,9 @@ const MAX_AUTO_ATTEMPTS = 15 // ~60s at the interval above
 
 export default function ResourceCheckoutCallbackPage() {
   const accessToken = useSelector((s) => s.auth.accessToken)
+  // Returning from Paystack is a full page load: the in-memory access token
+  // only exists again once the startup silent refresh has answered.
+  const sessionChecked = useSelector((s) => s.auth.sessionChecked)
   const [searchParams] = useSearchParams()
   const reference = (searchParams.get('reference') || '').trim()
 
@@ -154,6 +158,8 @@ export default function ResourceCheckoutCallbackPage() {
       </div>
     )
   }
+
+  if (!sessionChecked && !authRequired) return <PageLoader />
 
   if (!accessToken || authRequired) {
     const returnTo = `/resources/checkout/callback?reference=${encodeURIComponent(reference)}`

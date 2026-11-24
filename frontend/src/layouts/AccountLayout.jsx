@@ -8,12 +8,13 @@ import AccountNavigation from '../components/account/AccountNavigation'
 
 // Shared outer shell for every /account/* page — nested inside PublicLayout
 // (normal Header/Footer stay around it), and owns the one auth guard every
-// account page used to duplicate: no accessToken -> /login, a token still
-// restoring -> PageLoader, a forced password change -> /change-password.
+// account page used to duplicate: session check pending -> PageLoader, no
+// accessToken -> /login, a user still loading -> PageLoader, a forced password change -> /change-password.
 // Individual account pages (routed only as children of this layout) no
 // longer need to repeat these checks themselves.
 export default function AccountLayout() {
   const accessToken = useSelector((s) => s.auth.accessToken)
+  const sessionChecked = useSelector((s) => s.auth.sessionChecked)
   const user = useSelector((s) => s.auth.user)
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -26,6 +27,7 @@ export default function AccountLayout() {
   const [signingOut, setSigningOut] = useState(false)
 
   if (signingOut) return <PageLoader />
+  if (!sessionChecked) return <PageLoader /> // silent refresh still answering
   if (!accessToken) return <Navigate to="/login" replace />
   if (!user) return <PageLoader />
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />

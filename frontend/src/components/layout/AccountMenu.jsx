@@ -21,9 +21,9 @@ export default function AccountMenu() {
   const rootRef = useRef(null)
   const buttonRef = useRef(null)
 
-  // A stored accessToken with `user` still null means restoreSession() is
-  // in flight: treated as signed in (no "Sign in" flash). Studio access is
-  // only decided once `user` (and its permissions) has loaded.
+  // Signed in = an in-memory access token or a loaded user (the startup
+  // silent refresh fills both). Studio access is only decided once `user`
+  // (and its permissions) has loaded.
   const isAuthenticated = Boolean(user || accessToken)
   const studioHref = user && hasCmsAccess(user) ? getDefaultCmsRoute(user) : null
 
