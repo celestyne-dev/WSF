@@ -13,10 +13,10 @@ export const COLLECTION_NOTICES = {
     terms: true,
   },
   eventRegistration: {
-    purpose: 'We use your account name and email to record your place; the WSF events team can see your registration.',
+    purpose: 'We use your account name and email to record your place and email you a confirmation; the WSF events team can see your registration.',
   },
   learningEnrolment: {
-    purpose: 'We keep your enrolment and lesson progress so you can pick up where you left off.',
+    purpose: 'We keep your enrolment and lesson progress so you can pick up where you left off, and email you a confirmation.',
   },
   nomination: {
     purpose: 'We use these details to review the nomination and contact you about it.',
