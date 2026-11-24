@@ -160,3 +160,40 @@ def audit_legal_pages():
         if not row["seoDescription"]:
             warnings.append(f'"{key}": no SEO description.')
     return {"pages": rows, "highlights": highlights, "warnings": warnings}
+
+
+# --- implementation facts (Batch 4) --------------------------------------------------------------
+# Verified facts about how WSF actually handles personal data, read from code
+# and configuration (aggregate counts only, never personal data). Each step
+# adds its own section; the policy pages are NOT rewritten from here.
+
+
+def _newsletter_facts():
+    from app.models.newsletter import SUBSCRIBER_STATUSES, NewsletterSubscriber
+    from app.services import newsletter as nl
+    from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION, NEWSLETTER_CONSENT_VERSION
+
+    counts = {s: NewsletterSubscriber.query.filter_by(status=s).count() for s in SUBSCRIBER_STATUSES}
+    return [
+        "Newsletter: double opt-in controlled by WSF (unticked checkbox consent, then an emailed confirmation "
+        f"link valid {nl.CONFIRMATION_LIFETIME.days} days); only confirmed subscribers are exported.",
+        f"Newsletter consent wording versions: form {NEWSLETTER_CONSENT_VERSION}, other forms' checkbox "
+        f"{NEWSLETTER_CHECKBOX_CONSENT_VERSION}, legacy reconfirmation {nl.RECONFIRM_CONSENT_VERSION}.",
+        "Newsletter subscriber states: " + ", ".join(f"{k}={v}" for k, v in counts.items()) + ".",
+        "Newsletter delivery: provider-neutral. WSF does not send newsletters; staff export confirmed subscribers "
+        "and record external sends (service name, reference, recipient count). Unsubscribes from an external service "
+        "are imported as WSF suppressions (CSV). No sending-provider API is integrated.",
+        "Newsletter unsubscribe is authoritative in WSF: suppressed addresses are never reactivated by a signup "
+        "alone; only a fresh signup plus a click on its confirmation link.",
+    ]
+
+
+FACT_SECTIONS = [("Newsletter", _newsletter_facts)]
+
+
+def implementation_facts():
+    lines = []
+    for title, builder in FACT_SECTIONS:
+        for line in builder():
+            lines.append((title, line))
+    return lines

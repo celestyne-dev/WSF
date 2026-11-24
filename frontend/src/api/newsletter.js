@@ -24,6 +24,22 @@ export function mapSubscriber(s) {
     interestSlugs: Array.isArray(s.interests) ? s.interests.map((t) => t.slug) : [],
     subscribedAt: s.subscribed_at || null,
     unsubscribedAt: s.unsubscribed_at || null,
+    confirmedAt: s.confirmed_at || null,
+    consentAt: s.consent_at || null,
+    consentVersion: s.consent_version || '',
+    consentSource: s.consent_source || '',
+    unsubscribeSource: s.unsubscribe_source || '',
+    unsubscribeReason: s.unsubscribe_reason || '',
+  }
+}
+
+// Double opt-in link (backend POST /newsletter/confirm). Never throws.
+export async function confirmNewsletterSubscription(token) {
+  try {
+    const { data } = await apiClient.post('/newsletter/confirm', { token })
+    return { success: true, result: data.result }
+  } catch (err) {
+    return { success: false, code: err.apiError?.code, message: err.apiError?.message || 'This confirmation link isn’t valid.' }
   }
 }
 
@@ -60,12 +76,12 @@ export async function subscribeToNewsletter(payload) {
   if (!USE_MOCK) {
     try {
       const { data } = await apiClient.post('/newsletter/subscribe', payload)
-      return { success: true, message: 'Thanks for signing up. Your WSF Weekly signup has been received.', subscriber: data }
+      return { success: true, message: 'Almost done: check your inbox and click the link to confirm your subscription.', subscriber: data }
     } catch (err) {
-      return { success: false, message: err.apiError?.message || 'Something went wrong. Please try again.' }
+      return { success: false, message: err.apiError?.message || 'Something went wrong. Please try again.', code: err.apiError?.code }
     }
   }
-  return delay({ success: true, message: 'Thanks for signing up. Your WSF Weekly signup has been received.' }, 500)
+  return delay({ success: true, message: 'Almost done: check your inbox and click the link to confirm your subscription.' }, 500)
 }
 
 export async function unsubscribeByEmail(email) {
@@ -141,14 +157,21 @@ export async function updateSubscriber(id, payload) {
   return mapSubscriber(data)
 }
 
-export async function suppressSubscriber(id) {
-  const { data } = await apiClient.post(`/newsletter/subscribers/${id}/suppress`)
+export async function suppressSubscriber(id, reason) {
+  const { data } = await apiClient.post(`/newsletter/subscribers/${id}/suppress`, reason ? { reason } : {})
   return mapSubscriber(data)
 }
 
-export async function reactivateSubscriber(id) {
-  const { data } = await apiClient.post(`/newsletter/subscribers/${id}/reactivate`)
+// Legacy (pre-double-opt-in) subscribers only: emails them a confirmation link.
+export async function requestSubscriberConfirmation(id) {
+  const { data } = await apiClient.post(`/newsletter/subscribers/${id}/request-confirmation`)
   return mapSubscriber(data)
+}
+
+// Unsubscribes reported by an external sending service (CSV text).
+export async function importSuppressions({ provider, csv, filename }) {
+  const { data } = await apiClient.post('/newsletter/subscribers/suppression-import', { provider, csv, filename })
+  return data
 }
 
 // Triggers a browser download of the CSV export rather than returning
@@ -203,9 +226,31 @@ export async function updateNewsletterIssue(slug, form) {
   return mapIssue(data)
 }
 
-export async function markNewsletterIssueSent(slug) {
-  const { data } = await apiClient.post(`/newsletter/issues/${slug}/mark-sent`)
+// Records that staff sent this issue through an external service (WSF sends nothing itself).
+export async function recordExternalSend(slug, { providerName, externalReference, recipientCount, sentAt, note }) {
+  const { data } = await apiClient.post(`/newsletter/issues/${slug}/record-send`, {
+    providerName, externalReference: externalReference || undefined, recipientCount: Number(recipientCount),
+    sentAt: sentAt ? new Date(sentAt).toISOString() : undefined, note: note || undefined,
+  })
   return mapIssue(data)
+}
+
+export async function fetchSendRecords(slug) {
+  const { data } = await apiClient.get(`/newsletter/issues/${slug}/send-records`)
+  return data.records
+}
+
+// Downloads this issue's confirmed recipients as CSV (recorded as an export).
+export async function exportIssueRecipients(slug) {
+  const response = await apiClient.get(`/newsletter/issues/${slug}/export`, { responseType: 'blob' })
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', `wsf-weekly-${slug}-recipients.csv`)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
 }
 
 export async function archiveNewsletterIssue(slug) {
@@ -225,7 +270,9 @@ export async function fetchNewsletterOverview() {
     newSubscribers30d: data.newSubscribers30d,
     unsubscribedCount: data.unsubscribedCount,
     draftIssues: data.draftIssues,
-    scheduledIssues: data.scheduledIssues,
+    pendingSubscribers: data.pendingSubscribers,
+    legacyUnconfirmed: data.legacyUnconfirmed,
+    readyIssues: data.readyIssues,
     sentIssues: data.sentIssues,
   }
 }

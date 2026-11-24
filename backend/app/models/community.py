@@ -107,7 +107,7 @@ class Member(db.Model):
     consent_at = db.Column(db.DateTime(timezone=True))
     # A record of what was explicitly chosen at join time — the live
     # subscription itself lives in NewsletterSubscriber (see
-    # app/services/newsletter.py::upsert_subscriber, called separately by
+    # app/services/newsletter.py::request_subscription_safely (double opt-in), called separately by
     # the join route only when this was true). Never implied true.
     newsletter_opt_in = db.Column(db.Boolean, nullable=False, default=False)
     # Membership-service communication (e.g. "your application was

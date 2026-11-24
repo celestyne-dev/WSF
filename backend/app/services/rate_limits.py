@@ -23,6 +23,7 @@ LIMITS = {
     "newsletter_subscribe": "5 per minute",
     "newsletter_unsubscribe": "5 per minute; 30 per hour",
     "newsletter_unsubscribe_link": "30 per minute",
+    "newsletter_confirm": "30 per minute",
     # Public forms
     "contact": "5 per minute; 30 per day",
     "story_submission": "5 per minute; 20 per day",

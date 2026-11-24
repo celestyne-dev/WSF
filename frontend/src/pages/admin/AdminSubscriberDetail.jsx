@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Save, UserX, UserCheck } from 'lucide-react'
-import { fetchSubscriber, updateSubscriber, suppressSubscriber, reactivateSubscriber } from '../../api/newsletter'
+import { fetchSubscriber, updateSubscriber, suppressSubscriber, requestSubscriberConfirmation } from '../../api/newsletter'
+import { SUBSCRIBER_STATUS_LABELS } from '../../constants/newsletter'
 import { fetchTopics } from '../../api/taxonomies'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
@@ -88,11 +89,11 @@ export default function AdminSubscriberDetail() {
     }
   }
 
-  async function handleReactivate() {
+  async function handleRequestConfirmation() {
     try {
-      const updated = await reactivateSubscriber(id)
+      const updated = await requestSubscriberConfirmation(id)
       setSubscriber(updated)
-      toast.success('Subscriber reactivated.')
+      toast.success('Confirmation email sent. They stay excluded from exports until they click it.')
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || 'Something went wrong.')
     } finally {
@@ -109,7 +110,7 @@ export default function AdminSubscriberDetail() {
       <AdminPageHeader
         title={subscriber.email}
         description="Subscriber record — voluntarily supplied details and status only."
-        actions={<StatusBadge status={subscriber.status} />}
+        actions={<span className="inline-flex items-center gap-2"><StatusBadge status={subscriber.status} /><span className="text-xs text-charcoal-600">{SUBSCRIBER_STATUS_LABELS[subscriber.status] || subscriber.status}</span></span>}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -155,8 +156,16 @@ export default function AdminSubscriberDetail() {
                 <dd className="text-charcoal">{subscriber.subscribedAt ? formatDate(subscriber.subscribedAt) : '—'}</dd>
               </div>
               <div>
+                <dt className="text-charcoal-600/70">Confirmed (double opt-in)</dt>
+                <dd className="text-charcoal">{subscriber.confirmedAt ? formatDate(subscriber.confirmedAt) : 'Not confirmed'}</dd>
+              </div>
+              <div>
+                <dt className="text-charcoal-600/70">Consent wording / where</dt>
+                <dd className="text-charcoal">{subscriber.consentVersion || '—'}{subscriber.consentSource ? ` · ${subscriber.consentSource}` : ''}{subscriber.consentAt ? ` · ${formatDate(subscriber.consentAt)}` : ''}</dd>
+              </div>
+              <div>
                 <dt className="text-charcoal-600/70">Unsubscribed</dt>
-                <dd className="text-charcoal">{subscriber.unsubscribedAt ? formatDate(subscriber.unsubscribedAt) : '—'}</dd>
+                <dd className="text-charcoal">{subscriber.unsubscribedAt ? `${formatDate(subscriber.unsubscribedAt)}${subscriber.unsubscribeSource ? ` · ${subscriber.unsubscribeSource}` : ''}${subscriber.unsubscribeReason ? ` (${subscriber.unsubscribeReason})` : ''}` : '—'}</dd>
               </div>
               <div>
                 <dt className="text-charcoal-600/70">Country</dt>
@@ -173,15 +182,20 @@ export default function AdminSubscriberDetail() {
           <div className="border border-taupe-200 bg-white p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Actions</p>
             <div className="mt-3 space-y-2">
-              {subscriber.status !== 'unsubscribed' && (
+              {!['unsubscribed', 'bounced', 'complained'].includes(subscriber.status) && (
                 <button type="button" onClick={() => setConfirmAction('suppress')} className="btn-secondary w-full !py-2 text-xs">
                   <UserX size={13} /> Unsubscribe
                 </button>
               )}
-              {subscriber.status !== 'active' && (
-                <button type="button" onClick={() => setConfirmAction('reactivate')} className="btn-secondary w-full !py-2 text-xs">
-                  <UserCheck size={13} /> Reactivate
+              {subscriber.status === 'legacy_unconfirmed' && (
+                <button type="button" onClick={() => setConfirmAction('confirm')} className="btn-secondary w-full !py-2 text-xs">
+                  <UserCheck size={13} /> Ask to confirm by email
                 </button>
+              )}
+              {['unsubscribed', 'bounced', 'complained'].includes(subscriber.status) && (
+                <p className="text-xs text-charcoal-600">
+                  Suppressed. Only the person can come back: they sign up again and click the confirmation link we email them.
+                </p>
               )}
             </div>
           </div>
@@ -195,20 +209,20 @@ export default function AdminSubscriberDetail() {
       {confirmAction === 'suppress' && (
         <ConfirmDialog
           title="Unsubscribe this address?"
-          description="They will stop receiving newsletter issues. This can be reversed with Reactivate."
+          description="They will be excluded from every export. Only their own fresh signup and confirmation can reverse this."
           confirmLabel="Unsubscribe"
           danger
           onConfirm={handleSuppress}
           onCancel={() => setConfirmAction(null)}
         />
       )}
-      {confirmAction === 'reactivate' && (
+      {confirmAction === 'confirm' && (
         <ConfirmDialog
-          title="Reactivate this subscriber?"
-          description="They will start receiving newsletter issues again. Only do this if you're sure this address should be active."
-          confirmLabel="Reactivate"
+          title="Ask this subscriber to confirm?"
+          description="They joined before double opt-in. We'll email them a link; they're only exported after they click it."
+          confirmLabel="Send confirmation email"
           danger={false}
-          onConfirm={handleReactivate}
+          onConfirm={handleRequestConfirmation}
           onCancel={() => setConfirmAction(null)}
         />
       )}

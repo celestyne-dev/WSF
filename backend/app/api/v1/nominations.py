@@ -28,7 +28,7 @@ from app.schemas.nominations import (
 )
 from app.services.audit import log_action
 from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
-from app.services.newsletter import upsert_subscriber
+from app.services.newsletter import request_subscription_safely
 from app.services.notifications import notify_nomination_received
 from app.services.flat_slugs import generate_flat_slug
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
@@ -178,7 +178,7 @@ class NominationListResource(Resource):
         notify_nomination_received(nomination)
 
         if newsletter_opt_in:
-            upsert_subscriber(
+            request_subscription_safely(
                 nominator_email,
                 first_name=nomination.nominator_name.split(" ")[0] if nomination.nominator_name else None,
                 country_code=nomination.country_code,

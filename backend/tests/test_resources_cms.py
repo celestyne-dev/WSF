@@ -351,7 +351,8 @@ def test_email_gated_resource_consent_subscribes_to_newsletter(client, app, mana
 
         subscriber = NewsletterSubscriber.query.filter_by(email="consenting@example.com").first()
         assert subscriber is not None
-        assert subscriber.status == "active"
+        # Double opt-in (Step 14): the checkbox starts a confirmation, it doesn't subscribe.
+        assert subscriber.status == "pending"
 
 
 def test_premium_resource_requires_account_to_access(client, app, manager_token, tmp_path):

@@ -319,7 +319,7 @@ def test_newsletter_issue_prerender_and_subscriber_privacy(client, app):
         assert secret not in html, secret
 
 
-@pytest.mark.parametrize("status_value", ["draft", "scheduled", "archived"])
+@pytest.mark.parametrize("status_value", ["draft", "ready", "archived"])
 def test_unsent_newsletter_issue_404(client, app, status_value):
     from app.models.newsletter import NewsletterIssue
 

@@ -6,6 +6,7 @@ import { ArrowRight } from 'lucide-react'
 import { fetchNewsletterArchive } from '../api/newsletter'
 import { fetchTopics } from '../api/taxonomies'
 import { subscribe, resetNewsletterStatus } from '../features/newsletter/newsletterSlice'
+import NewsletterConsent from '../components/newsletter/NewsletterConsent'
 import { withAcquisitionMetadata } from '../utils/analytics'
 import { formatDate } from '../utils/format'
 import useSeo from '../hooks/useSeo'
@@ -16,6 +17,7 @@ export default function NewsletterPage() {
   const [archive, setArchive] = useState(null)
   const [topics, setTopics] = useState([])
   const [email, setEmail] = useState('')
+  const [consent, setConsent] = useState(false)
   const [firstName, setFirstName] = useState('')
   const [topicSlugs, setTopicSlugs] = useState([])
   const dispatch = useDispatch()
@@ -64,6 +66,10 @@ export default function NewsletterPage() {
       toast.error('Please enter a valid email address.')
       return
     }
+    if (!consent) {
+      toast.error('Please tick the box to agree to receive the newsletter.')
+      return
+    }
     const result = await dispatch(
       subscribe(
         withAcquisitionMetadata({
@@ -71,18 +77,20 @@ export default function NewsletterPage() {
           firstName: firstName || undefined,
           placement: 'newsletter-page',
           topicSlugs,
-          consentTimestamp: new Date().toISOString(),
+          consent: true,
         }),
       ),
     )
-    if (result.meta.requestStatus === 'fulfilled') {
+    if (result.meta.requestStatus === 'fulfilled' && result.payload.success) {
       toast.success(result.payload.message)
       setEmail('')
+      setConsent(false)
       setFirstName('')
       setTopicSlugs([])
       dispatch(resetNewsletterStatus())
     } else {
-      toast.error('Something went wrong. Please try again.')
+      toast.error(result.payload?.message || 'Something went wrong. Please try again.')
+      dispatch(resetNewsletterStatus())
     }
   }
 
@@ -150,10 +158,7 @@ export default function NewsletterPage() {
               <ArrowRight size={16} />
             </button>
 
-            <p className="text-xs text-charcoal-600/70">
-              By subscribing, you agree to receive the WSF Weekly newsletter by email. We never sell your
-              information, and you can unsubscribe from any issue in one click.
-            </p>
+            <NewsletterConsent id="newsletter-page-consent" checked={consent} onChange={setConsent} />
           </form>
 
           {page.benefits.length > 0 && (

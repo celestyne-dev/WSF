@@ -2,23 +2,36 @@ import secrets
 
 from app.extensions import db
 
-# active: receiving newsletter sends. unsubscribed: opted out by their own
-# action (recoverable via an ordinary explicit resubscribe). bounced /
-# complained: suppressed for deliverability/compliance reasons — reserved
-# for a future email-provider webhook to set; nothing in this codebase
-# sets them yet, but an ordinary public subscribe must never silently
-# clear them (see services/newsletter.py::upsert_subscriber).
-SUBSCRIBER_STATUSES = ("active", "unsubscribed", "bounced", "complained")
+# WSF is the master subscriber and consent record (Step 14, provider-neutral;
+# rules in app/services/newsletter.py):
+#   pending             asked to subscribe (explicit checkbox consent) but has
+#                       not clicked the confirmation link yet. NOT subscribed:
+#                       never in an audience or an export.
+#   active              confirmed by double opt-in (confirmed_at set). The only
+#                       status that is exported or counted as an audience.
+#   legacy_unconfirmed  subscribed before double opt-in existed; whether they
+#                       ever confirmed is not known, so they are not exported
+#                       until they confirm (a Studio "ask to confirm" email).
+#   unsubscribed        suppressed: opted out (link, form, Studio, or an
+#                       external sending service's unsubscribe import).
+#   bounced/complained  suppressed for deliverability/complaint reasons.
+# Suppressed addresses never return through an ordinary signup alone: only
+# a fresh explicit signup AND a click on its confirmation link reactivates.
+SUBSCRIBER_STATUSES = ("pending", "active", "legacy_unconfirmed", "unsubscribed", "bounced", "complained")
+SUPPRESSED_STATUSES = ("unsubscribed", "bounced", "complained")
 _SUBSCRIBER_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in SUBSCRIBER_STATUSES) + ")"
 
-# draft: being written, not visible anywhere publicly. scheduled: content
-# finalized and a scheduled_at set, awaiting either a future provider/
-# worker integration or a manual "mark sent" action — no automated
-# delivery exists in this codebase. sent: an admin has explicitly marked
-# this issue as sent (an honest manual record, not a claim that this app
-# delivered it) — the only status that appears in the public archive.
-# archived: retired from the public archive; the record itself persists.
-ISSUE_STATUSES = ("draft", "scheduled", "sent", "archived")
+# WSF does not transmit newsletters itself; staff send them through an
+# external service chosen as needed (provider-neutral).
+#   draft     being written, not public.
+#   ready     content final, ready to export (scheduled_at = planned date,
+#             informational only — nothing sends automatically).
+#   sent      staff recorded that it was SENT EXTERNALLY (a
+#             newsletter_send_records row says where, when, to how many) —
+#             the only status in the public archive.
+#   archived  retired from the public archive; the record persists.
+# "Exported" is not a status: each recipient export is its own send record.
+ISSUE_STATUSES = ("draft", "ready", "sent", "archived")
 _ISSUE_STATUS_CHECK_SQL = "status IN (" + ", ".join(f"'{s}'" for s in ISSUE_STATUSES) + ")"
 
 newsletter_subscriber_topics = db.Table(
@@ -66,6 +79,15 @@ class NewsletterSubscriber(db.Model):
     # this was recorded.
     consent_at = db.Column(db.DateTime(timezone=True))
     consent_version = db.Column(db.String(40))
+    # Where the consent now in force was given (the form's placement).
+    consent_source = db.Column(db.String(50))
+    # Double opt-in: when they clicked the confirmation link. NULL = never
+    # confirmed through WSF (pending, or legacy_unconfirmed).
+    confirmed_at = db.Column(db.DateTime(timezone=True))
+    # How the last unsubscribe/suppression happened: "link", "form",
+    # "studio", "external_import"; reason = provider name / staff note.
+    unsubscribe_source = db.Column(db.String(40))
+    unsubscribe_reason = db.Column(db.String(200))
 
     country = db.relationship("Country", foreign_keys=[country_code])
     interests = db.relationship("Topic", secondary=newsletter_subscriber_topics, backref="newsletter_subscribers")
@@ -119,3 +141,88 @@ class NewsletterIssue(db.Model):
 
     featured_article = db.relationship("Article", foreign_keys=[featured_article_id])
     cover_media = db.relationship("Media", foreign_keys=[cover_media_id])
+
+
+class NewsletterConfirmation(db.Model):
+    """One double-opt-in request: the consent given at signup, waiting for
+    its link to be clicked. Only the SHA-256 of the link token is stored.
+    A newer request for the same address supersedes older unconfirmed
+    ones, so there is at most one usable link at a time."""
+
+    __tablename__ = "newsletter_confirmations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    subscriber_id = db.Column(db.Integer, db.ForeignKey("newsletter_subscribers.id", ondelete="CASCADE"),
+                              nullable=False, index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    consent_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    consent_version = db.Column(db.String(40), nullable=False)
+    consent_source = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    confirmed_at = db.Column(db.DateTime(timezone=True))
+    superseded_at = db.Column(db.DateTime(timezone=True))
+
+    subscriber = db.relationship("NewsletterSubscriber")
+
+
+class NewsletterSubscriberEvent(db.Model):
+    """Consent/suppression trail for one address: signup requested,
+    confirmed, unsubscribed (and how), imported suppression, legacy mapping.
+    Operational record; no IP address or browser data."""
+
+    __tablename__ = "newsletter_subscriber_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    subscriber_id = db.Column(db.Integer, db.ForeignKey("newsletter_subscribers.id", ondelete="CASCADE"),
+                              nullable=False, index=True)
+    event = db.Column(db.String(40), nullable=False)
+    source = db.Column(db.String(80))
+    consent_version = db.Column(db.String(40))
+    import_id = db.Column(db.Integer, db.ForeignKey("newsletter_suppression_imports.id", ondelete="SET NULL"))
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+
+
+class NewsletterSuppressionImport(db.Model):
+    """One CSV of unsubscribes reported by an external sending service,
+    applied to WSF (counts only; the addresses are on the events)."""
+
+    __tablename__ = "newsletter_suppression_imports"
+
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(db.String(100), nullable=False)
+    filename = db.Column(db.String(200))
+    rows = db.Column(db.Integer, nullable=False, default=0)
+    invalid = db.Column(db.Integer, nullable=False, default=0)
+    newly_suppressed = db.Column(db.Integer, nullable=False, default=0)
+    already_suppressed = db.Column(db.Integer, nullable=False, default=0)
+    added_unknown = db.Column(db.Integer, nullable=False, default=0)
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+
+
+SEND_RECORD_KINDS = ("export", "external_send")
+
+
+class NewsletterSendRecord(db.Model):
+    """What staff did with an issue outside WSF: an "export" (recipient CSV
+    downloaded) or an "external_send" (sent through the named external
+    service). WSF never claims it transmitted the email itself."""
+
+    __tablename__ = "newsletter_send_records"
+    __table_args__ = (db.CheckConstraint("kind IN ('export', 'external_send')", name="ck_newsletter_send_records_kind"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    issue_id = db.Column(db.Integer, db.ForeignKey("newsletter_issues.id", ondelete="CASCADE"), nullable=False,
+                         index=True)
+    kind = db.Column(db.String(20), nullable=False)
+    provider_name = db.Column(db.String(100))
+    external_reference = db.Column(db.String(200))
+    recipient_count = db.Column(db.Integer, nullable=False, default=0)
+    occurred_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    note = db.Column(db.String(500))
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+
+    actor = db.relationship("User")

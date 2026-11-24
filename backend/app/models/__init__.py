@@ -69,6 +69,12 @@ from app.models.refresh_session import RefreshSession  # noqa: F401
 from app.models.csp_violation import CspViolation  # noqa: F401
 from app.models.rate_limit import RateLimitCounter  # noqa: F401
 from app.models.two_factor import TwoFactorRecoveryCode, UserTwoFactor  # noqa: F401
+from app.models.newsletter import (  # noqa: F401
+    NewsletterConfirmation,
+    NewsletterSendRecord,
+    NewsletterSubscriberEvent,
+    NewsletterSuppressionImport,
+)
 from app.models.comment import (  # noqa: F401
     Comment,
     CommentEvent,

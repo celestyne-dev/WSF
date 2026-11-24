@@ -113,6 +113,9 @@ class SubscribeInputSchema(ma.Schema):
     placement = fields.String(required=False, allow_none=True)
     acquisition = fields.Dict(required=False, allow_none=True)
     topic_slugs = fields.List(fields.String(), required=False, load_default=list, data_key="topicSlugs")
+    # The explicit, unticked-by-default consent checkbox. Raw on purpose:
+    # only a real JSON true counts (no "yes"/"1"/"on" coercion).
+    consent = fields.Raw(required=False, load_default=False)
 
 
 class UnsubscribeInputSchema(ma.Schema):
@@ -142,11 +145,10 @@ class NewsletterIssueInputSchema(ma.Schema):
     cover_media_id = fields.Integer(required=False, allow_none=True, data_key="coverMediaId")
     summary = fields.String(required=False, allow_none=True)
     featured_article_slug = fields.String(required=False, allow_none=True, data_key="featuredArticleSlug")
-    # "sent" is deliberately not settable through this general save — an
-    # issue is only ever marked sent through the dedicated mark-sent
-    # action, so a plain save can never accidentally claim delivery.
+    # "sent" is deliberately not settable through this general save: only the
+    # record-send action (an external send, with its details) sets it.
     status = fields.String(
-        required=False, load_default="draft", validate=validate.OneOf(("draft", "scheduled", "archived"))
+        required=False, load_default="draft", validate=validate.OneOf(("draft", "ready", "archived"))
     )
     audience_filter = fields.Dict(required=False, allow_none=True, data_key="audienceFilter")
     scheduled_at = fields.DateTime(required=False, allow_none=True, data_key="scheduledAt")

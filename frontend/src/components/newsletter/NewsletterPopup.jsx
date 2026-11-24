@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { X } from 'lucide-react'
 import { subscribeToNewsletter } from '../../api/newsletter'
+import NewsletterConsent from './NewsletterConsent'
 import { withAcquisitionMetadata } from '../../utils/analytics'
 import { consentSnapshot, hasConsent, onConsentChange } from '../../utils/consent'
 import {
@@ -74,6 +75,7 @@ export default function NewsletterPopup() {
 function PopupDialog({ settings, onClose }) {
   const ref = useRef(null)
   const [email, setEmail] = useState('')
+  const [consent, setConsent] = useState(false)
   const [status, setStatus] = useState('idle') // idle | sending | done | error
   const [message, setMessage] = useState('')
 
@@ -90,8 +92,13 @@ function PopupDialog({ settings, onClose }) {
       setMessage('Enter a valid email address.')
       return
     }
+    if (!consent) {
+      setStatus('error')
+      setMessage('Please tick the box to agree to receive the newsletter.')
+      return
+    }
     setStatus('sending')
-    const result = await subscribeToNewsletter(withAcquisitionMetadata({ email: email.trim(), placement: 'newsletter-popup' }))
+    const result = await subscribeToNewsletter(withAcquisitionMetadata({ email: email.trim(), placement: 'newsletter-popup', consent: true }))
     if (result.success) {
       writePopupState(store(), { ...readPopupState(store()), subscribedAt: new Date().toISOString() })
       setStatus('done')
@@ -120,8 +127,8 @@ function PopupDialog({ settings, onClose }) {
             {/* Neutral on purpose: the subscribe API answers the same way for
                 every address (no list-state disclosure), so this never promises
                 delivery. */}
-            <h2 id="newsletter-popup-title" className="font-serif text-2xl font-semibold text-charcoal">Thanks for signing up.</h2>
-            <p id="newsletter-popup-body" className="mt-2 text-sm text-charcoal-700">Your {settings.title} signup has been received.</p>
+            <h2 id="newsletter-popup-title" className="font-serif text-2xl font-semibold text-charcoal">Check your inbox.</h2>
+            <p id="newsletter-popup-body" className="mt-2 text-sm text-charcoal-700">If this address isn’t already on {settings.title}, we’ve sent a link to confirm your subscription. Nothing is sent until you confirm.</p>
             <button type="button" onClick={onClose} className="btn-secondary mt-5 !px-4 !py-2.5">Close</button>
           </div>
         ) : (
@@ -142,15 +149,12 @@ function PopupDialog({ settings, onClose }) {
                 aria-describedby={status === 'error' ? 'newsletter-popup-error' : undefined}
                 className="rounded-control w-full border border-taupe-300 bg-white px-4 py-3 text-sm text-charcoal focus:border-burgundy-500 focus:outline-none"
               />
+              <NewsletterConsent id="newsletter-popup-consent" checked={consent} onChange={setConsent} />
               {status === 'error' && <p id="newsletter-popup-error" role="alert" className="text-xs font-medium text-rose-700">{message}</p>}
               <button type="submit" disabled={status === 'sending'} className="btn-primary w-full disabled:opacity-60">
                 {status === 'sending' ? 'Joining…' : settings.ctaLabel}
               </button>
             </form>
-            <p className="mt-3 text-xs leading-relaxed text-charcoal-600">
-              By subscribing, you agree to receive WSF emails. You can unsubscribe at any time. See our{' '}
-              <Link to="/privacy" onClick={onClose} className="font-semibold text-burgundy-600 underline underline-offset-2">Privacy Policy</Link>.
-            </p>
           </>
         )}
       </div>

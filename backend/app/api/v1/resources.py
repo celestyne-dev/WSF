@@ -43,7 +43,7 @@ from app.services.content_blocks import sanitize_editor_blocks
 from app.services.entity_redirects import create_entity_redirect_for_slug_change
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
-from app.services.newsletter import upsert_subscriber
+from app.services.newsletter import request_subscription_safely
 from app.services.public_visibility import is_public_author, is_public_taxonomy, public_author_dump, public_organization_preview
 from app.services.career_hub import CIRCLE_INCLUSION_LABELS, resource_estimated_time, resource_format, viewer_membership_label
 from app.services.circle import circle_tier, has_lifetime_circle_access
@@ -825,7 +825,7 @@ class ResourceAccessResource(Resource):
             # resubscribe rules stay consistent with every other signup
             # surface on the site.
             if lead_data.get("newsletter_consent"):
-                upsert_subscriber(
+                request_subscription_safely(
                     email,
                     first_name=lead_data.get("first_name"),
                     country_code=lead_data.get("country_code"),

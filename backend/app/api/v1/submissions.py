@@ -33,7 +33,7 @@ from app.schemas.media import MediaSchema
 from app.services.audit import log_action
 from app.services.career_outcomes import apply_outcome_review
 from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
-from app.services.newsletter import upsert_subscriber
+from app.services.newsletter import request_subscription_safely
 from app.services.media import MediaService
 from app.services.notifications import notify_story_submission_received
 from app.services.flat_slugs import generate_flat_slug
@@ -163,7 +163,7 @@ class SubmissionListResource(Resource):
         notify_story_submission_received(submission)
 
         if newsletter_opt_in:
-            upsert_subscriber(
+            request_subscription_safely(
                 email,
                 first_name=submission.first_name,
                 last_name=submission.last_name,

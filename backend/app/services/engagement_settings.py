@@ -24,7 +24,10 @@ COOKIE_CONSENT_KEY = "cookie_consent"
 # The newsletter signup wording version recorded with each subscription
 # (NewsletterSubscriber.consent_version): bump when the consent sentence
 # shown next to a signup form changes. Operational provenance only.
-NEWSLETTER_CONSENT_VERSION = "newsletter-v1"
+# v2 (Step 14): an explicit unticked checkbox ("Yes, send me the WSF Weekly
+# newsletter by email…") plus double opt-in. v1 was the implied-consent line
+# under the form; rows recorded with v1 keep that label.
+NEWSLETTER_CONSENT_VERSION = "newsletter-v2"
 # The explicit, unchecked-by-default "also send me WSF Weekly" checkbox on
 # other forms (resource download, community join, mentorship, nominations,
 # story submissions): different wording, so a different version label.

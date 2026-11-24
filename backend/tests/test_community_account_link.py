@@ -470,7 +470,9 @@ class TestLeaveAndRejoin:
             assert LearningEnrollment.query.filter_by(user_id=reloaded_user.id).count() == 1
             subscriber = NewsletterSubscriber.query.filter_by(email=USER1["email"]).first()
             assert subscriber is not None
-            assert subscriber.status == "active"
+            # The join's opt-in is awaiting double opt-in confirmation;
+            # leaving the community leaves it exactly as it was.
+            assert subscriber.status == "pending"
 
     # 34,35,36. rejoin reuses same row, keeps user_id, never restores directory
     def test_rejoin_from_left_reuses_row_and_keeps_directory_off(self, client, app, user1_token, joined):

@@ -42,11 +42,13 @@ export default function AdminNewsletterOverview() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Active subscribers" value={new Intl.NumberFormat('en-US').format(overview.activeSubscribers)} icon={Users} />
+        <StatCard label="Confirmed subscribers" value={new Intl.NumberFormat('en-US').format(overview.activeSubscribers)} icon={Users} />
+        <StatCard label="Awaiting confirmation" value={new Intl.NumberFormat('en-US').format(overview.pendingSubscribers || 0)} icon={UserPlus} />
+        <StatCard label="Legacy, not confirmed" value={new Intl.NumberFormat('en-US').format(overview.legacyUnconfirmed || 0)} icon={Users} />
         <StatCard label="New in last 30 days" value={new Intl.NumberFormat('en-US').format(overview.newSubscribers30d)} icon={UserPlus} />
         <StatCard label="Unsubscribed" value={new Intl.NumberFormat('en-US').format(overview.unsubscribedCount)} icon={UserMinus} />
         <StatCard label="Draft issues" value={overview.draftIssues} icon={FileEdit} />
-        <StatCard label="Scheduled issues" value={overview.scheduledIssues} icon={CalendarClock} />
+        <StatCard label="Ready issues" value={overview.readyIssues} icon={CalendarClock} />
         <StatCard label="Sent issues" value={overview.sentIssues} icon={Send} />
       </div>
 
@@ -57,7 +59,7 @@ export default function AdminNewsletterOverview() {
         </Link>
         <Link to="/admin/newsletter/issues" className="block border border-taupe-200 bg-white p-5 hover:border-burgundy-500">
           <p className="font-serif text-lg font-semibold text-charcoal">Issues / Campaigns</p>
-          <p className="mt-1 text-sm text-charcoal-600">Draft, schedule, and archive newsletter editions.</p>
+          <p className="mt-1 text-sm text-charcoal-600">Prepare issues, export confirmed recipients and record external sends.</p>
         </Link>
       </div>
 

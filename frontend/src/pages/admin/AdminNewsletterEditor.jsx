@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
-import { Save, Eye, Archive, Send, Clock } from 'lucide-react'
+import { Save, Eye, Archive, Send, CheckCircle2, Download } from 'lucide-react'
 import {
   fetchNewsletterIssueBySlug,
   createNewsletterIssue,
   updateNewsletterIssue,
-  markNewsletterIssueSent,
+  recordExternalSend,
+  fetchSendRecords,
+  exportIssueRecipients,
   archiveNewsletterIssue,
   estimateAudience,
 } from '../../api/newsletter'
+import { ISSUE_STATUS_LABELS } from '../../constants/newsletter'
 import { fetchArticles } from '../../api/articles'
 import { fetchTopics } from '../../api/taxonomies'
 import { RESERVED_SLUGS } from '../../constants/routes'
@@ -36,7 +39,7 @@ function slugify(text) {
     .replace(/-+/g, '-')
 }
 
-const STATUSES = ['draft', 'scheduled', 'archived']
+const STATUSES = ['draft', 'ready', 'archived']
 
 function Section({ title, description, children }) {
   return (
@@ -123,13 +126,20 @@ export default function AdminNewsletterEditor() {
   const [loadError, setLoadError] = useState(null)
   const [estimatedRecipients, setEstimatedRecipients] = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
+  const [sendRecords, setSendRecords] = useState([])
+  const [sendForm, setSendForm] = useState({ providerName: '', externalReference: '', recipientCount: '', sentAt: '' })
 
   useEffect(() => {
     let active = true
-    Promise.all([fetchTopics(), isNew ? Promise.resolve(null) : fetchNewsletterIssueBySlug(slugParam)])
-      .then(([topicList, existing]) => {
+    Promise.all([
+      fetchTopics(),
+      isNew ? Promise.resolve(null) : fetchNewsletterIssueBySlug(slugParam),
+      isNew ? Promise.resolve([]) : fetchSendRecords(slugParam).catch(() => []),
+    ])
+      .then(([topicList, existing, records]) => {
         if (!active) return
         setTopics(topicList)
+        setSendRecords(records)
         if (isNew) {
           setForm(blankForm())
         } else if (existing) {
@@ -209,12 +219,8 @@ export default function AdminNewsletterEditor() {
       toast.error('Add a subject line.')
       return
     }
-    if (nextStatus === 'scheduled' && form.content.length === 0) {
-      toast.error('Add content before scheduling this issue.')
-      return
-    }
-    if (nextStatus === 'scheduled' && !form.scheduledAt) {
-      toast.error('Set a scheduled date/time before scheduling this issue.')
+    if (nextStatus === 'ready' && form.content.length === 0) {
+      toast.error('Add content before marking this issue ready.')
       return
     }
     setErrors({})
@@ -237,7 +243,7 @@ export default function AdminNewsletterEditor() {
 
     try {
       const saved = isNew ? await createNewsletterIssue(payload) : await updateNewsletterIssue(slugParam, payload)
-      toast.success(`Issue saved as ${nextStatus}.`)
+      toast.success(`Issue saved: ${ISSUE_STATUS_LABELS[nextStatus] || nextStatus}.`)
       if (isNew) navigate(`/admin/newsletter/issues/${saved.slug}`)
       else {
         setIssue(saved)
@@ -251,16 +257,35 @@ export default function AdminNewsletterEditor() {
     }
   }
 
-  async function handleMarkSent() {
+  async function loadRecords() {
+    if (isNew) return
     try {
-      const updated = await markNewsletterIssueSent(slugParam)
+      setSendRecords(await fetchSendRecords(slugParam))
+    } catch {
+      setSendRecords([])
+    }
+  }
+
+  async function handleExport() {
+    try {
+      await exportIssueRecipients(slugParam)
+      toast.success('Recipient CSV downloaded (confirmed subscribers only). The export is recorded.')
+      loadRecords()
+    } catch (err) {
+      toast.error(err?.response?.status === 403 ? "You don't have permission to export recipients." : 'The export failed.')
+    }
+  }
+
+  async function handleRecordSend(e) {
+    e.preventDefault()
+    try {
+      const updated = await recordExternalSend(slugParam, sendForm)
       setIssue(updated)
       setForm(toForm(updated))
-      toast.success('Issue marked as sent. This is a manual editorial record — no email was delivered by this action.')
+      toast.success('External send recorded. WSF did not send this email itself.')
+      loadRecords()
     } catch (err) {
-      toast.error(err?.response?.data?.error?.message || 'Something went wrong.')
-    } finally {
-      setConfirmAction(null)
+      toast.error(err?.apiError?.message || err?.response?.data?.error?.message || 'Something went wrong.')
     }
   }
 
@@ -403,9 +428,9 @@ export default function AdminNewsletterEditor() {
             </p>
           </Section>
 
-          <Section title="Scheduling" description="Stored for a future email-provider integration — this app does not send email automatically.">
+          <Section title="Planned send date" description="Informational only: WSF never sends newsletters automatically.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Scheduled date/time">
+              <Field label="Planned date/time">
                 <input type="datetime-local" value={form.scheduledAt} onChange={(e) => updateField('scheduledAt', e.target.value)} className="w-full border border-taupe-300 px-3 py-2.5 text-sm focus:border-burgundy-500 focus:outline-none" />
               </Field>
               <Field label="Timezone" hint="e.g. UTC, America/New_York">
@@ -414,21 +439,47 @@ export default function AdminNewsletterEditor() {
             </div>
           </Section>
 
-          <Section title="Delivery status" description="An honest, manual record — this app has no email provider connected yet, so nothing here implies real delivery.">
-            <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-charcoal-600/70">Sent at</dt>
-                <dd className="text-charcoal">{issue?.sentAt ? formatDate(issue.sentAt) : 'Not sent'}</dd>
+          <Section title="Delivery" description="WSF prepares the issue and the recipient list; you send it through an external service and record it here. WSF does not transmit newsletters itself.">
+            {!isNew && (
+              <div className="space-y-4">
+                <button type="button" onClick={handleExport} className="btn-secondary !px-4 !py-2 text-xs">
+                  <Download size={13} /> Export recipients (confirmed subscribers, CSV)
+                </button>
+                {actualStatus !== 'sent' && actualStatus !== 'archived' && (
+                  <form onSubmit={handleRecordSend} className="space-y-3 border border-taupe-200 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Record external send</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="text-xs text-charcoal-600">Sending service
+                        <input required maxLength={100} value={sendForm.providerName} onChange={(e) => setSendForm({ ...sendForm, providerName: e.target.value })} className="mt-1 w-full border border-taupe-300 px-3 py-2 text-sm" />
+                      </label>
+                      <label className="text-xs text-charcoal-600">Campaign / reference ID (optional)
+                        <input maxLength={200} value={sendForm.externalReference} onChange={(e) => setSendForm({ ...sendForm, externalReference: e.target.value })} className="mt-1 w-full border border-taupe-300 px-3 py-2 text-sm" />
+                      </label>
+                      <label className="text-xs text-charcoal-600">Recipients
+                        <input required type="number" min="0" value={sendForm.recipientCount} onChange={(e) => setSendForm({ ...sendForm, recipientCount: e.target.value })} className="mt-1 w-full border border-taupe-300 px-3 py-2 text-sm" />
+                      </label>
+                      <label className="text-xs text-charcoal-600">Sent at (optional, defaults to now)
+                        <input type="datetime-local" value={sendForm.sentAt} onChange={(e) => setSendForm({ ...sendForm, sentAt: e.target.value })} className="mt-1 w-full border border-taupe-300 px-3 py-2 text-sm" />
+                      </label>
+                    </div>
+                    <button type="submit" className="btn-primary !px-4 !py-2 text-xs"><Send size={13} /> Record external send</button>
+                  </form>
+                )}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">History</p>
+                  {sendRecords.length ? (
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {sendRecords.map((r) => (
+                        <li key={r.id}>
+                          {r.kind === 'export' ? 'Recipient export' : `Sent externally via ${r.providerName}`}
+                          {' · '}{r.recipientCount} recipients · {formatDate(r.occurredAt)}
+                          {r.externalReference ? ` · ref ${r.externalReference}` : ''}{r.recordedBy ? ` · ${r.recordedBy}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="mt-1 text-sm text-charcoal-600">No exports or sends recorded yet.</p>}
+                </div>
               </div>
-              <div>
-                <dt className="text-charcoal-600/70">Provider</dt>
-                <dd className="text-charcoal">Not connected</dd>
-              </div>
-            </dl>
-            {!isNew && actualStatus !== 'sent' && actualStatus !== 'archived' && (
-              <button type="button" onClick={() => setConfirmAction('mark-sent')} className="btn-secondary !px-4 !py-2 text-xs">
-                <Send size={13} /> Mark as sent
-              </button>
             )}
           </Section>
         </div>
@@ -439,7 +490,7 @@ export default function AdminNewsletterEditor() {
             <select value={form.status} onChange={(e) => updateField('status', e.target.value)} disabled={actualStatus === 'sent'} className="mt-2 w-full border border-taupe-300 px-3 py-2 text-sm disabled:bg-taupe-100">
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {ISSUE_STATUS_LABELS[s]}
                 </option>
               ))}
             </select>
@@ -450,8 +501,8 @@ export default function AdminNewsletterEditor() {
                   <button type="button" onClick={() => handleSave('draft')} disabled={saving} className="btn-secondary w-full !py-2 text-xs disabled:opacity-60">
                     <Save size={13} /> {saving ? 'Saving…' : 'Save draft'}
                   </button>
-                  <button type="button" onClick={() => handleSave('scheduled')} disabled={saving} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
-                    <Clock size={13} /> Save &amp; schedule
+                  <button type="button" onClick={() => handleSave('ready')} disabled={saving} className="btn-primary w-full !py-2 text-xs disabled:opacity-60">
+                    <CheckCircle2 size={13} /> Save as ready to export
                   </button>
                 </>
               )}
@@ -469,16 +520,6 @@ export default function AdminNewsletterEditor() {
         </div>
       </div>
 
-      {confirmAction === 'mark-sent' && (
-        <ConfirmDialog
-          title="Mark this issue as sent?"
-          description="This records that you sent this issue — it does not deliver any email itself, since no provider is connected. This can't be undone."
-          confirmLabel="Mark as sent"
-          danger={false}
-          onConfirm={handleMarkSent}
-          onCancel={() => setConfirmAction(null)}
-        />
-      )}
       {confirmAction === 'archive' && (
         <ConfirmDialog
           title="Archive this issue?"

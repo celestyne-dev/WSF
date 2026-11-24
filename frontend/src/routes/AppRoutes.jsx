@@ -161,6 +161,7 @@ const AdminNominationDetail = lazy(() => import('../pages/admin/AdminNominationD
 const AdminContactInquiries = lazy(() => import('../pages/admin/AdminContactInquiries'))
 const AdminComments = lazy(() => import('../pages/admin/AdminComments'))
 const CommentUnsubscribePage = lazy(() => import('../pages/CommentUnsubscribePage'))
+const NewsletterConfirmPage = lazy(() => import('../pages/NewsletterConfirmPage'))
 const AdminContactInquiryDetail = lazy(() => import('../pages/admin/AdminContactInquiryDetail'))
 const AdminDirectoryListings = lazy(() => import('../pages/admin/AdminDirectoryListings'))
 const AdminDirectoryListingDetail = lazy(() => import('../pages/admin/AdminDirectoryListingDetail'))
@@ -243,6 +244,7 @@ export default function AppRoutes() {
           <Route path="/newsletter" element={<NewsletterPage />} />
           <Route path="/newsletter/unsubscribe/:token" element={<NewsletterUnsubscribePage />} />
           <Route path="/comments/unsubscribe/:token" element={<CommentUnsubscribePage />} />
+          <Route path="/newsletter/confirm/:token" element={<NewsletterConfirmPage />} />
           <Route path="/newsletter/:slug" element={<NewsletterIssuePage />} />
           <Route path="/partnerships" element={<PartnershipsPage />} />
           <Route path="/advertise" element={<AdvertisePage />} />

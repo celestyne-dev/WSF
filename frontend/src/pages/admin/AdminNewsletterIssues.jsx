@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ISSUE_STATUSES, ISSUE_STATUS_LABELS } from '../../constants/newsletter'
 import { Link } from 'react-router-dom'
 import { Plus, Pencil } from 'lucide-react'
 import { fetchNewsletterIssues } from '../../api/newsletter'
@@ -8,7 +9,7 @@ import StatusBadge from '../../components/cms/StatusBadge'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
-const STATUSES = ['draft', 'scheduled', 'sent', 'archived']
+const STATUSES = ISSUE_STATUSES
 
 export default function AdminNewsletterIssues() {
   const [status, setStatus] = useState('')
@@ -30,7 +31,7 @@ export default function AdminNewsletterIssues() {
     <div>
       <AdminPageHeader
         title="Issues / Campaigns"
-        description="Newsletter editions — draft, scheduled, sent, or archived."
+        description="Newsletter editions: draft, ready to export, sent externally (recorded), or archived."
         actions={
           <Link to="/admin/newsletter/issues/new" className="btn-primary !px-4 !py-2 text-xs">
             <Plus size={14} /> New issue
@@ -43,7 +44,7 @@ export default function AdminNewsletterIssues() {
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {ISSUE_STATUS_LABELS[s]}
             </option>
           ))}
         </select>

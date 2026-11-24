@@ -106,3 +106,14 @@ def test_unknown_frontend_storage_keys_are_still_caught(tmp_path):
     keys = _frontend_storage_keys(tmp_path)
     assert keys == {"wsf_unlisted_thing"}
     assert _keys_missing_from_inventory(keys) == ["wsf_unlisted_thing"]
+
+
+def test_implementation_facts_cover_the_newsletter(app):
+    from app.services.legal_audit import implementation_facts
+
+    with app.app_context():
+        lines = [line for section, line in implementation_facts() if section == "Newsletter"]
+    text = " ".join(lines)
+    assert "double opt-in" in text and "only confirmed subscribers are exported" in text
+    assert "provider-neutral" in text and "legacy_unconfirmed=" in text
+    assert "@" not in text  # counts only, never addresses

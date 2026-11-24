@@ -29,61 +29,64 @@ def admin_token(client, app):
 
 
 def test_newsletter_subscribe_unsubscribe_and_resubscribe(client, admin_token):
-    subscribe = client.post(
-        "/api/v1/newsletter/subscribe",
-        json={
-            "email": "reader@example.com",
-            "firstName": "Reader",
-            "countryCode": "US",
-            "placement": "footer",
-            "acquisition": {"source": "linkedin", "isFromLinkedIn": True},
-        },
-    )
+    from tests.conftest import newsletter_signup
+
+    subscribe = newsletter_signup(client, {
+        "email": "reader@example.com",
+        "firstName": "Reader",
+        "countryCode": "US",
+        "placement": "footer",
+        "acquisition": {"source": "linkedin", "isFromLinkedIn": True},
+    })
     assert subscribe.status_code == 201
-    assert subscribe.get_json()["data"]["status"] == "subscribed"
+    assert subscribe.get_json()["data"]["status"] == "confirmation_required"
 
     # Subscribing again with the same email updates rather than duplicates.
-    # The public response is a privacy-trimmed confirmation (email/status/
-    # subscribedAt only), so the update itself is verified via the admin
-    # subscriber list rather than the public response body.
-    again = client.post(
-        "/api/v1/newsletter/subscribe", json={"email": "reader@example.com", "firstName": "Reader Updated"}
-    )
+    again = newsletter_signup(client, {"email": "reader@example.com", "firstName": "Reader Updated"})
     assert again.status_code == 201
-    assert set(again.get_json()["data"].keys()) == {"email", "status", "subscribedAt"}
+    assert set(again.get_json()["data"].keys()) == {"email", "status"}
 
     admin_view = client.get("/api/v1/newsletter/subscribers?q=reader@example.com", headers=auth_headers(admin_token))
     rows = admin_view.get_json()["data"]
     assert len(rows) == 1
-    assert rows[0]["first_name"] == "Reader Updated"
+    assert rows[0]["first_name"] == "Reader Updated" and rows[0]["status"] == "active"
 
     unsub = client.post("/api/v1/newsletter/unsubscribe", json={"email": "reader@example.com"})
     assert unsub.status_code == 200
 
-    resub = client.post("/api/v1/newsletter/subscribe", json={"email": "reader@example.com"})
+    resub = newsletter_signup(client, {"email": "reader@example.com"}, confirm=False)
     assert resub.status_code == 201
-    assert resub.get_json()["data"]["status"] == "subscribed"
+    assert resub.get_json()["data"]["status"] == "confirmation_required"
 
 
 def test_newsletter_subscribe_ignores_unknown_frontend_fields(client):
-    # Reproduces the exact payload NewsletterForm.jsx sends (email, placement,
-    # consentTimestamp, acquisition) — consentTimestamp isn't a declared
-    # field on SubscribeInputSchema and previously caused a 422.
+    # The payload NewsletterForm.jsx sends (email, placement, consent,
+    # consentTimestamp, acquisition): undeclared fields are ignored.
     subscribe = client.post(
         "/api/v1/newsletter/subscribe",
         json={
             "email": "consent@example.com",
             "placement": "footer",
+            "consent": True,
             "consentTimestamp": "2026-09-21T00:00:00.000Z",
             "acquisition": {"source": "direct"},
         },
     )
     assert subscribe.status_code == 201
-    assert subscribe.get_json()["data"]["status"] == "subscribed"
+    assert subscribe.get_json()["data"]["status"] == "confirmation_required"
+
+
+def test_newsletter_subscribe_without_consent_tick_is_refused(client, app):
+    resp = client.post("/api/v1/newsletter/subscribe", json={"email": "no-tick@example.com"})
+    assert resp.status_code == 422 and resp.get_json()["error"]["code"] == "newsletter_consent_required"
+    from app.models.newsletter import NewsletterSubscriber
+
+    with app.app_context():
+        assert NewsletterSubscriber.query.filter_by(email="no-tick@example.com").first() is None
 
 
 def test_newsletter_subscribers_list_requires_permission(client, admin_token):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "a@example.com"})
+    client.post("/api/v1/newsletter/subscribe", json={"email": "a@example.com", "consent": True})
 
     denied = client.post(
         "/api/v1/auth/register",

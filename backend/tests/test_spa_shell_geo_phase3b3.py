@@ -243,7 +243,7 @@ def test_directory_shop_newsletter_hubs(client, app):
             NewsletterIssue(slug="jan", title="INTERNAL-TITLE", subject="January Digest", status="sent", issue_number=3,
                             sent_at=datetime(2026, 1, 15, tzinfo=timezone.utc), preheader="This week.", provider_campaign_id="SECRET-CAMPAIGN",
                             content=[{"type": "paragraph", "text": "ISSUE-BODY"}]),
-            NewsletterIssue(slug="future", title="T", subject="Secret Future Subject", status="scheduled", content=[]),
+            NewsletterIssue(slug="future", title="T", subject="Secret Future Subject", status="ready", content=[]),
             NewsletterSubscriber(email="secret-subscriber@example.com", first_name="Subfirst", status="active", unsubscribe_token="SECRET-UNSUB-TOKEN"),
         ])
         db.session.commit()

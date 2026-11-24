@@ -286,6 +286,11 @@ def register_cli(app):
         for name, configured in configurable_status():
             click.echo(f"Configurable integration: {name}: {'CONFIGURED (runs only with consent)' if configured else 'not configured (inactive)'}")
         click.echo(f"Configured but NOT active (no runtime integration): {', '.join(INACTIVE_INTEGRATIONS)}")
+        from app.services.legal_audit import implementation_facts
+
+        click.echo("Implementation facts (verified from code/config; input for the policy pages):")
+        for section, line in implementation_facts():
+            click.echo(f"  [{section}] {line}")
 
     @app.cli.command("csp-report-summary")
     @click.option("--days", default=7, show_default=True, help="Only violations seen in the last N days.")

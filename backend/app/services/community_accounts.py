@@ -19,7 +19,7 @@ from app.models.geography import Country
 from app.models.taxonomy import Topic
 from app.models.user import User
 from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
-from app.services.newsletter import upsert_subscriber
+from app.services.newsletter import request_subscription_safely
 from app.utils.responses import ApiError
 
 # Self-service reactivation is allowed only from these two statuses — the
@@ -136,7 +136,7 @@ def join_as_account(user, data):
     db.session.commit()
 
     if member.newsletter_opt_in:
-        upsert_subscriber(
+        request_subscription_safely(
             email=member.email,
             first_name=member.first_name,
             last_name=member.last_name,

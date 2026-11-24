@@ -534,7 +534,7 @@ def test_newsletter_description_fallbacks(client, app):
     assert _meta(_get(client, "/newsletter/subject-only")[1], "name", "description") == "Subject Only Issue"
 
 
-@pytest.mark.parametrize("status_value", ["draft", "scheduled", "archived"])
+@pytest.mark.parametrize("status_value", ["draft", "ready", "archived"])
 def test_unsent_newsletter_issue_404s_without_leak(client, app, status_value):
     _issue(app, "future-issue", status=status_value, subject="Unsent Subject Line")
     status, html = _get(client, "/newsletter/future-issue")

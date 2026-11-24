@@ -1,5 +1,3 @@
-import csv
-import io
 from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint, Response, request
@@ -28,7 +26,18 @@ from app.services.audit import log_action
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.engagement_settings import NEWSLETTER_CONSENT_VERSION
-from app.services.newsletter import audience_query, count_audience, upsert_subscriber
+from app.services.newsletter import (
+    NewsletterError,
+    confirm_subscription,
+    count_audience,
+    export_csv,
+    import_suppressions,
+    record_export,
+    record_external_send,
+    request_reconfirmation,
+    request_subscription,
+    unsubscribe,
+)
 from app.services.slugs import generate_unique_slug, validate_explicit_slug
 from app.services.rate_limits import limit
 from app.utils.filtering import apply_equality_filters, apply_search
@@ -42,11 +51,6 @@ subscriber_schema = NewsletterSubscriberSchema()
 confirmation_schema = NewsletterSubscriberConfirmationSchema()
 issue_schema = NewsletterIssueSchema()
 public_issue_schema = NewsletterIssuePublicSchema()
-
-_EXPORT_COLUMNS = [
-    "Email", "First Name", "Last Name", "Status", "Source", "Subscribed At", "Unsubscribed At", "Interests",
-]
-
 
 def _require_active_user():
     verify_jwt_in_request()
@@ -104,45 +108,60 @@ def _validate_audience_filter(audience_filter):
 
 
 def _validate_issue_readiness(issue):
-    """A campaign should not become Scheduled without sufficient content
-    and subject information. Draft issues may remain incomplete.
-    """
-    if issue.status not in ("scheduled",):
+    """An issue can't be marked Ready without a subject and content.
+    Draft issues may stay incomplete. The planned date is optional and
+    informational (WSF never sends on a schedule)."""
+    if issue.status not in ("ready",):
         return
     if not issue.subject:
-        raise ApiError("A subject line is required before scheduling.", 422, code="validation_error")
+        raise ApiError("A subject line is required before marking this issue ready.", 422, code="validation_error")
     if not issue.content:
-        raise ApiError("Newsletter content is required before scheduling.", 422, code="validation_error")
-    if not issue.scheduled_at:
-        raise ApiError("A scheduled date/time is required to mark this issue as scheduled.", 422, code="validation_error")
+        raise ApiError("Newsletter content is required before marking this issue ready.", 422, code="validation_error")
 
 
 class SubscribeResource(Resource):
-    # Public, unauthenticated write endpoint — see task spec's RATE
-    # LIMITING section.
+    """Step 1 of double opt-in. Requires the explicit, unticked-by-default
+    consent checkbox (`consent: true`); nothing is stored without it. Never
+    subscribes anyone directly: it sends a confirmation link
+    (app/services/newsletter.py request_subscription)."""
+
     @limiter.limit(limit("newsletter_subscribe"))
     def post(self):
         data = SubscribeInputSchema().load(request.get_json(silent=True) or {})
-        subscriber, created, reactivated = upsert_subscriber(
-            data["email"],
-            first_name=data.get("first_name"),
-            last_name=data.get("last_name"),
-            country_code=data.get("country_code"),
-            placement=data.get("placement"),
-            acquisition=data.get("acquisition"),
-            topic_slugs=data.get("topic_slugs"),
-            consent_version=NEWSLETTER_CONSENT_VERSION,
-        )
+        if data.get("consent") is not True:
+            raise ApiError("Please tick the box to agree to receive the WSF Weekly newsletter.", 422,
+                           code="newsletter_consent_required")
+        try:
+            request_subscription(
+                data["email"], consent_version=NEWSLETTER_CONSENT_VERSION, first_name=data.get("first_name"),
+                last_name=data.get("last_name"), country_code=data.get("country_code"),
+                placement=data.get("placement"), acquisition=data.get("acquisition"),
+                topic_slugs=data.get("topic_slugs"))
+        except NewsletterError as exc:
+            raise ApiError(str(exc), exc.status, code=exc.code)
         db.session.commit()
-        # One uniform acknowledgement for every outcome (new, already
-        # subscribed, re-subscribed, or a suppressed bounced/complained
-        # address that this signup deliberately does NOT reactivate), so the
-        # response never reveals whether or how an address is on the list.
+        # One uniform answer whatever the address's state (new, pending,
+        # already confirmed, suppressed), so it never reveals list membership.
         return success_response(
-            {"email": data["email"].strip().lower(), "status": "subscribed",
-             "subscribedAt": datetime.now(timezone.utc).isoformat()},
-            status=201,
-        )
+            {"email": data["email"].strip().lower(), "status": "confirmation_required"}, status=201,
+            message="Almost done: check your inbox and click the link to confirm your subscription.")
+
+
+class ConfirmSubscriptionResource(Resource):
+    """Step 2 of double opt-in: the emailed link's token. POST (the link
+    opens a page that posts it), so mail scanners prefetching the link
+    can't confirm on someone's behalf. Idempotent."""
+
+    @limiter.limit(limit("newsletter_confirm"))
+    def post(self):
+        payload = request.get_json(silent=True) or {}
+        result = confirm_subscription(payload.get("token"))
+        if result in ("confirmed", "already_confirmed"):
+            return success_response({"result": result}, message="You're subscribed to WSF Weekly.")
+        if result == "expired":
+            raise ApiError("This confirmation link has expired. Please sign up again to get a new one.", 410,
+                           code="confirmation_expired")
+        raise ApiError("This confirmation link isn't valid.", 404, code="confirmation_invalid")
 
 
 class UnsubscribeResource(Resource):
@@ -159,8 +178,7 @@ class UnsubscribeResource(Resource):
         if subscriber is None:
             raise ApiError("No subscription found for this email.", 404, code="not_found")
 
-        subscriber.status = "unsubscribed"
-        subscriber.unsubscribed_at = datetime.now(timezone.utc)
+        unsubscribe(subscriber, "form")
         db.session.commit()
         return success_response(confirmation_schema.dump(subscriber), message="Unsubscribed.")
 
@@ -179,10 +197,8 @@ class UnsubscribeByTokenResource(Resource):
         if subscriber is None:
             raise ApiError("This unsubscribe link is invalid or has expired.", 404, code="not_found")
 
-        if subscriber.status == "active":
-            subscriber.status = "unsubscribed"
-            subscriber.unsubscribed_at = datetime.now(timezone.utc)
-            db.session.commit()
+        unsubscribe(subscriber, "link")  # idempotent; also voids any pending confirmation link
+        db.session.commit()
         return success_response(confirmation_schema.dump(subscriber))
 
 
@@ -295,37 +311,79 @@ class NewsletterIssueDetailResource(Resource):
         return success_response(issue_schema.dump(issue))
 
 
-class NewsletterIssueMarkSentResource(Resource):
-    """The one honest, explicit action that records a newsletter as sent.
-    Never a side effect of an ordinary save — see NewsletterIssueInputSchema,
-    which does not accept "sent" as a settable status. This records that an
-    admin has sent (or is manually logging having sent) the issue; it does
-    not itself deliver any email — no provider integration exists yet.
-    """
+def _issue_or_404(slug):
+    issue = NewsletterIssue.query.filter_by(slug=slug).first()
+    if issue is None:
+        raise ApiError("Newsletter issue not found.", 404, code="not_found")
+    return issue
+
+
+def _send_record_dump(r):
+    return {"id": r.id, "kind": r.kind, "providerName": r.provider_name, "externalReference": r.external_reference,
+            "recipientCount": r.recipient_count, "occurredAt": r.occurred_at.isoformat() if r.occurred_at else None,
+            "note": r.note, "recordedBy": r.actor.full_name if r.actor else None}
+
+
+class NewsletterIssueRecordSendResource(Resource):
+    """Records that staff SENT this issue through an external service
+    (replaces the old "mark as sent"). WSF itself transmits nothing: the
+    record says which service, its campaign reference, how many recipients
+    and when."""
 
     @permission_required("newsletter.manage")
     def post(self, slug):
-        issue = NewsletterIssue.query.filter_by(slug=slug).first()
-        if issue is None:
-            raise ApiError("Newsletter issue not found.", 404, code="not_found")
+        issue = _issue_or_404(slug)
         public_before = capture_public_urls(issue)
         if issue.status == "sent":
-            raise ApiError("This issue is already marked as sent.", 409, code="already_sent")
-        if not issue.subject:
-            raise ApiError("A subject line is required before marking this issue as sent.", 422, code="validation_error")
-        if not issue.content:
-            raise ApiError("Newsletter content is required before marking this issue as sent.", 422, code="validation_error")
-
+            raise ApiError("A send is already recorded for this issue.", 409, code="already_sent")
+        if not issue.subject or not issue.content:
+            raise ApiError("Add a subject and content before recording a send.", 422, code="validation_error")
+        data = request.get_json(silent=True) or {}
+        sent_at = None
+        if data.get("sentAt"):
+            try:
+                sent_at = datetime.fromisoformat(str(data["sentAt"]).replace("Z", "+00:00"))
+            except ValueError:
+                raise ApiError("sentAt must be an ISO date-time.", 422, code="validation_error")
         previous_status = issue.status
-        issue.status = "sent"
-        issue.sent_at = datetime.now(timezone.utc)
-        db.session.commit()
-        log_action(
-            current_user, "newsletter_issue_marked_sent", "NewsletterIssue", issue.id,
-            changes={"from": previous_status, "to": "sent"},
-        )
+        try:
+            record = record_external_send(issue, provider_name=data.get("providerName"),
+                                          recipient_count=data.get("recipientCount"),
+                                          external_reference=data.get("externalReference"), sent_at=sent_at,
+                                          note=data.get("note"), actor=current_user)
+        except NewsletterError as exc:
+            raise ApiError(str(exc), exc.status, code=exc.code)
+        log_action(current_user, "newsletter_issue_external_send_recorded", "NewsletterIssue", issue.id,
+                   changes={"from": previous_status, "to": "sent", "provider": record.provider_name,
+                            "recipients": record.recipient_count})
         notify_public_change(public_before, issue)
-        return success_response(issue_schema.dump(issue))
+        return success_response({**issue_schema.dump(issue), "sendRecord": _send_record_dump(record)})
+
+
+class NewsletterIssueExportResource(Resource):
+    """Confirmed, active recipients for this issue's audience as CSV, for
+    upload to an external sending service. Each download is recorded."""
+
+    def get(self, slug):
+        _require_export()
+        issue = _issue_or_404(slug)
+        text, count = export_csv(issue.audience_filter)
+        record_export(issue, count, current_user)
+        log_action(current_user, "newsletter_issue_exported", "NewsletterIssue", issue.id, changes={"count": count})
+        response = Response(text, mimetype="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename=wsf-weekly-{issue.slug}-recipients.csv"
+        return response
+
+
+class NewsletterIssueSendRecordsResource(Resource):
+    @permission_required("newsletter.manage")
+    def get(self, slug):
+        from app.models.newsletter import NewsletterSendRecord
+
+        issue = _issue_or_404(slug)
+        rows = (NewsletterSendRecord.query.filter_by(issue_id=issue.id)
+                .order_by(NewsletterSendRecord.occurred_at.desc()).all())
+        return success_response({"records": [_send_record_dump(r) for r in rows]})
 
 
 class NewsletterIssueArchiveResource(Resource):
@@ -403,62 +461,78 @@ class NewsletterSubscriberSuppressResource(Resource):
         if subscriber is None:
             raise ApiError("Subscriber not found.", 404, code="not_found")
 
-        subscriber.status = "unsubscribed"
-        subscriber.unsubscribed_at = datetime.now(timezone.utc)
+        reason = (request.get_json(silent=True) or {}).get("reason")
+        unsubscribe(subscriber, "studio", reason=reason if isinstance(reason, str) else None, actor=current_user)
         db.session.commit()
         log_action(current_user, "newsletter_subscriber_suppressed", "NewsletterSubscriber", subscriber.id)
         return success_response(subscriber_schema.dump(subscriber))
 
 
 class NewsletterSubscriberReactivateResource(Resource):
-    """A deliberate admin action — the one place a bounced/complained or
-    unsubscribed address may be reactivated. An ordinary public signup
-    never reaches this; see services/newsletter.py::upsert_subscriber.
-    """
+    """Retired: Studio can no longer switch an address back on. Under double
+    opt-in only the person can, by signing up again and clicking the
+    confirmation link (fresh consent, recorded in their trail)."""
 
     @permission_required("newsletter.manage")
+    def post(self, subscriber_id):
+        raise ApiError("Only the person can resubscribe: ask them to sign up again and click the confirmation "
+                       "link we email them.", 409, code="reactivation_requires_confirmation")
+
+
+class NewsletterSubscriberRequestConfirmationResource(Resource):
+    """Ask a legacy (pre-double-opt-in) subscriber to confirm by email."""
+
+    @permission_required("newsletter.manage")
+    @limiter.limit("30 per minute")
     def post(self, subscriber_id):
         subscriber = db.session.get(NewsletterSubscriber, subscriber_id)
         if subscriber is None:
             raise ApiError("Subscriber not found.", 404, code="not_found")
-
-        subscriber.status = "active"
-        subscriber.unsubscribed_at = None
+        try:
+            request_reconfirmation(subscriber, current_user)
+        except NewsletterError as exc:
+            raise ApiError(str(exc), exc.status, code=exc.code)
         db.session.commit()
-        log_action(current_user, "newsletter_subscriber_reactivated", "NewsletterSubscriber", subscriber.id)
-        return success_response(subscriber_schema.dump(subscriber))
+        log_action(current_user, "newsletter_subscriber_confirmation_requested", "NewsletterSubscriber", subscriber.id)
+        return success_response(subscriber_schema.dump(subscriber), message="Confirmation email sent.")
+
+
+class NewsletterSuppressionImportResource(Resource):
+    """Unsubscribes reported by an external sending service (CSV text with an
+    email column, or one address per line) -> suppressed in WSF. Never
+    reactivates; repeat imports change nothing more."""
+
+    @permission_required("newsletter.manage")
+    @limiter.limit("10 per minute")
+    def post(self):
+        data = request.get_json(silent=True) or {}
+        text = data.get("csv")
+        if not isinstance(text, str) or not text.strip():
+            raise ApiError("Paste or upload the CSV of unsubscribed addresses.", 422, code="validation_error")
+        if len(text) > 5_000_000:
+            raise ApiError("That file is too large; please split it.", 422, code="validation_error")
+        try:
+            batch = import_suppressions(data.get("provider"), text, data.get("filename"), current_user)
+        except NewsletterError as exc:
+            raise ApiError(str(exc), exc.status, code=exc.code)
+        counts = {"rows": batch.rows, "invalid": batch.invalid, "newlySuppressed": batch.newly_suppressed,
+                  "alreadySuppressed": batch.already_suppressed, "addedUnknown": batch.added_unknown}
+        log_action(current_user, "newsletter_suppression_import", "NewsletterSuppressionImport", batch.id,
+                   changes={"provider": batch.provider, **counts})
+        return success_response({"id": batch.id, "provider": batch.provider, **counts})
 
 
 class NewsletterSubscriberExportResource(Resource):
     def get(self):
         _require_export()
 
-        query = NewsletterSubscriber.query.order_by(NewsletterSubscriber.subscribed_at.desc())
-        query = apply_equality_filters(query, NewsletterSubscriber, request.args, ["status", "placement"])
-        subscribers = query.limit(20000).all()
-
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(_EXPORT_COLUMNS)
-        for s in subscribers:
-            writer.writerow(
-                [
-                    s.email,
-                    s.first_name or "",
-                    s.last_name or "",
-                    s.status,
-                    s.placement or "",
-                    s.subscribed_at.isoformat() if s.subscribed_at else "",
-                    s.unsubscribed_at.isoformat() if s.unsubscribed_at else "",
-                    ", ".join(t.name for t in s.interests),
-                ]
-            )
-
+        # Confirmed, currently active subscribers only; delivery fields only.
+        text, count = export_csv()
         log_action(
             current_user, "newsletter_subscribers_exported", "NewsletterSubscriber", None,
-            changes={"count": len(subscribers)},
+            changes={"count": count},
         )
-        response = Response(buffer.getvalue(), mimetype="text/csv")
+        response = Response(text, mimetype="text/csv")
         response.headers["Content-Disposition"] = f"attachment; filename=newsletter-subscribers-{date.today().isoformat()}.csv"
         return response
 
@@ -473,12 +547,14 @@ class NewsletterOverviewResource(Resource):
         return success_response(
             {
                 "activeSubscribers": NewsletterSubscriber.query.filter_by(status="active").count(),
+                "pendingSubscribers": NewsletterSubscriber.query.filter_by(status="pending").count(),
+                "legacyUnconfirmed": NewsletterSubscriber.query.filter_by(status="legacy_unconfirmed").count(),
                 "newSubscribers30d": NewsletterSubscriber.query.filter(
                     NewsletterSubscriber.status == "active", NewsletterSubscriber.subscribed_at >= cutoff
                 ).count(),
                 "unsubscribedCount": NewsletterSubscriber.query.filter_by(status="unsubscribed").count(),
                 "draftIssues": NewsletterIssue.query.filter_by(status="draft").count(),
-                "scheduledIssues": NewsletterIssue.query.filter_by(status="scheduled").count(),
+                "readyIssues": NewsletterIssue.query.filter_by(status="ready").count(),
                 "sentIssues": NewsletterIssue.query.filter_by(status="sent").count(),
             }
         )
@@ -518,11 +594,14 @@ class NewsletterSenderResource(Resource):
 
 
 api.add_resource(SubscribeResource, "/subscribe")
+api.add_resource(ConfirmSubscriptionResource, "/confirm")
 api.add_resource(UnsubscribeResource, "/unsubscribe")
 api.add_resource(UnsubscribeByTokenResource, "/unsubscribe/<string:token>")
 api.add_resource(NewsletterIssueListResource, "/issues")
 api.add_resource(NewsletterIssueDetailResource, "/issues/<string:slug>")
-api.add_resource(NewsletterIssueMarkSentResource, "/issues/<string:slug>/mark-sent")
+api.add_resource(NewsletterIssueRecordSendResource, "/issues/<string:slug>/record-send")
+api.add_resource(NewsletterIssueExportResource, "/issues/<string:slug>/export")
+api.add_resource(NewsletterIssueSendRecordsResource, "/issues/<string:slug>/send-records")
 api.add_resource(NewsletterIssueArchiveResource, "/issues/<string:slug>/archive")
 api.add_resource(AudienceEstimateResource, "/audience-estimate")
 api.add_resource(NewsletterSubscriberListResource, "/subscribers")
@@ -530,6 +609,9 @@ api.add_resource(NewsletterSubscriberExportResource, "/subscribers/export")
 api.add_resource(NewsletterSubscriberDetailResource, "/subscribers/<int:subscriber_id>")
 api.add_resource(NewsletterSubscriberSuppressResource, "/subscribers/<int:subscriber_id>/suppress")
 api.add_resource(NewsletterSubscriberReactivateResource, "/subscribers/<int:subscriber_id>/reactivate")
+api.add_resource(NewsletterSubscriberRequestConfirmationResource,
+                 "/subscribers/<int:subscriber_id>/request-confirmation")
+api.add_resource(NewsletterSuppressionImportResource, "/subscribers/suppression-import")
 api.add_resource(NewsletterOverviewResource, "/overview")
 api.add_resource(NewsletterStatsResource, "/stats")
 api.add_resource(NewsletterSenderResource, "/sender")

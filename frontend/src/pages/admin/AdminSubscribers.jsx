@@ -2,14 +2,79 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, Download } from 'lucide-react'
 import { toast } from 'react-toastify'
-import { fetchSubscribers, exportSubscribers } from '../../api/newsletter'
+import { fetchSubscribers, exportSubscribers, importSuppressions } from '../../api/newsletter'
+import { SUBSCRIBER_STATUSES, SUBSCRIBER_STATUS_LABELS } from '../../constants/newsletter'
 import { formatDate } from '../../utils/format'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
 import StatusBadge from '../../components/cms/StatusBadge'
 import PageLoader from '../../components/ui/PageLoader'
 import EmptyState from '../../components/ui/EmptyState'
 
-const STATUSES = ['active', 'unsubscribed', 'bounced', 'complained']
+
+// External unsubscribe reconciliation: the CSV an external sending service
+// gives you (any file with an "email" column, or one address per line).
+function SuppressionImport({ onDone }) {
+  const [provider, setProvider] = useState('')
+  const [csv, setCsv] = useState('')
+  const [filename, setFilename] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+
+  async function readFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFilename(file.name)
+    setCsv(await file.text())
+  }
+
+  async function submit(e) {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      const data = await importSuppressions({ provider, csv, filename })
+      setResult(data)
+      setCsv('')
+      onDone()
+    } catch (err) {
+      toast.error(err?.apiError?.message || 'The import failed. Please check the file.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <details className="mb-5 border border-taupe-200 bg-white p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-charcoal">Import unsubscribes from a sending service</summary>
+      <form onSubmit={submit} className="mt-3 space-y-3">
+        <p className="text-xs text-charcoal-600">
+          Addresses in the file are suppressed in WSF (never reactivated). Unknown addresses are recorded as unsubscribed so
+          they can never be exported. Importing the same file twice changes nothing.
+        </p>
+        <div>
+          <label htmlFor="sup-provider" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Service the list came from</label>
+          <input id="sup-provider" required maxLength={100} value={provider} onChange={(e) => setProvider(e.target.value)} className="mt-1 w-full border border-taupe-300 px-3 py-2 text-sm sm:w-80" />
+        </div>
+        <div>
+          <label htmlFor="sup-file" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">CSV file</label>
+          <input id="sup-file" type="file" accept=".csv,text/csv,text/plain" onChange={readFile} className="mt-1 block text-sm" />
+        </div>
+        <div>
+          <label htmlFor="sup-text" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">…or paste addresses</label>
+          <textarea id="sup-text" rows={4} value={csv} onChange={(e) => setCsv(e.target.value)} className="mt-1 w-full border border-taupe-300 px-3 py-2 font-mono text-xs" />
+        </div>
+        <button type="submit" disabled={busy || !provider.trim() || !csv.trim()} className="btn-primary !px-4 !py-2 text-xs disabled:opacity-60">
+          {busy ? 'Importing…' : 'Import unsubscribes'}
+        </button>
+        {result && (
+          <p role="status" className="text-xs text-charcoal">
+            {result.rows} rows: {result.newlySuppressed} newly suppressed, {result.alreadySuppressed} already suppressed,
+            {' '}{result.addedUnknown} unknown addresses recorded as unsubscribed, {result.invalid} invalid.
+          </p>
+        )}
+      </form>
+    </details>
+  )
+}
 
 export default function AdminSubscribers() {
   const [query, setQuery] = useState('')
@@ -17,6 +82,7 @@ export default function AdminSubscribers() {
   const [rows, setRows] = useState(undefined)
   const [error, setError] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -27,12 +93,12 @@ export default function AdminSubscribers() {
     return () => {
       active = false
     }
-  }, [status, query])
+  }, [status, query, reload])
 
   async function handleExport() {
     setExporting(true)
     try {
-      await exportSubscribers({ status: status || undefined })
+      await exportSubscribers()
     } catch (err) {
       const message =
         err?.response?.status === 403
@@ -48,10 +114,10 @@ export default function AdminSubscribers() {
     <div>
       <AdminPageHeader
         title="Subscribers"
-        description="Everyone who has subscribed to WSF Weekly, and their current status."
+        description="WSF's master list for WSF Weekly. Only confirmed subscribers are ever exported for sending."
         actions={
           <button type="button" onClick={handleExport} disabled={exporting} className="btn-secondary !px-4 !py-2 text-xs disabled:opacity-60">
-            <Download size={14} /> {exporting ? 'Exporting…' : 'Export CSV'}
+            <Download size={14} /> {exporting ? 'Exporting…' : 'Export confirmed subscribers (CSV)'}
           </button>
         }
       />
@@ -63,13 +129,15 @@ export default function AdminSubscribers() {
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="border border-taupe-300 bg-white px-3 py-2 text-sm">
           <option value="">All statuses</option>
-          {STATUSES.map((s) => (
+          {SUBSCRIBER_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {SUBSCRIBER_STATUS_LABELS[s]}
             </option>
           ))}
         </select>
       </div>
+
+      <SuppressionImport onDone={() => setReload((n) => n + 1)} />
 
       {error && <EmptyState title="Couldn't load subscribers" description={error} />}
       {!error && rows === undefined && <PageLoader />}
@@ -98,6 +166,7 @@ export default function AdminSubscribers() {
                     <td className="px-4 py-3 text-charcoal-600">{[row.firstName, row.lastName].filter(Boolean).join(' ') || '—'}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} />
+                      <span className="ml-2 text-xs text-charcoal-600">{SUBSCRIBER_STATUS_LABELS[row.status]}</span>
                     </td>
                     <td className="px-4 py-3 text-charcoal-600">{row.source || '—'}</td>
                     <td className="px-4 py-3 text-charcoal-600">{row.subscribedAt ? formatDate(row.subscribedAt) : '—'}</td>

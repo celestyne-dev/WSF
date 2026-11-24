@@ -245,7 +245,8 @@ class TestPublicJoin:
         with app.app_context():
             sub = NewsletterSubscriber.query.filter_by(email="wantsnews@example.com").first()
             assert sub is not None
-            assert sub.status == "active"
+            # Double opt-in (Step 14): pending until the emailed link is clicked.
+            assert sub.status == "pending"
 
     def test_join_stores_controlled_source(self, client, app):
         _make_topic(app)

@@ -12,9 +12,6 @@ export default function ListingNewsletterCta({ placement }) {
         </div>
         <div className="w-full max-w-md">
           <NewsletterForm source={placement} buttonLabel="Join WSF Weekly" />
-          <p className="mt-2 text-xs text-charcoal-600">
-            By subscribing, you agree to receive WSF emails. You can unsubscribe at any time.
-          </p>
         </div>
       </div>
     </section>

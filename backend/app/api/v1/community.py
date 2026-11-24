@@ -37,7 +37,7 @@ from app.services.community_accounts import (
 from app.services.content_blocks import sanitize_content_blocks
 from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.engagement_settings import NEWSLETTER_CHECKBOX_CONSENT_VERSION
-from app.services.newsletter import upsert_subscriber
+from app.services.newsletter import request_subscription_safely
 from app.utils.filtering import apply_country_or_region_filter, apply_equality_filters, apply_search
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -120,7 +120,7 @@ def _apply_join_fields(member, data):
 
 
 def _subscribe_to_newsletter(member, data):
-    upsert_subscriber(
+    request_subscription_safely(
         email=member.email,
         first_name=member.first_name,
         last_name=member.last_name,

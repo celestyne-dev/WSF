@@ -121,3 +121,19 @@ def refresh_session(client, cookie_value=None, headers=None):
     if cookie_value is not None:
         client.set_cookie(REFRESH_COOKIE, cookie_value, path=REFRESH_PATH)
     return client.post(REFRESH_PATH, headers=headers if headers is not None else CSRF_HEADERS)
+
+
+def newsletter_signup(client, payload, confirm=True):
+    """POST /newsletter/subscribe with the consent tick (double opt-in, Step
+    14) and, unless confirm=False, click the emailed confirmation link.
+    Returns the subscribe response."""
+    import re
+    from unittest.mock import patch
+
+    sent = []
+    with patch("app.services.email.send_email", side_effect=lambda to, subject, text, *a, **k: sent.append(text) or True):
+        resp = client.post("/api/v1/newsletter/subscribe", json={"consent": True, **payload})
+    if confirm and sent:
+        token = re.search(r"/newsletter/confirm/(\S+)", sent[-1]).group(1)
+        client.post("/api/v1/newsletter/confirm", json={"token": token})
+    return resp

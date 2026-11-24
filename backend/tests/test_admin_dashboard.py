@@ -108,7 +108,9 @@ def test_analytics_traffic_sources_and_subscriber_growth(client, admin_token):
     names = {row["name"] for row in sources.get_json()["data"]}
     assert "linkedin" in names
 
-    client.post("/api/v1/newsletter/subscribe", json={"email": "growth@example.com"})
+    from tests.conftest import newsletter_signup
+
+    newsletter_signup(client, {"email": "growth@example.com"})
     growth = client.get("/api/v1/analytics/subscriber-growth", headers=auth_headers(admin_token))
     assert growth.status_code == 200
     assert len(growth.get_json()["data"]) == 6

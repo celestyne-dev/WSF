@@ -439,7 +439,8 @@ def test_newsletter_issue_mark_sent_and_archive(client, app, admin_token, sent):
                                        content=[{"type": "paragraph", "text": "Hello."}]))
         db.session.commit()
     h = auth_headers(admin_token)
-    assert client.post("/api/v1/newsletter/issues/jan/mark-sent", headers=h).status_code == 200
+    assert client.post("/api/v1/newsletter/issues/jan/record-send", headers=h,
+                       json={"providerName": "Illustrative Mailer", "recipientCount": 5}).status_code == 200
     assert sent.urls == [f"{SITE}/newsletter/jan", f"{SITE}/newsletter"]
     sent.calls.clear()
     assert client.post("/api/v1/newsletter/issues/jan/archive", headers=h).status_code == 200

@@ -4,9 +4,11 @@ import { toast } from 'react-toastify'
 import { ArrowRight } from 'lucide-react'
 import { subscribe, resetNewsletterStatus } from '../../features/newsletter/newsletterSlice'
 import { withAcquisitionMetadata } from '../../utils/analytics'
+import NewsletterConsent from '../newsletter/NewsletterConsent'
 
 export default function NewsletterForm({ variant = 'light', source = 'inline', buttonLabel = 'Subscribe' }) {
   const [email, setEmail] = useState('')
+  const [consent, setConsent] = useState(false)
   const dispatch = useDispatch()
   const status = useSelector((s) => s.newsletter.status)
 
@@ -18,20 +20,27 @@ export default function NewsletterForm({ variant = 'light', source = 'inline', b
       toast.error('Please enter a valid email address.')
       return
     }
+    if (!consent) {
+      toast.error('Please tick the box to agree to receive the newsletter.')
+      return
+    }
     const result = await dispatch(
-      subscribe(withAcquisitionMetadata({ email, placement: source })),
+      subscribe(withAcquisitionMetadata({ email, placement: source, consent: true })),
     )
-    if (result.meta.requestStatus === 'fulfilled') {
+    if (result.meta.requestStatus === 'fulfilled' && result.payload.success) {
       toast.success(result.payload.message)
       setEmail('')
+      setConsent(false)
       dispatch(resetNewsletterStatus())
     } else {
-      toast.error('Something went wrong. Please try again.')
+      toast.error(result.payload?.message || 'Something went wrong. Please try again.')
+      dispatch(resetNewsletterStatus())
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full max-w-md flex-col gap-3 sm:flex-row" noValidate>
+    <form onSubmit={handleSubmit} className="w-full max-w-md" noValidate>
+      <div className="flex flex-col gap-3 sm:flex-row">
       <label htmlFor={`newsletter-email-${source}`} className="sr-only">
         Email address
       </label>
@@ -58,6 +67,10 @@ export default function NewsletterForm({ variant = 'light', source = 'inline', b
         {status === 'loading' ? 'Subscribing…' : buttonLabel}
         <ArrowRight size={16} />
       </button>
+      </div>
+      <div className="mt-2.5">
+        <NewsletterConsent id={`newsletter-consent-${source}`} checked={consent} onChange={setConsent} dark={isDark} />
+      </div>
     </form>
   )
 }

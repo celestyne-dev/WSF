@@ -1,6 +1,6 @@
 import pytest
 
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, newsletter_signup
 
 MANAGER_PAYLOAD = {
     "email": "newsletter-manager@example.com",
@@ -87,6 +87,12 @@ def _set_subscriber_status(app, email, status):
         db.session.commit()
 
 
+def db_status(app, email):
+    from app.models.newsletter import NewsletterSubscriber
+
+    return NewsletterSubscriber.query.filter_by(email=email).first().status
+
+
 def _base_issue_payload(**overrides):
     payload = {
         "title": "Issue 60 internal",
@@ -104,28 +110,24 @@ def _base_issue_payload(**overrides):
 
 
 def test_subscribe_creates_subscriber_with_consent_fields(client):
-    resp = client.post(
-        "/api/v1/newsletter/subscribe",
-        json={"email": "reader@example.com", "firstName": "Reader", "placement": "footer"},
-    )
+    resp = newsletter_signup(client, {"email": "reader@example.com", "firstName": "Reader", "placement": "footer"},
+                             confirm=False)
     assert resp.status_code == 201
     data = resp.get_json()["data"]
-    assert data["email"] == "reader@example.com"
-    assert data["status"] == "subscribed"
-    assert data["subscribedAt"]
-    # Public response is a privacy-trimmed confirmation, not the full record.
-    assert set(data.keys()) == {"email", "status", "subscribedAt"}
+    # Double opt-in: nobody is "subscribed" until they click the emailed link.
+    assert data == {"email": "reader@example.com", "status": "confirmation_required"}
+    assert "check your inbox" in resp.get_json()["message"].lower()
 
 
 def test_subscribe_invalid_email_rejected(client):
-    resp = client.post("/api/v1/newsletter/subscribe", json={"email": "not-an-email"})
+    resp = newsletter_signup(client, {"email": "not-an-email"})
     assert resp.status_code == 422
 
 
 def test_duplicate_subscribe_is_case_insensitive_and_does_not_duplicate(client, app):
-    first = client.post("/api/v1/newsletter/subscribe", json={"email": "Person@Example.COM"})
+    first = newsletter_signup(client, {"email": "Person@Example.COM"})
     assert first.status_code == 201
-    second = client.post("/api/v1/newsletter/subscribe", json={"email": "person@example.com", "firstName": "Later"})
+    second = newsletter_signup(client, {"email": "person@example.com", "firstName": "Later"})
     assert second.status_code == 201
 
     from app.extensions import db
@@ -138,7 +140,7 @@ def test_duplicate_subscribe_is_case_insensitive_and_does_not_duplicate(client, 
 
 
 def test_unsubscribe_by_email_preserves_record_and_sets_timestamp(client, app):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "leaving@example.com"})
+    newsletter_signup(client, {"email": "leaving@example.com"})
     resp = client.post("/api/v1/newsletter/unsubscribe", json={"email": "leaving@example.com"})
     assert resp.status_code == 200
     assert resp.get_json()["data"]["status"] == "unsubscribed"
@@ -158,7 +160,7 @@ def test_unsubscribe_unknown_email_returns_404(client):
 
 
 def test_unsubscribe_by_token_works_and_is_idempotent(client, app):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "tokenflow@example.com"})
+    newsletter_signup(client, {"email": "tokenflow@example.com"})
 
     from app.models.newsletter import NewsletterSubscriber
 
@@ -182,25 +184,34 @@ def test_unsubscribe_by_invalid_token_returns_404_not_a_raw_db_error(client):
 
 
 def test_explicit_resubscribe_reactivates_unsubscribed_address(client, app):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "comeback@example.com"})
-    client.post("/api/v1/newsletter/unsubscribe", json={"email": "comeback@example.com"})
-
-    resp = client.post("/api/v1/newsletter/subscribe", json={"email": "comeback@example.com"})
-    assert resp.status_code == 201
-    assert resp.get_json()["data"]["status"] == "subscribed"
+    import re as _re
+    from unittest.mock import patch
 
     from app.models.newsletter import NewsletterSubscriber
 
+    newsletter_signup(client, {"email": "comeback@example.com"})
+    client.post("/api/v1/newsletter/unsubscribe", json={"email": "comeback@example.com"})
+
+    sent = []
+    with patch("app.services.email.send_email", side_effect=lambda to, s_, t, *a, **k: sent.append(t) or True):
+        resp = client.post("/api/v1/newsletter/subscribe", json={"email": "comeback@example.com", "consent": True})
+    assert resp.status_code == 201
+    # A fresh signup alone does not reactivate a suppressed address...
+    with app.app_context():
+        assert NewsletterSubscriber.query.filter_by(email="comeback@example.com").first().status == "unsubscribed"
+    # ...clicking its new confirmation link does (fresh consent, recorded).
+    token = _re.search(r"/newsletter/confirm/(\S+)", sent[-1]).group(1)
+    assert client.post("/api/v1/newsletter/confirm", json={"token": token}).status_code == 200
     with app.app_context():
         subscriber = NewsletterSubscriber.query.filter_by(email="comeback@example.com").first()
-        assert subscriber.unsubscribed_at is None
+        assert subscriber.status == "active" and subscriber.unsubscribed_at is None
 
 
 def test_ordinary_subscribe_does_not_reactivate_bounced_address(client, app):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "bounced@example.com"})
+    newsletter_signup(client, {"email": "bounced@example.com"})
     _set_subscriber_status(app, "bounced@example.com", "bounced")
 
-    resp = client.post("/api/v1/newsletter/subscribe", json={"email": "bounced@example.com"})
+    resp = newsletter_signup(client, {"email": "bounced@example.com"}, confirm=False)
     assert resp.status_code == 201
 
     from app.models.newsletter import NewsletterSubscriber
@@ -212,9 +223,7 @@ def test_ordinary_subscribe_does_not_reactivate_bounced_address(client, app):
 
 def test_subscribe_with_interests(client, app):
     topic_slug = _make_topic(app)
-    resp = client.post(
-        "/api/v1/newsletter/subscribe", json={"email": "curious@example.com", "topicSlugs": [topic_slug]}
-    )
+    resp = newsletter_signup(client, {"email": "curious@example.com", "topicSlugs": [topic_slug]})
     assert resp.status_code == 201
 
     from app.models.newsletter import NewsletterSubscriber
@@ -240,8 +249,8 @@ def test_subscriber_list_requires_authentication(client):
 
 
 def test_subscriber_list_and_filters(client, manager_token):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "active-one@example.com"})
-    client.post("/api/v1/newsletter/subscribe", json={"email": "will-leave@example.com"})
+    newsletter_signup(client, {"email": "active-one@example.com"})
+    newsletter_signup(client, {"email": "will-leave@example.com"})
     client.post("/api/v1/newsletter/unsubscribe", json={"email": "will-leave@example.com"})
 
     all_resp = client.get("/api/v1/newsletter/subscribers", headers=auth_headers(manager_token))
@@ -258,14 +267,14 @@ def test_subscriber_list_and_filters(client, manager_token):
 
 
 def test_subscriber_dump_never_includes_unsubscribe_token(client, manager_token):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "notoken@example.com"})
+    newsletter_signup(client, {"email": "notoken@example.com"})
     resp = client.get("/api/v1/newsletter/subscribers?q=notoken", headers=auth_headers(manager_token))
     row = resp.get_json()["data"][0]
     assert "unsubscribe_token" not in row
 
 
 def test_admin_can_update_voluntary_subscriber_fields(client, app, manager_token):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "editable@example.com"})
+    newsletter_signup(client, {"email": "editable@example.com"})
     from app.models.newsletter import NewsletterSubscriber
 
     with app.app_context():
@@ -282,7 +291,7 @@ def test_admin_can_update_voluntary_subscriber_fields(client, app, manager_token
 
 
 def test_admin_suppress_and_reactivate_subscriber(client, app, manager_token):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "manual-suppress@example.com"})
+    newsletter_signup(client, {"email": "manual-suppress@example.com"})
     from app.models.newsletter import NewsletterSubscriber
 
     with app.app_context():
@@ -294,17 +303,21 @@ def test_admin_suppress_and_reactivate_subscriber(client, app, manager_token):
     assert suppress_resp.status_code == 200
     assert suppress_resp.get_json()["data"]["status"] == "unsubscribed"
 
-    # A deliberate admin reactivation is allowed even from a suppressed state.
+    # Studio can no longer switch someone back on: only their own fresh
+    # signup + confirmation can (double opt-in).
     _set_subscriber_status(app, "manual-suppress@example.com", "complained")
     reactivate_resp = client.post(
         f"/api/v1/newsletter/subscribers/{subscriber_id}/reactivate", headers=auth_headers(manager_token)
     )
-    assert reactivate_resp.status_code == 200
-    assert reactivate_resp.get_json()["data"]["status"] == "active"
+    assert reactivate_resp.status_code == 409
+    assert reactivate_resp.get_json()["error"]["code"] == "reactivation_requires_confirmation"
+    with app.app_context():
+        assert db_status(app, "manual-suppress@example.com") == "complained"
 
 
 def test_subscriber_export_requires_stricter_permission_than_manage(client, manager_token, admin_token):
-    client.post("/api/v1/newsletter/subscribe", json={"email": "exportable@example.com"})
+    newsletter_signup(client, {"email": "exportable@example.com"})
+    newsletter_signup(client, {"email": "pending-only@example.com"}, confirm=False)
 
     denied = client.get("/api/v1/newsletter/subscribers/export", headers=auth_headers(manager_token))
     assert denied.status_code == 403
@@ -312,8 +325,10 @@ def test_subscriber_export_requires_stricter_permission_than_manage(client, mana
     allowed = client.get("/api/v1/newsletter/subscribers/export", headers=auth_headers(admin_token))
     assert allowed.status_code == 200
     assert allowed.headers["Content-Type"].startswith("text/csv")
-    assert "exportable@example.com" in allowed.get_data(as_text=True)
-    assert "unsubscribe_token" not in allowed.get_data(as_text=True).lower()
+    text = allowed.get_data(as_text=True)
+    assert "exportable@example.com" in text and "pending-only@example.com" not in text
+    assert text.splitlines()[0] == "email,first_name,last_name"
+    assert "unsubscribe_token" not in text.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -392,34 +407,28 @@ def test_issue_status_cannot_be_set_to_sent_via_generic_save(client, manager_tok
     assert resp.status_code == 422
 
 
-def test_issue_scheduled_requires_content_subject_and_scheduled_at(client, manager_token):
+def test_issue_ready_requires_content_and_subject(client, manager_token):
     resp = client.post(
         "/api/v1/newsletter/issues",
-        json=_base_issue_payload(status="scheduled", content=[]),
+        json=_base_issue_payload(status="ready", content=[]),
         headers=auth_headers(manager_token),
     )
     assert resp.status_code == 422
 
+    # The planned date is optional: WSF never sends on a schedule.
     resp2 = client.post(
-        "/api/v1/newsletter/issues",
-        json=_base_issue_payload(status="scheduled"),
-        headers=auth_headers(manager_token),
+        "/api/v1/newsletter/issues", json=_base_issue_payload(status="ready"), headers=auth_headers(manager_token)
     )
-    assert resp2.status_code == 422  # missing scheduled_at
-
-    resp3 = client.post(
-        "/api/v1/newsletter/issues",
-        json=_base_issue_payload(status="scheduled", scheduledAt="2026-12-01T09:00:00+00:00"),
-        headers=auth_headers(manager_token),
-    )
-    assert resp3.status_code == 201
-    assert resp3.get_json()["data"]["status"] == "scheduled"
+    assert resp2.status_code == 201
+    assert resp2.get_json()["data"]["status"] == "ready"
+    assert client.post("/api/v1/newsletter/issues", json=_base_issue_payload(status="scheduled"),
+                       headers=auth_headers(manager_token)).status_code == 422
 
 
 def test_audience_estimate_reflects_active_subscribers(client, app, manager_token):
     topic_slug = _make_topic(app, slug="leadership", name="Leadership")
-    client.post("/api/v1/newsletter/subscribe", json={"email": "leader1@example.com", "topicSlugs": [topic_slug]})
-    client.post("/api/v1/newsletter/subscribe", json={"email": "generalist@example.com"})
+    newsletter_signup(client, {"email": "leader1@example.com", "topicSlugs": [topic_slug]})
+    newsletter_signup(client, {"email": "generalist@example.com"})
 
     all_active = client.post(
         "/api/v1/newsletter/audience-estimate", json={}, headers=auth_headers(manager_token)
@@ -435,26 +444,36 @@ def test_audience_estimate_reflects_active_subscribers(client, app, manager_toke
     assert filtered.get_json()["data"]["estimatedRecipients"] == 1
 
 
-def test_mark_sent_is_explicit_and_honest(client, manager_token):
+def test_record_external_send_is_explicit_and_honest(client, manager_token):
     create = client.post("/api/v1/newsletter/issues", json=_base_issue_payload(), headers=auth_headers(manager_token))
     slug = create.get_json()["data"]["slug"]
     assert create.get_json()["data"]["sent_at"] is None
 
-    mark = client.post(f"/api/v1/newsletter/issues/{slug}/mark-sent", headers=auth_headers(manager_token))
+    missing = client.post(f"/api/v1/newsletter/issues/{slug}/record-send", json={"recipientCount": 10},
+                          headers=auth_headers(manager_token))
+    assert missing.status_code == 422  # which service it went through is required
+    mark = client.post(f"/api/v1/newsletter/issues/{slug}/record-send", headers=auth_headers(manager_token),
+                       json={"providerName": "Illustrative Mailer", "externalReference": "camp-123",
+                             "recipientCount": 42})
     assert mark.status_code == 200
-    assert mark.get_json()["data"]["status"] == "sent"
-    assert mark.get_json()["data"]["sent_at"] is not None
+    data = mark.get_json()["data"]
+    assert data["status"] == "sent" and data["sent_at"] is not None
+    assert data["sendRecord"]["kind"] == "external_send" and data["sendRecord"]["providerName"] == "Illustrative Mailer"
+    assert data["sendRecord"]["recipientCount"] == 42 and data["sendRecord"]["externalReference"] == "camp-123"
 
-    again = client.post(f"/api/v1/newsletter/issues/{slug}/mark-sent", headers=auth_headers(manager_token))
+    again = client.post(f"/api/v1/newsletter/issues/{slug}/record-send", headers=auth_headers(manager_token),
+                        json={"providerName": "X", "recipientCount": 1})
     assert again.status_code == 409
+    assert client.post(f"/api/v1/newsletter/issues/{slug}/mark-sent", headers=auth_headers(manager_token)).status_code in (404, 405)
 
 
-def test_mark_sent_requires_content(client, manager_token):
+def test_record_send_requires_content(client, manager_token):
     create = client.post(
         "/api/v1/newsletter/issues", json=_base_issue_payload(content=[]), headers=auth_headers(manager_token)
     )
     slug = create.get_json()["data"]["slug"]
-    resp = client.post(f"/api/v1/newsletter/issues/{slug}/mark-sent", headers=auth_headers(manager_token))
+    resp = client.post(f"/api/v1/newsletter/issues/{slug}/record-send", headers=auth_headers(manager_token),
+                       json={"providerName": "Illustrative Mailer", "recipientCount": 1})
     assert resp.status_code == 422
 
 
@@ -474,7 +493,8 @@ def test_public_archive_only_shows_sent_issues(client, manager_token):
         "/api/v1/newsletter/issues", json=_base_issue_payload(title="Sent One", subject="Sent subject"),
         headers=auth_headers(manager_token),
     ).get_json()["data"]
-    client.post(f"/api/v1/newsletter/issues/{to_send['slug']}/mark-sent", headers=auth_headers(manager_token))
+    client.post(f"/api/v1/newsletter/issues/{to_send['slug']}/record-send", headers=auth_headers(manager_token),
+                json={"providerName": "Illustrative Mailer", "recipientCount": 3})
 
     public_list = client.get("/api/v1/newsletter/issues")
     subjects = {i["subject"] for i in public_list.get_json()["data"]}
@@ -504,7 +524,7 @@ def test_overview_requires_permission_and_reports_real_counts(client, manager_to
     denied = client.get("/api/v1/newsletter/overview")
     assert denied.status_code == 401
 
-    client.post("/api/v1/newsletter/subscribe", json={"email": "count-me@example.com"})
+    newsletter_signup(client, {"email": "count-me@example.com"})
     client.post("/api/v1/newsletter/issues", json=_base_issue_payload(), headers=auth_headers(manager_token))
 
     resp = client.get("/api/v1/newsletter/overview", headers=auth_headers(manager_token))
