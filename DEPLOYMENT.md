@@ -739,16 +739,24 @@ bare `SELECT 1`), and never let it leak a raw database error message.
 3. **Activate** the virtualenv, **install** backend dependencies
    (`pip install -r requirements.txt`).
 4. **Apply** committed migrations: `flask --app run:app db upgrade`.
-5. **Build** the frontend: `npm ci && npm run build`.
-6. **Run** `flask --app run:app production-check` — fix anything it
+5. **Seed** roles and permissions (idempotent; adds new permissions such
+   as `comments.moderate` to existing roles):
+   `flask --app run:app seed-roles`.
+6. **Build** the frontend: `npm ci && npm run build`.
+7. **Run** `flask --app run:app production-check` — fix anything it
    flags before proceeding.
-7. **Restart** Gunicorn: `sudo systemctl restart womenshapingfutures`.
-8. **Reload** Nginx only if its config changed: `sudo nginx -t &&
-   sudo systemctl reload nginx`.
-9. **Verify** health: `curl https://womenshapingfutures.org/api/v1/health`.
-10. **Smoke-test** the site (§19).
-11. **Verify** scheduled publishing is still wired up (cron/timer still
-    enabled, hasn't been overwritten).
+8. **Review** `flask --app run:app legal-pages-audit` (implementation
+   facts and warnings, e.g. a missing email-footer postal address) and
+   `flask --app run:app retention-run --dry-run` before the first
+   scheduled retention run.
+9. **Restart** Gunicorn: `sudo systemctl restart womenshapingfutures`.
+10. **Reload** Nginx only if its config changed: `sudo nginx -t &&
+    sudo systemctl reload nginx`.
+11. **Verify** health: `curl https://womenshapingfutures.org/api/v1/health`.
+12. **Smoke-test** the site (§20).
+13. **Verify** scheduled publishing is still wired up (cron/timer still
+    enabled, hasn't been overwritten); it also runs account purges
+    (`accounts-purge-due`) and the daily retention run.
 
 ## 19. Rollback
 
