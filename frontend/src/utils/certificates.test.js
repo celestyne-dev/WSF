@@ -25,3 +25,14 @@ test('instructor names read naturally', () => {
   assert.equal(joinInstructorNames(['A']), 'A')
   assert.equal(joinInstructorNames(['A', 'B', 'C']), 'A, B and C')
 })
+
+test('initials mirror the backend rule', async () => {
+  const { initialsOf, CERTIFICATE_NAME_OPTIONS, CERTIFICATE_NAME_NOTICE } = await import('./certificates.js')
+  assert.equal(initialsOf('Amara Okafor'), 'A. O.')
+  assert.equal(initialsOf('Ada King-Lovelace'), 'A. K-L.')
+  assert.equal(initialsOf('  zoë  '), 'Z.')
+  assert.equal(initialsOf("O'Brien"), 'O.')
+  assert.equal(initialsOf(''), '—')
+  assert.deepEqual(CERTIFICATE_NAME_OPTIONS.map((o) => o.value), ['full', 'initials'])
+  assert.match(CERTIFICATE_NAME_NOTICE, /never shows your email/)
+})

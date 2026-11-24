@@ -58,7 +58,12 @@ export default function CertificateVerifyPage() {
               </div>
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-charcoal-600/70">Awarded to</dt>
-                <dd className="mt-1 text-charcoal">{certificate.recipientName}</dd>
+                <dd className="mt-1 text-charcoal">
+                  {certificate.recipientName}
+                  {certificate.recipientNameDisplay === 'initials' && (
+                    <span className="block text-xs text-charcoal-600">Shown as initials at the learner’s request.</span>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs font-semibold uppercase tracking-wide text-charcoal-600/70">Program</dt>

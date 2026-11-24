@@ -191,15 +191,65 @@ def linkedin_add_url(certificate):
     return "https://www.linkedin.com/profile/add?" + urlencode(params)
 
 
+# --- public name display (Step 20) -------------------------------------------
+# The certificate's recipient_name is part of its immutable issue-time
+# snapshot. Whether PUBLIC verification shows it in full or as initials is
+# the learner's own, live preference (users.certificate_public_name): it is
+# applied at display time and never edits a certificate, so switching back
+# and forth is always safe and needs no reissue. Owner and staff views, and
+# the PDF, keep the full snapshot name.
+CERTIFICATE_NAME_MODES = ("full", "initials")
+DEFAULT_CERTIFICATE_NAME_MODE = "full"
+
+
+def initials_of(name):
+    """"Ada King-Lovelace" -> "A. K-L."; "Ada" -> "A."; never empty."""
+    parts = []
+    for word in (name or "").split():
+        pieces = [p for p in word.split("-") if p]
+        letters = [next((ch for ch in p if ch.isalpha()), "") for p in pieces]
+        letters = [ch.upper() for ch in letters if ch]
+        if letters:
+            parts.append("-".join(letters) + ".")
+    return " ".join(parts) or "—"
+
+
+def certificate_name_mode(user):
+    mode = getattr(user, "certificate_public_name", None)
+    return mode if mode in CERTIFICATE_NAME_MODES else DEFAULT_CERTIFICATE_NAME_MODE
+
+
+def public_recipient_name(certificate):
+    if certificate_name_mode(certificate.user) == "initials":
+        return initials_of(certificate.recipient_name)
+    return certificate.recipient_name
+
+
+def set_certificate_name_mode(user, mode):
+    from app.services.audit import log_action
+
+    if mode not in CERTIFICATE_NAME_MODES:
+        raise ApiError("Choose how your name appears: full or initials.", 422, code="validation_error")
+    previous = certificate_name_mode(user)
+    user.certificate_public_name = mode
+    db.session.commit()
+    if previous != mode:
+        log_action(user, "learning_certificate.name_display_changed", "User", user.id,
+                   changes={"from": previous, "to": mode})
+    return mode
+
+
 def public_certificate_payload(certificate):
     """Public verification — safe credential facts only: no email, user id,
-    enrollment id or internal ids."""
+    enrollment id or internal ids. The name is shown in full or as initials,
+    as the learner chose."""
     return {
         "publicId": certificate.public_id,
         "certificateNumber": certificate.certificate_number,
         "status": certificate.status,
         "certificateTitle": certificate.certificate_title,
-        "recipientName": certificate.recipient_name,
+        "recipientName": public_recipient_name(certificate),
+        "recipientNameDisplay": certificate_name_mode(certificate.user),
         "programTitle": certificate.program_title,
         "instructorNames": list(certificate.instructor_names or []),
         "issuerName": certificate.issuer_name,
@@ -213,6 +263,9 @@ def owner_certificate_payload(certificate):
     program = certificate.learning_program
     return {
         **public_certificate_payload(certificate),
+        # The owner sees the full issued name and what the public sees.
+        "recipientName": certificate.recipient_name,
+        "publicRecipientName": public_recipient_name(certificate),
         "programSlug": program.slug if program is not None and program.status == "published" else None,
         "verificationUrl": verification_url(certificate),
         "linkedinUrl": linkedin_add_url(certificate) if certificate.status == "active" else None,

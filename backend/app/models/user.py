@@ -93,6 +93,11 @@ class User(db.Model):
     terms_version_accepted = db.Column(db.String(120))
     privacy_version_accepted = db.Column(db.String(120))
     legal_accepted_at = db.Column(db.DateTime(timezone=True))
+    # How the learner's name appears on PUBLIC certificate verification
+    # (Step 20): "full" or "initials". A live display preference applied to
+    # each certificate's immutable recipient_name; never rewrites a
+    # certificate. The PDF (owner/staff only) always carries the full name.
+    certificate_public_name = db.Column(db.String(10), nullable=False, default="full", server_default="full")
     # Private career-goal preferences (Career Hub CAREER_GOALS keys, at
     # most 3), used only to personalize this user's own Career Hub. Never
     # exposed publicly. `career_goals_prompted_at` records that the

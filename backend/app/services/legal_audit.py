@@ -262,8 +262,18 @@ def _notice_facts():
             "Forms with an optional newsletter box also say a confirmation link is emailed first."]
 
 
+def _certificate_facts():
+    from app.models.user import User
+
+    initials = User.query.filter_by(certificate_public_name="initials").count()
+    return ["Learning certificates: public verification (link/QR) shows the learner's full name or initials only, as the "
+            f"learner chooses (default full name; {initials} learner(s) chose initials). Never email, user id or internal "
+            "ids. The issued name snapshot is immutable; the choice is applied at display time. The PDF (owner/staff "
+            "only) keeps the full name. Explained on the course page before enrolment."]
+
+
 FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts), ("Account", _account_facts),
-                 ("Retention", _retention_facts), ("Notices", _notice_facts)]
+                 ("Retention", _retention_facts), ("Notices", _notice_facts), ("Certificates", _certificate_facts)]
 
 
 def implementation_facts():

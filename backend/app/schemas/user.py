@@ -71,7 +71,7 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         # member sees them in their own data export.
         exclude = ("password_hash", "career_goals", "career_goals_prompted_at",
                    "age_confirmed_at", "age_confirmed_minimum", "terms_version_accepted",
-                   "privacy_version_accepted", "legal_accepted_at")
+                   "privacy_version_accepted", "legal_accepted_at", "certificate_public_name")
 
 
 class RegisterSchema(ma.Schema):

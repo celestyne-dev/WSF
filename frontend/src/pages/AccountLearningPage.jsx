@@ -8,8 +8,8 @@ import EmptyState from '../components/ui/EmptyState'
 import LearningProgramCard from '../components/cards/LearningProgramCard'
 import { formatDate } from '../utils/format'
 import { trackEvent } from '../utils/analytics'
-import { downloadCertificatePdf, fetchMyCertificates } from '../api/certificates'
-import { CERTIFICATE_TERM, enrollmentCertificateState } from '../utils/certificates'
+import { downloadCertificatePdf, fetchCertificateNameMode, fetchMyCertificates, saveCertificateNameMode } from '../api/certificates'
+import { CERTIFICATE_NAME_OPTIONS, CERTIFICATE_TERM, enrollmentCertificateState } from '../utils/certificates'
 
 const TABS = [
   { key: 'current', label: 'In Progress' },
@@ -64,9 +64,64 @@ function CertificateActions({ certificate }) {
   )
 }
 
+// Step 20: full name or initials on public verification, for every
+// certificate (issued and future). The PDF keeps the full issued name.
+function CertificateNamePreference({ sampleName, onChange }) {
+  const [mode, setMode] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchCertificateNameMode()
+      .then((m) => !cancelled && setMode(m))
+      .catch(() => !cancelled && setMode('full'))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function choose(next) {
+    if (next === mode || saving) return
+    setSaving(true)
+    try {
+      setMode(await saveCertificateNameMode(next))
+      onChange?.()
+      toast.success('Saved. Verification links now show your choice.')
+    } catch {
+      toast.error('We couldn’t save that. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (mode === null) return null
+  return (
+    <fieldset className="mb-6 border border-taupe-200 bg-white p-4">
+      <legend className="px-1 text-sm font-semibold text-charcoal">Your name on public verification</legend>
+      <p className="text-xs text-charcoal-600">
+        Anyone with a certificate’s verification link (or its QR code) sees this. It never shows your email. Your downloaded
+        certificate always carries your full name.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-4 text-sm">
+        {CERTIFICATE_NAME_OPTIONS.map((o) => (
+          <label key={o.value} className="flex items-center gap-2">
+            <input type="radio" name="certificate-name-display" value={o.value} checked={mode === o.value} disabled={saving} onChange={() => choose(o.value)} />
+            {o.label}
+            {sampleName && <span className="text-charcoal-600">({o.example(sampleName)})</span>}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
 function CertificatesList() {
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
+
+  const [reload, setReload] = useState(0)
+  const user = useSelector((st) => st.auth.user)
+  const sampleName = [user?.firstName, user?.lastName].filter(Boolean).join(' ')
 
   useEffect(() => {
     let cancelled = false
@@ -76,12 +131,15 @@ function CertificatesList() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reload])
 
+  const preference = <CertificateNamePreference sampleName={sampleName} onChange={() => setReload((n) => n + 1)} />
   if (error) return <EmptyState title="Something went wrong" description={error} />
   if (items === null) return <div className="h-28 animate-pulse bg-taupe-100" />
   if (items.length === 0) {
     return (
+      <>
+      {preference}
       <EmptyState
         title="No certificates yet"
         description={`Complete a WSF program that offers a ${CERTIFICATE_TERM} and it will appear here.`}
@@ -91,9 +149,12 @@ function CertificatesList() {
           </Link>
         }
       />
+      </>
     )
   }
   return (
+    <>
+    {preference}
     <ul className="space-y-4">
       {items.map((c) => (
         <li key={c.publicId} className="border border-taupe-200 bg-white p-4">
@@ -104,6 +165,9 @@ function CertificatesList() {
             {c.completedAt && <> · Completed {formatDate(c.completedAt)}</>}
             {c.status === 'revoked' && <span className="font-semibold text-rose-600"> · Revoked</span>}
           </p>
+          {c.publicRecipientName && (
+            <p className="mt-1 text-xs text-charcoal-600">Shown publicly as: {c.publicRecipientName}</p>
+          )}
           {c.status === 'active' && (
             <div className="mt-3 text-xs">
               <CertificateActions certificate={c} />
@@ -112,6 +176,7 @@ function CertificatesList() {
         </li>
       ))}
     </ul>
+    </>
   )
 }
 

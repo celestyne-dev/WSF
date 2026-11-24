@@ -12,6 +12,10 @@ export function mapCertificate(c) {
     status: c.status,
     certificateTitle: c.certificateTitle,
     recipientName: c.recipientName,
+    // Step 20: public verification shows the full name or initials, as the
+    // learner chose; publicRecipientName is only in the owner's own view.
+    recipientNameDisplay: c.recipientNameDisplay ?? 'full',
+    publicRecipientName: c.publicRecipientName ?? null,
     programTitle: c.programTitle,
     programSlug: c.programSlug ?? null,
     instructorNames: Array.isArray(c.instructorNames) ? c.instructorNames : [],
@@ -36,6 +40,18 @@ export async function verifyCertificate(publicId) {
 export async function fetchMyCertificates() {
   const { data } = await apiClient.get('/certificates/me')
   return (Array.isArray(data) ? data : data?.items || []).map(mapCertificate)
+}
+
+// Full name or initials on public verification (Step 20). Applies to all of
+// the learner's certificates; never edits an issued certificate.
+export async function fetchCertificateNameMode() {
+  const { data } = await apiClient.get('/certificates/me/name-display')
+  return data?.publicNameMode || 'full'
+}
+
+export async function saveCertificateNameMode(mode) {
+  const { data } = await apiClient.put('/certificates/me/name-display', { publicNameMode: mode })
+  return data?.publicNameMode || mode
 }
 
 // Authenticated blob download, so the bearer token is sent and the PDF

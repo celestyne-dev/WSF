@@ -192,6 +192,7 @@ def build_export(user):
         "terms_version_accepted": user.terms_version_accepted,
         "privacy_version_accepted": user.privacy_version_accepted,
         "legal_accepted_at": _value(user.legal_accepted_at),
+        "certificate_public_name": user.certificate_public_name,
     }
     enrollments = _rows("learning_enrollments", "user_id", user.id)
     for e in enrollments:

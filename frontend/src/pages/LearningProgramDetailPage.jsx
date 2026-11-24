@@ -23,6 +23,7 @@ import FinalAssessment from '../components/learning/FinalAssessment'
 import LifetimeValueNote from '../components/learning/LifetimeValueNote'
 import useLifetimeOffer from '../hooks/useLifetimeOffer'
 import { premiumCourseState, programAccessLabel } from '../utils/learningAccess'
+import { CERTIFICATE_NAME_NOTICE } from '../utils/certificates'
 import CollectionNotice from '../components/legal/CollectionNotice'
 
 // The primary call to action, from the backend's own access answers.
@@ -111,6 +112,7 @@ function CourseCta({ course, program, onSignIn }) {
         {busy ? 'Please wait…' : enrollment?.status === 'withdrawn' ? 'Resume course' : 'Start course'}
       </button>
       <CollectionNotice kind="learningEnrolment" className="mt-2 max-w-md" />
+      {program.certificateAvailable && <p className="mt-1 max-w-md text-xs text-charcoal-600">{CERTIFICATE_NAME_NOTICE}</p>}
     </div>
   )
 }

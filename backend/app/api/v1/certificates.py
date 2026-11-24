@@ -2,6 +2,7 @@
 
   GET  /certificates/verify/<public_id>     public verification (safe facts only)
   GET  /certificates/me                     the learner's own certificates
+  GET/PUT /certificates/me/name-display     full name or initials on public verification
   GET  /certificates/<public_id>/pdf        PDF — owner or learning.manage staff
   GET  /certificates/admin                  staff list (search/status/program)
   POST /certificates/admin/<id>/revoke      staff revoke
@@ -25,8 +26,10 @@ from app.services.learning_certificates import (
     owner_certificate_payload,
     public_certificate_payload,
     reissue_certificate,
+    certificate_name_mode,
     render_certificate_pdf,
     revoke_certificate,
+    set_certificate_name_mode,
 )
 from app.utils.pagination import paginate
 from app.utils.responses import ApiError, success_response
@@ -61,12 +64,27 @@ class CertificateMeResource(Resource):
     @active_user_required
     def get(self):
         rows = (
-            LearningCertificate.query.options(selectinload(LearningCertificate.learning_program))
+            LearningCertificate.query.options(selectinload(LearningCertificate.learning_program), selectinload(LearningCertificate.user))
             .filter_by(user_id=current_user.id)
             .order_by(LearningCertificate.issued_at.desc(), LearningCertificate.id.desc())
             .all()
         )
         return success_response([owner_certificate_payload(c) for c in rows])
+
+
+class CertificateNamePreferenceResource(Resource):
+    """GET/PUT /certificates/me/name-display — full name or initials on
+    public verification (Step 20). Applies to all of the learner's
+    certificates, issued and future; never edits a certificate."""
+
+    @active_user_required
+    def get(self):
+        return success_response({"publicNameMode": certificate_name_mode(current_user)})
+
+    @active_user_required
+    def put(self):
+        mode = (request.get_json(silent=True) or {}).get("publicNameMode")
+        return success_response({"publicNameMode": set_certificate_name_mode(current_user, mode)})
 
 
 class CertificatePdfResource(Resource):
@@ -137,6 +155,7 @@ class CertificateAdminReissueResource(Resource):
 
 api.add_resource(CertificateVerifyResource, "/verify/<string:public_id>")
 api.add_resource(CertificateMeResource, "/me")
+api.add_resource(CertificateNamePreferenceResource, "/me/name-display")
 api.add_resource(CertificatePdfResource, "/<string:public_id>/pdf")
 api.add_resource(CertificateAdminListResource, "/admin")
 api.add_resource(CertificateAdminRevokeResource, "/admin/<int:certificate_id>/revoke")
