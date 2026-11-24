@@ -275,7 +275,7 @@ def request_deletion(user, password, remove_comments=False):
                                  f"{'; also remove comments' if remove_comments else ''}.")
     db.session.commit()
     log_action(user, "account.deletion_requested", "User", user.id, {"remove_comments": bool(remove_comments)})
-    token = _serializer(_CANCEL_SALT).dumps({"u": user.id, "r": int(now.timestamp())})
+    token = _serializer(_CANCEL_SALT).dumps({"u": user.id, "r": _request_stamp(now)})
     base = current_app.config["FRONTEND_URL"].rstrip("/")
     when = user.deletion_scheduled_for.strftime("%d %B %Y")
     send_email(user.email, "Your Women Shaping Futures account is scheduled for deletion",
@@ -304,6 +304,13 @@ def _cancel(user, how):
     return True
 
 
+def _request_stamp(moment):
+    """The deletion request's time in whole microseconds (what PostgreSQL
+    stores), so a link from an earlier request in the same second can't
+    cancel a later one."""
+    return int(moment.timestamp()) * 1_000_000 + moment.microsecond
+
+
 def cancel_with_email_token(token):
     try:
         data = _serializer(_CANCEL_SALT).loads(token or "", max_age=int(GRACE_PERIOD.total_seconds()) + 86400)
@@ -311,7 +318,7 @@ def cancel_with_email_token(token):
         return None
     user = db.session.get(User, data.get("u"))
     if user is None or user.deletion_requested_at is None or \
-            int(_aware(user.deletion_requested_at).timestamp()) != data.get("r"):
+            _request_stamp(_aware(user.deletion_requested_at)) != data.get("r"):
         return None
     _cancel(user, "email link")
     return user
