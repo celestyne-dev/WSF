@@ -554,8 +554,10 @@ out of ever falling back to plain HTTP for the header's `max-age`.
 
 ### 15c. Staff two-factor authentication (first deploy)
 
-Accounts with the `super_admin` or `editor` role must use TOTP two-factor
-authentication (`TWO_FACTOR_REQUIRED_ROLES` in `backend/config.py`). Nobody is
+Accounts with the `super_admin`, `admin` or `editor` role (Super Admin, Admin,
+Editor) must use TOTP two-factor authentication (`TWO_FACTOR_REQUIRED_ROLES`
+in `backend/config.py`, the only place the list is kept). Two-factor is
+optional for members and every other role. Nobody is
 locked out by the deploy: at their next sign-in these staff see a set-up
 screen (QR code + manual key), confirm one code, save their 10 recovery
 codes, and are signed in. If someone loses both the authenticator and the

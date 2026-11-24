@@ -17,7 +17,9 @@ PASSWORD = "supersecret1"
 def _production_policy(app):
     # Production default (config.Config); TestingConfig switches it off for
     # the rest of the suite's staff fixtures.
-    app.config["TWO_FACTOR_REQUIRED_ROLES"] = ("super_admin", "editor")
+    from config import Config
+
+    app.config["TWO_FACTOR_REQUIRED_ROLES"] = Config.TWO_FACTOR_REQUIRED_ROLES
 
 
 def _user(client, app, email, role=None):
@@ -57,10 +59,10 @@ def _enroll_staff(client, app, email, role="editor"):
     return secret, res.get_json()["data"]
 
 
-def test_production_default_requires_super_admin_and_editor():
+def test_production_default_requires_super_admin_admin_and_editor():
     from config import Config, TestingConfig
 
-    assert Config.TWO_FACTOR_REQUIRED_ROLES == ("super_admin", "editor")
+    assert Config.TWO_FACTOR_REQUIRED_ROLES == ("super_admin", "admin", "editor")
     assert TestingConfig.TWO_FACTOR_REQUIRED_ROLES == ()
 
 

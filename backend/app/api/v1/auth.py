@@ -34,6 +34,7 @@ from app.services.refresh_sessions import (
     create_session,
     csrf_problem,
     find_session,
+    invalidate_user_sessions,
     read_refresh_cookie,
     revoke,
     set_refresh_cookie,
@@ -229,6 +230,13 @@ class ChangePasswordResource(Resource):
     account still carrying that flag). Deliberately plain @jwt_required()
     rather than the RBAC decorators: a forced-change user must be able to
     reach this endpoint precisely because she can't reach anything else.
+
+    A successful change ends EVERY credential issued before it — this
+    browser's access token and refresh session included, every other
+    browser's, and any unused two-factor sign-in token
+    (invalidate_user_sessions) — and expires this browser's refresh cookie.
+    No replacement session is issued: the member signs in again with the
+    new password, going through two-factor as usual.
     """
 
     @jwt_required()
@@ -249,16 +257,20 @@ class ChangePasswordResource(Resource):
                 "New password must be different from your current password.", 422, code="password_unchanged"
             )
 
-        current_user.set_password(data["new_password"])
-        current_user.must_change_password = False
+        user = current_user._get_current_object()
+        user.set_password(data["new_password"])
+        user.must_change_password = False
+        invalidate_user_sessions(user, "password_changed")
         db.session.commit()
         # No `changes` payload — nothing here is safe or useful to audit
         # beyond the fact that it happened (log_action's own redaction in
         # app/services/audit.py would scrub a password value anyway, but
         # this endpoint never hands it one to begin with).
-        log_action(current_user, "user.password_change", "User", current_user.id)
+        log_action(user, "user.password_change", "User", user.id)
 
-        return success_response(user_schema.dump(current_user))
+        body = {"success": True, "data": {"session_ended": True},
+                "message": "Your password has been changed. Please sign in again."}
+        return clear_refresh_cookie(make_response(jsonify(body), 200))
 
 
 class MeResource(Resource):

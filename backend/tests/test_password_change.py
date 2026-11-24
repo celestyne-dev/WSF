@@ -235,7 +235,7 @@ class TestChangePasswordEndpoint:
             headers=auth_headers(token),
         )
         assert resp.status_code == 200
-        assert resp.get_json()["data"]["must_change_password"] is False
+        assert resp.get_json()["data"] == {"session_ended": True}
 
         with app.app_context():
             user = User.query.filter_by(email="fullflow@example.com").first()
@@ -255,8 +255,11 @@ class TestChangePasswordEndpoint:
         assert new_login.status_code == 200
         assert new_login.get_json()["data"]["user"]["must_change_password"] is False
 
-        # Same still-unexpired access token issued back at the forced-change
-        # login — no re-login required — now reaches the protected CMS
-        # endpoint her role (community_manager) grants.
-        resp2 = client.get("/api/v1/community/members", headers=auth_headers(token))
+        # The temporary-password session ended with the change: its token is
+        # revoked. The fresh sign-in reaches the protected CMS endpoint her
+        # role (community_manager) grants.
+        stale = client.get("/api/v1/community/members", headers=auth_headers(token))
+        assert stale.status_code == 401 and stale.get_json()["error"]["code"] == "token_revoked"
+        fresh = new_login.get_json()["data"]["access_token"]
+        resp2 = client.get("/api/v1/community/members", headers=auth_headers(fresh))
         assert resp2.status_code == 200

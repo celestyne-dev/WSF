@@ -3,8 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import { changePassword } from '../api/auth'
-import { setUser } from '../features/auth/authSlice'
-import { getPostLoginRoute } from '../utils/permissions'
+import { logout } from '../features/auth/authSlice'
 import useSeo from '../hooks/useSeo'
 import PageLoader from '../components/ui/PageLoader'
 
@@ -67,9 +66,12 @@ export default function ChangePasswordPage() {
       return
     }
 
-    dispatch(setUser(result.user))
-    toast.success('Your password has been updated.')
-    navigate(getPostLoginRoute(result.user))
+    // The change ended every session, this one included (the server
+    // revoked them and expired the refresh cookie): drop the in-memory token
+    // and user, then sign in again with the new password (and 2FA, if on).
+    toast.success(result.message)
+    navigate('/login', { replace: true })
+    dispatch(logout())
   }
 
   return (

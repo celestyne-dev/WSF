@@ -19,7 +19,9 @@ EDITOR_ONLY = "/api/v1/redirects"  # @permission_required("articles.manage")
 
 @pytest.fixture(autouse=True)
 def _production_policy(app):
-    app.config["TWO_FACTOR_REQUIRED_ROLES"] = ("super_admin", "editor")
+    from config import Config
+
+    app.config["TWO_FACTOR_REQUIRED_ROLES"] = Config.TWO_FACTOR_REQUIRED_ROLES
 
 
 @pytest.fixture()
@@ -61,7 +63,7 @@ def _login(client, email, password=PASSWORD):
     return client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
-@pytest.mark.parametrize("role", ["editor", "super_admin"])
+@pytest.mark.parametrize("role", ["editor", "admin", "super_admin"])
 def test_promotion_to_a_2fa_role_ends_old_credentials_and_forces_2fa(client, app, admin_headers, role):
     token, cookie, uid = _member(client, f"promoted-{role}@example.invalid")
     assert _me(client, token).status_code == 200
@@ -153,7 +155,9 @@ def test_admin_password_reset_ends_old_credentials(client, app, admin_headers):
     change = client.post("/api/v1/auth/change-password", headers=auth_headers(data["access_token"]),
                          json={"current_password": temporary, "new_password": "brandnewpass1",
                                "confirm_password": "brandnewpass1"})
-    assert change.status_code == 200 and change.get_json()["data"]["must_change_password"] is False
+    assert change.status_code == 200 and change.get_json()["data"] == {"session_ended": True}
+    with app.app_context():
+        assert db.session.get(User, uid).must_change_password is False
 
 
 def test_admin_two_factor_reset_ends_old_credentials(client, app, admin_headers):
@@ -228,3 +232,183 @@ def test_create_superadmin_cli_on_an_existing_account_ends_old_credentials(clien
     assert _me(client, token).get_json()["error"]["code"] == "token_revoked"
     assert _session_row(app, cookie).revoked_reason == "superadmin_cli"
     assert _login(client, "cli-promoted@example.invalid", "anothersecret1").get_json()["data"]["two_factor"] == "setup"
+
+
+# --- Admin requires two-factor (config.Config.TWO_FACTOR_REQUIRED_ROLES) -------------------
+
+
+def _grant_directly(app, uid, role):
+    """An account that already holds `role` when this policy ships (no role
+    change through the API, so nothing is invalidated by it)."""
+    with app.app_context():
+        user = db.session.get(User, uid)
+        user.roles.append(Role.query.filter_by(name=role).first())
+        db.session.commit()
+
+
+def _complete_setup(client, app, uid, token):
+    client.post("/api/v1/auth/2fa/setup/start", json={"token": token})
+    secret = _secret(app, uid)
+    res = client.post("/api/v1/auth/2fa/setup/confirm", json={"token": token, "code": two_factor.code_for(secret)})
+    assert res.status_code == 200
+    return secret, res.get_json()["data"]
+
+
+def test_admin_is_a_required_role():
+    from config import Config
+
+    assert "admin" in Config.TWO_FACTOR_REQUIRED_ROLES
+
+
+def test_existing_admin_enrolls_at_next_sign_in_then_gets_the_challenge(app):
+    client = app.test_client()
+    _token, _cookie, uid = _member(client, "existing-admin@example.invalid")
+    _grant_directly(app, uid, "admin")
+    client.delete("/api/v1/auth/refresh", headers=CSRF_HEADERS)
+    data = _login(client, "existing-admin@example.invalid").get_json()["data"]
+    assert data["two_factor"] == "setup" and "access_token" not in data
+    assert refresh_cookie_value(client) is None  # no session before set-up
+    _secret_, done = _complete_setup(client, app, uid, data["two_factor_token"])
+    assert refresh_cookie_value(client) and _me(client, done["access_token"]).status_code == 200
+    assert client.get("/api/v1/admin/users", headers=auth_headers(done["access_token"])).status_code == 200
+    again = _login(app.test_client(), "existing-admin@example.invalid").get_json()["data"]
+    assert again["two_factor"] == "challenge" and "access_token" not in again
+
+
+def test_enrolled_editor_moved_to_admin_signs_in_again_with_the_challenge(app, admin_headers):
+    client = app.test_client()
+    _token, _cookie, uid = _member(client, "editor-to-admin@example.invalid")
+    _grant_directly(app, uid, "editor")
+    client.delete("/api/v1/auth/refresh", headers=CSRF_HEADERS)
+    token = _login(client, "editor-to-admin@example.invalid").get_json()["data"]["two_factor_token"]
+    _s, done = _complete_setup(client, app, uid, token)
+    cookie = refresh_cookie_value(client)
+    assert _set_roles(client, admin_headers, uid, ["member", "admin"]).status_code == 200
+    assert _me(client, done["access_token"]).get_json()["error"]["code"] == "token_revoked"
+    assert refresh_session(client, cookie).status_code == 401
+    again = _login(app.test_client(), "editor-to-admin@example.invalid").get_json()["data"]
+    assert again["two_factor"] == "challenge"
+
+
+def test_admin_cannot_turn_two_factor_off(app):
+    client = app.test_client()
+    _token, _cookie, uid = _member(client, "admin-off@example.invalid")
+    _grant_directly(app, uid, "admin")
+    client.delete("/api/v1/auth/refresh", headers=CSRF_HEADERS)
+    token = _login(client, "admin-off@example.invalid").get_json()["data"]["two_factor_token"]
+    secret, done = _complete_setup(client, app, uid, token)
+    res = client.post("/api/v1/auth/2fa/disable", headers=auth_headers(done["access_token"]),
+                      json={"password": PASSWORD, "code": two_factor.code_for(secret)})
+    assert res.status_code == 403
+    status = client.get("/api/v1/auth/2fa", headers=auth_headers(done["access_token"])).get_json()["data"]
+    assert status["enabled"] is True and status["required"] is True
+
+
+# --- Self-service password change ends every session -----------------------------------------
+
+
+NEW_PASSWORD = "brandnewpass1"
+
+
+def _change(client, token, current=PASSWORD, new=NEW_PASSWORD):
+    return client.post("/api/v1/auth/change-password", headers=auth_headers(token),
+                       json={"current_password": current, "new_password": new, "confirm_password": new})
+
+
+def _clears_refresh_cookie(res):
+    headers = [h for h in res.headers.getlist("Set-Cookie") if h.startswith("wsf_refresh=")]
+    return len(headers) == 1 and ("Max-Age=0" in headers[0] or "1970" in headers[0]) \
+        and "Path=/api/v1/auth/refresh" in headers[0]
+
+
+def test_password_change_signs_this_browser_out(client, app):
+    token, cookie, uid = _member(client, "pwchange@example.invalid")
+    res = _change(client, token)
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["data"] == {"session_ended": True} and "sign in again" in body["message"]
+    assert "access_token" not in body["data"]
+    assert _clears_refresh_cookie(res)
+    assert refresh_cookie_value(client) is None
+    res = _me(client, token)
+    assert res.status_code == 401 and res.get_json()["error"]["code"] == "token_revoked"
+    assert _session_row(app, cookie).revoked_reason == "password_changed"
+    res = refresh_session(app.test_client(), cookie)
+    assert res.status_code == 401 and res.get_json()["error"]["code"] == "session_revoked"
+    assert _login(client, "pwchange@example.invalid").status_code == 401
+    res = _login(client, "pwchange@example.invalid", NEW_PASSWORD)
+    assert res.status_code == 200 and _me(client, res.get_json()["data"]["access_token"]).status_code == 200
+
+
+def test_password_change_ends_every_other_session_too(app):
+    a, b = app.test_client(), app.test_client()
+    token_a, cookie_a, uid = _member(a, "twobrowsers@example.invalid")
+    res_b = _login(b, "twobrowsers@example.invalid")
+    token_b, cookie_b = res_b.get_json()["data"]["access_token"], refresh_cookie_value(b)
+    assert _change(a, token_a).status_code == 200
+    for token in (token_a, token_b):
+        assert _me(a, token).get_json()["error"]["code"] == "token_revoked"
+    for cookie in (cookie_a, cookie_b):
+        assert _session_row(app, cookie).revoked_reason == "password_changed"
+        assert refresh_session(app.test_client(), cookie).status_code == 401
+
+
+def test_password_change_ends_outstanding_two_factor_sign_in_tokens(app):
+    """auth_version also voids an unused challenge token."""
+    client = app.test_client()
+    _t, _c, uid = _member(client, "pending2fa@example.invalid")
+    _grant_directly(app, uid, "editor")
+    client.delete("/api/v1/auth/refresh", headers=CSRF_HEADERS)
+    setup_token = _login(client, "pending2fa@example.invalid").get_json()["data"]["two_factor_token"]
+    _secret_, done = _complete_setup(client, app, uid, setup_token)
+    challenge = _login(app.test_client(), "pending2fa@example.invalid").get_json()["data"]["two_factor_token"]
+    assert _change(client, done["access_token"]).status_code == 200
+    # A valid recovery code (a TOTP code from the set-up step would be refused
+    # as a replay, which would prove nothing about the token).
+    res = client.post("/api/v1/auth/2fa/challenge", json={"token": challenge, "recovery_code": done["recovery_codes"][0]})
+    assert res.status_code == 401 and "access_token" not in (res.get_json().get("data") or {})
+
+
+def test_member_with_2fa_changes_password_then_gets_the_challenge(app):
+    client = app.test_client()
+    token, _cookie, uid = _member(client, "member2fa-pw@example.invalid")
+    client.post("/api/v1/auth/2fa/setup/start", json={}, headers=auth_headers(token))
+    on = client.post("/api/v1/auth/2fa/setup/confirm", json={"code": two_factor.code_for(_secret(app, uid))},
+                     headers=auth_headers(token)).get_json()["data"]
+    verified_cookie = refresh_cookie_value(client)
+    assert _change(client, on["access_token"]).status_code == 200
+    assert _me(client, on["access_token"]).status_code == 401
+    assert refresh_session(app.test_client(), verified_cookie).status_code == 401
+    data = _login(app.test_client(), "member2fa-pw@example.invalid", NEW_PASSWORD).get_json()["data"]
+    assert data["two_factor"] == "challenge" and "access_token" not in data
+
+
+def test_forced_temporary_password_staff_flow_with_required_2fa(app, admin_headers):
+    client = app.test_client()
+    create = client.post("/api/v1/admin/users", headers=admin_headers,
+                         json={"email": "newstaff@example.invalid", "first_name": "N", "last_name": "S",
+                               "role_names": ["admin"], "is_active": True})
+    temporary, uid = create.get_json()["data"]["temporary_password"], create.get_json()["data"]["id"]
+    # First sign-in: required 2FA set-up comes first (no session before it).
+    data = _login(client, "newstaff@example.invalid", temporary).get_json()["data"]
+    assert data["two_factor"] == "setup" and refresh_cookie_value(client) is None
+    _s, done = _complete_setup(client, app, uid, data["two_factor_token"])
+    assert done["user"]["must_change_password"] is True
+    temp_cookie = refresh_cookie_value(client)
+    # Choosing the permanent password clears the flag and ends that session.
+    assert _change(client, done["access_token"], current=temporary).status_code == 200
+    with app.app_context():
+        assert db.session.get(User, uid).must_change_password is False
+    assert _me(client, done["access_token"]).get_json()["error"]["code"] == "token_revoked"
+    assert refresh_session(app.test_client(), temp_cookie).status_code == 401
+    assert _login(client, "newstaff@example.invalid", temporary).status_code == 401
+    again = _login(client, "newstaff@example.invalid", NEW_PASSWORD).get_json()["data"]
+    assert again["two_factor"] == "challenge" and "access_token" not in again
+
+
+def test_wrong_current_password_changes_nothing(client, app):
+    token, cookie, uid = _member(client, "wrongcurrent@example.invalid")
+    res = _change(client, token, current="not-the-password")
+    assert res.status_code == 401
+    assert _me(client, token).status_code == 200
+    assert _session_row(app, cookie).revoked_at is None

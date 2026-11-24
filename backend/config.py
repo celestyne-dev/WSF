@@ -73,7 +73,7 @@ class Config:
     # it; anyone else may opt in. The encryption key protects stored TOTP
     # secrets: a Fernet key, required in production. Generate with
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    TWO_FACTOR_REQUIRED_ROLES = ("super_admin", "editor")
+    TWO_FACTOR_REQUIRED_ROLES = ("super_admin", "admin", "editor")
     TWO_FACTOR_ENCRYPTION_KEY = os.environ.get("TWO_FACTOR_ENCRYPTION_KEY") or None
     # Security headers (app/services/security_headers.py). HSTS only in
     # production (ProductionConfig) and only on HTTPS requests. The CSP is

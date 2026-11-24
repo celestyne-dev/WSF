@@ -1,8 +1,8 @@
 """TOTP two-factor authentication (RFC 6238: SHA-1, 6 digits, 30-second steps).
 
 Who must use it: accounts holding a role in TWO_FACTOR_REQUIRED_ROLES
-(config.py; default "super_admin" and "editor", the role names defined in
-app/services/rbac.py ROLE_PERMISSIONS). Everyone else may opt in.
+(config.py; default "super_admin", "admin" and "editor", the role names defined
+in app/services/rbac.py ROLE_PERMISSIONS). Everyone else may opt in.
 
 Sign-in with 2FA (app/api/v1/auth.py):
   password OK + 2FA enabled         -> a 10-minute challenge token, no session
@@ -11,7 +11,8 @@ Sign-in with 2FA (app/api/v1/auth.py):
                                        cookie + in-memory access token), marked
                                        two_factor_verified
 A refresh session that was not 2FA-verified cannot be refreshed for an
-account whose role requires 2FA (app/api/v1/auth.py RefreshResource).
+account that has 2FA turned on or whose role requires it (app/api/v1/auth.py
+RefreshResource).
 
 Storage: the TOTP secret is encrypted with Fernet (TWO_FACTOR_ENCRYPTION_KEY;
 required in production; development/testing derive one from SECRET_KEY).

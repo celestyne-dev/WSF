@@ -69,10 +69,9 @@ const authSlice = createSlice({
       state.accessToken = action.payload || null
       if (!state.accessToken) state.user = null
     },
-    // After a successful POST /auth/change-password — replaces the
-    // authenticated user in place (mustChangePassword now false) with no
-    // token change, so the session continues uninterrupted; no logout/login
-    // round trip needed.
+    // Replaces the signed-in user in place (e.g. after a profile edit), with
+    // no token change. (A password change instead ends the session: see
+    // ChangePasswordPage.)
     setUser(state, action) {
       state.user = action.payload
     },

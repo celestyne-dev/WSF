@@ -100,7 +100,9 @@ function mapMockUser(user) {
 }
 
 // POST /api/v1/auth/change-password — resolves (never throws) with
-// { success, user? } | { success, message, code? }, same never-throw
+// { success, message } | { success: false, message, code? }. A successful
+// change ends every session, this one included (the server also expires the
+// refresh cookie): the caller signs the browser out. Same never-throw
 // convention as login() above, so the page can render a field-level or
 // toast error without a try/catch of its own. Not available in mock mode —
 // mock accounts never carry mustChangePassword and have no backend to
@@ -115,7 +117,8 @@ export async function changePassword({ currentPassword, newPassword, confirmPass
       new_password: newPassword,
       confirm_password: confirmPassword,
     })
-    return { success: true, user: mapUser(data) }
+    return { success: true, sessionEnded: !!data?.session_ended,
+             message: 'Your password has been changed. Please sign in again.' }
   } catch (err) {
     return {
       success: false,
