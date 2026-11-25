@@ -147,7 +147,8 @@ def test_implementation_facts_cover_retention(app):
     with app.app_context():
         text = " ".join(line for section, line in implementation_facts() if section == "Retention")
     assert "Analytics events: 14 months" in text and "Payment records: 6 years" in text
-    assert "unverified-accounts rule (30 days) is NOT active" in text
+    assert "Unverified new accounts: deleted 30 days after registration" in text
+    assert "never to accounts that predate it" in text
 
 
 def test_implementation_facts_list_collection_notices(app):

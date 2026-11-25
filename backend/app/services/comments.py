@@ -457,6 +457,10 @@ def approve_comment(moderator, comment):
         return comment
     if comment.status == "deleted":
         raise CommentError("A comment its author deleted can't be restored.", 409, "comment_deleted")
+    if comment.status == "removed" and not (comment.body or "").strip():
+        # Its text was erased under the 12-month retention rule: nothing to restore.
+        raise CommentError("This comment's text was erased under the retention policy and can't be restored.", 409,
+                           "comment_body_erased")
     previous = comment.status
     now = _now()
     comment.status = "published"

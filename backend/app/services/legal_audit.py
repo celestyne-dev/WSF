@@ -236,13 +236,17 @@ def _retention_facts():
     from app.services.retention import FIXED_RULES, RETENTION_RULES, get_retention_settings
 
     values = get_retention_settings()
-    periods = [f"{RETENTION_RULES[k][4]}: {v} {RETENTION_RULES[k][3]}" for k, v in values.items()
-               if k != "unverifiedAccountDays"]
+    periods = [f"{RETENTION_RULES[k][4]}: {v} {RETENTION_RULES[k][3]}" for k, v in values.items()]
     periods += [f"{label}: {value} days" for value, label in FIXED_RULES.values()]
     return [
         "Retention (daily, logged counts only): " + "; ".join(periods) + ".",
-        "WARNING: the unverified-accounts rule (30 days) is NOT active: WSF has no email-verification flow, "
-        "so every member is unverified and the rule would delete them all.",
+        f"Unverified new accounts: deleted {values['unverifiedAccountDays']} days after registration if the email was "
+        "never confirmed. Applies only to accounts registered under the verification-required flow; never to accounts "
+        "that predate it, staff, paid accounts or accounts with deletion blockers.",
+        "Payments: Circle payments, resource payments and orders are accounting records kept for at least "
+        f"{values['paymentRecordYears']} years, then deleted. Circle subscriptions and resource purchases are "
+        "entitlements and are never deleted by age; ended subscriptions only lose their provider references. "
+        "Automatic deletion is blocked (manual privacy review) for a recurring membership billed outside WSF.",
     ]
 
 
@@ -267,9 +271,11 @@ def _certificate_facts():
 
     initials = User.query.filter_by(certificate_public_name="initials").count()
     return ["Learning certificates: public verification (link/QR) shows the learner's full name or initials only, as the "
-            f"learner chooses (default full name; {initials} learner(s) chose initials). Never email, user id or internal "
+            f"learner chooses (default initials for new accounts; accounts that predate the setting keep full name; "
+            f"{initials} learner(s) currently show initials). Never email, user id or internal "
             "ids. The issued name snapshot is immutable; the choice is applied at display time. The PDF (owner/staff "
-            "only) keeps the full name. Explained on the course page before enrolment."]
+            "only) keeps the full name. Explained on the course page before enrolment; certificates and their public "
+            "verification end when the account is deleted (members are told before deleting)."]
 
 
 FACT_SECTIONS = [("Newsletter", _newsletter_facts), ("Email", _email_facts), ("Account", _account_facts),

@@ -265,11 +265,35 @@ def independent_records_note(user):
 # --- deletion ----------------------------------------------------------------------------------
 
 
+def has_external_recurring_billing(user):
+    """WSF's own Paystack checkout is one-off charges per period (no recurring
+    charge API is used: app/services/paystack.py), so deleting the account
+    leaves nothing charging. A current subscription on a recurring plan that
+    is billed OUTSIDE WSF (a provider subscription id was recorded, or the
+    plan sends members to an external billing portal) may keep charging the
+    person; WSF can't safely cancel that itself."""
+    from app.models.circle import CIRCLE_RECURRING_BILLING_INTERVALS, CircleSubscription
+
+    for sub in CircleSubscription.query.filter(CircleSubscription.user_id == user.id,
+                                               CircleSubscription.status.in_(("pending", "active", "past_due"))).all():
+        plan = sub.plan
+        if plan is None or plan.billing_interval not in CIRCLE_RECURRING_BILLING_INTERVALS or sub.cancel_at_period_end:
+            continue
+        if sub.provider_subscription_id or plan.manage_billing_url:
+            return True
+    return False
+
+
 def deletion_blockers(user):
-    """Reasons this account can't be deleted self-service (staff accounts)."""
+    """Reasons this account can't be deleted automatically (self-service,
+    grace-period purge or inactive-account retention): staff accounts, rows
+    in tables that must not lose their account, and externally billed
+    recurring subscriptions (manual privacy review instead)."""
     blockers = []
     if set(user.role_names()) - NON_STAFF_ROLES:
         blockers.append("staff_roles")
+    if has_external_recurring_billing(user):
+        blockers.append("external_recurring_billing")
     for table, column, ondelete, nullable in user_foreign_keys():
         if FK_TREATMENT.get(f"{table.name}.{column.name}", (None,))[0] == B:
             if db.session.execute(select(column).where(column == user.id).limit(1)).first() is not None:
@@ -290,7 +314,18 @@ def request_deletion(user, password, remove_comments=False):
         raise AccountPrivacyError("Your password isn't right.", 422, "invalid_credentials")
     if user.deletion_scheduled_for is not None:
         raise AccountPrivacyError("Deletion is already scheduled.", 409, "deletion_already_scheduled")
-    if deletion_blockers(user):
+    blockers = deletion_blockers(user)
+    if "external_recurring_billing" in blockers:
+        # Never leave a recurring charge running against a deleted account:
+        # route to a manually reviewed privacy request instead.
+        open_privacy_request(request_type="deletion", user=user, source="self_service", status="open",
+                             details="Self-service deletion requested, but the account has a recurring membership "
+                                     "billed outside WSF. Cancel the billing first, then complete the deletion.")
+        db.session.commit()
+        raise AccountPrivacyError("Your membership renews through an external billing service, so we'll handle this "
+                                  "deletion by hand to make sure the billing stops. We've logged your request and will "
+                                  "be in touch.", 409, "deletion_needs_review")
+    if blockers:
         raise AccountPrivacyError("Staff accounts can't be deleted here. Ask a Super Admin.", 409, "deletion_blocked")
     now = _now()
     user.deletion_requested_at = now

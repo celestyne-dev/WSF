@@ -610,8 +610,12 @@ def _outbox(monkeypatch):
     sent = []
     import app.services.email as email
 
+    # Registration now also sends an email-verification link (Batch 4
+    # corrections); this outbox is for comment notifications only.
     monkeypatch.setattr(email, "send_email",
-                        lambda to, subject, text, html=None, **kw: sent.append((to, subject, text, kw)) or True)
+                        lambda to, subject, text, html=None, **kw: (
+                            None if subject.startswith("Confirm your email address") else sent.append((to, subject, text, kw))
+                        ) or True)
     return sent
 
 

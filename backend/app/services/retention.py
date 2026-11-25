@@ -48,7 +48,7 @@ RETENTION_RULES = {
     "analyticsEventsMonths": (14, 1, 60, "months", "Analytics events"),
     "authIpMonths": (12, 1, 60, "months", "Sign-in/sign-up IP address and browser"),
     "contactInquiriesMonths": (24, 1, 120, "months", "Contact inquiries"),
-    "unverifiedAccountDays": (30, 7, 365, "days", "Unverified accounts (inactive: no email verification exists)"),
+    "unverifiedAccountDays": (30, 7, 365, "days", "Unverified new accounts (email never confirmed)"),
     "inactiveAccountYears": (3, 1, 10, "years", "Inactive accounts"),
     "inactiveWarningDays": (30, 7, 90, "days", "Warning before inactive-account deletion"),
     "declinedStoryMonths": (12, 1, 60, "months", "Declined story submissions"),
@@ -84,7 +84,7 @@ def retention_settings_payload():
         "rules": {k: {"default": d, "min": lo, "max": hi, "unit": unit, "label": label}
                   for k, (d, lo, hi, unit, label) in RETENTION_RULES.items()},
         "fixed": {k: {"value": v, "label": label} for k, (v, label) in FIXED_RULES.items()},
-        "unverifiedAccountsActive": False,
+        "unverifiedAccountsActive": True,
     }
 
 
@@ -191,7 +191,18 @@ def _reset_tokens(now, s, dry_run):
 
 
 def _payments(now, s, dry_run):
-    from app.models.circle import CirclePayment
+    """Accounting records vs entitlements (Batch 4 corrections):
+      circle_payments, resource_payments, orders: accounting evidence, kept at
+        least paymentRecordYears (min 6) after creation, then deleted.
+      circle_subscriptions: membership entitlement. Never deleted here. Once a
+        subscription has ENDED (cancelled/expired/revoked) for longer than the
+        period, only its provider/payment references are cleared.
+      resource_purchases: permanent entitlement to a purchased resource. Never
+        deleted or reduced by age (they hold no payment detail beyond a
+        reference); they end only with the account.
+    Deleting an old payment never touches the subscription or purchase it
+    paid for."""
+    from app.models.circle import CirclePayment, CircleSubscription
     from app.models.commerce import Order
     from app.models.resource import ResourcePayment
 
@@ -202,7 +213,16 @@ def _payments(now, s, dry_run):
     if not dry_run:
         for order in orders:  # ORM delete: order items/notes follow the model's own rules
             db.session.delete(order)
-    return count + len(orders)
+    ended = CircleSubscription.query.filter(
+        CircleSubscription.status.in_(("cancelled", "expired", "revoked")),
+        func.coalesce(CircleSubscription.ended_at, CircleSubscription.cancelled_at, CircleSubscription.updated_at) < cutoff,
+        or_(CircleSubscription.provider_customer_id.isnot(None), CircleSubscription.provider_subscription_id.isnot(None),
+            CircleSubscription.payment_reference.isnot(None)))
+    minimised = ended.count()
+    if minimised and not dry_run:
+        ended.update({"provider_customer_id": None, "provider_subscription_id": None, "payment_reference": None},
+                     synchronize_session=False)
+    return count + len(orders) + minimised
 
 
 def _consent(now, s, dry_run):
@@ -239,24 +259,74 @@ def last_activity(user):
 
 
 def _inactive_candidates():
+    """Accounts automatic deletion may consider: never staff, never active
+    Circle members, never an account with a deletion blocker (the same
+    blockers self-service deletion uses)."""
     from app.models.circle import CircleSubscription
     from app.models.user import User
-    from app.services.account_privacy import NON_STAFF_ROLES
+    from app.services.account_privacy import NON_STAFF_ROLES, deletion_blockers
 
     paid = db.session.query(CircleSubscription.user_id).filter(CircleSubscription.status == "active",
                                                                CircleSubscription.user_id.isnot(None))
     for user in User.query.filter(User.deletion_scheduled_for.is_(None), ~User.id.in_(paid)).all():
         if set(user.role_names()) - NON_STAFF_ROLES:
             continue  # staff accounts are never auto-deleted
+        if deletion_blockers(user):
+            continue
         yield user
+
+
+def _purge_one(user, action, changes):
+    """Purge one account inside a savepoint: a failure is logged and skipped
+    so it can't stop the other accounts or the other retention rules."""
+    from app.services.account_privacy import purge_user
+    from app.services.audit import log_action
+
+    uid = user.id
+    try:
+        with db.session.begin_nested():
+            purge_user(user)
+    except Exception:  # noqa: BLE001 - isolate one bad row; logged without personal data
+        current_app.logger.exception("Retention: purge of one account failed (%s); skipped.", action)
+        return False
+    log_action(None, action, "User", uid, changes)
+    return True
+
+
+def _has_payments(user):
+    from app.models.circle import CirclePayment, CircleSubscription
+    from app.models.commerce import Order
+    from app.models.resource import ResourcePayment, ResourcePurchase
+
+    return any(db.session.query(m.id).filter(m.user_id == user.id).first() is not None
+               for m in (CircleSubscription, CirclePayment, ResourcePurchase, ResourcePayment, Order))
+
+
+def _unverified_accounts(now, s, dry_run):
+    """New accounts registered under the verification-required flow whose
+    email was never confirmed within unverifiedAccountDays. Accounts from
+    before verification existed are never touched; nor staff, paid accounts
+    or accounts with deletion blockers."""
+    from app.models.user import User
+
+    cutoff = now - timedelta(days=s["unverifiedAccountDays"])
+    purged = 0
+    rows = User.query.filter(User.email_verification_required.is_(True), User.email_verified_at.is_(None),
+                             User.deletion_scheduled_for.is_(None), User.created_at < cutoff).all()
+    candidates = {u.id for u in _inactive_candidates()} if rows else set()
+    for user in rows:
+        if user.id not in candidates or _has_payments(user):
+            continue
+        purged += 1
+        if not dry_run and not _purge_one(user, "account.purged_unverified", {"days": s["unverifiedAccountDays"]}):
+            purged -= 1
+    return purged
 
 
 def _inactive_accounts(now, s, dry_run):
     """Warn once, inactiveWarningDays before the deadline; delete only after
     a warning was handed off at least that long ago and the member still
     hasn't used the account. Using the account clears the warning."""
-    from app.services.account_privacy import purge_user
-    from app.services.audit import log_action
     from app.services.email import TRANSACTIONAL, send_email
 
     limit = _years(s["inactiveAccountYears"])
@@ -286,11 +356,9 @@ def _inactive_accounts(now, s, dry_run):
             continue
         if active_at <= now - limit and warned_at <= now - warn:
             purged += 1
-            if not dry_run:
-                uid = user.id
-                purge_user(user)
-                db.session.flush()
-                log_action(None, "account.purged_inactive", "User", uid, {"inactive_years": s["inactiveAccountYears"]})
+            if not dry_run and not _purge_one(user, "account.purged_inactive",
+                                              {"inactive_years": s["inactiveAccountYears"]}):
+                purged -= 1
     return {"warned": warned, "purged": purged}
 
 
@@ -305,6 +373,7 @@ RULES = (
     ("consent_records", _consent),
     ("removed_comment_text", _removed_comment_text),
     ("inactive_accounts", _inactive_accounts),
+    ("unverified_accounts", _unverified_accounts),
 )
 
 
@@ -315,12 +384,17 @@ def run_retention(now=None, dry_run=False):
     settings = get_retention_settings()
     results = {}
     for name, rule in RULES:
-        results[name] = rule(now, settings, dry_run)
+        try:
+            results[name] = rule(now, settings, dry_run)
+        except Exception:  # noqa: BLE001 - one failing rule must not stop the others
+            db.session.rollback()
+            current_app.logger.exception("Retention rule %s failed; other rules continue.", name)
+            results[name] = "error"
+            continue
         if dry_run:
             db.session.rollback()
         else:
             db.session.commit()
-    results["unverified_accounts"] = "inactive (no email verification flow)"
     current_app.logger.info("Retention run%s: %s", " (dry run)" if dry_run else "", results)
     return results
 

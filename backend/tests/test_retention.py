@@ -174,11 +174,11 @@ def test_dry_run_changes_nothing(app):
         assert AnalyticsEvent.query.count() == 1
 
 
-def test_unverified_rule_is_inactive(app):
+def test_unverified_rule_never_touches_accounts_that_predate_verification(app):
     with app.app_context():
         _user("never-verified@example.invalid", created=ago(days=90), last_login=ago(days=1))
         db.session.commit()
-    assert _run(app)["unverified_accounts"].startswith("inactive")
+    assert _run(app)["unverified_accounts"] == 0
     with app.app_context():
         assert User.query.filter_by(email="never-verified@example.invalid").count() == 1
 
@@ -260,7 +260,7 @@ def test_settings_are_bounded_and_audited(client, app):
         h = auth_headers(create_access_token(identity=u))
     current = client.get("/api/v1/admin/settings", headers=h).get_json()["data"]["retention"]
     assert current["values"]["analyticsEventsMonths"] == 14 and current["values"]["paymentRecordYears"] == 6
-    assert current["unverifiedAccountsActive"] is False
+    assert current["unverifiedAccountsActive"] is True
     for bad in ({"paymentRecordYears": 5}, {"analyticsEventsMonths": 0}, {"authIpMonths": -1},
                 {"contactInquiriesMonths": "24"}, {"nope": 1}):
         assert client.put("/api/v1/admin/settings", headers=h, json={"settings": {"retention": {"values": bad}}}
@@ -290,4 +290,4 @@ def test_logs_counts_only(app, caplog):
 
 def test_retention_cli(app):
     result = app.test_cli_runner().invoke(args=["retention-run", "--dry-run"])
-    assert "analytics_events: 0" in result.output and "unverified_accounts: inactive" in result.output
+    assert "analytics_events: 0" in result.output and "unverified_accounts: 0" in result.output

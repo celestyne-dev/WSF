@@ -97,7 +97,10 @@ class User(db.Model):
     # (Step 20): "full" or "initials". A live display preference applied to
     # each certificate's immutable recipient_name; never rewrites a
     # certificate. The PDF (owner/staff only) always carries the full name.
-    certificate_public_name = db.Column(db.String(10), nullable=False, default="full", server_default="full")
+    # New accounts default to initials (privacy by default). Accounts that
+    # existed before keep "full" through the column's server default (the
+    # behaviour they had), and an explicit choice is never overwritten.
+    certificate_public_name = db.Column(db.String(10), nullable=False, default="initials", server_default="full")
     # Email ownership (Batch 4 corrections). is_verified above is NOT proof
     # of ownership: it was only ever set by create-superadmin. Only
     # email_verified_at (set by clicking a first-party verification link)

@@ -50,4 +50,4 @@ export function initialsOf(name) {
 
 // Shown before issuance (course page, next to Start course).
 export const CERTIFICATE_NAME_NOTICE =
-  'This course offers a Certificate of Completion in your account name. Anyone with its verification link sees your full name or only your initials — you choose in My Learning → My Certificates. It never shows your email.'
+  'This course offers a Certificate of Completion in your account name. Anyone with its verification link sees either your initials or your full name, as set in My Learning → My Certificates (new accounts start with initials; you can change it at any time). It never shows your email.'

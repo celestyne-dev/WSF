@@ -37,11 +37,16 @@ def test_initials():
     assert initials_of("") == "—"
 
 
-def test_full_name_by_default_and_no_identifiers(client, app, learner):
+def test_initials_by_default_for_new_accounts_and_no_identifiers(client, app, learner):
     public_id, name = _issue(client, app, learner)
     data = _verify(client, public_id)
-    assert data["recipientName"] == name == "Amara Okafor"
-    assert data["recipientNameDisplay"] == "full"
+    # Batch 4 corrections: new accounts default to initials; the issued
+    # snapshot keeps the full name.
+    assert name == "Amara Okafor" and data["recipientName"] == "A. O." and "Okafor" not in str(data)
+    assert data["recipientNameDisplay"] == "initials"
+    _set_mode(client, learner, "full")
+    data = _verify(client, public_id)
+    assert data["recipientName"] == "Amara Okafor" and data["recipientNameDisplay"] == "full"
     assert not FORBIDDEN_KEYS & set(data)
     assert LEARNER["email"] not in str(data)
     assert set(data) == {"publicId", "certificateNumber", "status", "certificateTitle", "recipientName",
@@ -72,18 +77,18 @@ def test_preference_validation_audit_and_auth(client, app, learner):
     assert client.put("/api/v1/certificates/me/name-display", json={"publicNameMode": "initials"}).status_code == 401
     for bad in ("Initials", "none", None, 1, ""):
         assert _set_mode(client, learner, bad).status_code == 422
-    assert client.get("/api/v1/certificates/me/name-display", headers=auth_headers(learner)).get_json()["data"] == {"publicNameMode": "full"}
-    _set_mode(client, learner, "initials")
-    _set_mode(client, learner, "initials")  # unchanged: not audited twice
+    assert client.get("/api/v1/certificates/me/name-display", headers=auth_headers(learner)).get_json()["data"] == {"publicNameMode": "initials"}
+    _set_mode(client, learner, "full")
+    _set_mode(client, learner, "full")  # unchanged: not audited twice
     from app.models.audit import AuditLog
 
     with app.app_context():
         logs = AuditLog.query.filter_by(action="learning_certificate.name_display_changed").all()
         assert len(logs) == 1
-        assert logs[0].changes == {"from": "full", "to": "initials"}
+        assert logs[0].changes == {"from": "initials", "to": "full"}
     export = client.get("/api/v1/account/export", headers=auth_headers(learner)).get_json()
     account = (export.get("data") or export)["account"]
-    assert account["certificate_public_name"] == "initials"
+    assert account["certificate_public_name"] == "full"
     me = client.get("/api/v1/auth/me", headers=auth_headers(learner)).get_json()["data"]
     assert "certificate_public_name" not in str(me) and "certificatePublicName" not in str(me)
 

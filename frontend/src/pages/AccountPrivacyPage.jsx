@@ -104,6 +104,10 @@ export default function AccountPrivacyPage() {
           <li>Your published comments stay as “Former member” unless you choose to remove them below.</li>
           <li>Payment records are kept for 6 years, without the link to your account. Stories already published stay, with your name removed from our records.</li>
           <li>Your WSF Weekly subscription is separate: unsubscribe with the link in any newsletter.</li>
+          <li>
+            Your certificates are deleted with the account and their verification links stop working.{' '}
+            <Link to="/account/learning" className="font-semibold text-burgundy-600 hover:underline">Download them first</Link> from My Certificates.
+          </li>
         </ul>
         <button type="button" onClick={() => { setDeleteError(null); setConfirmOpen(true) }} className="btn-secondary mt-4">
           Delete my account…
@@ -135,7 +139,10 @@ export default function AccountPrivacyPage() {
 
       <CommentDialog open={confirmOpen} titleId={`${ids}-confirm`} title="Delete your account?" onClose={() => setConfirmOpen(false)}>
         <form onSubmit={handleDelete} className="space-y-3">
-          <p className="text-sm text-charcoal-600">It will be permanently deleted in 14 days. You can cancel until then.</p>
+          <p className="text-sm text-charcoal-600">
+            It will be permanently deleted in 14 days. You can cancel until then. Your certificates and their verification
+            links will stop working, so download any you want to keep first.
+          </p>
           <label className="flex items-start gap-2 text-sm text-charcoal">
             <input type="checkbox" checked={removeComments} onChange={(e) => setRemoveComments(e.target.checked)} className="mt-1" />
             Also remove my comments (their text is erased; replies from others stay)

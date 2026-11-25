@@ -190,7 +190,7 @@ export function RetentionSettingsPanel() {
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(value.rules).map(([key, rule]) => (
           <NumberField key={key} id={`ret-${key}`} text={`${rule.label} (${rule.unit})`}
-            hint={`Default ${rule.default}; allowed ${rule.min}–${rule.max}.${key === 'unverifiedAccountDays' ? ' Not active: WSF has no email verification yet.' : ''}`}
+            hint={`Default ${rule.default}; allowed ${rule.min}–${rule.max}.${key === 'unverifiedAccountDays' ? ' Only accounts registered since email verification began; never older accounts, staff or paid accounts.' : ''}`}
             value={value.values[key]} onChange={set(key)} min={rule.min} max={rule.max} />
         ))}
       </div>

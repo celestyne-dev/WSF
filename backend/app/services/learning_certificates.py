@@ -199,7 +199,7 @@ def linkedin_add_url(certificate):
 # and forth is always safe and needs no reissue. Owner and staff views, and
 # the PDF, keep the full snapshot name.
 CERTIFICATE_NAME_MODES = ("full", "initials")
-DEFAULT_CERTIFICATE_NAME_MODE = "full"
+DEFAULT_CERTIFICATE_NAME_MODE = "initials"  # fallback for an unreadable value: the private choice
 
 
 def initials_of(name):
