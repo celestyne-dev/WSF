@@ -88,6 +88,10 @@ class NewsletterSubscriber(db.Model):
     # "studio", "external_import"; reason = provider name / staff note.
     unsubscribe_source = db.Column(db.String(40))
     unsubscribe_reason = db.Column(db.String(200))
+    # Latest suppression event of any kind (unsubscribe, Studio, external
+    # import, even for an address already suppressed). A confirmation link
+    # issued before it can never reactivate the address.
+    last_suppressed_at = db.Column(db.DateTime(timezone=True))
 
     country = db.relationship("Country", foreign_keys=[country_code])
     interests = db.relationship("Topic", secondary=newsletter_subscriber_topics, backref="newsletter_subscribers")
@@ -162,6 +166,10 @@ class NewsletterConfirmation(db.Model):
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     confirmed_at = db.Column(db.DateTime(timezone=True))
     superseded_at = db.Column(db.DateTime(timezone=True))
+    # Name/country/interests typed into an unauthenticated signup form. Applied
+    # to the subscriber only when this link is confirmed, so nobody can
+    # overwrite another person's details by signing up with their address.
+    proposed_profile = db.Column(db.JSON)
 
     subscriber = db.relationship("NewsletterSubscriber")
 

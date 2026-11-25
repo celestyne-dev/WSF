@@ -28,6 +28,7 @@ from app.services.indexnow import capture_public_urls, notify_public_change
 from app.services.engagement_settings import NEWSLETTER_CONSENT_VERSION
 from app.services.newsletter import (
     NewsletterError,
+    approve_after_deliverability_review,
     confirm_subscription,
     count_audience,
     export_csv,
@@ -132,7 +133,7 @@ class SubscribeResource(Resource):
             raise ApiError("Please tick the box to agree to receive the WSF Weekly newsletter.", 422,
                            code="newsletter_consent_required")
         try:
-            request_subscription(
+            _subscriber, outcome = request_subscription(
                 data["email"], consent_version=NEWSLETTER_CONSENT_VERSION, first_name=data.get("first_name"),
                 last_name=data.get("last_name"), country_code=data.get("country_code"),
                 placement=data.get("placement"), acquisition=data.get("acquisition"),
@@ -140,6 +141,11 @@ class SubscribeResource(Resource):
         except NewsletterError as exc:
             raise ApiError(str(exc), exc.status, code=exc.code)
         db.session.commit()
+        if outcome == "confirmation_failed":
+            # Truthful: the email service reported a failure. (Reveals nothing
+            # about list membership: it can only happen when a send was tried.)
+            raise ApiError("We couldn't send the confirmation email just now. Please try again in a few minutes.",
+                           503, code="email_send_failed")
         # One uniform answer whatever the address's state (new, pending,
         # already confirmed, suppressed), so it never reveals list membership.
         return success_response(
@@ -158,6 +164,10 @@ class ConfirmSubscriptionResource(Resource):
         result = confirm_subscription(payload.get("token"))
         if result in ("confirmed", "already_confirmed"):
             return success_response({"result": result}, message="You're subscribed to WSF Weekly.")
+        if result == "review_required":
+            return success_response({"result": result}, message=(
+                "Thanks, your confirmation is recorded. Earlier emails to this address bounced or were reported, so our "
+                "team will check delivery before we send WSF Weekly again."))
         if result == "expired":
             raise ApiError("This confirmation link has expired. Please sign up again to get a new one.", 410,
                            code="confirmation_expired")
@@ -479,6 +489,28 @@ class NewsletterSubscriberReactivateResource(Resource):
                        "link we email them.", 409, code="reactivation_requires_confirmation")
 
 
+class NewsletterSubscriberDeliverabilityReviewResource(Resource):
+    """Bounced/complained address: reactivate only if the person has given and
+    confirmed fresh consent since the suppression; this records the staff
+    deliverability review (audited). Never a substitute for their consent."""
+
+    @permission_required("newsletter.manage")
+    def post(self, subscriber_id):
+        subscriber = db.session.get(NewsletterSubscriber, subscriber_id)
+        if subscriber is None:
+            raise ApiError("Subscriber not found.", 404, code="not_found")
+        note = (request.get_json(silent=True) or {}).get("note")
+        try:
+            approve_after_deliverability_review(subscriber, current_user, note if isinstance(note, str) else "")
+        except NewsletterError as exc:
+            db.session.rollback()
+            raise ApiError(str(exc), exc.status, code=exc.code)
+        db.session.commit()
+        log_action(current_user, "newsletter_subscriber_deliverability_review_approved", "NewsletterSubscriber",
+                   subscriber.id, changes={"note": note[:200] if isinstance(note, str) else None})
+        return success_response(subscriber_schema.dump(subscriber), message="Reactivated after review.")
+
+
 class NewsletterSubscriberRequestConfirmationResource(Resource):
     """Ask a legacy (pre-double-opt-in) subscriber to confirm by email."""
 
@@ -491,6 +523,7 @@ class NewsletterSubscriberRequestConfirmationResource(Resource):
         try:
             request_reconfirmation(subscriber, current_user)
         except NewsletterError as exc:
+            db.session.commit()  # keep the audit trail of the failed attempt
             raise ApiError(str(exc), exc.status, code=exc.code)
         db.session.commit()
         log_action(current_user, "newsletter_subscriber_confirmation_requested", "NewsletterSubscriber", subscriber.id)
@@ -512,7 +545,8 @@ class NewsletterSuppressionImportResource(Resource):
         if len(text) > 5_000_000:
             raise ApiError("That file is too large; please split it.", 422, code="validation_error")
         try:
-            batch = import_suppressions(data.get("provider"), text, data.get("filename"), current_user)
+            batch = import_suppressions(data.get("provider"), text, data.get("filename"), current_user,
+                                        kind=data.get("kind") or "unsubscribed")
         except NewsletterError as exc:
             raise ApiError(str(exc), exc.status, code=exc.code)
         counts = {"rows": batch.rows, "invalid": batch.invalid, "newlySuppressed": batch.newly_suppressed,
@@ -609,6 +643,8 @@ api.add_resource(NewsletterSubscriberExportResource, "/subscribers/export")
 api.add_resource(NewsletterSubscriberDetailResource, "/subscribers/<int:subscriber_id>")
 api.add_resource(NewsletterSubscriberSuppressResource, "/subscribers/<int:subscriber_id>/suppress")
 api.add_resource(NewsletterSubscriberReactivateResource, "/subscribers/<int:subscriber_id>/reactivate")
+api.add_resource(NewsletterSubscriberDeliverabilityReviewResource,
+                 "/subscribers/<int:subscriber_id>/deliverability-review")
 api.add_resource(NewsletterSubscriberRequestConfirmationResource,
                  "/subscribers/<int:subscriber_id>/request-confirmation")
 api.add_resource(NewsletterSuppressionImportResource, "/subscribers/suppression-import")

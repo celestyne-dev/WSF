@@ -168,9 +168,16 @@ export async function requestSubscriberConfirmation(id) {
   return mapSubscriber(data)
 }
 
+// Bounced/complained address: reactivates ONLY if the person has already
+// confirmed fresh consent; records the staff deliverability review.
+export async function approveDeliverabilityReview(id, note) {
+  const { data } = await apiClient.post(`/newsletter/subscribers/${id}/deliverability-review`, { note })
+  return mapSubscriber(data)
+}
+
 // Unsubscribes reported by an external sending service (CSV text).
-export async function importSuppressions({ provider, csv, filename }) {
-  const { data } = await apiClient.post('/newsletter/subscribers/suppression-import', { provider, csv, filename })
+export async function importSuppressions({ provider, csv, filename, kind = 'unsubscribed' }) {
+  const { data } = await apiClient.post('/newsletter/subscribers/suppression-import', { provider, csv, filename, kind })
   return data
 }
 

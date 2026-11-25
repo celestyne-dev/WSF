@@ -139,7 +139,9 @@ def test_already_confirmed_signup_sends_nothing(client, app, outbox):
     _confirm(client, outbox.token())
     resp = _signup(client, "done@example.com", firstName="Later")
     assert resp.get_json()["data"]["status"] == "confirmation_required" and len(outbox.mail) == 1
-    assert _row(app, "done@example.com").first_name == "Later"
+    # Batch 4 corrections: an unauthenticated signup never changes an existing
+    # subscriber's details.
+    assert _row(app, "done@example.com").first_name is None
 
 
 def test_unsubscribe_is_authoritative_and_voids_pending_links(client, app, outbox):

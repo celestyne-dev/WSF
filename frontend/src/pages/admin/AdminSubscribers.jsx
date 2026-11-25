@@ -15,6 +15,7 @@ import EmptyState from '../../components/ui/EmptyState'
 // gives you (any file with an "email" column, or one address per line).
 function SuppressionImport({ onDone }) {
   const [provider, setProvider] = useState('')
+  const [kind, setKind] = useState('unsubscribed')
   const [csv, setCsv] = useState('')
   const [filename, setFilename] = useState('')
   const [busy, setBusy] = useState(false)
@@ -31,7 +32,7 @@ function SuppressionImport({ onDone }) {
     e.preventDefault()
     setBusy(true)
     try {
-      const data = await importSuppressions({ provider, csv, filename })
+      const data = await importSuppressions({ provider, csv, filename, kind })
       setResult(data)
       setCsv('')
       onDone()
@@ -53,6 +54,12 @@ function SuppressionImport({ onDone }) {
         <div>
           <label htmlFor="sup-provider" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">Service the list came from</label>
           <input id="sup-provider" required maxLength={100} value={provider} onChange={(e) => setProvider(e.target.value)} className="mt-1 w-full border border-taupe-300 px-3 py-2 text-sm sm:w-80" />
+          <label htmlFor="sup-kind" className="mt-3 block text-xs font-semibold uppercase tracking-wide text-charcoal-600">What the list contains</label>
+          <select id="sup-kind" value={kind} onChange={(e) => setKind(e.target.value)} className="mt-1 w-full border border-taupe-300 px-3 py-2 text-sm sm:w-80">
+            <option value="unsubscribed">Unsubscribes</option>
+            <option value="bounced">Hard bounces</option>
+            <option value="complained">Spam complaints</option>
+          </select>
         </div>
         <div>
           <label htmlFor="sup-file" className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">CSV file</label>

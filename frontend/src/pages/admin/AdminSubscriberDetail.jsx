@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { Save, UserX, UserCheck } from 'lucide-react'
-import { fetchSubscriber, updateSubscriber, suppressSubscriber, requestSubscriberConfirmation } from '../../api/newsletter'
+import { fetchSubscriber, updateSubscriber, suppressSubscriber, requestSubscriberConfirmation, approveDeliverabilityReview } from '../../api/newsletter'
 import { SUBSCRIBER_STATUS_LABELS } from '../../constants/newsletter'
 import { fetchTopics } from '../../api/taxonomies'
 import AdminPageHeader from '../../components/cms/AdminPageHeader'
@@ -101,6 +101,17 @@ export default function AdminSubscriberDetail() {
     }
   }
 
+  async function handleReview() {
+    const note = window.prompt('Deliverability review: what did you check (e.g. the address now accepts mail)?')
+    if (!note || !note.trim()) return
+    try {
+      setSubscriber(await approveDeliverabilityReview(id, note.trim()))
+      toast.success('Reactivated after review.')
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || 'Something went wrong.')
+    }
+  }
+
   if (loadError) return <EmptyState title="Couldn't load this subscriber" description={loadError} />
   if (notFound) return <EmptyState title="Subscriber not found" description="This subscriber may have been removed or the URL is incorrect." />
   if (subscriber === undefined || form === null) return <PageLoader />
@@ -195,7 +206,13 @@ export default function AdminSubscriberDetail() {
               {['unsubscribed', 'bounced', 'complained'].includes(subscriber.status) && (
                 <p className="text-xs text-charcoal-600">
                   Suppressed. Only the person can come back: they sign up again and click the confirmation link we email them.
+                  {['bounced', 'complained'].includes(subscriber.status) && ' After a bounce or complaint, delivery also stays off until staff record a deliverability review (it only works once they have confirmed).'}
                 </p>
+              )}
+              {['bounced', 'complained'].includes(subscriber.status) && (
+                <button type="button" onClick={handleReview} className="btn-secondary w-full !py-2 text-xs">
+                  Record deliverability review
+                </button>
               )}
             </div>
           </div>

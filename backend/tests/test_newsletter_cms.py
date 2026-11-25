@@ -136,7 +136,9 @@ def test_duplicate_subscribe_is_case_insensitive_and_does_not_duplicate(client, 
     with app.app_context():
         matches = NewsletterSubscriber.query.filter_by(email="person@example.com").all()
         assert len(matches) == 1
-        assert matches[0].first_name == "Later"
+        # Batch 4 corrections: details from an unauthenticated signup are not
+        # written over an existing (here: confirmed) subscriber's record.
+        assert matches[0].first_name is None
 
 
 def test_unsubscribe_by_email_preserves_record_and_sets_timestamp(client, app):

@@ -1,33 +1,43 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { confirmNewsletterSubscription } from '../api/newsletter'
 import useSeo from '../hooks/useSeo'
 import PageHeader from '../components/ui/PageHeader'
 
-// The double opt-in link in the confirmation email. Posts the token (so a
-// mail scanner fetching the link can't confirm on someone's behalf).
+// The double opt-in link in the confirmation email. Opening the link does
+// nothing by itself: the person presses the button, which posts the token,
+// so a mail scanner that opens (or even renders) links can't confirm.
 export default function NewsletterConfirmPage() {
   const { token } = useParams()
-  const [state, setState] = useState({ phase: 'working' })
+  const [state, setState] = useState({ phase: 'ready' })
   useSeo({ title: 'Confirm your subscription | Women Shaping Futures', robots: 'noindex, nofollow' })
 
-  useEffect(() => {
-    let active = true
-    confirmNewsletterSubscription(token).then((res) => {
-      if (!active) return
-      setState(res.success ? { phase: 'done' } : { phase: res.code === 'confirmation_expired' ? 'expired' : 'invalid' })
-    })
-    return () => {
-      active = false
-    }
-  }, [token])
+  async function confirm() {
+    setState({ phase: 'working' })
+    const res = await confirmNewsletterSubscription(token)
+    if (res.success) return setState({ phase: res.result === 'review_required' ? 'review' : 'done' })
+    return setState({ phase: res.code === 'confirmation_expired' ? 'expired' : 'invalid' })
+  }
 
   return (
     <div>
       <PageHeader eyebrow="Newsletter" title="WSF Weekly" />
       <div className="container-editorial max-w-lg py-16 text-center" role="status" aria-live="polite">
-        {state.phase === 'working' && <p className="text-charcoal-600">Confirming your subscription…</p>}
+        {(state.phase === 'ready' || state.phase === 'working') && (
+          <div>
+            <p className="text-charcoal-600">Press the button to confirm you’d like to receive WSF Weekly by email.</p>
+            <button type="button" onClick={confirm} disabled={state.phase === 'working'} className="btn-primary mt-6 disabled:opacity-60">
+              {state.phase === 'working' ? 'Confirming…' : 'Confirm my subscription'}
+            </button>
+          </div>
+        )}
+        {state.phase === 'review' && (
+          <p className="text-charcoal-600">
+            Thanks, your confirmation is recorded. Earlier emails to this address bounced or were reported, so our team will
+            check delivery before we send WSF Weekly again.
+          </p>
+        )}
         {state.phase === 'done' && (
           <div>
             <CheckCircle2 size={40} aria-hidden="true" className="mx-auto text-emerald-600" />

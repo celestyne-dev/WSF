@@ -91,9 +91,11 @@ def request_subscription(email, *, consent_version, first_name=None, last_name=N
                          placement=None, acquisition=None, topic_slugs=None):
     """Record an explicit consent request and send the confirmation link.
     Returns (subscriber, outcome): "confirmation_sent", "recently_sent"
-    (a link went out minutes ago), or "already_subscribed". Never makes an
-    address active. The caller has already checked the consent checkbox and
-    commits afterwards."""
+    (a link went out minutes ago), "already_subscribed", or
+    "confirmation_failed" (the email service reported a failure). Never makes
+    an address active, and never changes an existing subscriber's name,
+    country or interests: the details typed in are held on the confirmation
+    and applied only when its link is confirmed. Caller commits."""
     email = normalize_email(email)
     if email is None:
         raise NewsletterError("Please enter a valid email address.", 422, "validation_error")
@@ -102,35 +104,46 @@ def request_subscription(email, *, consent_version, first_name=None, last_name=N
         subscriber = NewsletterSubscriber(email=email, status="pending", placement=placement, acquisition=acquisition)
         db.session.add(subscriber)
         db.session.flush()
-    # Contact details and interests are kept current either way.
-    subscriber.first_name = first_name or subscriber.first_name
-    subscriber.last_name = last_name or subscriber.last_name
-    subscriber.country_code = country_code or subscriber.country_code
-    if topic_slugs:
-        existing = {t.slug for t in subscriber.interests}
-        new = [s for s in topic_slugs if s not in existing]
-        if new:
-            subscriber.interests.extend(Topic.query.filter(Topic.slug.in_(new)).all())
     if subscriber.status == "active":
         return subscriber, "already_subscribed"
+    proposed = {k: v for k, v in (("first_name", first_name), ("last_name", last_name),
+                                  ("country_code", country_code), ("topic_slugs", list(topic_slugs or []))) if v}
     _event(subscriber, "signup_requested", source=placement, consent_version=consent_version)
     latest = (NewsletterConfirmation.query
               .filter_by(subscriber_id=subscriber.id, confirmed_at=None, superseded_at=None)
               .order_by(NewsletterConfirmation.created_at.desc()).first())
     if latest is not None and _aware(latest.created_at) > _now() - RESEND_INTERVAL:
         return subscriber, "recently_sent"
-    _send_confirmation(subscriber, consent_version=consent_version, source=placement)
+    if not _send_confirmation(subscriber, consent_version=consent_version, source=placement, proposed=proposed):
+        return subscriber, "confirmation_failed"
     return subscriber, "confirmation_sent"
 
 
-def _send_confirmation(subscriber, *, consent_version, source, reconfirm=False):
+def _apply_profile(subscriber, proposed):
+    proposed = proposed or {}
+    for field in ("first_name", "last_name", "country_code"):
+        if proposed.get(field):
+            setattr(subscriber, field, proposed[field])
+    slugs = [s for s in proposed.get("topic_slugs") or [] if isinstance(s, str)]
+    if slugs:
+        existing = {t.slug for t in subscriber.interests}
+        new = [s for s in slugs if s not in existing]
+        if new:
+            subscriber.interests.extend(Topic.query.filter(Topic.slug.in_(new)).all())
+
+
+def _send_confirmation(subscriber, *, consent_version, source, reconfirm=False, proposed=None):
+    """Returns True only if the email service reported a successful hand-off.
+    On failure the new link is withdrawn at once (nothing live is left that
+    the person never received, and they can retry immediately)."""
     now = _now()
     NewsletterConfirmation.query.filter_by(subscriber_id=subscriber.id, confirmed_at=None, superseded_at=None).update(
         {"superseded_at": now}, synchronize_session=False)
     raw = secrets.token_urlsafe(32)
-    db.session.add(NewsletterConfirmation(
+    row = NewsletterConfirmation(
         subscriber_id=subscriber.id, token_hash=_hash(raw), consent_at=now, consent_version=consent_version,
-        consent_source=source, expires_at=now + CONFIRMATION_LIFETIME))
+        consent_source=source, expires_at=now + CONFIRMATION_LIFETIME, proposed_profile=proposed or None)
+    db.session.add(row)
     db.session.flush()
     from app.services.email import TRANSACTIONAL, send_email
 
@@ -146,31 +159,70 @@ def _send_confirmation(subscriber, *, consent_version, source, reconfirm=False):
         subject = "Please confirm your WSF Weekly subscription"
         intro = "Someone (we hope you) asked to receive the WSF Weekly newsletter from Women Shaping Futures at this address. Please confirm:"
         tail = "If this wasn't you, ignore this email: you won't be subscribed."
-    text = (f"{intro}\n\n{link}\n\nThis link works for {days} days. {tail}\n\n"
+    text = (f"{intro}\n\n{link}\n\nOpen the link and press the button to confirm. It works for {days} days. {tail}\n\n"
             f"How we use your email: {base}/privacy\n")
     # Transactional: it answers the person's own signup request.
-    send_email(subscriber.email, subject, text, category=TRANSACTIONAL)
+    if send_email(subscriber.email, subject, text, category=TRANSACTIONAL):
+        return True
+    row.superseded_at = now
+    _event(subscriber, "confirmation_send_failed", source=source, consent_version=consent_version)
+    return False
+
+
+HARD_SUPPRESSIONS = ("bounced", "complained")
+
+
+def _usable(row, subscriber):
+    """A confirmation can act only if it is still the live link and was
+    issued after the address's latest suppression event."""
+    if row.superseded_at is not None or row.confirmed_at is not None:
+        return False
+    last = _aware(subscriber.last_suppressed_at)
+    return last is None or _aware(row.consent_at) > last
 
 
 def confirm_subscription(raw_token):
-    """Returns "confirmed", "already_confirmed", "expired" or "invalid"."""
+    """Returns "confirmed", "already_confirmed", "review_required" (a bounced
+    or complained address: consent recorded, delivery stays off until an
+    audited deliverability review), "expired" or "invalid". The subscriber
+    and confirmation rows are locked, so a suppression committed at the same
+    time can't be overridden by a stale link."""
     if not raw_token or not isinstance(raw_token, str) or len(raw_token) > 100:
         return "invalid"
     row = NewsletterConfirmation.query.filter_by(token_hash=_hash(raw_token)).first()
     if row is None:
         return "invalid"
-    subscriber = row.subscriber
+    subscriber = (NewsletterSubscriber.query.filter_by(id=row.subscriber_id)
+                  .with_for_update().populate_existing().one())
+    row = NewsletterConfirmation.query.filter_by(id=row.id).with_for_update().populate_existing().one()
     if row.confirmed_at is not None:
-        return "already_confirmed"
-    if row.superseded_at is not None:
-        # A newer link was sent; this one no longer works. (If they already
-        # confirmed through the newer one, say so.)
+        return "already_confirmed" if subscriber.status == "active" else (
+            "review_required" if subscriber.status in HARD_SUPPRESSIONS and _usable_for_review(row, subscriber)
+            else "invalid")
+    if not _usable(row, subscriber):
+        # A newer link was sent, or the address was suppressed after this
+        # link went out: it no longer works.
         return "already_confirmed" if subscriber.status == "active" else "invalid"
     if _aware(row.expires_at) <= _now():
         return "expired"
     now = _now()
     row.confirmed_at = now
     previous = subscriber.status
+    if previous in HARD_SUPPRESSIONS:
+        # Fresh consent is recorded, but a hard bounce/complaint also needs an
+        # audited deliverability review before anything is sent again.
+        _event(subscriber, "reactivation_confirmed_awaiting_review", source=row.consent_source,
+               consent_version=row.consent_version)
+        db.session.commit()
+        return "review_required"
+    _activate(subscriber, row, previous, now)
+    _event(subscriber, "reactivated_by_confirmation" if previous in SUPPRESSED_STATUSES else "confirmed",
+           source=row.consent_source, consent_version=row.consent_version)
+    db.session.commit()
+    return "confirmed"
+
+
+def _activate(subscriber, row, previous, now):
     subscriber.status = "active"
     subscriber.confirmed_at = now
     subscriber.consent_at = row.consent_at
@@ -181,10 +233,37 @@ def confirm_subscription(raw_token):
     subscriber.unsubscribed_at = None
     subscriber.unsubscribe_source = None
     subscriber.unsubscribe_reason = None
-    _event(subscriber, "reactivated_by_confirmation" if previous in SUPPRESSED_STATUSES else "confirmed",
-           source=row.consent_source, consent_version=row.consent_version)
-    db.session.commit()
-    return "confirmed"
+    _apply_profile(subscriber, row.proposed_profile)
+
+
+def _usable_for_review(row, subscriber):
+    last = _aware(subscriber.last_suppressed_at)
+    return row.superseded_at is None and row.confirmed_at is not None and (last is None or _aware(row.consent_at) > last)
+
+
+def approve_after_deliverability_review(subscriber, actor, note):
+    """Studio: reactivate a bounced/complained address ONLY when the person
+    has already given fresh consent and confirmed it (a confirmed link issued
+    after the latest suppression). Staff approval alone never subscribes
+    anyone; it records the deliverability review. Caller audits + commits."""
+    note = (note or "").strip()
+    if subscriber.status not in HARD_SUPPRESSIONS:
+        raise NewsletterError("Only bounced or complained addresses need a deliverability review.", 409, "not_hard_suppressed")
+    if not note:
+        raise NewsletterError("Describe the deliverability review (what was checked).", 422, "validation_error")
+    subscriber = (NewsletterSubscriber.query.filter_by(id=subscriber.id).with_for_update().populate_existing().one())
+    row = (NewsletterConfirmation.query.filter(NewsletterConfirmation.subscriber_id == subscriber.id,
+                                               NewsletterConfirmation.confirmed_at.isnot(None),
+                                               NewsletterConfirmation.superseded_at.is_(None))
+           .order_by(NewsletterConfirmation.confirmed_at.desc()).with_for_update().first())
+    if row is None or not _usable_for_review(row, subscriber):
+        raise NewsletterError("The person hasn't given and confirmed fresh consent since this address was suppressed. "
+                              "Staff approval can't replace their consent.", 409, "consent_confirmation_required")
+    previous = subscriber.status
+    _activate(subscriber, row, previous, _now())
+    _event(subscriber, "deliverability_review_approved", source=f"studio: {note}"[:80], actor=actor,
+           consent_version=row.consent_version)
+    return subscriber
 
 
 def request_reconfirmation(subscriber, actor):
@@ -194,24 +273,49 @@ def request_reconfirmation(subscriber, actor):
         raise NewsletterError("Only legacy (unconfirmed) subscribers can be asked to confirm.", 409,
                               "not_legacy")
     _event(subscriber, "reconfirmation_requested", source="studio", actor=actor)
-    _send_confirmation(subscriber, consent_version=RECONFIRM_CONSENT_VERSION, source="reconfirmation",
-                       reconfirm=True)
+    if not _send_confirmation(subscriber, consent_version=RECONFIRM_CONSENT_VERSION, source="reconfirmation",
+                              reconfirm=True):
+        raise NewsletterError("The confirmation email could not be sent. Nothing was changed; try again later.",
+                              503, "email_send_failed")
 
 
 # --- unsubscribe / suppression -----------------------------------------------------------------
 
 
-def unsubscribe(subscriber, source, reason=None, actor=None):
-    """Suppress an address. Idempotent; pending links stop working too."""
-    changed = subscriber.status not in SUPPRESSED_STATUSES
+SUPPRESSION_RANK = {"unsubscribed": 1, "bounced": 2, "complained": 3}
+
+
+def record_suppression_event(subscriber, now=None):
+    """Every suppression event, even for an address already suppressed:
+    stamp it and withdraw every outstanding confirmation link, so no link
+    issued before it can ever reactivate the address."""
+    now = now or _now()
+    subscriber.last_suppressed_at = now
+    NewsletterConfirmation.query.filter_by(subscriber_id=subscriber.id, confirmed_at=None, superseded_at=None).update(
+        {"superseded_at": now}, synchronize_session=False)
+    # A confirmed-but-unreviewed reactivation of a hard suppression is void too.
+    NewsletterConfirmation.query.filter(NewsletterConfirmation.subscriber_id == subscriber.id,
+                                        NewsletterConfirmation.confirmed_at.isnot(None),
+                                        NewsletterConfirmation.superseded_at.is_(None)).update(
+        {"superseded_at": now}, synchronize_session=False)
+
+
+def unsubscribe(subscriber, source, reason=None, actor=None, kind="unsubscribed"):
+    """Suppress an address. Idempotent; pending links stop working too.
+    kind: "unsubscribed" (ordinary), "bounced" (hard bounce) or "complained";
+    a stronger classification replaces a weaker one, never the reverse."""
+    if kind not in SUPPRESSION_RANK:
+        raise NewsletterError("Unknown suppression type.", 422, "validation_error")
+    now = _now()
+    current = SUPPRESSION_RANK.get(subscriber.status, 0)
+    changed = SUPPRESSION_RANK[kind] > current
     if changed:
-        subscriber.status = "unsubscribed"
-        subscriber.unsubscribed_at = _now()
+        subscriber.status = kind
+        subscriber.unsubscribed_at = subscriber.unsubscribed_at if current else now
         subscriber.unsubscribe_source = source
         subscriber.unsubscribe_reason = (reason or None) and reason[:200]
-        _event(subscriber, "unsubscribed", source=source if not reason else f"{source}: {reason}"[:80], actor=actor)
-    NewsletterConfirmation.query.filter_by(subscriber_id=subscriber.id, confirmed_at=None, superseded_at=None).update(
-        {"superseded_at": _now()}, synchronize_session=False)
+        _event(subscriber, kind, source=source if not reason else f"{source}: {reason}"[:80], actor=actor)
+    record_suppression_event(subscriber, now)
     return changed
 
 
@@ -234,10 +338,14 @@ def _parse_import(text):
     return [row[column] if column < len(row) else "" for row in rows[start:]]
 
 
-def import_suppressions(provider, text, filename, actor):
-    """Apply an external sending service's unsubscribe list. Unknown
-    addresses are recorded as unsubscribed too, so they can never be
-    exported later. Never reactivates anything; safe to repeat."""
+def import_suppressions(provider, text, filename, actor, kind="unsubscribed"):
+    """Apply an external sending service's suppression list (kind:
+    unsubscribed / bounced / complained). Unknown addresses are recorded as
+    suppressed too, so they can never be exported later. Every listed address
+    gets a suppression event (outstanding links withdrawn) even if it was
+    already suppressed. Never reactivates anything; safe to repeat."""
+    if kind not in SUPPRESSION_RANK:
+        raise NewsletterError("Choose unsubscribes, hard bounces or complaints.", 422, "validation_error")
     provider = (provider or "").strip()
     if not provider or len(provider) > 100:
         raise NewsletterError("Name the service the list came from.", 422, "validation_error")
@@ -259,20 +367,24 @@ def import_suppressions(provider, text, filename, actor):
             batch.already_suppressed += 1
             continue
         seen.add(email)
-        subscriber = NewsletterSubscriber.query.filter_by(email=email).first()
+        # Row lock: a confirmation click racing this import waits for it.
+        subscriber = NewsletterSubscriber.query.filter_by(email=email).with_for_update().first()
         if subscriber is None:
-            subscriber = NewsletterSubscriber(email=email, status="unsubscribed", unsubscribed_at=_now(),
+            now = _now()
+            subscriber = NewsletterSubscriber(email=email, status=kind, unsubscribed_at=now, last_suppressed_at=now,
                                               unsubscribe_source="external_import", unsubscribe_reason=provider,
                                               placement="external-suppression")
             db.session.add(subscriber)
             db.session.flush()
             _event(subscriber, "suppressed_by_import", source=provider[:80], actor=actor, import_id=batch.id)
             batch.added_unknown += 1
-        elif subscriber.status in SUPPRESSED_STATUSES:
+            continue
+        was_suppressed = subscriber.status in SUPPRESSED_STATUSES
+        unsubscribe(subscriber, "external_import", reason=provider, actor=actor, kind=kind)
+        _event(subscriber, "suppressed_by_import", source=provider[:80], actor=actor, import_id=batch.id)
+        if was_suppressed:
             batch.already_suppressed += 1
         else:
-            unsubscribe(subscriber, "external_import", reason=provider, actor=actor)
-            _event(subscriber, "suppressed_by_import", source=provider[:80], actor=actor, import_id=batch.id)
             batch.newly_suppressed += 1
     db.session.commit()
     return batch

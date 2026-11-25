@@ -442,6 +442,17 @@ export default function AdminNewsletterEditor() {
           <Section title="Delivery" description="WSF prepares the issue and the recipient list; you send it through an external service and record it here. WSF does not transmit newsletters itself.">
             {!isNew && (
               <div className="space-y-4">
+                <div className="border border-amber-200 bg-amber-50 p-3 text-xs text-charcoal" data-sending-guidance>
+                  <p className="font-semibold">Before every external send</p>
+                  <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                    <li>Import the sending service’s latest unsubscribes, bounces and complaints (Subscribers → Import suppressions).</li>
+                    <li>Export a fresh recipient list here immediately before sending; never reuse an older export.</li>
+                    <li>Keep the sending service’s own suppression list switched on and honour it.</li>
+                    <li>Make sure the email has a working unsubscribe link and WSF’s postal address in the footer. If Settings → Site Identity has no postal address yet, don’t send marketing until it does.</li>
+                    <li>Record the send below, naming the service used.</li>
+                  </ol>
+                  <p className="mt-1">The external service does not sync with WSF automatically.</p>
+                </div>
                 <button type="button" onClick={handleExport} className="btn-secondary !px-4 !py-2 text-xs">
                   <Download size={13} /> Export recipients (confirmed subscribers, CSV)
                 </button>
