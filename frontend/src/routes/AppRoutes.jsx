@@ -162,6 +162,7 @@ const AdminContactInquiries = lazy(() => import('../pages/admin/AdminContactInqu
 const AdminComments = lazy(() => import('../pages/admin/AdminComments'))
 const CommentUnsubscribePage = lazy(() => import('../pages/CommentUnsubscribePage'))
 const NewsletterConfirmPage = lazy(() => import('../pages/NewsletterConfirmPage'))
+const VerifyEmailPage = lazy(() => import('../pages/VerifyEmailPage'))
 const AccountDeletionCancelPage = lazy(() => import('../pages/AccountDeletionCancelPage'))
 const AccountPrivacyPage = lazy(() => import('../pages/AccountPrivacyPage'))
 const AdminPrivacyRequests = lazy(() => import('../pages/admin/AdminPrivacyRequests'))
@@ -257,6 +258,8 @@ export default function AppRoutes() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
           {/* /forgot-password carries no secret, so it stays inside the
               normal public/analytics tree. /reset-password DOES carry one
               (the raw token, in the URL fragment) and is registered as its

@@ -3166,6 +3166,10 @@ def resolve_spa_response(subpath):
         # AccountDeletionCancelPage.jsx: noindex, token-free.
         return _render_unsubscribe_shell("Cancel account deletion | Women Shaping Futures")
 
+    if segments and segments[0] == "verify-email" and len(segments) <= 2:
+        # VerifyEmailPage.jsx (Batch 4 corrections): noindex, token-free.
+        return _render_unsubscribe_shell("Confirm your email | Women Shaping Futures")
+
     if len(segments) == 3 and segments[0] == "newsletter" and segments[1] == "confirm" and segments[2]:
         # NewsletterConfirmPage.jsx: same noindex, token-free treatment.
         return _render_unsubscribe_shell("Confirm your subscription | Women Shaping Futures")

@@ -61,6 +61,16 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
     # actually see a user's own country (avatar_media_id stays out: no
     # avatar self-service in this module, see spec).
     country_code = fields.String(dump_only=True)
+    # Batch 4 corrections: whether this account must confirm its email before
+    # normal use, and whether ownership has been proven (never is_verified).
+    email_verification_pending = fields.Method("_verification_pending", dump_only=True)
+    email_verified = fields.Method("_email_verified", dump_only=True)
+
+    def _verification_pending(self, user):
+        return bool(user.email_verification_required and user.email_verified_at is None)
+
+    def _email_verified(self, user):
+        return user.email_verified_at is not None
 
     class Meta:
         model = User
@@ -71,7 +81,8 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         # member sees them in their own data export.
         exclude = ("password_hash", "career_goals", "career_goals_prompted_at",
                    "age_confirmed_at", "age_confirmed_minimum", "terms_version_accepted",
-                   "privacy_version_accepted", "legal_accepted_at", "certificate_public_name")
+                   "privacy_version_accepted", "legal_accepted_at", "certificate_public_name",
+                   "email_verified_at", "email_verification_required")
 
 
 class RegisterSchema(ma.Schema):

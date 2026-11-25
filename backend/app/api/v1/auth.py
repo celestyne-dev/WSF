@@ -27,6 +27,7 @@ from app.schemas.user import (
 from app.services import two_factor
 from app.services.account_policy import get_account_policy, legal_document_version
 from app.services.audit import log_action
+from app.services.email_verification import send_verification, verify_token
 from app.services.password_reset import request_password_reset, reset_password
 from app.services.rate_limits import limit
 from app.services.refresh_sessions import (
@@ -47,12 +48,13 @@ auth_bp = Blueprint("auth", __name__)
 api = Api(auth_bp)
 
 
-def signed_in_response(user, status=200, two_factor_verified=False):
+def signed_in_response(user, status=200, two_factor_verified=False, extra=None):
     """Body: the user + a short-lived access token (kept in memory by the
     browser). The refresh credential goes ONLY into the HttpOnly cookie."""
     raw, session = create_session(user, two_factor_verified=two_factor_verified)
     db.session.commit()
-    body = {"success": True, "data": {"user": user_schema.dump(user), "access_token": create_access_token(identity=user)}}
+    body = {"success": True, "data": {"user": user_schema.dump(user), "access_token": create_access_token(identity=user),
+                                      **(extra or {})}}
     return set_refresh_cookie(make_response(jsonify(body), status), raw, session)
 
 
@@ -119,11 +121,16 @@ class RegisterResource(Resource):
         if member_role:
             user.roles.append(member_role)
 
+        # Batch 4 corrections: email ownership must be proven before the
+        # account gets normal access (app/auth/decorators.py).
+        user.email_verification_required = True
         db.session.add(user)
         db.session.commit()
         log_action(user, "user.register", "User", user.id)
+        sent = send_verification(user)
+        db.session.commit()
 
-        return signed_in_response(user, status=201)
+        return signed_in_response(user, status=201, extra={"verification_email_sent": sent})
 
 
 class LoginResource(Resource):
@@ -388,7 +395,47 @@ class ResetPasswordResource(Resource):
         )
 
 
+class VerifyEmailResource(Resource):
+    """POST {token}: the emailed link opens a page whose button posts the
+    token, so a mail scanner opening the link can't verify on anyone's behalf.
+    Public: it proves control of the inbox, nothing more."""
+
+    @limiter.limit(limit("email_verification_confirm"))
+    def post(self):
+        outcome, _user = verify_token((request.get_json(silent=True) or {}).get("token"))
+        if outcome in ("verified", "already_verified"):
+            return success_response({"result": outcome}, message="Your email address is confirmed.")
+        if outcome == "expired":
+            raise ApiError("This link has expired. Sign in and ask for a new one.", 410, code="verification_expired")
+        if outcome == "superseded":
+            raise ApiError("A newer link was sent. Please use the most recent email.", 410,
+                           code="verification_superseded")
+        raise ApiError("This link isn't valid.", 404, code="verification_invalid")
+
+
+class ResendVerificationResource(Resource):
+    """POST: email a fresh verification link to the signed-in account's own
+    address. Plain @jwt_required() so an unverified account can use it; also
+    how existing members verify. Shared-store rate limit."""
+
+    @jwt_required()
+    @limiter.limit(limit("email_verification_resend"))
+    def post(self):
+        if not current_user or not current_user.is_active:
+            return error_response("Account is inactive or no longer exists.", 403, code="forbidden")
+        if current_user.email_verified_at is not None:
+            return success_response({"result": "already_verified"}, message="Your email address is already confirmed.")
+        sent = send_verification(current_user)
+        db.session.commit()
+        if not sent:
+            raise ApiError("We couldn't send the email just now. Please try again in a few minutes.", 503,
+                           code="email_send_failed")
+        return success_response({"result": "sent"}, message="We've emailed you a new link.")
+
+
 api.add_resource(RegisterResource, "/register")
+api.add_resource(VerifyEmailResource, "/verify-email")
+api.add_resource(ResendVerificationResource, "/verify-email/resend")
 api.add_resource(LoginResource, "/login")
 api.add_resource(RefreshResource, "/refresh")
 api.add_resource(LogoutResource, "/logout")

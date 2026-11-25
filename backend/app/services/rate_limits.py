@@ -28,6 +28,9 @@ LIMITS = {
     "account_export": "5 per hour",
     "account_deletion": "10 per hour",
     "privacy_request": "5 per day",
+    # Email verification (per client IP, shared Redis/PostgreSQL store)
+    "email_verification_resend": "3 per 10 minutes; 10 per day",
+    "email_verification_confirm": "30 per minute",
     # Public forms
     "contact": "5 per minute; 30 per day",
     "story_submission": "5 per minute; 20 per day",

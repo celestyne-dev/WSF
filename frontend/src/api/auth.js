@@ -41,6 +41,31 @@ export function mapUser(u) {
     // request while this is true, so the frontend redirect below is a
     // convenience, not the enforcement.
     mustChangePassword: !!u.must_change_password,
+    // Batch 4 corrections: a new account can't be used until its email is
+    // confirmed (backend app/auth/decorators.py enforces it; the redirect in
+    // AccountLayout/AdminLayout is a convenience). emailVerified = proven
+    // ownership, which older accounts may not have yet.
+    emailVerificationPending: !!u.email_verification_pending,
+    emailVerified: !!u.email_verified,
+  }
+}
+
+// Email verification (never throws): { success, result?, message, code? }.
+export async function confirmEmailVerification(token) {
+  try {
+    const { data } = await apiClient.post('/auth/verify-email', { token })
+    return { success: true, result: data?.result }
+  } catch (err) {
+    return { success: false, code: err.apiError?.code, message: err.apiError?.message || 'This link isn’t valid.' }
+  }
+}
+
+export async function resendEmailVerification() {
+  try {
+    const { data } = await apiClient.post('/auth/verify-email/resend')
+    return { success: true, result: data?.result }
+  } catch (err) {
+    return { success: false, code: err.apiError?.code, message: err.apiError?.message || 'We couldn’t send the email. Please try again later.' }
   }
 }
 
@@ -152,7 +177,7 @@ export async function register({ firstName, lastName, email, password, countryCo
       country_code: countryCode || undefined,
       ...registerAgePayload(ageConfirmed),
     })
-    return { success: true, accessToken: data.access_token, user: mapUser(data.user) }
+    return { success: true, accessToken: data.access_token, user: mapUser(data.user), verificationEmailSent: data.verification_email_sent !== false }
   } catch (err) {
     return {
       success: false,

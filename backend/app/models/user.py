@@ -98,6 +98,15 @@ class User(db.Model):
     # each certificate's immutable recipient_name; never rewrites a
     # certificate. The PDF (owner/staff only) always carries the full name.
     certificate_public_name = db.Column(db.String(10), nullable=False, default="full", server_default="full")
+    # Email ownership (Batch 4 corrections). is_verified above is NOT proof
+    # of ownership: it was only ever set by create-superadmin. Only
+    # email_verified_at (set by clicking a first-party verification link)
+    # proves the account holder controls the address.
+    email_verified_at = db.Column(db.DateTime(timezone=True))
+    # True for accounts registered under the verification-required flow:
+    # they get no normal authenticated access until verified. False for
+    # every account that predates it (access preserved; verification offered).
+    email_verification_required = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
     # Private career-goal preferences (Career Hub CAREER_GOALS keys, at
     # most 3), used only to personalize this user's own Career Hub. Never
     # exposed publicly. `career_goals_prompted_at` records that the

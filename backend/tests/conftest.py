@@ -85,10 +85,24 @@ class _AgeConfirmingClient(FlaskClient):
         headers = kwargs.get("headers") or {}
         raw = RAW_REGISTER_HEADER in headers
         body = kwargs.get("json")
-        if (str(path).split("?")[0].rstrip("/") == "/api/v1/auth/register" and not raw
-                and isinstance(body, dict) and "age_confirmed" not in body):
+        is_register = str(path).split("?")[0].rstrip("/") == "/api/v1/auth/register"
+        if is_register and not raw and isinstance(body, dict) and "age_confirmed" not in body:
             kwargs["json"] = {**body, "age_confirmed": True}
-        return super().open(*args, **kwargs)
+        response = super().open(*args, **kwargs)
+        # Batch 4 corrections: new accounts must verify their email before
+        # normal use. Setup-only registrations are marked verified here (as
+        # if the link had been clicked); verification tests send
+        # RAW_REGISTER_HEADER to keep the account unverified.
+        if is_register and not raw and response.status_code == 201 and isinstance(body, dict) and body.get("email"):
+            from sqlalchemy import text as _text
+
+            from app.extensions import db as _sa_db
+
+            with self.application.app_context():
+                with _sa_db.engine.begin() as conn:
+                    conn.execute(_text("UPDATE users SET email_verified_at = now() WHERE lower(email) = :e"),
+                                 {"e": body["email"].strip().lower()})
+        return response
 
 
 @pytest.fixture()

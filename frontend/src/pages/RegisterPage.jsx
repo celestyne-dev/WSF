@@ -72,6 +72,11 @@ export default function RegisterPage() {
 
     if (result.meta.requestStatus === 'fulfilled') {
       const user = result.payload.user
+      if (user.emailVerificationPending) {
+        // Batch 4 corrections: the account works once the email is confirmed.
+        navigate('/verify-email', { replace: true, state: { sendFailed: result.payload.verificationEmailSent === false } })
+        return
+      }
       toast.success(`Welcome to WSF, ${user.firstName || 'there'}.`)
       // Mirrors LoginPage's safe post-auth return behavior exactly — a
       // forced password change still wins over any return path, and

@@ -53,7 +53,7 @@ def test_every_foreign_key_to_users_has_a_deletion_decision(app):
     with app.app_context():
         found = {f"{t.name}.{c.name}" for t, c, _o, _n in svc.user_foreign_keys()}
     assert found == set(svc.FK_TREATMENT), (found - set(svc.FK_TREATMENT), set(svc.FK_TREATMENT) - found)
-    assert len(found) == 63  # 61 before Step 16 + privacy_requests.user_id and .created_by_id
+    assert len(found) == 64  # 61 before Step 16 + privacy_requests x2 + email_verification_tokens.user_id
     assert {k for k, (t, _) in svc.FK_TREATMENT.items() if t == "retain"} == {
         "circle_payments.user_id", "circle_subscriptions.user_id", "resource_payments.user_id",
         "resource_purchases.user_id", "orders.user_id"}

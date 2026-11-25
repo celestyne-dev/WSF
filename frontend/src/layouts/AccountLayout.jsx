@@ -31,6 +31,7 @@ export default function AccountLayout() {
   if (!accessToken) return <Navigate to="/login" replace />
   if (!user) return <PageLoader />
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />
+  if (user.emailVerificationPending) return <Navigate to="/verify-email" replace />
 
   function handleSignOut() {
     setSigningOut(true)

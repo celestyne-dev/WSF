@@ -74,6 +74,7 @@ export default function AdminLayout() {
   // this is true); this redirect is the UX companion to that, not a
   // substitute for it.
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />
+  if (user.emailVerificationPending) return <Navigate to="/verify-email" replace />
 
   // A real member/employer account authenticated successfully but holds no
   // CMS permission — public accounts are not CMS staff no matter how they

@@ -1,9 +1,10 @@
 import { useId, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 import useSeo from '../hooks/useSeo'
 import { downloadAccountExport, requestAccountDeletion, submitPrivacyRequest } from '../api/accountPrivacy'
+import { resendEmailVerification } from '../api/auth'
 import { logout } from '../features/auth/authSlice'
 import CommentDialog from '../components/comments/CommentDialog'
 
@@ -25,6 +26,13 @@ export default function AccountPrivacyPage() {
   const [requestType, setRequestType] = useState('access')
   const [details, setDetails] = useState('')
   const [requestMessage, setRequestMessage] = useState('')
+  const user = useSelector((st) => st.auth.user)
+  const [verifyMessage, setVerifyMessage] = useState('')
+
+  async function handleVerify() {
+    const res = await resendEmailVerification()
+    setVerifyMessage(res.success ? 'We’ve emailed you a confirmation link. It works once, for 24 hours.' : res.message)
+  }
 
   async function handleExport() {
     setExporting(true)
@@ -60,11 +68,27 @@ export default function AccountPrivacyPage() {
 
   return (
     <div className="max-w-[720px] space-y-12">
+      {user && !user.emailVerified && (
+        <section aria-labelledby={`${ids}-verify`} className="border border-taupe-200 bg-white p-4">
+          <h2 id={`${ids}-verify`} className="font-serif text-xl font-semibold text-charcoal">Confirm your email address</h2>
+          <p className="mt-2 text-sm text-charcoal-600">
+            Until you confirm it, newsletter and story records sent from {user.email} aren’t included in your data file or
+            deleted with your account, because we can’t be sure they’re yours.
+          </p>
+          <button type="button" onClick={handleVerify} className="btn-secondary mt-3">Send me a confirmation link</button>
+          <p role="status" aria-live="polite" className="mt-2 text-sm text-charcoal-600">{verifyMessage}</p>
+        </section>
+      )}
+
       <section aria-labelledby={`${ids}-export`}>
         <h2 id={`${ids}-export`} className="font-serif text-2xl font-semibold text-charcoal">Download your data</h2>
         <p className="mt-2 text-sm text-charcoal-600">
           A file (JSON) with your account details, preferences, saved items, registrations, learning, purchases and payment
           records, comments, newsletter and cookie choices. Passwords and other security data are never included.
+        </p>
+        <p className="mt-2 text-sm text-charcoal-600">
+          Nominations, contact enquiries and mentorship applications are kept separately from your account and aren’t in
+          this file. To see or delete them, send a privacy request below; we check it’s really you first.
         </p>
         <button type="button" onClick={handleExport} disabled={exporting} className="btn-primary mt-4 disabled:opacity-60">
           {exporting ? 'Preparing…' : 'Download my data'}

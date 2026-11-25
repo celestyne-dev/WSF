@@ -90,6 +90,7 @@ FK_TREATMENT = {
     "password_reset_tokens.user_id": (D, "reset tokens"),
     "privacy_requests.created_by_id": (X, "staff reference"),
     "privacy_requests.user_id": (X, "the request documents the deletion; name/email cleared"),
+    "email_verification_tokens.user_id": (D, "verification links (hashes only) deleted with the account"),
     "refresh_sessions.user_id": (D, "sessions"),
     "resource_download_tokens.user_id": (D, "download tokens"),
     "resource_payments.user_id": (R, "payment record, 6 years (SET NULL)"),
@@ -184,7 +185,9 @@ def build_export(user):
         "email": user.email, "first_name": user.first_name, "last_name": user.last_name,
         "display_name": user.display_name, "bio": user.bio, "country_code": user.country_code,
         "created_at": _value(user.created_at), "last_login_at": _value(user.last_login_at),
-        "email_verified": user.is_verified, "roles": sorted(user.role_names()),
+        # Ownership proof (Batch 4 corrections); is_verified was never proof.
+        "email_verified": user.email_verified_at is not None,
+        "email_verified_at": _value(user.email_verified_at), "roles": sorted(user.role_names()),
         "career_goals": user.career_goals, "two_factor_enabled": is_enabled(user),
         "avatar_url": user.avatar.public_url if user.avatar else None,
         "age_confirmed_at": _value(user.age_confirmed_at),
@@ -200,7 +203,14 @@ def build_export(user):
     orders = _rows("orders", "user_id", user.id)
     for o in orders:
         o["items"] = _rows("order_items", "order_id", o["id"])
-    subscriber = NewsletterSubscriber.query.filter_by(email=user.email.lower()).first()
+    # Independently collected records (newsletter, story submissions) are
+    # matched only by email address. A bare email match is not proof that
+    # this account holder sent them, so they are included only once the
+    # account has proven it controls the address; otherwise the export says
+    # so and points to a verified privacy request. Nominations, contact
+    # enquiries and mentorship applications are never matched by email here.
+    owns_email = user.email_verified_at is not None
+    subscriber = NewsletterSubscriber.query.filter_by(email=user.email.lower()).first() if owns_email else None
     newsletter = None
     if subscriber is not None:
         newsletter = {
@@ -213,7 +223,7 @@ def build_export(user):
         }
     stories = [{"reference": s.reference, "title": s.title, "summary": s.summary, "body": s.body,
                 "status": s.status, "submitted_at": _value(s.created_at) if hasattr(s, "created_at") else None}
-               for s in StorySubmission.query.filter_by(email=user.email.lower()).all()]
+               for s in (StorySubmission.query.filter_by(email=user.email.lower()).all() if owns_email else [])]
     return {
         "format": "wsf-account-export-v1",
         "generated_at": _value(_now()),
@@ -237,7 +247,19 @@ def build_export(user):
         "notifications": _rows("notifications", "recipient_user_id", user.id),
         "analytics_events": _rows("analytics_events", "user_id", user.id, limit=5000),
         "privacy_requests": _rows("privacy_requests", "user_id", user.id, exclude=("admin_notes", "created_by_id")),
+        "independent_records": independent_records_note(user),
     }
+
+
+def independent_records_note(user):
+    """How records collected outside the account are treated (export + deletion)."""
+    base = ("Nominations, contact enquiries and mentorship applications are kept separately from your account and "
+            "are not included here; ask for them with a privacy request.")
+    if user.email_verified_at is not None:
+        return {"email_verified": True, "newsletter_and_stories_included": True, "note": base}
+    return {"email_verified": False, "newsletter_and_stories_included": False,
+            "note": "Your email address isn't confirmed, so newsletter and story records sent from it are not "
+                    "included. Confirm your email, or send a privacy request so we can check them. " + base}
 
 
 # --- deletion ----------------------------------------------------------------------------------
@@ -365,8 +387,13 @@ def purge_user(user):
     # article was made from them (the published work stays), else deleted.
     from app.models.article import Article
 
+    # Only when the account proved it controls the address: a bare email
+    # match never lets one account destroy someone else's submissions.
+    # Unverified: left untouched and flagged for manual privacy review.
     anonymised = deleted = 0
-    for sub in StorySubmission.query.filter_by(email=email).all():
+    owns_email = user.email_verified_at is not None
+    summary["independent_records"] = "processed" if owns_email else "left_for_manual_review"
+    for sub in (StorySubmission.query.filter_by(email=email).all() if owns_email else []):
         if Article.query.filter_by(source_submission_id=sub.id).first() is not None:
             sub.first_name, sub.last_name = "Former", "member"
             sub.email = f"deleted-submitter-{sub.id}@invalid.invalid"
@@ -397,6 +424,10 @@ def purge_user(user):
         if row.request_type == "deletion" and row.status != "completed":
             row.status = "completed"
             row.completed_at = now
+            if not owns_email:
+                row.admin_notes = ((row.admin_notes or "") + "\nEmail was not verified: records matched only by email "
+                                   "(newsletter, story submissions) were NOT deleted. Review manually if the person "
+                                   "proves ownership.").strip()
     # Every other nullable reference with no ON DELETE rule is nulled here.
     for table, column, ondelete, nullable in user_foreign_keys():
         if ondelete == "NO ACTION" and nullable and table.name != "token_blocklist":

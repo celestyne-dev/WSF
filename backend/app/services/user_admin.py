@@ -90,6 +90,10 @@ def update_user_identity(user, *, first_name=None, last_name=None, email=None, c
         existing = User.query.filter(db.func.lower(User.email) == normalized, User.id != user.id).first()
         if existing:
             raise UserAdminError("An account with this email already exists.", code="email_taken")
+        if normalized != (user.email or "").lower():
+            from app.services.email_verification import email_changed
+
+            email_changed(user)
         user.email = normalized
     if country_code is not None:
         user.country_code = country_code or None

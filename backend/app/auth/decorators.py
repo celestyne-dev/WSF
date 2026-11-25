@@ -17,6 +17,13 @@ def _require_active_user():
     # this also refuses any token that somehow survived.
     if current_user.deletion_scheduled_for is not None:
         return error_response("This account is scheduled for deletion.", 403, code="account_deletion_pending")
+    # Email not yet verified on an account registered under the
+    # verification-required flow: no normal authenticated access. /auth/me,
+    # refresh, logout and the verification endpoints are plain
+    # @jwt_required() views, so they stay usable.
+    if current_user.email_verification_required and current_user.email_verified_at is None:
+        return error_response("Please confirm your email address to continue.", 403,
+                              code="email_verification_required")
     # A temporary/reset password forces a change before anything else —
     # checked here, ahead of the permission/role evaluation each wrapper
     # below does next, so it can't be bypassed by holding any particular
