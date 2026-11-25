@@ -49,7 +49,12 @@ def _generate_unsubscribe_token():
 
 class NewsletterSubscriber(db.Model):
     __tablename__ = "newsletter_subscribers"
-    __table_args__ = (db.CheckConstraint(_SUBSCRIBER_STATUS_CHECK_SQL, name="ck_newsletter_subscribers_status"),)
+    __table_args__ = (
+        db.CheckConstraint(_SUBSCRIBER_STATUS_CHECK_SQL, name="ck_newsletter_subscribers_status"),
+        # Declared as the migrations created it (b2c8e1f4a6d7); its own index
+        # serves lookups, so no second index (removed in f7c3a9e5b1d6).
+        db.UniqueConstraint("unsubscribe_token", name="uq_newsletter_subscribers_unsubscribe_token"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
@@ -67,9 +72,7 @@ class NewsletterSubscriber(db.Model):
     # An unguessable, stable, per-subscriber link secret — the ONLY thing
     # a one-click email unsubscribe link needs to carry, so a raw email
     # address or numeric id is never exposed as the unsubscribe mechanism.
-    unsubscribe_token = db.Column(
-        db.String(64), unique=True, nullable=False, index=True, default=_generate_unsubscribe_token
-    )
+    unsubscribe_token = db.Column(db.String(64), nullable=False, default=_generate_unsubscribe_token)
     subscribed_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
     unsubscribed_at = db.Column(db.DateTime(timezone=True))
     # Consent provenance (operational record, not legal proof): when the
